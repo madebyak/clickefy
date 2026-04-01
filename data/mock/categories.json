@@ -1,0 +1,77 @@
+[
+  {
+    "id": "cat-1",
+    "name": "Skincare",
+    "slug": "skincare",
+    "parentId": null,
+    "order": 1,
+    "icon": "droplet",
+    "description": "Beauty and skincare product templates",
+    "createdAt": "2024-01-15T10:00:00Z",
+    "updatedAt": "2024-01-15T10:00:00Z"
+  },
+  {
+    "id": "cat-1-1",
+    "name": "Face Care",
+    "slug": "face-care",
+    "parentId": "cat-1",
+    "order": 1,
+    "description": "Facial skincare products",
+    "createdAt": "2024-01-15T10:00:00Z",
+    "updatedAt": "2024-01-15T10:00:00Z"
+  },
+  {
+    "id": "cat-1-2",
+    "name": "Body Care",
+    "slug": "body-care",
+    "parentId": "cat-1",
+    "order": 2,
+    "description": "Body skincare products",
+    "createdAt": "2024-01-15T10:00:00Z",
+    "updatedAt": "2024-01-15T10:00:00Z"
+  },
+  {
+    "id": "cat-2",
+    "name": "Food & Beverage",
+    "slug": "food-beverage",
+    "parentId": null,
+    "order": 2,
+    "icon": "coffee",
+    "description": "Food and drink product templates",
+    "createdAt": "2024-01-15T10:00:00Z",
+    "updatedAt": "2024-01-15T10:00:00Z"
+  },
+  {
+    "id": "cat-3",
+    "name": "Supplements",
+    "slug": "supplements",
+    "parentId": null,
+    "order": 3,
+    "icon": "pill",
+    "description": "Health supplement templates",
+    "createdAt": "2024-01-15T10:00:00Z",
+    "updatedAt": "2024-01-15T10:00:00Z"
+  },
+  {
+    "id": "cat-4",
+    "name": "Fashion",
+    "slug": "fashion",
+    "parentId": null,
+    "order": 4,
+    "icon": "shirt",
+    "description": "Fashion and accessories templates",
+    "createdAt": "2024-01-15T10:00:00Z",
+    "updatedAt": "2024-01-15T10:00:00Z"
+  },
+  {
+    "id": "cat-5",
+    "name": "Electronics",
+    "slug": "electronics",
+    "parentId": null,
+    "order": 5,
+    "icon": "smartphone",
+    "description": "Electronic product templates",
+    "createdAt": "2024-01-15T10:00:00Z",
+    "updatedAt": "2024-01-15T10:00:00Z"
+  }
+]

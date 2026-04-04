@@ -1,16 +1,9 @@
-/**
- * Template data models
- * Core structure for AI generation templates
- * 
- * TODO: [Database Integration] Add MongoDB _id field when connecting to database
- * TODO: [Versioning] Add version tracking fields for template history
- */
-
 export type TemplateType = 'image' | 'video' | 'image-then-video';
 export type TemplateStatus = 'draft' | 'published' | 'archived';
 export type GenerationMode = 'image' | 'video' | 'image-then-video';
 export type ProviderType = 'gemini' | 'kling';
 export type ActionType = 'text-to-image' | 'image-to-image' | 'image-to-video';
+export type InputFieldType = 'image' | 'video' | 'text';
 
 export interface Template {
   id: string;
@@ -25,20 +18,15 @@ export interface Template {
   status: TemplateStatus;
   featured: boolean;
 
-  // Visual content for mobile app
   coverImage: string;
   previewGallery: string[];
-
-  // User input configuration
   userInputs: TemplateInput[];
 
-  // Generation configuration
   generation: {
     mode: GenerationMode;
     stages: GenerationStage[];
   };
 
-  // Output settings
   output: {
     type: 'image' | 'video' | 'both';
     count: number;
@@ -46,7 +34,9 @@ export interface Template {
     allowRegeneration: boolean;
   };
 
-  // Metadata
+  // Whether the mobile user can pick aspect ratio
+  userCanChooseAspectRatio: boolean;
+
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
@@ -59,10 +49,17 @@ export interface TemplateInput {
   label: string;
   helperText?: string;
   required: boolean;
-  type: 'image' | 'video';
-  acceptedFormats: string[];
-  maxSize: number; // in MB
+  type: InputFieldType;
+
+  // Media-specific (image/video only)
+  acceptedFormats?: string[];
+  maxSize?: number; // MB
   minResolution?: { width: number; height: number };
+
+  // Text-specific
+  placeholder?: string;
+  maxLength?: number;
+
   order: number;
 }
 
@@ -73,19 +70,15 @@ export interface GenerationStage {
   model: string;
   actionType: ActionType;
 
-  // Prompt configuration (single text field as per requirements)
+  // Prompt with {{variable}} placeholders linked to user inputs
   prompt: string;
 
-  // Input mapping (maps user uploads to generation inputs)
+  // Maps user input field keys to generation input roles
   inputMapping: Record<string, string>;
 
-  // Reference images (admin-only, hidden from users)
   references: ReferenceImage[];
-
-  // Provider-specific configuration
   config: ProviderConfig;
 
-  // Retry logic
   retry: {
     enabled: boolean;
     maxAttempts: number;
@@ -93,24 +86,24 @@ export interface GenerationStage {
   };
 }
 
+export type ReferenceImageRole = 'style' | 'composition' | 'lighting' | 'scene' | 'example';
+
 export interface ReferenceImage {
   id: string;
-  url: string;
-  type: 'inspiration' | 'composition' | 'style' | 'lighting';
+  label: string;
+  role: ReferenceImageRole;
+  base64: string;
+  mimeType: string;
+  fileName?: string;
 }
 
 export interface ProviderConfig {
-  // Gemini-specific
   aspectRatio?: string;
   imageSize?: '512' | '1K' | '2K' | '4K';
   numberOfOutputs?: number;
-
-  // Kling-specific
   duration?: number;
   motionPrompt?: string;
-
-  // Generic
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface TemplateFormData {

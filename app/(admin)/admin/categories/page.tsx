@@ -1,13 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { PageHeader } from '@/components/layout/page-header';
 import { CategoryTree } from '@/components/categories/category-tree';
 import { CategoryForm } from '@/components/categories/category-form';
-import { Modal } from '@/components/ui/modal';
-import { Toast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useCategoriesStore } from '@/lib/stores/categories-store';
 import { Category } from '@/lib/types/category';
+import { Plus, Loader2, FolderTree } from 'lucide-react';
+import { toast } from 'sonner';
 
 /**
  * Categories Management Page
@@ -21,14 +29,12 @@ import { Category } from '@/lib/types/category';
  * - Drag-and-drop reordering (TODO)
  */
 export default function CategoriesPage() {
-  const { categories, loading, error, fetchCategories, createCategory, updateCategory, deleteCategory } = useCategoriesStore();
-  
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const { categories, loading, fetchCategories, createCategory, updateCategory, deleteCategory } = useCategoriesStore();
+
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     fetchCategories();
@@ -37,167 +43,165 @@ export default function CategoriesPage() {
   const handleCreate = async (data: any) => {
     try {
       await createCategory(data);
-      setIsCreateModalOpen(false);
-      setToast({ message: 'Category created successfully', type: 'success' });
-    } catch (error) {
-      setToast({ message: 'Failed to create category', type: 'error' });
+      setIsCreateDialogOpen(false);
+      toast.success('Category created successfully');
+    } catch {
+      toast.error('Failed to create category');
     }
   };
 
   const handleEdit = async (data: any) => {
     if (!selectedCategory) return;
-    
+
     try {
       await updateCategory(selectedCategory.id, data);
-      setIsEditModalOpen(false);
+      setIsEditDialogOpen(false);
       setSelectedCategory(null);
-      setToast({ message: 'Category updated successfully', type: 'success' });
-    } catch (error) {
-      setToast({ message: 'Failed to update category', type: 'error' });
+      toast.success('Category updated successfully');
+    } catch {
+      toast.error('Failed to update category');
     }
   };
 
   const handleDelete = async () => {
     if (!selectedCategory) return;
-    
+
     try {
       await deleteCategory(selectedCategory.id);
-      setIsDeleteModalOpen(false);
+      setIsDeleteDialogOpen(false);
       setSelectedCategory(null);
-      setToast({ message: 'Category deleted successfully', type: 'success' });
+      toast.success('Category deleted successfully');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete category';
-      setToast({ message, type: 'error' });
+      toast.error(message);
     }
   };
 
-  const openEditModal = (category: Category) => {
+  const openEditDialog = (category: Category) => {
     setSelectedCategory(category);
-    setIsEditModalOpen(true);
+    setIsEditDialogOpen(true);
   };
 
-  const openDeleteModal = (category: Category) => {
+  const openDeleteDialog = (category: Category) => {
     setSelectedCategory(category);
-    setIsDeleteModalOpen(true);
+    setIsDeleteDialogOpen(true);
   };
 
   return (
-    <div>
-      <PageHeader
-        title="Categories"
-        description="Organize your templates with categories and sub-categories"
-        action={{
-          label: 'Create Category',
-          onClick: () => setIsCreateModalOpen(true),
-          icon: (
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          ),
-        }}
-      />
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Categories</h1>
+          <p className="text-muted-foreground mt-1">
+            Organize your templates with categories and sub-categories
+          </p>
+        </div>
+        <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Create Category
+        </Button>
+      </div>
 
       {/* Category Tree */}
-      <div className="bg-surface rounded-lg p-6">
+      <div className="bg-card rounded-lg border p-6">
         {loading && categories.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-purple"></div>
-            <p className="text-text-secondary mt-4">Loading categories...</p>
+          <div className="flex flex-col items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-muted-foreground mt-4">Loading categories...</p>
+          </div>
+        ) : categories.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <FolderTree className="h-16 w-16 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">No categories yet</p>
+            <p className="text-sm text-muted-foreground mt-1">Create your first category to organize templates</p>
           </div>
         ) : (
           <CategoryTree
             categories={categories}
-            onEdit={openEditModal}
-            onDelete={openDeleteModal}
+            onEdit={openEditDialog}
+            onDelete={openDeleteDialog}
           />
         )}
       </div>
 
-      {/* Create Modal */}
-      <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        title="Create Category"
-        size="md"
-      >
-        <CategoryForm
-          categories={categories}
-          onSubmit={handleCreate}
-          onCancel={() => setIsCreateModalOpen(false)}
-        />
-      </Modal>
-
-      {/* Edit Modal */}
-      <Modal
-        isOpen={isEditModalOpen}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setSelectedCategory(null);
-        }}
-        title="Edit Category"
-        size="md"
-      >
-        {selectedCategory && (
+      {/* Create Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Category</DialogTitle>
+            <DialogDescription>
+              Add a new category to organize your templates.
+            </DialogDescription>
+          </DialogHeader>
           <CategoryForm
-            category={selectedCategory}
             categories={categories}
-            onSubmit={handleEdit}
-            onCancel={() => {
-              setIsEditModalOpen(false);
-              setSelectedCategory(null);
-            }}
+            onSubmit={handleCreate}
+            onCancel={() => setIsCreateDialogOpen(false)}
           />
-        )}
-      </Modal>
+        </DialogContent>
+      </Dialog>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => {
-          setIsDeleteModalOpen(false);
-          setSelectedCategory(null);
+      {/* Edit Dialog */}
+      <Dialog
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open);
+          if (!open) setSelectedCategory(null);
         }}
-        title="Delete Category"
-        size="sm"
       >
-        {selectedCategory && (
-          <div>
-            <p className="text-text-primary mb-4">
-              Are you sure you want to delete <strong>{selectedCategory.name}</strong>?
-            </p>
-            <p className="text-sm text-text-secondary mb-6">
-              This action cannot be undone. Templates in this category will need to be reassigned.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setIsDeleteModalOpen(false);
-                  setSelectedCategory(null);
-                }}
-                className="px-4 h-10 rounded-lg bg-surface-elevated text-text-primary hover:bg-[#252532] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 h-10 rounded-lg bg-error text-white hover:bg-red-600 transition-colors"
-              >
-                Delete Category
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Category</DialogTitle>
+            <DialogDescription>
+              Update category details.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedCategory && (
+            <CategoryForm
+              category={selectedCategory}
+              categories={categories}
+              onSubmit={handleEdit}
+              onCancel={() => {
+                setIsEditDialogOpen(false);
+                setSelectedCategory(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
-      {/* Toast Notifications */}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          isVisible={true}
-          onClose={() => setToast(null)}
-        />
-      )}
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={isDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setIsDeleteDialogOpen(open);
+          if (!open) setSelectedCategory(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Category</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{selectedCategory?.name}</strong>?
+              This action cannot be undone. Templates in this category will need to be reassigned.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteDialogOpen(false);
+                setSelectedCategory(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete}>
+              Delete Category
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

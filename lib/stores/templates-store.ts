@@ -106,17 +106,18 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
         featured: false,
         coverImage: '',
         previewGallery: [],
-        userInputs: [],
-        generation: {
+        userInputs: data.userInputs || [],
+        generation: data.generation || {
           mode: data.type || 'image',
           stages: [],
         },
-        output: {
+        output: data.output || {
           type: data.type === 'image-then-video' ? 'both' : (data.type || 'image'),
           count: 1,
           format: data.type === 'video' || data.type === 'image-then-video' ? 'mp4' : 'png',
           allowRegeneration: true,
         },
+        userCanChooseAspectRatio: data.userCanChooseAspectRatio ?? false,
         sortOrder: templates.length + 1,
         createdAt: new Date(),
         updatedAt: new Date(),

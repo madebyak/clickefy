@@ -2,19 +2,27 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { PageHeader } from '@/components/layout/page-header';
 import { TemplateCard } from '@/components/templates/template-card';
 import { TemplatesFilters } from '@/components/templates/templates-filters';
-import { Modal } from '@/components/ui/modal';
-import { Toast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useTemplatesStore } from '@/lib/stores/templates-store';
 import { useCategoriesStore } from '@/lib/stores/categories-store';
 import { Template } from '@/lib/types/template';
+import { Plus, FileText, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 /**
  * Templates List Page
  * Grid view with filters, search, and actions
- * 
+ *
  * Features:
  * - Grid layout with template cards
  * - Search by title
@@ -35,12 +43,11 @@ export default function TemplatesPage() {
     unpublishTemplate,
     setFilters,
   } = useTemplatesStore();
-  
+
   const { categories, fetchCategories } = useCategoriesStore();
-  
+
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchTemplates();
@@ -49,20 +56,17 @@ export default function TemplatesPage() {
 
   // Filter templates based on current filters
   const filteredTemplates = useMemo(() => {
-    return templates.filter(template => {
-      const matchesSearch = template.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-                           template.description.short.toLowerCase().includes(filters.search.toLowerCase());
+    return templates.filter((template) => {
+      const matchesSearch =
+        template.title.toLowerCase().includes(filters.search.toLowerCase()) ||
+        template.description.short.toLowerCase().includes(filters.search.toLowerCase());
       const matchesCategory = !filters.category || template.categoryId === filters.category;
       const matchesStatus = !filters.status || template.status === filters.status;
       const matchesType = !filters.type || template.type === filters.type;
-      
+
       return matchesSearch && matchesCategory && matchesStatus && matchesType;
     });
   }, [templates, filters]);
-
-  const handleCreateTemplate = () => {
-    router.push('/admin/templates/new');
-  };
 
   const handleEdit = (template: Template) => {
     router.push(`/admin/templates/${template.id}`);
@@ -71,10 +75,10 @@ export default function TemplatesPage() {
   const handleDuplicate = async (template: Template) => {
     try {
       const newId = await duplicateTemplate(template.id);
-      setToast({ message: 'Template duplicated successfully', type: 'success' });
+      toast.success('Template duplicated successfully');
       router.push(`/admin/templates/${newId}`);
-    } catch (error) {
-      setToast({ message: 'Failed to duplicate template', type: 'error' });
+    } catch {
+      toast.error('Failed to duplicate template');
     }
   };
 
@@ -82,49 +86,48 @@ export default function TemplatesPage() {
     try {
       if (template.status === 'published') {
         await unpublishTemplate(template.id);
-        setToast({ message: 'Template unpublished', type: 'success' });
+        toast.success('Template unpublished');
       } else {
         await publishTemplate(template.id);
-        setToast({ message: 'Template published successfully', type: 'success' });
+        toast.success('Template published successfully');
       }
-    } catch (error) {
-      setToast({ message: 'Failed to update template status', type: 'error' });
+    } catch {
+      toast.error('Failed to update template status');
     }
   };
 
   const handleDelete = async () => {
     if (!selectedTemplate) return;
-    
+
     try {
       await deleteTemplate(selectedTemplate.id);
-      setIsDeleteModalOpen(false);
+      setIsDeleteDialogOpen(false);
       setSelectedTemplate(null);
-      setToast({ message: 'Template deleted successfully', type: 'success' });
-    } catch (error) {
-      setToast({ message: 'Failed to delete template', type: 'error' });
+      toast.success('Template deleted successfully');
+    } catch {
+      toast.error('Failed to delete template');
     }
   };
 
-  const openDeleteModal = (template: Template) => {
+  const openDeleteDialog = (template: Template) => {
     setSelectedTemplate(template);
-    setIsDeleteModalOpen(true);
+    setIsDeleteDialogOpen(true);
   };
 
   return (
-    <div>
-      <PageHeader
-        title="Templates"
-        description="Manage your AI generation templates"
-        action={{
-          label: 'Create Template',
-          onClick: handleCreateTemplate,
-          icon: (
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          ),
-        }}
-      />
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Templates</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage your AI generation templates
+          </p>
+        </div>
+        <Button onClick={() => router.push('/admin/templates/new')}>
+          <Plus className="h-4 w-4 mr-2" />
+          Create Template
+        </Button>
+      </div>
 
       {/* Filters */}
       <TemplatesFilters
@@ -141,21 +144,19 @@ export default function TemplatesPage() {
 
       {/* Templates Grid */}
       {loading && templates.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-purple"></div>
-          <p className="text-text-secondary mt-4">Loading templates...</p>
+        <div className="flex flex-col items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground mt-4">Loading templates...</p>
         </div>
       ) : filteredTemplates.length === 0 ? (
-        <div className="text-center py-12 bg-surface rounded-lg">
-          <svg className="w-16 h-16 mx-auto text-text-secondary mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
-          </svg>
-          <p className="text-text-secondary">
+        <div className="flex flex-col items-center justify-center py-12 bg-card rounded-lg border">
+          <FileText className="h-16 w-16 text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">
             {filters.search || filters.category || filters.status || filters.type
               ? 'No templates match your filters'
               : 'No templates yet'}
           </p>
-          <p className="text-sm text-text-secondary mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             {filters.search || filters.category || filters.status || filters.type
               ? 'Try adjusting your filters'
               : 'Create your first template to get started'}
@@ -168,7 +169,7 @@ export default function TemplatesPage() {
               key={template.id}
               template={template}
               onEdit={handleEdit}
-              onDelete={openDeleteModal}
+              onDelete={openDeleteDialog}
               onDuplicate={handleDuplicate}
               onPublish={handlePublish}
             />
@@ -176,54 +177,39 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => {
-          setIsDeleteModalOpen(false);
-          setSelectedTemplate(null);
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={isDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setIsDeleteDialogOpen(open);
+          if (!open) setSelectedTemplate(null);
         }}
-        title="Delete Template"
-        size="sm"
       >
-        {selectedTemplate && (
-          <div>
-            <p className="text-text-primary mb-4">
-              Are you sure you want to delete <strong>{selectedTemplate.title}</strong>?
-            </p>
-            <p className="text-sm text-text-secondary mb-6">
-              This action cannot be undone. All template data and settings will be permanently deleted.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setIsDeleteModalOpen(false);
-                  setSelectedTemplate(null);
-                }}
-                className="px-4 h-10 rounded-lg bg-surface-elevated text-text-primary hover:bg-[#252532] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 h-10 rounded-lg bg-error text-white hover:bg-red-600 transition-colors"
-              >
-                Delete Template
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Toast Notifications */}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          isVisible={true}
-          onClose={() => setToast(null)}
-        />
-      )}
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Template</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{' '}
+              <strong>{selectedTemplate?.title}</strong>? This action cannot be
+              undone. All template data and settings will be permanently deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteDialogOpen(false);
+                setSelectedTemplate(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete}>
+              Delete Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

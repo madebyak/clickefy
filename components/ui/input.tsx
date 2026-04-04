@@ -1,51 +1,20 @@
-'use client';
+import * as React from "react"
+import { Input as InputPrimitive } from "@base-ui/react/input"
 
-import { InputHTMLAttributes, forwardRef } from 'react';
-import { cn } from '@/lib/utils/cn';
+import { cn } from "@/lib/utils"
 
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
-  error?: string;
-  helperText?: string;
+function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+  return (
+    <InputPrimitive
+      type={type}
+      data-slot="input"
+      className={cn(
+        "h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 py-2 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+        className
+      )}
+      {...props}
+    />
+  )
 }
 
-/**
- * Custom Input component
- * Consistent height (h-10), clean styling, no borders/shadows
- */
-const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, error, helperText, type = 'text', ...props }, ref) => {
-    return (
-      <div className="w-full">
-        {label && (
-          <label className="block text-sm font-medium text-white mb-2">
-            {label}
-            {props.required && <span className="text-[#ef4444] ml-1">*</span>}
-          </label>
-        )}
-        <input
-          type={type}
-          className={cn(
-            'w-full h-10 px-4 rounded-lg bg-[#16161f] border border-[#27272a] text-white placeholder-[#a1a1aa]',
-            'focus:outline-none focus:ring-2 focus:ring-[#8b5cf6] focus:border-transparent',
-            'transition-colors',
-            error && 'border-[#ef4444] focus:ring-[#ef4444]',
-            className
-          )}
-          ref={ref}
-          {...props}
-        />
-        {error && (
-          <p className="text-sm text-[#ef4444] mt-1">{error}</p>
-        )}
-        {helperText && !error && (
-          <p className="text-sm text-[#a1a1aa] mt-1">{helperText}</p>
-        )}
-      </div>
-    );
-  }
-);
-
-Input.displayName = 'Input';
-
-export { Input };
+export { Input }

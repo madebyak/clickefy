@@ -62,15 +62,26 @@ export async function createKlingVideoTask(
 ): Promise<KlingVideoResult> {
   const token = createKlingToken();
 
+  // Strip data URI prefix if present — Kling expects raw base64 only
+  let rawBase64 = request.imageBase64;
+  if (rawBase64.includes(',')) {
+    rawBase64 = rawBase64.split(',')[1];
+  }
+
+  const modelName = request.model || 'kling-v2-6';
+
   const body: Record<string, unknown> = {
-    model_name: request.model || 'kling-v2-6',
+    model_name: modelName,
     mode: request.mode || 'std',
-    image: `data:${request.imageMimeType || 'image/png'};base64,${request.imageBase64}`,
+    image: rawBase64,
     prompt: request.prompt,
-    cfg_scale: request.cfgScale ?? 0.5,
-    duration: request.duration || 5,
-    aspect_ratio: request.aspectRatio || '16:9',
+    duration: String(request.duration || 5),
   };
+
+  // cfg_scale is only supported for V1.x models, not V2+
+  if (!modelName.startsWith('kling-v2')) {
+    body.cfg_scale = request.cfgScale ?? 0.5;
+  }
 
   if (request.negativePrompt) {
     body.negative_prompt = request.negativePrompt;

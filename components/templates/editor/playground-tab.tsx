@@ -70,15 +70,36 @@ const fieldIcons: Record<string, typeof ImageIcon> = {
   text: Type,
 };
 
-function fileToBase64(file: File): Promise<string> {
+const MAX_IMAGE_DIMENSION = 2048;
+const JPEG_QUALITY = 0.85;
+
+/**
+ * Resize an image file to fit within MAX_IMAGE_DIMENSION and compress as JPEG.
+ * Returns { base64, mimeType } with the compressed result.
+ */
+function compressImage(file: File): Promise<{ base64: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(',')[1]);
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+        const scale = MAX_IMAGE_DIMENSION / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+      resolve({
+        base64: dataUrl.split(',')[1],
+        mimeType: 'image/jpeg',
+      });
     };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = URL.createObjectURL(file);
   });
 }
 
@@ -108,19 +129,40 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
 
   const handleFileSelect = async (input: TemplateInput, file: File) => {
     const preview = URL.createObjectURL(file);
-    const base64 = await fileToBase64(file);
-    setTestInputs((prev) => ({
-      ...prev,
-      [input.fieldKey]: {
-        fieldKey: input.fieldKey,
-        type: input.type as 'image' | 'video',
-        value: file.name,
-        file,
-        preview,
-        base64,
-        mimeType: file.type,
-      },
-    }));
+
+    if (input.type === 'image') {
+      const compressed = await compressImage(file);
+      setTestInputs((prev) => ({
+        ...prev,
+        [input.fieldKey]: {
+          fieldKey: input.fieldKey,
+          type: 'image',
+          value: file.name,
+          file,
+          preview,
+          base64: compressed.base64,
+          mimeType: compressed.mimeType,
+        },
+      }));
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        setTestInputs((prev) => ({
+          ...prev,
+          [input.fieldKey]: {
+            fieldKey: input.fieldKey,
+            type: input.type as 'image' | 'video',
+            value: file.name,
+            file,
+            preview,
+            base64: result.split(',')[1],
+            mimeType: file.type,
+          },
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleTextInput = (input: TemplateInput, value: string) => {
@@ -207,10 +249,17 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
         }),
       });
 
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = `Stage ${stageIndex + 1} failed (${response.status})`;
+        try { errorMsg = JSON.parse(text).error || errorMsg; } catch { errorMsg = text.slice(0, 200) || errorMsg; }
+        throw new Error(errorMsg);
+      }
+
       const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || `Stage ${stageIndex + 1} failed`);
+      if (data.error) {
+        throw new Error(data.error);
       }
 
       // Handle async tasks (Kling video)

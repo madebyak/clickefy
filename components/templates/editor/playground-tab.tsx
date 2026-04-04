@@ -193,24 +193,38 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
       previousOutputs: StageOutput[]
     ): Promise<StageOutput[]> => {
       const inputImages: { base64: string; mimeType: string; label?: string }[] = [];
+      const hasExplicitMapping = Object.keys(stage.inputMapping).length > 0;
 
-      for (const [fieldKey] of Object.entries(stage.inputMapping)) {
-        if (fieldKey.startsWith('stage_') && fieldKey.endsWith('_output')) {
-          const stageNum = parseInt(fieldKey.replace('stage_', '').replace('_output', ''));
-          const prevOutput = previousOutputs[stageNum - 1];
-          if (prevOutput?.base64) {
-            inputImages.push({ base64: prevOutput.base64, mimeType: prevOutput.mimeType || 'image/png', label: `Stage ${stageNum} Output` });
-          }
-        } else {
-          const input = testInputs[fieldKey];
-          if (input?.base64) {
-            const fieldDef = userInputs.find((u) => u.fieldKey === fieldKey);
-            inputImages.push({ base64: input.base64, mimeType: input.mimeType || 'image/png', label: fieldDef?.label || fieldKey });
+      if (hasExplicitMapping) {
+        for (const [fieldKey] of Object.entries(stage.inputMapping)) {
+          if (fieldKey.startsWith('stage_') && fieldKey.endsWith('_output')) {
+            const stageNum = parseInt(fieldKey.replace('stage_', '').replace('_output', ''));
+            const prevOutput = previousOutputs[stageNum - 1];
+            if (prevOutput?.base64) {
+              inputImages.push({ base64: prevOutput.base64, mimeType: prevOutput.mimeType || 'image/png', label: `Stage ${stageNum} Output` });
+            }
+          } else {
+            const input = testInputs[fieldKey];
+            if (input?.base64) {
+              const fieldDef = userInputs.find((u) => u.fieldKey === fieldKey);
+              inputImages.push({ base64: input.base64, mimeType: input.mimeType || 'image/png', label: fieldDef?.label || fieldKey });
+            }
           }
         }
-      }
+      } else {
+        // Auto-wire: if not the first stage, use the previous stage's output
+        if (stageIndex > 0 && previousOutputs.length > 0) {
+          const lastOutput = previousOutputs[previousOutputs.length - 1];
+          if (lastOutput?.base64) {
+            inputImages.push({
+              base64: lastOutput.base64,
+              mimeType: lastOutput.mimeType || 'image/png',
+              label: `Stage ${stageIndex} Output`,
+            });
+          }
+        }
 
-      if (inputImages.length === 0 && Object.keys(stage.inputMapping).length === 0) {
+        // Also include user-uploaded images (for first stage, or in addition to previous output)
         for (const input of Object.values(testInputs)) {
           if (input.base64 && (input.type === 'image' || input.type === 'video')) {
             const fieldDef = userInputs.find((u) => u.fieldKey === input.fieldKey);

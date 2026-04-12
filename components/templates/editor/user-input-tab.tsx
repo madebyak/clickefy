@@ -23,7 +23,6 @@ import { Badge } from '@/components/ui/badge';
 import { Template, TemplateInput, InputFieldType } from '@/lib/types/template';
 import { cn } from '@/lib/utils';
 import {
-  Plus,
   ImageIcon,
   Video,
   Type,
@@ -73,7 +72,7 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
 
     const label = defaultLabels[type];
     const newInput: TemplateInput = {
-      id: `input-${Date.now()}`,
+      id: `input-${crypto.randomUUID()}`,
       fieldKey: generateFieldKey(label, existingKeys),
       label,
       required: true,
@@ -120,7 +119,7 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
     const existingKeys = inputs.map((i) => i.fieldKey);
     const duplicate: TemplateInput = {
       ...input,
-      id: `input-${Date.now()}`,
+      id: `input-${crypto.randomUUID()}`,
       label: `${input.label} (Copy)`,
       fieldKey: generateFieldKey(`${input.label} copy`, existingKeys),
       order: inputs.length + 1,
@@ -171,7 +170,7 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
         <div className="space-y-2">
           {inputs
             .sort((a, b) => a.order - b.order)
-            .map((input, index) => {
+            .map((input) => {
               const config = fieldTypeConfig[input.type];
               const IconComp = config.icon;
 

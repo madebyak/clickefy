@@ -1,3 +1,15 @@
+/**
+ * GET /api/generate/status?taskId=...&provider=...
+ *
+ * Polls an async generation task (currently Kling video only).
+ * Returns normalized { status, taskId, outputs? } so callers don't
+ * need to know provider-specific response shapes.
+ *
+ * @integration React Native
+ *   Same as /api/generate — the mobile app should poll the jobs API
+ *   (GET /api/jobs/:id) rather than calling this directly.
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getKlingVideoTask } from '@/lib/services/kling';
 

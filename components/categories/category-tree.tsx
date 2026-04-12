@@ -49,10 +49,6 @@ interface CategoryTreeProps {
   onDelete: (category: Category) => void;
 }
 
-/**
- * Category tree component
- * Displays categories in a hierarchical tree structure
- */
 export function CategoryTree({ categories, onEdit, onDelete }: CategoryTreeProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 

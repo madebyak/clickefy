@@ -22,10 +22,6 @@ interface TemplateCardProps {
   onPublish: (template: Template) => void;
 }
 
-/**
- * Template card component
- * Displays template info in a grid card format
- */
 export function TemplateCard({ template, onEdit, onDelete, onDuplicate, onPublish }: TemplateCardProps) {
   const statusVariant = {
     draft: 'secondary' as const,

@@ -14,10 +14,10 @@ import {
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 
 /**
- * Admin Dashboard Page
- * Shows overview statistics and quick actions
- * 
- * TODO: [Analytics] Connect to real analytics data
+ * @integration MongoDB — Replace hardcoded `stats` with real aggregation queries:
+ *   - Total/published templates count from the templates collection.
+ *   - Generations today from the jobs collection (createdAt >= today).
+ *   - Success rate from jobs where status === 'completed' vs total.
  */
 export default function DashboardPage() {
   const stats = [

@@ -1,3 +1,21 @@
+/**
+ * Template — the central data model. Admins create templates in this dashboard;
+ * mobile users browse published templates and submit generation jobs.
+ *
+ * @integration MongoDB
+ *   - Replace `id` with MongoDB `_id: ObjectId`.
+ *   - `categoryId` becomes `ObjectId` ref to the categories collection.
+ *   - Store `coverImage` / `previewGallery` as S3/GCS URLs.
+ *   - Store `generation.stages[].references[].base64` externally (not in the document).
+ *   - Index on `status` + `sortOrder` for the published listing, `slug` (unique).
+ *
+ * @integration React Native
+ *   - GET /api/templates (published only) → populate the mobile browse screen.
+ *   - `userInputs` defines the dynamic form the mobile app renders.
+ *   - `userCanChooseAspectRatio` toggles an aspect-ratio picker in the mobile UI.
+ *   - `generation` config is server-side only — never sent to the mobile client.
+ */
+
 export type TemplateType = 'image' | 'video' | 'image-then-video';
 export type TemplateStatus = 'draft' | 'published' | 'archived';
 export type GenerationMode = 'image' | 'video' | 'image-then-video';
@@ -34,7 +52,6 @@ export interface Template {
     allowRegeneration: boolean;
   };
 
-  // Whether the mobile user can pick aspect ratio
   userCanChooseAspectRatio: boolean;
 
   sortOrder: number;
@@ -51,12 +68,10 @@ export interface TemplateInput {
   required: boolean;
   type: InputFieldType;
 
-  // Media-specific (image/video only)
   acceptedFormats?: string[];
-  maxSize?: number; // MB
+  maxSize?: number; // megabytes
   minResolution?: { width: number; height: number };
 
-  // Text-specific
   placeholder?: string;
   maxLength?: number;
 
@@ -70,10 +85,10 @@ export interface GenerationStage {
   model: string;
   actionType: ActionType;
 
-  // Prompt with {{variable}} placeholders linked to user inputs
+  /** Prompt with {{variable}} placeholders — resolved at generation time using `inputMapping` keys. */
   prompt: string;
 
-  // Maps user input field keys to generation input roles
+  /** Maps user-input fieldKeys (or `stage_N_output`) to generation input roles. */
   inputMapping: Record<string, string>;
 
   references: ReferenceImage[];

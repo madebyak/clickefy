@@ -13,21 +13,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useCategoriesStore } from '@/lib/stores/categories-store';
-import { Category } from '@/lib/types/category';
+import { Category, CategoryFormData } from '@/lib/types/category';
 import { Plus, Loader2, FolderTree } from 'lucide-react';
 import { toast } from 'sonner';
 
-/**
- * Categories Management Page
- * Full CRUD operations for categories and sub-categories
- * 
- * Features:
- * - Tree view with expand/collapse
- * - Create category/sub-category
- * - Edit category
- * - Delete category (with validation)
- * - Drag-and-drop reordering (TODO)
- */
 export default function CategoriesPage() {
   const { categories, loading, fetchCategories, createCategory, updateCategory, deleteCategory } = useCategoriesStore();
 
@@ -40,7 +29,7 @@ export default function CategoriesPage() {
     fetchCategories();
   }, [fetchCategories]);
 
-  const handleCreate = async (data: any) => {
+  const handleCreate = async (data: CategoryFormData) => {
     try {
       await createCategory(data);
       setIsCreateDialogOpen(false);
@@ -50,7 +39,7 @@ export default function CategoriesPage() {
     }
   };
 
-  const handleEdit = async (data: any) => {
+  const handleEdit = async (data: CategoryFormData) => {
     if (!selectedCategory) return;
 
     try {

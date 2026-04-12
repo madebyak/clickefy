@@ -1,3 +1,18 @@
+/**
+ * POST /api/generate — Run an AI generation stage.
+ *
+ * @integration React Native
+ *   The mobile app should NOT call this directly. Instead, create a
+ *   generation job via POST /api/jobs (to be built), which orchestrates
+ *   the full multi-stage pipeline server-side and stores results in MongoDB.
+ *
+ *   This endpoint is currently used by the admin Playground tab for testing.
+ *
+ * @integration MongoDB
+ *   When the jobs API is built, each call to this endpoint should be logged
+ *   as a step inside the GenerationJob document for audit/cost tracking.
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { generateWithGemini, generateWithImagen } from '@/lib/services/gemini';
 import { createKlingVideoTask } from '@/lib/services/kling';

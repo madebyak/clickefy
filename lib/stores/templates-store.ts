@@ -3,12 +3,19 @@ import { Template } from '@/lib/types/template';
 import templatesData from '@/data/mock/templates.json';
 
 /**
- * Templates state management with Zustand
- * Currently uses mock data from JSON file
- * 
- * TODO: [Database Integration] Replace with API calls to MongoDB
- * TODO: [Versioning] Implement template version history
- * TODO: [Draft Auto-save] Add auto-save for draft templates
+ * Templates store — client-side state for the admin dashboard.
+ *
+ * Currently backed by mock JSON data (`data/mock/templates.json`).
+ *
+ * @integration MongoDB — Replace every method body below with API calls:
+ *   - fetchTemplates  → GET    /api/admin/templates
+ *   - fetchTemplate   → GET    /api/admin/templates/:id
+ *   - createTemplate  → POST   /api/admin/templates
+ *   - updateTemplate  → PATCH  /api/admin/templates/:id
+ *   - deleteTemplate  → DELETE /api/admin/templates/:id
+ *   - duplicateTemplate, publishTemplate, unpublishTemplate → PATCH variants
+ *   Remove the `setTimeout` delays — they only simulate network latency.
+ *   Consider @tanstack/react-query (already in package.json) for caching/revalidation.
  */
 
 interface TemplatesStore {
@@ -16,16 +23,14 @@ interface TemplatesStore {
   currentTemplate: Template | null;
   loading: boolean;
   error: string | null;
-  
-  // Filters
+
   filters: {
     search: string;
     category: string;
     status: string;
     type: string;
   };
-  
-  // Actions
+
   fetchTemplates: () => Promise<void>;
   fetchTemplate: (id: string) => Promise<void>;
   createTemplate: (data: Partial<Template>) => Promise<string>;
@@ -65,7 +70,7 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
       })) as Template[];
       
       set({ templates, loading: false });
-    } catch (error) {
+    } catch {
       set({ error: 'Failed to fetch templates', loading: false });
     }
   },

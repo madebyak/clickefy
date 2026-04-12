@@ -2,10 +2,6 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/s
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { Separator } from '@/components/ui/separator';
 
-/**
- * Admin layout wrapper
- * Provides collapsible sidebar navigation for all admin pages
- */
 export default function AdminLayout({
   children,
 }: {

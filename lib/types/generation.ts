@@ -1,9 +1,16 @@
 /**
- * Generation job data models
- * Tracks AI generation attempts and results
- * 
- * TODO: [Database Integration] Add MongoDB _id field when connecting to database
- * TODO: [User Integration] Add userId field when user authentication is implemented
+ * Generation job — tracks a single AI generation request from a mobile user.
+ *
+ * @integration MongoDB
+ *   - Replace `id` with MongoDB `_id: ObjectId`.
+ *   - Add `userId: ObjectId` to tie jobs to authenticated users.
+ *   - Store `inputs` file URLs as S3/GCS references, not raw base64.
+ *   - Index on `userId + createdAt` for user history, `status` for queue processing.
+ *
+ * @integration React Native
+ *   - Mobile submits POST /api/jobs with templateId, inputs, and options.
+ *   - Poll GET /api/jobs/:id until status is 'completed' or 'failed'.
+ *   - Display `result.images` / `result.videos` URLs in the results screen.
  */
 
 export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed';
@@ -13,22 +20,19 @@ export interface GenerationJob {
   templateId: string;
   status: JobStatus;
 
-  // Input data
-  inputs: Record<string, string>; // User uploaded file URLs
+  inputs: Record<string, string>;
   options: {
     aspectRatio?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 
-  // Output data
   result?: {
     images?: string[];
     videos?: string[];
-    duration: number; // Generation time in milliseconds
+    duration: number;
     cost?: number;
   };
 
-  // Error handling
   error?: {
     message: string;
     stage: number;

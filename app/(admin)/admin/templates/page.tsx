@@ -19,17 +19,6 @@ import { Template } from '@/lib/types/template';
 import { Plus, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-/**
- * Templates List Page
- * Grid view with filters, search, and actions
- *
- * Features:
- * - Grid layout with template cards
- * - Search by title
- * - Filter by category, status, type
- * - Quick actions: Edit, Duplicate, Publish, Delete
- * - Create new template
- */
 export default function TemplatesPage() {
   const router = useRouter();
   const {
@@ -54,7 +43,6 @@ export default function TemplatesPage() {
     fetchCategories();
   }, [fetchTemplates, fetchCategories]);
 
-  // Filter templates based on current filters
   const filteredTemplates = useMemo(() => {
     return templates.filter((template) => {
       const matchesSearch =

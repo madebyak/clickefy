@@ -23,10 +23,6 @@ interface TemplatesFiltersProps {
   onTypeChange: (value: string) => void;
 }
 
-/**
- * Templates filters component
- * Search, category, status, and type filters
- */
 export function TemplatesFilters({
   search,
   category,

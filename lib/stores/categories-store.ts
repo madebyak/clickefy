@@ -3,19 +3,25 @@ import { Category, CategoryFormData } from '@/lib/types/category';
 import categoriesData from '@/data/mock/categories.json';
 
 /**
- * Categories state management with Zustand
- * Currently uses mock data from JSON file
- * 
- * TODO: [Database Integration] Replace with API calls to MongoDB
- * TODO: [Optimistic Updates] Add optimistic UI updates for better UX
+ * Categories store — client-side state for the admin dashboard.
+ *
+ * Currently backed by mock JSON data (`data/mock/categories.json`).
+ *
+ * @integration MongoDB — Replace every method body below with API calls:
+ *   - fetchCategories    → GET    /api/admin/categories
+ *   - createCategory     → POST   /api/admin/categories
+ *   - updateCategory     → PATCH  /api/admin/categories/:id
+ *   - deleteCategory     → DELETE /api/admin/categories/:id
+ *   - reorderCategories  → PATCH  /api/admin/categories/reorder
+ *   Remove the `setTimeout` delays — they only simulate network latency.
+ *   Add optimistic UI updates for a snappier admin experience.
  */
 
 interface CategoriesStore {
   categories: Category[];
   loading: boolean;
   error: string | null;
-  
-  // Actions
+
   fetchCategories: () => Promise<void>;
   createCategory: (data: CategoryFormData) => Promise<void>;
   updateCategory: (id: string, data: Partial<CategoryFormData>) => Promise<void>;
@@ -31,10 +37,8 @@ export const useCategoriesStore = create<CategoriesStore>((set, get) => ({
   fetchCategories: async () => {
     set({ loading: true, error: null });
     try {
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Load from mock data and convert date strings to Date objects
+
       const categories = categoriesData.map(cat => ({
         ...cat,
         createdAt: new Date(cat.createdAt),
@@ -42,7 +46,7 @@ export const useCategoriesStore = create<CategoriesStore>((set, get) => ({
       }));
       
       set({ categories, loading: false });
-    } catch (error) {
+    } catch {
       set({ error: 'Failed to fetch categories', loading: false });
     }
   },
@@ -50,9 +54,8 @@ export const useCategoriesStore = create<CategoriesStore>((set, get) => ({
   createCategory: async (data: CategoryFormData) => {
     set({ loading: true, error: null });
     try {
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       const { categories } = get();
       const newCategory: Category = {
         id: `cat-${Date.now()}`,
@@ -76,7 +79,6 @@ export const useCategoriesStore = create<CategoriesStore>((set, get) => ({
   updateCategory: async (id: string, data: Partial<CategoryFormData>) => {
     set({ loading: true, error: null });
     try {
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const { categories } = get();
@@ -101,12 +103,9 @@ export const useCategoriesStore = create<CategoriesStore>((set, get) => ({
   deleteCategory: async (id: string) => {
     set({ loading: true, error: null });
     try {
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       const { categories } = get();
-      
-      // Check if category has children
       const hasChildren = categories.some(cat => cat.parentId === id);
       if (hasChildren) {
         throw new Error('Cannot delete category with sub-categories');
@@ -124,10 +123,8 @@ export const useCategoriesStore = create<CategoriesStore>((set, get) => ({
   reorderCategories: async (reorderedCategories: Category[]) => {
     set({ loading: true, error: null });
     try {
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Update order property for each category
+
       const categoriesWithOrder = reorderedCategories.map((cat, index) => ({
         ...cat,
         order: index + 1,

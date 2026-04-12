@@ -80,19 +80,6 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function VariableTag({ variable, onClick }: { variable: string; onClick?: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-primary text-xs font-mono border border-primary/20 hover:bg-primary/20 transition-colors cursor-pointer"
-    >
-      <Variable className="h-3 w-3" />
-      {`{{${variable}}}`}
-    </button>
-  );
-}
-
 function PromptEditor({
   value,
   onChange,
@@ -200,7 +187,7 @@ export function GenerationTab({ template, onChange }: GenerationTabProps) {
 
   const handleAddStage = () => {
     const newStage: GenerationStage = {
-      id: `stage-${Date.now()}`,
+      id: `stage-${crypto.randomUUID()}`,
       order: stages.length + 1,
       provider: 'gemini',
       model: 'gemini-2.5-flash-image',
@@ -230,7 +217,7 @@ export function GenerationTab({ template, onChange }: GenerationTabProps) {
   const handleDuplicateStage = (stage: GenerationStage) => {
     const duplicate: GenerationStage = {
       ...stage,
-      id: `stage-${Date.now()}`,
+      id: `stage-${crypto.randomUUID()}`,
       order: stages.length + 1,
     };
     updateStages([...stages, duplicate]);

@@ -276,13 +276,11 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
         throw new Error(data.error);
       }
 
-      // Handle async tasks (Kling video)
       if (data.status === 'processing' && data.taskId) {
         const videoOutputs = await pollForCompletion(data.taskId, data.provider);
         return videoOutputs;
       }
 
-      // Direct results (Gemini images)
       if (data.outputs) {
         return data.outputs.map((output: { type: string; base64?: string; mimeType?: string; url?: string }) => ({
           type: output.type,

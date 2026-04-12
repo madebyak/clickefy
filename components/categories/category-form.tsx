@@ -56,10 +56,6 @@ interface CategoryFormProps {
   onCancel: () => void;
 }
 
-/**
- * Category form component
- * Used for creating and editing categories
- */
 export function CategoryForm({ category, categories, onSubmit, onCancel }: CategoryFormProps) {
   const [name, setName] = useState(category?.name || '');
   const [description, setDescription] = useState(category?.description || '');

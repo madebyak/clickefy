@@ -44,17 +44,30 @@ const templateKinds: { value: TemplateKind; label: string; description: string; 
 ];
 
 /**
- * Display URL for a `MediaRef`. The upload helper sets `cdnUrl` on
- * fresh uploads (Worker proxy URL); rows loaded from the DB only
- * have `r2Key`, in which case we synthesise the same proxy URL.
+ * Display URL for a `MediaRef`. Prefer a foreign CDN URL if one is
+ * set (e.g. a Cloudflare Images variant); otherwise rebuild the
+ * Worker-proxy URL from `r2Key` against the *current* API base. We
+ * deliberately reject `cdnUrl` values that point at one of our own
+ * historical hosts — those go stale after a Worker hostname change
+ * and would otherwise break every old row until a backfill runs.
  */
 function mediaPreviewUrl(media: MediaRef | null | undefined): string {
   if (!media) return '';
-  if (media.cdnUrl) return media.cdnUrl;
-  if (media.r2Key) {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? '';
-    return `${base}/v1/uploads/${media.r2Key}`;
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? '';
+  if (media.cdnUrl) {
+    try {
+      const host = new URL(media.cdnUrl).host;
+      const apiHost = apiBase ? new URL(apiBase).host : '';
+      const isOwnHost =
+        host === apiHost ||
+        host === 'api.clickefy.ai' ||
+        host === 'clickfy-api.clickefy-ai.workers.dev';
+      if (!isOwnHost) return media.cdnUrl;
+    } catch {
+      // fall through to r2Key path
+    }
   }
+  if (media.r2Key) return `${apiBase}/v1/uploads/${media.r2Key}`;
   return '';
 }
 

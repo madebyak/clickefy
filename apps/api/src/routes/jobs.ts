@@ -43,6 +43,7 @@ import { createJobSchema } from '../lib/job-schemas';
 import { validateJobSubmission } from '../lib/job-validation';
 import { createJobAtomically } from '../lib/job-create';
 import { dispatchJob } from '../lib/dispatch-job';
+import { resolveOwnMediaUrl } from '../lib/template-dto';
 
 export const jobsRoute = new Hono<AppEnv>();
 
@@ -370,9 +371,7 @@ jobsRoute.get(
       // guarding here keeps the response sane no matter what.
       const tpl = j.template;
       const coverRef = tpl?.coverMedia;
-      const coverUrl = coverRef
-        ? (coverRef.cdnUrl ?? `${origin}/v1/uploads/${coverRef.r2Key}`)
-        : '';
+      const coverUrl = coverRef ? resolveOwnMediaUrl(coverRef, origin) : '';
       // SDK's `kind` enum uses 'set' but DB uses 'image_set' — translate.
       const sdkKind: 'image' | 'video' | 'set' =
         tpl?.kind === 'image_set' ? 'set' : ((tpl?.kind ?? 'image') as 'image' | 'video');

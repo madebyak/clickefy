@@ -35,11 +35,31 @@ export function TemplateCard({ template, onEdit, onDelete, onDuplicate, onPublis
     image_set: 'Image set',
   };
 
-  // Phase 4 will replace this with a resolved Cloudflare Images URL
-  // (with `?width=600&format=auto`). For now, fall back to whatever
-  // the admin pasted/uploaded — either a CDN URL or an R2 key served
-  // through the API.
-  const coverUrl = template.coverMedia?.cdnUrl ?? null;
+  // Resolve a delivery URL for the cover. Prefer a foreign CDN URL
+  // when set (e.g. Cloudflare Images), otherwise rebuild via the
+  // Worker's /v1/uploads/:key route using the live API base. This
+  // keeps URLs working across host migrations even when older rows
+  // have a stale `cdnUrl` baked in.
+  const coverUrl = (() => {
+    const m = template.coverMedia;
+    if (!m) return null;
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? '';
+    if (m.cdnUrl) {
+      try {
+        const host = new URL(m.cdnUrl).host;
+        const apiHost = apiBase ? new URL(apiBase).host : '';
+        const isOwnHost =
+          host === apiHost ||
+          host === 'api.clickefy.ai' ||
+          host === 'clickfy-api.clickefy-ai.workers.dev';
+        if (!isOwnHost) return m.cdnUrl;
+      } catch {
+        // fall through to r2Key path
+      }
+    }
+    if (m.r2Key && apiBase) return `${apiBase}/v1/uploads/${m.r2Key}`;
+    return null;
+  })();
 
   // The whole card is a clickable target that opens the editor. We
   // implement it on the wrapper rather than nesting a <Link> so the

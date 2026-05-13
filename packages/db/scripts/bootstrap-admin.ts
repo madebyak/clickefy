@@ -105,7 +105,13 @@ async function main() {
     console.log(`  ✓ Clerk user created: ${clerkUser.id}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('email_address') && msg.toLowerCase().includes('taken')) {
+    // Clerk's wording for an existing email has drifted over time
+    // ("email_address is taken", "That email address is taken",
+    // "form_identifier_exists", etc.). Match loosely on either the
+    // word "taken" or Clerk's stable error code.
+    const looksTaken =
+      /\btaken\b/i.test(msg) || msg.includes('form_identifier_exists');
+    if (looksTaken) {
       console.log('  · Email already exists in Clerk — fetching existing user…');
       const existing = await findClerkUserByEmail();
       if (!existing) throw err;

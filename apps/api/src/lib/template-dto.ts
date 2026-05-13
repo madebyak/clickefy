@@ -26,27 +26,66 @@ import type {
 } from '@clickfy/types';
 
 /**
+ * Hosts that point at *our own* Worker (past + present). `cdnUrl`
+ * values bearing these hosts are stale — we want to ignore them and
+ * rebuild the URL from `r2Key` against the *current* request origin,
+ * so host migrations (workers.dev → api.clickefy.ai → future custom
+ * domain) self-heal without a backfill.
+ *
+ * NEW host migrations: append the old host here when you cut over,
+ * keep it forever — it's the only thing protecting rows written
+ * during the previous era.
+ */
+const OWN_API_HOSTS = new Set([
+  'api.clickefy.ai',
+  'clickfy-api.clickefy-ai.workers.dev',
+]);
+
+/**
  * Resolve a `MediaRef` to a delivery URL.
  *
  * Preference order:
- *   1. `cdnUrl` if the admin pasted a fully-qualified URL or the upload
- *      pipeline already wrote a Cloudflare Images variant URL.
- *   2. Fall back to streaming through the Worker's `/v1/uploads/:key`
- *      route — what categories currently use. Phase 2 (CF Images) makes
- *      that fallback rare.
+ *   1. `cdnUrl` if it points at a *foreign* CDN (Cloudflare Images
+ *      variant, public CDN, etc.) — author intent, keep it.
+ *   2. Otherwise rebuild `${publicBaseUrl}/v1/uploads/${r2Key}` from
+ *      the live request origin. This catches stored values that point
+ *      at one of our own historical hosts (see OWN_API_HOSTS) and
+ *      keeps URLs portable across worker.dev / custom-domain cutovers.
  *
  * `publicBaseUrl` is the API origin the client should call. It's passed
  * in (rather than read from env here) so the helper stays pure and
  * testable.
  */
 function mediaRefToImage(ref: MediaRef, publicBaseUrl: string): MobileImageRef {
-  const url = ref.cdnUrl ?? `${publicBaseUrl}/v1/uploads/${ref.r2Key}`;
+  const url = pickDeliveryUrl(ref, publicBaseUrl);
   return {
     url,
     width: ref.width,
     height: ref.height,
     blurhash: ref.blurhash,
   };
+}
+
+/**
+ * Resolve `MediaRef` → delivery URL for callers outside this module
+ * (e.g. the jobs route's bespoke job-list response). Same self-healing
+ * semantics as the internal pickDeliveryUrl.
+ */
+export function resolveOwnMediaUrl(ref: MediaRef, publicBaseUrl: string): string {
+  return pickDeliveryUrl(ref, publicBaseUrl);
+}
+
+function pickDeliveryUrl(ref: MediaRef, publicBaseUrl: string): string {
+  const fallback = `${publicBaseUrl}/v1/uploads/${ref.r2Key}`;
+  if (!ref.cdnUrl) return fallback;
+  try {
+    const host = new URL(ref.cdnUrl).host;
+    if (OWN_API_HOSTS.has(host)) return fallback;
+  } catch {
+    // Malformed cdnUrl — fall back to the r2Key path.
+    return fallback;
+  }
+  return ref.cdnUrl;
 }
 
 /**

@@ -145,7 +145,6 @@ catalog.get('/templates', zValidator('query', listQuerySchema), async (c) => {
   const data = page.map((row) =>
     templateToMobileDTO(row, {
       publicBaseUrl,
-      cloudflareStreamSubdomain: c.env.CLOUDFLARE_STREAM_SUBDOMAIN,
     }),
   );
 
@@ -176,7 +175,6 @@ catalog.get('/sections', zValidator('query', sectionsQuerySchema), async (c) => 
   const publicBaseUrl = new URL(c.req.url).origin;
   const sections = await buildHomeSections(c.var.db, {
     publicBaseUrl,
-    cloudflareStreamSubdomain: c.env.CLOUDFLARE_STREAM_SUBDOMAIN,
     categoryId,
   });
   c.header('Cache-Control', PUBLIC_CACHE_HEADERS['Cache-Control']);
@@ -233,7 +231,6 @@ catalog.get(
       data: {
         ...templateToMobileDTO(row, {
           publicBaseUrl,
-          cloudflareStreamSubdomain: c.env.CLOUDFLARE_STREAM_SUBDOMAIN,
         }),
         isFavorited,
       },

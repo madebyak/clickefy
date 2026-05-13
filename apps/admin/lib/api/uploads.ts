@@ -21,7 +21,17 @@ import type { MediaRef } from '@clickfy/types';
 import { apiFetch, ApiError, type TokenGetter } from '@/lib/api';
 
 export const ACCEPTED_IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const ACCEPTED_VIDEO_MIME = ['video/mp4', 'video/quicktime'] as const;
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+export const MAX_VIDEO_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Soft warning threshold for video uploads. Larger files still go
+ * through (up to the hard cap), but we hint the admin to compress
+ * first — uncompressed 1080p easily blows past 25 MB at ~10s, and
+ * pulling that over a coffee-shop Wi-Fi tanks the editor UX.
+ */
+export const VIDEO_COMPRESS_HINT_BYTES = 15 * 1024 * 1024;
 
 export interface UploadResult extends MediaRef {
   /** Original file name — surfaced in the admin UI for clarity. */
@@ -102,6 +112,195 @@ export async function uploadImageAsset(
     height,
     blurhash: '',
     fileName: file.name,
+  };
+}
+
+// ─── Video helpers ──────────────────────────────────────────────────
+
+/**
+ * Probe a video File for intrinsic dimensions + duration via a hidden
+ * `<video>` element. Mirrors `measureImage`, but listens for
+ * `loadedmetadata` rather than `load`. Rejects when the browser can't
+ * decode the container/codec (e.g. an exotic .mov from an old camera).
+ */
+export function measureVideo(
+  file: File,
+): Promise<{ width: number; height: number; durationSec: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.onloadedmetadata = () => {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      const d = Number.isFinite(video.duration) ? video.duration : 0;
+      URL.revokeObjectURL(url);
+      if (!w || !h) {
+        reject(new Error('Could not read video dimensions.'));
+        return;
+      }
+      resolve({ width: w, height: h, durationSec: d });
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not decode video. Try MP4 (H.264) or MOV.'));
+    };
+    video.src = url;
+  });
+}
+
+/**
+ * Extract the first frame of a video File as a JPEG `Blob`.
+ *
+ * Used to auto-populate the cover image when an admin uploads a video
+ * without a separate poster — gives the mobile `VideoPreview` a poster
+ * to crossfade from and ensures the template card still has a still
+ * frame to render before/after playback or when video is disabled.
+ *
+ * Implementation notes:
+ *   - We seek to 0.1s rather than 0 because some encoders place the
+ *     first keyframe slightly past the file head (the very first frame
+ *     can be blank/black on Quicktime exports).
+ *   - We cap output dimensions at 1080px on the longest edge. Cover
+ *     posters render at <= phone-width; 1080p is plenty and keeps the
+ *     JPEG under ~200 KB so the upload is instant.
+ *   - JPEG quality 0.85 — visibly indistinguishable from the source
+ *     frame and 5–10× smaller than PNG.
+ */
+export async function captureFirstFrame(file: File): Promise<{
+  blob: Blob;
+  width: number;
+  height: number;
+}> {
+  const url = URL.createObjectURL(file);
+  const video = document.createElement('video');
+  video.preload = 'auto';
+  video.muted = true;
+  video.playsInline = true;
+  video.crossOrigin = 'anonymous';
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      video.onloadeddata = () => resolve();
+      video.onerror = () => reject(new Error('Could not load video for frame capture.'));
+      video.src = url;
+    });
+
+    // Seek to a sliver past 0 to avoid the rare black first-frame.
+    await new Promise<void>((resolve, reject) => {
+      const handler = () => {
+        video.removeEventListener('seeked', handler);
+        resolve();
+      };
+      video.addEventListener('seeked', handler);
+      video.onerror = () => reject(new Error('Could not seek to first frame.'));
+      try {
+        video.currentTime = Math.min(0.1, (video.duration || 0) / 2);
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    const srcW = video.videoWidth;
+    const srcH = video.videoHeight;
+    if (!srcW || !srcH) throw new Error('Video has zero dimensions.');
+
+    // Downscale to a max edge of 1080 — plenty for a card poster, and
+    // keeps the JPEG under ~200 KB so the round-trip is instant.
+    const MAX_EDGE = 1080;
+    const scale = Math.min(1, MAX_EDGE / Math.max(srcW, srcH));
+    const outW = Math.round(srcW * scale);
+    const outH = Math.round(srcH * scale);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context unavailable.');
+    ctx.drawImage(video, 0, 0, outW, outH);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85);
+    });
+    if (!blob) throw new Error('Failed to encode first frame as JPEG.');
+
+    return { blob, width: outW, height: outH };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Validate, measure, optionally capture a poster frame, and upload a
+ * video to R2 (via the Worker).
+ *
+ * Returns:
+ *   - `media`: the video `MediaRef` (the `previewVideo` field).
+ *   - `poster`: optional image `MediaRef` carrying the auto-extracted
+ *     first frame. Callers decide whether to slot it into `coverMedia`
+ *     — typically only when the admin hasn't manually picked a cover.
+ *
+ * Poster extraction is best-effort: if the browser refuses to decode
+ * the video frame (rare, but happens on some Safari + .mov combos), we
+ * still ship the video upload and return `poster: null`. The mobile
+ * `VideoPreview` falls back to the cover image as the poster.
+ */
+export async function uploadVideoAsset(
+  file: File,
+  folder: keyof UploadFolders,
+  getToken: TokenGetter,
+  opts?: { capturePoster?: boolean },
+): Promise<{ media: UploadResult; poster: UploadResult | null }> {
+  if (!ACCEPTED_VIDEO_MIME.includes(file.type as (typeof ACCEPTED_VIDEO_MIME)[number])) {
+    throw new Error('Video must be MP4 (H.264) or MOV.');
+  }
+  if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
+    throw new Error(
+      `Video must be under ${MAX_VIDEO_UPLOAD_BYTES / 1024 / 1024}MB. Try compressing with Handbrake or CloudConvert.`,
+    );
+  }
+
+  const { width, height } = await measureVideo(file);
+
+  // Capture poster before uploading the video itself: if capture fails
+  // we still ship the video; if the video upload fails after a
+  // successful capture we just orphan ~200 KB of R2 and that's fine.
+  let poster: UploadResult | null = null;
+  if (opts?.capturePoster) {
+    try {
+      const frame = await captureFirstFrame(file);
+      const posterFile = new File([frame.blob], `${file.name.replace(/\.[^.]+$/, '')}.poster.jpg`, {
+        type: 'image/jpeg',
+      });
+      poster = await uploadImageAsset(posterFile, folder, getToken);
+    } catch (err) {
+      // Non-fatal — surface to the console so we can spot pathological
+      // codecs in logs, but don't break the user-facing upload flow.
+      console.warn('[uploadVideoAsset] poster capture failed:', err);
+    }
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('folder', folder);
+
+  const result = await apiFetch<{ url: string; key: string }>(
+    '/v1/admin/uploads',
+    { method: 'POST', getToken, formData },
+  );
+
+  return {
+    media: {
+      r2Key: result.key,
+      cdnUrl: result.url,
+      width,
+      height,
+      blurhash: '',
+      fileName: file.name,
+    },
+    poster,
   };
 }
 

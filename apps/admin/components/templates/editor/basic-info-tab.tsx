@@ -14,11 +14,19 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import type { Template, Category, TemplateKind, MediaRef } from '@clickfy/types';
-import { ImagePlus, ImageIcon, Film, GalleryHorizontal, Loader2, X } from 'lucide-react';
+import { ImagePlus, ImageIcon, Film, GalleryHorizontal, Loader2, X, Video as VideoIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-import { uploadImageAsset, ApiError } from '@/lib/api/uploads';
+import {
+  uploadImageAsset,
+  uploadVideoAsset,
+  ACCEPTED_IMAGE_MIME,
+  ACCEPTED_VIDEO_MIME,
+  VIDEO_COMPRESS_HINT_BYTES,
+  MAX_VIDEO_UPLOAD_BYTES,
+  ApiError,
+} from '@/lib/api/uploads';
 import type { TokenGetter } from '@/lib/api';
 
 interface BasicInfoTabProps {
@@ -73,6 +81,14 @@ function mediaPreviewUrl(media: MediaRef | null | undefined): string {
 
 const MAX_GALLERY_IMAGES = 12;
 
+const COVER_ACCEPT_ATTR = [...ACCEPTED_IMAGE_MIME, ...ACCEPTED_VIDEO_MIME].join(',');
+const COVER_ACCEPTED_MIME = new Set<string>([
+  ...ACCEPTED_IMAGE_MIME,
+  ...ACCEPTED_VIDEO_MIME,
+]);
+
+const GALLERY_ACCEPTED_MIME = new Set<string>(ACCEPTED_IMAGE_MIME);
+
 /**
  * Filter a DataTransfer.files list down to the image MIME types we
  * accept (mirrors the `accept` attribute on the hidden inputs).
@@ -80,8 +96,20 @@ const MAX_GALLERY_IMAGES = 12;
  * been the source of "user dragged a .HEIC and our server choked".
  */
 function pickImagesFromDataTransfer(dt: DataTransfer): File[] {
-  const accepted = new Set(['image/png', 'image/jpeg', 'image/webp']);
-  return Array.from(dt.files).filter((file) => accepted.has(file.type));
+  return Array.from(dt.files).filter((file) => GALLERY_ACCEPTED_MIME.has(file.type));
+}
+
+/**
+ * Filter for the cover dropzone — accepts both images and videos.
+ * If the user drops a mix (which Finder allows), we take the first
+ * file of whichever class showed up and drop the rest with a toast.
+ */
+function pickCoverFilesFromDataTransfer(dt: DataTransfer): File[] {
+  return Array.from(dt.files).filter((file) => COVER_ACCEPTED_MIME.has(file.type));
+}
+
+function isVideoFile(file: File): boolean {
+  return (ACCEPTED_VIDEO_MIME as readonly string[]).includes(file.type);
 }
 
 /**
@@ -110,18 +138,61 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
     if (!file) return;
     setUploadingCover(true);
     try {
-      const uploaded = await uploadImageAsset(file, 'templates', getToken);
-      // Drop `fileName` — not part of `MediaRef`. The cdnUrl / r2Key /
-      // dimensions / blurhash are everything the persisted row needs.
-      const coverMedia: MediaRef = {
-        r2Key: uploaded.r2Key,
-        cdnUrl: uploaded.cdnUrl,
-        width: uploaded.width,
-        height: uploaded.height,
-        blurhash: uploaded.blurhash,
-      };
-      onChange({ coverMedia });
-      toast.success('Cover image uploaded');
+      if (isVideoFile(file)) {
+        // Friendly nudge before the round-trip — bigger files still go
+        // through, but admins appreciate the heads-up before waiting on
+        // 25 MB over a hotel Wi-Fi.
+        if (file.size > VIDEO_COMPRESS_HINT_BYTES) {
+          toast.info(
+            `Heads up: this video is ${(file.size / 1024 / 1024).toFixed(1)} MB. Consider compressing (Handbrake / CloudConvert) for faster uploads.`,
+          );
+        }
+
+        const { media, poster } = await uploadVideoAsset(file, 'templates', getToken, {
+          // Only auto-capture a poster when the admin hasn't picked
+          // their own cover image yet. Avoids silently overwriting an
+          // already-chosen still.
+          capturePoster: !template.coverMedia,
+        });
+
+        const previewVideo: MediaRef = {
+          r2Key: media.r2Key,
+          cdnUrl: media.cdnUrl,
+          width: media.width,
+          height: media.height,
+          blurhash: media.blurhash,
+        };
+
+        const update: Partial<Template> = { previewVideo };
+        if (poster && !template.coverMedia) {
+          update.coverMedia = {
+            r2Key: poster.r2Key,
+            cdnUrl: poster.cdnUrl,
+            width: poster.width,
+            height: poster.height,
+            blurhash: poster.blurhash,
+          };
+        }
+        onChange(update);
+        toast.success(
+          poster && !template.coverMedia
+            ? 'Preview video uploaded — first frame captured as cover'
+            : 'Preview video uploaded',
+        );
+      } else {
+        const uploaded = await uploadImageAsset(file, 'templates', getToken);
+        // Drop `fileName` — not part of `MediaRef`. The cdnUrl / r2Key /
+        // dimensions / blurhash are everything the persisted row needs.
+        const coverMedia: MediaRef = {
+          r2Key: uploaded.r2Key,
+          cdnUrl: uploaded.cdnUrl,
+          width: uploaded.width,
+          height: uploaded.height,
+          blurhash: uploaded.blurhash,
+        };
+        onChange({ coverMedia });
+        toast.success('Cover image uploaded');
+      }
     } catch (err) {
       const msg =
         err instanceof ApiError
@@ -133,6 +204,10 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
     } finally {
       setUploadingCover(false);
     }
+  };
+
+  const removePreviewVideo = () => {
+    onChange({ previewVideo: null });
   };
 
   const handleGalleryUpload = async (files: FileList | null) => {
@@ -345,9 +420,11 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
       {/* Cover Image & Preview Gallery */}
       <div className="space-y-3">
         <div>
-          <h3 className="text-sm font-medium">Cover Image & Preview Gallery</h3>
+          <h3 className="text-sm font-medium">Cover & Preview Gallery</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Upload images to showcase this template in the mobile app. JPG / PNG / WebP, max 4 MB each.
+            Cover accepts an image <strong>or</strong> a short video (MP4 / MOV up to {MAX_VIDEO_UPLOAD_BYTES / 1024 / 1024} MB). Videos
+            auto-play muted &amp; looped on mobile, with the first frame
+            extracted as a still cover. Gallery is image-only.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -357,7 +434,7 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
               confuse a11y and we want native drop targets. */}
           <div>
             <Label className="mb-2 block text-xs text-muted-foreground">
-              Cover Image <span className="text-destructive">*</span>
+              Cover Image / Preview Video <span className="text-destructive">*</span>
             </Label>
             <div
               role="button"
@@ -390,9 +467,9 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
                 e.preventDefault();
                 setCoverDragActive(false);
                 if (uploadingCover) return;
-                const files = pickImagesFromDataTransfer(e.dataTransfer);
+                const files = pickCoverFilesFromDataTransfer(e.dataTransfer);
                 if (files.length === 0) {
-                  toast.error('Only PNG, JPEG, and WebP images are accepted.');
+                  toast.error('Only PNG / JPEG / WebP images or MP4 / MOV videos are accepted.');
                   return;
                 }
                 void handleCoverUpload(files[0] ?? null);
@@ -405,7 +482,50 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
                 uploadingCover && 'opacity-50 cursor-not-allowed',
               )}
             >
-              {template.coverMedia ? (
+              {/*
+                Render priority inside the cover slot:
+                  1. Preview video — when set, autoplay + loop the clip
+                     over the cover image (matching the mobile UX).
+                  2. Cover image — still poster, no video.
+                  3. Empty state — drop affordance.
+              */}
+              {template.previewVideo ? (
+                <>
+                  {/*
+                    Native <video> is the right preview element here:
+                    autoplay + muted + loop + playsInline is exactly
+                    what mobile's `VideoPreview` does, so admins see a
+                    faithful render of how the card will look.
+                  */}
+                  <video
+                    key={template.previewVideo.r2Key}
+                    src={mediaPreviewUrl(template.previewVideo)}
+                    poster={template.coverMedia ? mediaPreviewUrl(template.coverMedia) : undefined}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    className="absolute inset-0 h-full w-full object-cover pointer-events-none"
+                  />
+                  {/* Video badge */}
+                  <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white pointer-events-none">
+                    <VideoIcon className="h-3 w-3" />
+                    PREVIEW VIDEO
+                  </div>
+                  {(uploadingCover || coverDragActive) && (
+                    <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center gap-1.5 pointer-events-none">
+                      {uploadingCover ? (
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      ) : (
+                        <>
+                          <ImagePlus className="h-6 w-6 text-primary" />
+                          <p className="text-xs text-primary font-medium">Drop to replace</p>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : template.coverMedia ? (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -434,17 +554,35 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
                     <>
                       <ImagePlus className={cn('h-7 w-7 mb-1.5', coverDragActive ? 'text-primary' : 'text-muted-foreground')} />
                       <p className={cn('text-xs', coverDragActive ? 'text-primary font-medium' : 'text-muted-foreground')}>
-                        {coverDragActive ? 'Drop image here' : 'Upload or drop cover'}
+                        {coverDragActive ? 'Drop image or video' : 'Upload or drop image / video'}
                       </p>
                     </>
                   )}
                 </div>
               )}
             </div>
+            {/* Below-slot controls: remove preview video without nuking the cover */}
+            {template.previewVideo && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Cover still image is used as the poster frame on mobile.
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={removePreviewVideo}
+                  className="text-xs h-7"
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Remove video
+                </Button>
+              </div>
+            )}
             <input
               ref={coverInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept={COVER_ACCEPT_ATTR}
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;

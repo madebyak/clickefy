@@ -51,15 +51,6 @@ export interface Bindings {
   /** AI-generated outputs persisted by Trigger.dev tasks. */
   OUTPUTS?: R2Bucket;
   RATE_LIMIT?: KVNamespace;
-
-  // ─── Media delivery ───────────────────────────────────────────
-  /**
-   * Cloudflare Stream customer subdomain, e.g.
-   * `customer-abc123.cloudflarestream.com`. Used by
-   * `templateToMobileDTO` to build HLS manifest URLs. Optional until
-   * Phase 2 wires Stream — falls back to a placeholder host.
-   */
-  CLOUDFLARE_STREAM_SUBDOMAIN?: string;
 }
 
 /** Row shape from the `users` table — `users.$inferSelect`. */

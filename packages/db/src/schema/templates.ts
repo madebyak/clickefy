@@ -17,10 +17,12 @@
  *   - `previewVideo` → optional 4–8s clip, autoplay-looped on cards/hero
  *   - `gallery`      → array of images shown in the detail-page carousel
  *
- * All media references point at Cloudflare Images / Stream rather than
- * raw R2 keys (cheaper variants on demand, automatic WebP/AVIF, HLS for
- * video). The legacy R2-only path remains available via `MediaRef.r2Key`
- * for assets we host ourselves.
+ * All media references are R2-backed (`MediaRef.r2Key`). The Worker
+ * serves them through `/v1/uploads/<key>` with `Accept-Ranges` so
+ * iOS AVPlayer can stream the preview clip inline. Cloudflare Images
+ * / Stream were considered earlier but we ship MP4-direct because
+ * the file sizes are small (25 MB ceiling) and the indirection wasn't
+ * earning its keep.
  */
 
 import { sql } from 'drizzle-orm';
@@ -38,7 +40,6 @@ import {
 import { templateKindEnum, templateStatusEnum } from './enums';
 import type {
   MediaRef,
-  StreamRef,
   TemplateGeneration,
   TemplateInputField,
   TemplateOutput,
@@ -81,8 +82,12 @@ export const templates = pgTable(
     coverMedia: jsonb('cover_media').$type<MediaRef>().notNull(),
 
     /** Optional short autoplay clip (4–8s, muted, looped). When set,
-     *  cards play it over the cover poster. */
-    previewVideo: jsonb('preview_video').$type<StreamRef | null>(),
+     *  cards play it over the cover poster. Stored as a `MediaRef`
+     *  (R2-backed); the column was originally typed `StreamRef` for
+     *  Cloudflare Stream but we ship MP4-direct from R2 and Stream
+     *  was never wired. JSONB doesn't enforce shape, so no SQL
+     *  migration is needed — the type swap is compile-time only. */
+    previewVideo: jsonb('preview_video').$type<MediaRef | null>(),
 
     /** Detail-page carousel. Empty array when the template is a single
      *  cover-only template. */

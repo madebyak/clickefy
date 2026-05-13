@@ -25,9 +25,12 @@ export const mediaRefSchema = z.object({
   cdnUrl: z.string().url().max(2048).optional(),
 });
 
+// `streamRefSchema` is retained for `JobResult.videos` (orchestrator
+// emits StreamRef-shaped video records). Template `previewVideo` now
+// uses `mediaRefSchema` directly — see comment on `templates.previewVideo`.
 export const streamRefSchema = z.object({
   streamId: z.string().min(1).max(128),
-  durationSec: z.number().positive().max(600),
+  durationSec: z.number().min(0).max(600),
   posterR2Key: z.string().min(1).max(512),
 });
 
@@ -212,7 +215,7 @@ export const createTemplateSchema = z.object({
   featured: z.boolean().default(false),
 
   coverMedia: mediaRefSchema,
-  previewVideo: streamRefSchema.nullable().optional(),
+  previewVideo: mediaRefSchema.nullable().optional(),
   gallery: z.array(mediaRefSchema).max(12).default([]),
 
   userInputs: z.array(inputFieldSchema).max(20).default([]),

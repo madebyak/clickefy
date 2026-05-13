@@ -75,7 +75,6 @@ libraryRoute.get(
       .map((r) => ({
         ...templateToMobileDTO(r.template!, {
           publicBaseUrl,
-          cloudflareStreamSubdomain: c.env.CLOUDFLARE_STREAM_SUBDOMAIN,
         }),
         isFavorited: true,
         savedAt: r.createdAt.toISOString(),

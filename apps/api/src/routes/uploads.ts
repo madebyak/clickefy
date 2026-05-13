@@ -23,8 +23,35 @@ import type { AppEnv } from '../types';
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
 
 const ALLOWED_FOLDERS = new Set(['categories', 'templates']);
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const MAX_BYTES = 4 * 1024 * 1024; // 4MB
+
+// ─── Admin upload limits, per folder ────────────────────────────────
+// Templates support an optional preview video (cover poster + short
+// looping clip). Categories stay image-only.
+//
+// 25 MB ceiling for video covers maps to ~30s of 1080p H.264 at a
+// reasonable bitrate; longer/bigger clips should be compressed in
+// Handbrake / CloudConvert first. The cap is enforced both client-
+// and server-side so admins get a friendly toast before the request.
+const ADMIN_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const ADMIN_VIDEO_MIME = new Set(['video/mp4', 'video/quicktime']);
+const ADMIN_MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4 MB
+const ADMIN_MAX_VIDEO_BYTES = 25 * 1024 * 1024; // 25 MB
+
+function adminUploadRulesFor(folder: string): {
+  mime: Set<string>;
+  maxBytes: number;
+  mediaClass: 'image' | 'video';
+} | null {
+  if (folder === 'categories') {
+    return { mime: ADMIN_IMAGE_MIME, maxBytes: ADMIN_MAX_IMAGE_BYTES, mediaClass: 'image' };
+  }
+  if (folder === 'templates') {
+    // Caller picks via MIME; we return the union and let the route
+    // pick the matching bucket below.
+    return { mime: new Set([...ADMIN_IMAGE_MIME, ...ADMIN_VIDEO_MIME]), maxBytes: ADMIN_MAX_VIDEO_BYTES, mediaClass: 'image' };
+  }
+  return null;
+}
 
 // ─── User upload limits ─────────────────────────────────────────────
 // Mobile photos straight off the camera (iPhone Pro 48MP HEIC) can be
@@ -54,6 +81,39 @@ const EXT_BY_MIME: Record<string, string> = {
   'video/quicktime': 'mov',
 };
 
+/**
+ * Parse a single-range `Range` header (`bytes=START-END`, `bytes=START-`,
+ * `bytes=-N`) into resolved `{ start, end }` offsets within `totalSize`.
+ * Returns `null` if the syntax is unrecognised (the caller falls back
+ * to a full GET) or `{ invalid: true }` if the range is syntactically
+ * valid but unsatisfiable (the caller emits 416).
+ */
+function parseRange(
+  rangeHeader: string,
+  totalSize: number,
+): { start: number; end: number } | { invalid: true } | null {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (!match) return null;
+  let start = match[1] === '' ? NaN : Number(match[1]);
+  let end = match[2] === '' ? NaN : Number(match[2]);
+  if (Number.isNaN(start) && !Number.isNaN(end)) {
+    start = Math.max(0, totalSize - end);
+    end = totalSize - 1;
+  } else if (!Number.isNaN(start) && Number.isNaN(end)) {
+    end = totalSize - 1;
+  }
+  if (
+    Number.isNaN(start) ||
+    Number.isNaN(end) ||
+    start < 0 ||
+    end >= totalSize ||
+    start > end
+  ) {
+    return { invalid: true };
+  }
+  return { start, end };
+}
+
 // ─── Public read ────────────────────────────────────────────────────
 
 export const uploadsPublicRoute = new Hono<AppEnv>();
@@ -68,6 +128,48 @@ uploadsPublicRoute.get('/:key{.+}', async (c) => {
   }
 
   const key = c.req.param('key');
+
+  // ── Range support ──────────────────────────────────────────────
+  // Inline video playback on iOS AVPlayer fails without Range — the
+  // player issues an initial `bytes=0-1` probe, sees no `accept-ranges`,
+  // and refuses to play. Same fix we shipped for /v1/outputs. Images
+  // also benefit (none of our clients send Range for images, but the
+  // path is identical and cheap).
+  const rangeHeader = c.req.header('range');
+  if (rangeHeader) {
+    const head = await bucket.head(key);
+    if (!head) {
+      return c.json({ error: { code: 'not_found', message: 'Asset not found.' } }, 404);
+    }
+    const parsed = parseRange(rangeHeader, head.size);
+    if (parsed && 'invalid' in parsed) {
+      return new Response(null, {
+        status: 416,
+        headers: { 'content-range': `bytes */${head.size}` },
+      });
+    }
+    if (parsed) {
+      const length = parsed.end - parsed.start + 1;
+      const ranged = await bucket.get(key, {
+        range: { offset: parsed.start, length },
+      });
+      if (!ranged) {
+        return c.json({ error: { code: 'not_found', message: 'Asset not found.' } }, 404);
+      }
+      const headers = new Headers();
+      ranged.writeHttpMetadata(headers);
+      headers.set('etag', ranged.httpEtag);
+      headers.set('content-length', String(length));
+      headers.set('content-range', `bytes ${parsed.start}-${parsed.end}/${head.size}`);
+      headers.set('accept-ranges', 'bytes');
+      headers.set('cache-control', 'public, max-age=31536000, immutable');
+      headers.set('cross-origin-resource-policy', 'cross-origin');
+      headers.set('access-control-allow-origin', '*');
+      return new Response(ranged.body, { status: 206, headers });
+    }
+    // Unparseable Range — fall through to a full GET. RFC 9110 allows this.
+  }
+
   const obj = await bucket.get(key);
   if (!obj) {
     return c.json({ error: { code: 'not_found', message: 'Asset not found.' } }, 404);
@@ -76,6 +178,12 @@ uploadsPublicRoute.get('/:key{.+}', async (c) => {
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
   headers.set('etag', obj.httpEtag);
+  // Advertise Range so range-capable clients (iOS AVPlayer, Chrome
+  // <video>) know they can request slices on subsequent connections.
+  // Without this header iOS treats the response as non-seekable and
+  // refuses to play multi-MB videos inline.
+  headers.set('accept-ranges', 'bytes');
+  headers.set('content-length', String(obj.size));
   headers.set('cache-control', 'public, max-age=31536000, immutable');
   // Public assets — must be embeddable from any origin (admin on localhost,
   // mobile app, etc.). Overrides the `same-origin` default set globally by
@@ -83,6 +191,25 @@ uploadsPublicRoute.get('/:key{.+}', async (c) => {
   headers.set('cross-origin-resource-policy', 'cross-origin');
   headers.set('access-control-allow-origin', '*');
   return new Response(obj.body, { headers });
+});
+
+// Explicit HEAD route — Hono doesn't auto-route HEAD to GET handlers,
+// and AVPlayer's initial probe is a HEAD on some iOS versions.
+uploadsPublicRoute.on('HEAD', '/:key{.+}', async (c) => {
+  const bucket = c.env.UPLOADS;
+  if (!bucket) return c.body(null, 503);
+  const key = c.req.param('key');
+  const head = await bucket.head(key);
+  if (!head) return c.body(null, 404);
+  const headers = new Headers();
+  head.writeHttpMetadata(headers);
+  headers.set('etag', head.httpEtag);
+  headers.set('content-length', String(head.size));
+  headers.set('accept-ranges', 'bytes');
+  headers.set('cache-control', 'public, max-age=31536000, immutable');
+  headers.set('cross-origin-resource-policy', 'cross-origin');
+  headers.set('access-control-allow-origin', '*');
+  return new Response(null, { status: 200, headers });
 });
 
 // ─── Admin write ────────────────────────────────────────────────────
@@ -122,15 +249,26 @@ uploadsAdminRoute.post(
         400,
       );
     }
-    if (!ALLOWED_MIME.has(file.type)) {
+    const rules = adminUploadRulesFor(folder);
+    if (!rules) {
       return c.json(
-        { error: { code: 'invalid_mime', message: `Allowed types: ${[...ALLOWED_MIME].join(', ')}.` } },
+        { error: { code: 'invalid_folder', message: `Folder "${folder}" is not configured for uploads.` } },
         400,
       );
     }
-    if (file.size > MAX_BYTES) {
+    if (!rules.mime.has(file.type)) {
       return c.json(
-        { error: { code: 'file_too_large', message: `Max upload size is ${MAX_BYTES / 1024 / 1024}MB.` } },
+        { error: { code: 'invalid_mime', message: `Allowed types for "${folder}": ${[...rules.mime].join(', ')}.` } },
+        400,
+      );
+    }
+    // Per-class size limit: images and videos have different ceilings
+    // even within the same folder.
+    const isVideo = ADMIN_VIDEO_MIME.has(file.type);
+    const sizeLimit = isVideo ? ADMIN_MAX_VIDEO_BYTES : ADMIN_MAX_IMAGE_BYTES;
+    if (file.size > sizeLimit) {
+      return c.json(
+        { error: { code: 'file_too_large', message: `Max upload size is ${sizeLimit / 1024 / 1024}MB.` } },
         413,
       );
     }
@@ -146,13 +284,14 @@ uploadsAdminRoute.post(
       customMetadata: {
         uploadedBy: c.var.user?.id ?? 'unknown',
         originalName: file.name,
+        mediaClass: isVideo ? 'video' : 'image',
       },
     });
 
     const origin = new URL(c.req.url).origin;
     const url = `${origin}/v1/uploads/${key}`;
 
-    return c.json({ data: { url, key } }, 201);
+    return c.json({ data: { url, key, mediaClass: isVideo ? 'video' : 'image' } }, 201);
   },
 );
 

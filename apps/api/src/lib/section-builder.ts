@@ -50,7 +50,6 @@ export interface HomeSection {
 
 export interface BuildHomeSectionsOptions {
   publicBaseUrl: string;
-  cloudflareStreamSubdomain?: string;
   /** Hard cap per rail; bigger doesn't help on a phone. */
   perSectionLimit?: number;
   /**
@@ -148,7 +147,6 @@ export async function buildHomeSections(
   const toDto = (row: DbTemplate): MobileTemplate =>
     templateToMobileDTO(row, {
       publicBaseUrl: opts.publicBaseUrl,
-      cloudflareStreamSubdomain: opts.cloudflareStreamSubdomain,
     });
 
   const sections: HomeSection[] = [];

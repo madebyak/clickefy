@@ -22,7 +22,6 @@ import type {
   MobileTemplate,
   MobileTemplateOutputSummary,
   MobileVideoRef,
-  StreamRef,
 } from '@clickfy/types';
 
 /**
@@ -89,21 +88,29 @@ function pickDeliveryUrl(ref: MediaRef, publicBaseUrl: string): string {
 }
 
 /**
- * Resolve a `StreamRef` to the HLS manifest + poster URLs the mobile
- * player needs. Stream UIDs deliver via Cloudflare's customer-stream
- * subdomain; we keep the prefix wiring here so callers don't need to
- * know about it.
+ * Resolve a video `MediaRef` to the playback URL + poster URL the
+ * mobile player needs. Mirrors `mediaRefToImage` but returns the
+ * `MobileVideoRef` shape the SDK flattens into a `previewVideo: string`
+ * for `CatalogTemplate`.
+ *
+ * The poster URL falls back to the cover image when the video record
+ * doesn't carry its own poster — that's the common case because the
+ * admin form uses the cover image as the still frame underneath the
+ * looping clip. Mobile's `VideoPreview` already crossfades the poster
+ * to the live video on the first decoded frame.
  */
-function streamRefToVideo(
-  ref: StreamRef,
+function mediaRefToVideo(
+  ref: MediaRef,
+  posterFallback: string,
   publicBaseUrl: string,
-  cloudflareStreamSubdomain: string | undefined,
 ): MobileVideoRef {
-  const stream = cloudflareStreamSubdomain ?? 'customer-default.cloudflarestream.com';
   return {
-    hlsUrl: `https://${stream}/${ref.streamId}/manifest/video.m3u8`,
-    posterUrl: `${publicBaseUrl}/v1/uploads/${ref.posterR2Key}`,
-    durationSec: ref.durationSec,
+    hlsUrl: pickDeliveryUrl(ref, publicBaseUrl),
+    posterUrl: posterFallback,
+    // Video MediaRef doesn't currently carry duration. We measure
+    // dimensions client-side in admin but not duration — `expo-video`
+    // reads it from the container on play, so 0 is benign.
+    durationSec: 0,
   };
 }
 
@@ -143,15 +150,15 @@ function deriveOutputs(row: DbTemplate): MobileTemplateOutputSummary[] {
 export interface MobileDtoOptions {
   /** Origin of the API the mobile app talks to (no trailing slash). */
   publicBaseUrl: string;
-  /** Cloudflare Stream customer subdomain (`customer-xxxx.cloudflarestream.com`). */
-  cloudflareStreamSubdomain?: string;
 }
 
 export function templateToMobileDTO(
   row: DbTemplate,
   opts: MobileDtoOptions,
 ): MobileTemplate {
-  const { publicBaseUrl, cloudflareStreamSubdomain } = opts;
+  const { publicBaseUrl } = opts;
+
+  const coverImage = mediaRefToImage(row.coverMedia, publicBaseUrl);
 
   return {
     id: row.id,
@@ -162,9 +169,9 @@ export function templateToMobileDTO(
     kind: row.kind,
     featured: row.featured,
 
-    coverImage: mediaRefToImage(row.coverMedia, publicBaseUrl),
+    coverImage,
     previewVideo: row.previewVideo
-      ? streamRefToVideo(row.previewVideo, publicBaseUrl, cloudflareStreamSubdomain)
+      ? mediaRefToVideo(row.previewVideo, coverImage.url, publicBaseUrl)
       : null,
     gallery: row.gallery.map((m) => mediaRefToImage(m, publicBaseUrl)),
 

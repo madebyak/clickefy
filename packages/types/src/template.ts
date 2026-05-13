@@ -17,7 +17,6 @@
 import type {
   MediaRef,
   ReferenceImageRole,
-  StreamRef,
   TemplateGeneration,
   TemplateInputField,
   TemplateOutput,
@@ -48,7 +47,18 @@ export interface Template {
   featured: boolean;
 
   coverMedia: MediaRef;
-  previewVideo: StreamRef | null;
+  /**
+   * Optional cover preview clip — short, autoplay-looped, muted on
+   * mobile. Hosted in R2 alongside images; the cover image (above)
+   * doubles as the poster frame on mobile. `null` when the template
+   * has no video preview.
+   *
+   * Historically typed `StreamRef` for Cloudflare Stream — we never
+   * wired Stream and migrated to R2-direct so admins can upload an
+   * MP4 like any other asset. JSONB column shape is the only thing
+   * Postgres cares about, so the migration is type-only.
+   */
+  previewVideo: MediaRef | null;
   gallery: MediaRef[];
 
   userInputs: TemplateInputField[];
@@ -162,12 +172,22 @@ export interface MobileImageRef {
   blurhash: string;
 }
 
-/** Mobile-ready video reference. */
+/**
+ * Mobile-ready video reference.
+ *
+ * `hlsUrl` is a misnomer — historically we planned to deliver via
+ * Cloudflare Stream (HLS) and the SDK flattens this field into the
+ * mobile-facing `previewVideo: string`. The current implementation
+ * delivers a progressive MP4/MOV from R2 via the Worker, and `expo-video`
+ * plays both URL shapes uniformly. Treat this as "the video URL"; the
+ * name is preserved to avoid an SDK-wide rename until the cleanup pass.
+ */
 export interface MobileVideoRef {
-  /** HLS manifest URL — `expo-video` plays this directly. */
+  /** Video URL — HLS manifest or direct MP4. `expo-video` plays both. */
   hlsUrl: string;
-  /** Poster image URL (first-frame). */
+  /** Poster image URL (first-frame, or the cover image as a fallback). */
   posterUrl: string;
+  /** Duration in seconds. 0 when unknown (admin didn't supply it). */
   durationSec: number;
 }
 
@@ -188,7 +208,7 @@ export interface TemplateFormData {
   featured?: boolean;
 
   coverMedia: MediaRef;
-  previewVideo?: StreamRef | null;
+  previewVideo?: MediaRef | null;
   gallery?: MediaRef[];
 
   userInputs?: TemplateInputField[];

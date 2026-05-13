@@ -1,0 +1,64 @@
+name = "clickfy-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+# Workers.dev subdomain stays disabled — we serve traffic from
+# api.clickefy.ai exclusively (see `[[routes]]` below). Leaving the
+# workers.dev URL live would create a second, unauthenticated entry
+# point with the same code, which is a footgun for CORS and analytics.
+workers_dev = false
+
+# Observability
+[observability]
+enabled = true
+
+# ── Custom domain routing ────────────────────────────────────────
+# `custom_domain = true` tells Wrangler to create/update a Cloudflare
+# Custom Domain for `api.clickefy.ai`, automatically provisioning
+# the DNS record and edge cert. The zone (`clickefy.ai`) must already
+# exist in the same Cloudflare account.
+[[routes]]
+pattern = "api.clickefy.ai"
+zone_name = "clickefy.ai"
+custom_domain = true
+
+# Environment-specific configuration goes below.
+# Set secrets via `wrangler secret put <NAME>` (never commit them).
+#
+# Required secrets to set before first deploy:
+#   - DATABASE_URL              (Neon Postgres conn string, ?sslmode=require)
+#   - CLERK_PUBLISHABLE_KEY     (Clerk pk_live_…)
+#   - CLERK_SECRET_KEY          (Clerk sk_live_…, server-only)
+#   - CLERK_JWT_KEY             (PEM public key for offline JWT verification)
+#   - REVENUECAT_WEBHOOK_SECRET (filled when subscriptions go live)
+#
+# Plain (non-secret) vars below.
+[vars]
+ENVIRONMENT = "production"
+LOG_LEVEL = "info"
+
+# R2 buckets.
+#
+# UPLOADS — user-provided assets (admin uploads, mobile user inputs).
+#   Created with: `pnpm --filter @clickfy/api exec wrangler r2 bucket create clickfy-uploads`
+#
+# OUTPUTS — AI-generated assets returned by Trigger.dev tasks.
+#   Created with: `pnpm --filter @clickfy/api exec wrangler r2 bucket create clickfy-outputs`
+#
+# Bindings run in local Miniflare mode in `wrangler dev` (data on
+# disk under .wrangler/state) and point at the real cloud buckets
+# after `wrangler deploy`. The orchestrator (apps/jobs-worker) reads
+# user inputs via the Worker's HTTP route rather than S3, so the
+# local/cloud split is invisible to it.
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "clickfy-uploads"
+
+[[r2_buckets]]
+binding = "OUTPUTS"
+bucket_name = "clickfy-outputs"
+
+# KV namespace for rate limiting (create with `wrangler kv namespace create RATE_LIMIT`)
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT"
+# id = "REPLACE_WITH_KV_ID"

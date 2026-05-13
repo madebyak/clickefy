@@ -1,0 +1,12 @@
+{
+  "extends": "@clickfy/tsconfig/library.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["vitest/globals"]
+  },
+  "include": ["src/**/*"]
+}

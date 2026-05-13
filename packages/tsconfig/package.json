@@ -1,0 +1,12 @@
+{
+  "name": "@clickfy/tsconfig",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "base.json",
+    "nextjs.json",
+    "workers.json",
+    "expo.json",
+    "library.json"
+  ]
+}

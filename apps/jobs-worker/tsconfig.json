@@ -1,0 +1,10 @@
+{
+  "extends": "@clickfy/tsconfig/base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "noEmit": true,
+    "types": ["node"],
+    "moduleResolution": "Bundler"
+  },
+  "include": ["src/**/*", "trigger.config.ts"]
+}

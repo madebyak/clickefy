@@ -1,195 +1,156 @@
-# Clickefy — Admin Dashboard & Generation API
+# Clickfy
 
-AI-powered content generation platform. Admins create templates in this dashboard; mobile users (React Native) browse templates and generate images/videos.
+AI-powered, template-driven content generator for product brands. Admins build the intelligence, end users only trigger it.
 
-## Tech Stack
+This is the **Clickfy monorepo** — three apps and shared packages, managed with **pnpm workspaces** and **Turborepo**.
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 16 (App Router) |
-| Language | TypeScript 5 |
-| UI | React 19, Tailwind CSS v4, shadcn/ui (Base UI) |
-| State | Zustand (client), @tanstack/react-query (installed, not yet wired) |
-| AI Providers | Google Gemini / Imagen (`@google/genai`), Kling AI (REST + JWT) |
-| Icons | Lucide React |
-| Toasts | Sonner |
+---
 
-## Quick Start
+## Repo layout
+
+```
+clickfy/
+├── apps/
+│   ├── admin/          Next.js 16 admin dashboard (was the original repo)
+│   ├── api/            Hono on Cloudflare Workers — public mobile API
+│   └── mobile/         Expo SDK 54 (iOS + Android) — end-user app
+├── packages/
+│   ├── types/          @clickfy/types — shared TypeScript interfaces
+│   └── tsconfig/       @clickfy/tsconfig — shared TS preset configs
+├── infra/
+│   ├── cloudflare/     Wrangler / R2 / Stream config (placeholder)
+│   └── trigger/        Trigger.dev tasks (placeholder)
+└── docs/
+    ├── ARCHITECTURE.md System design + complete API spec + Cloudflare vs AWS
+    ├── SETUP.md        Local toolchain + accounts to create
+    └── prd.md          Original product PRD
+```
+
+For the why behind the stack: read `docs/ARCHITECTURE.md`. For setting up your machine: read `docs/SETUP.md`.
+
+---
+
+## Prerequisites
+
+| Tool | Version | Install |
+|---|---|---|
+| Node.js | ≥ 22 | `brew install fnm && fnm install 22` |
+| pnpm | 10.13.1 | enabled automatically via `corepack` (see `packageManager` field) |
+| Watchman | latest | `brew install watchman` (Metro bundler needs it) |
+| Xcode | 16+ | App Store (only needed for iOS Simulator) |
+| Android Studio | latest | `brew install --cask android-studio` (only needed for Android emulator) |
+| Wrangler | bundled | comes via `pnpm install` in `apps/api` |
+
+See `docs/SETUP.md` for the full guided checklist (Apple Developer enrollment, all the SaaS accounts, etc).
+
+---
+
+## Quick start
 
 ```bash
-cp .env.example .env.local    # fill in your API keys
-npm install
-npm run dev                    # http://localhost:3000 → redirects to /admin
+git clone <this repo>
+cd clickfy
+pnpm install
 ```
 
-## Project Structure
+Then in three terminals (or one, run them all in parallel):
 
-```
-app/
-├── layout.tsx                 # Root layout (fonts, providers)
-├── page.tsx                   # Redirects / → /admin
-├── (admin)/
-│   ├── layout.tsx             # Sidebar + main content shell
-│   └── admin/
-│       ├── page.tsx           # Dashboard (stats, quick actions)
-│       ├── categories/        # Category CRUD
-│       └── templates/
-│           ├── page.tsx       # Template list with filters
-│           └── [id]/page.tsx  # Template editor (4-tab form + playground)
-└── api/
-    └── generate/
-        ├── route.ts           # POST — run a single AI generation stage
-        └── status/route.ts    # GET  — poll async task status (Kling)
+```bash
+# Terminal 1 — admin dashboard on http://localhost:3000
+pnpm dev:admin
 
-components/
-├── categories/                # CategoryTree, CategoryForm
-├── templates/                 # TemplateCard, TemplatesFilters
-│   └── editor/                # BasicInfoTab, UserInputTab, GenerationTab, PlaygroundTab
-├── layout/                    # AppSidebar
-└── ui/                        # shadcn/ui primitives (do not edit directly)
+# Terminal 2 — mobile API on http://localhost:8787
+pnpm dev:api
 
-lib/
-├── types/                     # TypeScript interfaces (Template, Category, GenerationJob)
-├── stores/                    # Zustand stores (templates, categories) — mock data
-├── services/                  # AI provider clients (Gemini, Kling)
-└── utils.ts                   # cn() helper
-
-data/mock/                     # JSON seed data for Zustand stores
-docs/                          # PRD, technical spec, build notes
+# Terminal 3 — Expo dev server (then press i for iOS or a for Android)
+pnpm dev:mobile
 ```
 
-## Architecture Overview
+Or fire everything at once:
 
+```bash
+pnpm dev          # Turborepo runs all three in parallel
 ```
-┌─────────────────────────────────┐
-│  Admin Dashboard (this repo)    │
-│  Next.js — manages templates,   │
-│  categories, and tests AI       │
-│  generation via Playground tab  │
-└──────────┬──────────────────────┘
-           │ Admin CRUD (Zustand → future API)
-           ▼
-┌─────────────────────────────────┐
-│  MongoDB (to be integrated)     │
-│  Collections: templates,        │
-│  categories, jobs, users        │
-└──────────┬──────────────────────┘
-           │ Public API (to be built)
-           ▼
-┌─────────────────────────────────┐
-│  React Native Mobile App        │
-│  Browse templates → submit      │
-│  inputs → receive generated     │
-│  images/videos                  │
-└─────────────────────────────────┘
+
+### Smoke tests
+
+```bash
+curl http://localhost:8787/v1/health
+curl http://localhost:8787/v1/catalog/templates
+open http://localhost:3000               # admin dashboard
+```
+
+In the Expo terminal press `i` to launch the iOS Simulator and you should see the Clickfy home screen pulling templates from the local API.
+
+---
+
+## Project scripts (root)
+
+| Script | What it does |
+|---|---|
+| `pnpm dev` | Run all 3 apps in parallel (admin + api + mobile) |
+| `pnpm dev:admin` / `pnpm dev:api` / `pnpm dev:mobile` | Just one app |
+| `pnpm build` | Production build of all apps (uses Turbo cache) |
+| `pnpm typecheck` | Typecheck all workspaces |
+| `pnpm lint` | Lint all workspaces |
+| `pnpm clean` | Wipe build artifacts and node_modules |
+
+Per-app scripts live in their `package.json`. Run any of them with the `--filter` flag, e.g.:
+
+```bash
+pnpm --filter @clickfy/admin build
+pnpm --filter @clickfy/api deploy
+pnpm --filter @clickfy/mobile ios
 ```
 
 ---
 
-## Integration Guide for Developers
+## How code is shared
 
-### 1. MongoDB Integration
+`packages/types/` is the single source of truth for `Template`, `GenerationStage`, `Category`, `GenerationJob`, and friends. Both the admin and the API import from `@clickfy/types`. When you change a type, all three apps pick it up next typecheck.
 
-The codebase is currently backed by mock JSON data in `data/mock/`. Every Zustand store method (`lib/stores/`) includes a `setTimeout` to simulate network latency. Replace these with real API calls.
+Example — both files reference the same definition:
 
-**Collections to create:**
+```ts
+// apps/admin/components/templates/template-card.tsx
+import type { Template } from '@clickfy/types';
 
-| Collection | Source Type | Key Indexes |
-|-----------|-----------|-------------|
-| `templates` | `lib/types/template.ts` | `slug` (unique), `status + sortOrder`, `categoryId` |
-| `categories` | `lib/types/category.ts` | `slug` (unique), `parentId` |
-| `jobs` | `lib/types/generation.ts` | `userId + createdAt`, `status`, `templateId` |
-| `users` | (new) | `email` (unique) |
+// apps/api/src/routes/catalog.ts
+import type { Template } from '@clickfy/types';
 
-**Steps:**
-
-1. Add `mongoose` or `mongodb` driver to `package.json`.
-2. Create a DB connection utility at `lib/db.ts` (use `MONGODB_URI` from env).
-3. Create Mongoose models under `lib/models/` mirroring the types in `lib/types/`.
-4. Build admin API routes under `app/api/admin/` for CRUD (templates, categories).
-5. Update Zustand stores to call these API routes instead of reading mock JSON.
-6. Store binary assets (cover images, reference images) in S3/GCS — save URLs in MongoDB.
-
-**Where to look:** Each type file (`lib/types/*.ts`) and store file (`lib/stores/*.ts`) has `@integration MongoDB` comments with specific guidance.
-
-### 2. React Native Mobile API
-
-The mobile app needs a public-facing API. The existing `/api/generate` endpoint handles raw AI calls but should not be exposed directly to mobile users.
-
-**API routes to build (suggested under `app/api/`):**
-
-| Method | Route | Purpose |
-|--------|-------|---------|
-| `GET` | `/api/templates` | List published templates (with pagination) |
-| `GET` | `/api/templates/:id` | Get single template (public fields only — exclude `generation` config) |
-| `GET` | `/api/categories` | List all categories (flat or tree) |
-| `POST` | `/api/jobs` | Submit a generation job (templateId + user inputs) |
-| `GET` | `/api/jobs/:id` | Poll job status / get results |
-| `POST` | `/api/auth/login` | User authentication |
-| `POST` | `/api/auth/register` | User registration |
-
-**Key considerations:**
-- The `Template.generation` field contains admin-only config (prompts, API keys, reference images). Never expose it to mobile clients.
-- `Template.userInputs` defines the dynamic form the mobile app renders — this IS sent to mobile.
-- The jobs API should orchestrate the multi-stage pipeline server-side (iterate `generation.stages`, call `/api/generate` internally, store results in MongoDB).
-- Use presigned S3/GCS URLs for file uploads from mobile instead of raw base64.
-
-**Where to look:** Each type file has `@integration React Native` comments explaining which fields are mobile-facing.
-
-### 3. Sidebar Nav Stubs
-
-The sidebar (`components/layout/app-sidebar.tsx`) links to three routes that don't exist yet:
-
-| Route | Purpose |
-|-------|---------|
-| `/admin/jobs` | View generation job history and status |
-| `/admin/analytics` | Usage stats, cost tracking, success rates |
-| `/admin/settings` | API key management, provider config |
-
-Create `page.tsx` files under `app/(admin)/admin/` for each.
-
-### 4. State Management Migration
-
-`@tanstack/react-query` is already installed but not yet used. When connecting to real APIs, consider migrating from raw Zustand fetches to React Query for:
-- Automatic cache invalidation and background refetching
-- Optimistic updates
-- Request deduplication
-- Built-in loading/error states
-
-The Zustand stores can still hold UI-only state (filters, selected items) while React Query handles server state.
-
-## AI Provider Reference
-
-### Gemini / Imagen (Google)
-
-- Service: `lib/services/gemini.ts`
-- Models: `gemini-2.5-flash-image`, `gemini-3.1-flash-image-preview`, `gemini-3-pro-image-preview`, `imagen-4.0-*`
-- Supports: text-to-image, image-to-image, reference-guided generation
-- Auth: `GEMINI_API_KEY` env var
-
-### Kling AI
-
-- Service: `lib/services/kling.ts`
-- Models: `kling-v2-6`, `kling-v2-5-turbo`, `kling-v2-master`
-- Supports: image-to-video only (async — requires polling)
-- Auth: JWT signed with `KLING_ACCESS_KEY` + `KLING_SECRET_KEY`
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GEMINI_API_KEY` | Yes | Google AI API key |
-| `KLING_ACCESS_KEY` | Yes | Kling API access key |
-| `KLING_SECRET_KEY` | Yes | Kling API secret key |
-| `MONGODB_URI` | Pending | MongoDB connection string (add during DB integration) |
-
-See `.env.example` for the template.
-
-## Scripts
-
-```bash
-npm run dev       # Start dev server
-npm run build     # Production build
-npm run start     # Start production server
-npm run lint      # Run ESLint
+// apps/mobile/lib/api.ts
+import type { Template } from '@clickfy/types';
 ```
+
+We'll add more shared packages as they earn their place: `@clickfy/zod` (validation schemas), `@clickfy/sdk` (typed mobile/admin client), `@clickfy/prompt-engine` (`{{variable}}` resolver + provider capability registry).
+
+---
+
+## Where to make changes
+
+| Want to… | Edit |
+|---|---|
+| Add or edit a template | The admin dashboard at `apps/admin/` |
+| Add a mobile API endpoint | `apps/api/src/routes/` and the spec in `docs/ARCHITECTURE.md` §6 |
+| Add a mobile screen | `apps/mobile/app/` (Expo Router file-based routing) |
+| Add a shared type | `packages/types/src/` |
+| Tweak a Tailwind/shadcn component used by admin | `apps/admin/components/ui/` |
+
+---
+
+## Status
+
+This is **Phase 0 (foundation)** of the build plan in `docs/ARCHITECTURE.md` §16. What's working today:
+
+- ✅ Monorepo wired (pnpm + Turborepo)
+- ✅ Admin dashboard moved into `apps/admin/`, builds and runs unchanged
+- ✅ Mobile API skeleton with health + mock catalog endpoint, runs locally on Workers
+- ✅ Expo mobile app with React Query + dark theme + a home screen that fetches from the local API
+
+Phase 1 (real database, auth, jobs, payments) is next.
+
+---
+
+## License
+
+Private — all rights reserved.

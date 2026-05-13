@@ -1,0 +1,12 @@
+{
+  "extends": "@clickfy/tsconfig/workers.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false,
+    "verbatimModuleSyntax": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*", "worker-configuration.d.ts"],
+  "exclude": ["node_modules", ".wrangler", "dist"]
+}

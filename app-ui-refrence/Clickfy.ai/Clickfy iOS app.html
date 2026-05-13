@@ -1,0 +1,2612 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Clickfy — iOS app design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap"/>
+<style>
+  html, body, #root { margin:0; padding:0; height:100%; background:#0B0B12; }
+  body { font-family: 'Bricolage Grotesque', system-ui, sans-serif; color:#0B0B12; }
+  *, *::before, *::after { box-sizing: border-box; }
+</style></head><body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" data-presets="env,react">
+function IOSStatusBar({ dark = false, time = '9:41' }) {
+ const c = dark ? '#fff' : '#000';
+ return (
+  <div style={{
+   display: 'flex', gap: 154, alignItems: 'center', justifyContent: 'center',
+   padding: '21px 24px 19px', boxSizing: 'border-box',
+   position: 'relative', zIndex: 20, width: '100%',
+  }}>
+   <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 1.5 }}>
+    <span style={{
+     fontFamily: '-apple-system, "SF Pro", system-ui', fontWeight: 590,
+     fontSize: 17, lineHeight: '22px', color: c,
+    }}>{time}</span>
+   </div>
+   <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, paddingTop: 1, paddingRight: 1 }}>
+    <svg width="19" height="12" viewBox="0 0 19 12">
+     <rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill={c}/>
+     <rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill={c}/>
+     <rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill={c}/>
+     <rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill={c}/>
+    </svg>
+    <svg width="17" height="12" viewBox="0 0 17 12">
+     <path d="M8.5 3.2C10.8 3.2 12.9 4.1 14.4 5.6L15.5 4.5C13.7 2.7 11.2 1.5 8.5 1.5C5.8 1.5 3.3 2.7 1.5 4.5L2.6 5.6C4.1 4.1 6.2 3.2 8.5 3.2Z" fill={c}/>
+     <path d="M8.5 6.8C9.9 6.8 11.1 7.3 12 8.2L13.1 7.1C11.8 5.9 10.2 5.1 8.5 5.1C6.8 5.1 5.2 5.9 3.9 7.1L5 8.2C5.9 7.3 7.1 6.8 8.5 6.8Z" fill={c}/>
+     <circle cx="8.5" cy="10.5" r="1.5" fill={c}/>
+    </svg>
+    <svg width="27" height="13" viewBox="0 0 27 13">
+     <rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke={c} strokeOpacity="0.35" fill="none"/>
+     <rect x="2" y="2" width="20" height="9" rx="2" fill={c}/>
+     <path d="M25 4.5V8.5C25.8 8.2 26.5 7.2 26.5 6.5C26.5 5.8 25.8 4.8 25 4.5Z" fill={c} fillOpacity="0.4"/>
+    </svg>
+   </div>
+  </div>
+ );
+}
+function IOSGlassPill({ children, dark = false, style = {} }) {
+ return (
+  <div style={{
+   height: 44, minWidth: 44, borderRadius: 9999,
+   position: 'relative', overflow: 'hidden',
+   display: 'flex', alignItems: 'center', justifyContent: 'center',
+   boxShadow: dark
+    ? '0 2px 6px rgba(0,0,0,0.35), 0 6px 16px rgba(0,0,0,0.2)'
+    : '0 1px 3px rgba(0,0,0,0.07), 0 3px 10px rgba(0,0,0,0.06)',
+   ...style,
+  }}>
+   {}
+   <div style={{
+    position: 'absolute', inset: 0, borderRadius: 9999,
+    backdropFilter: 'blur(12px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+    background: dark ? 'rgba(120,120,128,0.28)' : 'rgba(255,255,255,0.5)',
+   }} />
+   {}
+   <div style={{
+    position: 'absolute', inset: 0, borderRadius: 9999,
+    boxShadow: dark
+     ? 'inset 1.5px 1.5px 1px rgba(255,255,255,0.15), inset -1px -1px 1px rgba(255,255,255,0.08)'
+     : 'inset 1.5px 1.5px 1px rgba(255,255,255,0.7), inset -1px -1px 1px rgba(255,255,255,0.4)',
+    border: dark ? '0.5px solid rgba(255,255,255,0.15)' : '0.5px solid rgba(0,0,0,0.06)',
+   }} />
+   <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', padding: '0 4px' }}>
+    {children}
+   </div>
+  </div>
+ );
+}
+function IOSNavBar({ title = 'Title', dark = false, trailingIcon = true }) {
+ const muted = dark ? 'rgba(255,255,255,0.6)' : '#404040';
+ const text = dark ? '#fff' : '#000';
+ const pillIcon = (content) => (
+  <IOSGlassPill dark={dark}>
+   <div style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    {content}
+   </div>
+  </IOSGlassPill>
+ );
+ return (
+  <div style={{
+   display: 'flex', flexDirection: 'column', gap: 10,
+   paddingTop: 62, paddingBottom: 10, position: 'relative', zIndex: 5,
+  }}>
+   <div style={{
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '0 16px',
+   }}>
+    {}
+    {pillIcon(
+     <svg width="12" height="20" viewBox="0 0 12 20" fill="none" style={{ marginLeft: -1 }}>
+      <path d="M10 2L2 10l8 8" stroke={muted} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+     </svg>
+    )}
+    {}
+    {trailingIcon && pillIcon(
+     <svg width="22" height="6" viewBox="0 0 22 6">
+      <circle cx="3" cy="3" r="2.5" fill={muted}/>
+      <circle cx="11" cy="3" r="2.5" fill={muted}/>
+      <circle cx="19" cy="3" r="2.5" fill={muted}/>
+     </svg>
+    )}
+   </div>
+   {}
+   <div style={{
+    padding: '0 16px',
+    fontFamily: '-apple-system, system-ui',
+    fontSize: 34, fontWeight: 700, lineHeight: '41px',
+    color: text, letterSpacing: 0.4,
+   }}>{title}</div>
+  </div>
+ );
+}
+function IOSListRow({ title, detail, icon, chevron = true, isLast = false, dark = false }) {
+ const text = dark ? '#fff' : '#000';
+ const sec = dark ? 'rgba(235,235,245,0.6)' : 'rgba(60,60,67,0.6)';
+ const ter = dark ? 'rgba(235,235,245,0.3)' : 'rgba(60,60,67,0.3)';
+ const sep = dark ? 'rgba(84,84,88,0.65)' : 'rgba(60,60,67,0.12)';
+ return (
+  <div style={{
+   display: 'flex', alignItems: 'center', minHeight: 52,
+   padding: '0 16px', position: 'relative',
+   fontFamily: '-apple-system, system-ui', fontSize: 17,
+   letterSpacing: -0.43,
+  }}>
+   {icon && (
+    <div style={{
+     width: 30, height: 30, borderRadius: 7, background: icon,
+     marginRight: 12, flexShrink: 0,
+    }} />
+   )}
+   <div style={{ flex: 1, color: text }}>{title}</div>
+   {detail && <span style={{ color: sec, marginRight: 6 }}>{detail}</span>}
+   {chevron && (
+    <svg width="8" height="14" viewBox="0 0 8 14" style={{ flexShrink: 0 }}>
+     <path d="M1 1l6 6-6 6" stroke={ter} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+   )}
+   {!isLast && (
+    <div style={{
+     position: 'absolute', bottom: 0, right: 0,
+     left: icon ? 58 : 16, height: 0.5, background: sep,
+    }} />
+   )}
+  </div>
+ );
+}
+function IOSList({ header, children, dark = false }) {
+ const hc = dark ? 'rgba(235,235,245,0.6)' : 'rgba(60,60,67,0.6)';
+ const bg = dark ? '#1C1C1E' : '#fff';
+ return (
+  <div>
+   {header && (
+    <div style={{
+     fontFamily: '-apple-system, system-ui', fontSize: 13,
+     color: hc, textTransform: 'uppercase',
+     padding: '8px 36px 6px', letterSpacing: -0.08,
+    }}>{header}</div>
+   )}
+   <div style={{
+    background: bg, borderRadius: 26,
+    margin: '0 16px', overflow: 'hidden',
+   }}>{children}</div>
+  </div>
+ );
+}
+function IOSDevice({
+ children, width = 402, height = 874, dark = false,
+ title, keyboard = false,
+}) {
+ return (
+  <div style={{
+   width, height, borderRadius: 48, overflow: 'hidden',
+   position: 'relative', background: dark ? '#000' : '#F2F2F7',
+   boxShadow: '0 40px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.12)',
+   fontFamily: '-apple-system, system-ui, sans-serif',
+   WebkitFontSmoothing: 'antialiased',
+  }}>
+   {}
+   <div style={{
+    position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+    width: 126, height: 37, borderRadius: 24, background: '#000', zIndex: 50,
+   }} />
+   {}
+   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+    <IOSStatusBar dark={dark} />
+   </div>
+   {}
+   <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    {title !== undefined && <IOSNavBar title={title} dark={dark} />}
+    <div style={{ flex: 1, overflow: 'auto' }}>{children}</div>
+    {keyboard && <IOSKeyboard dark={dark} />}
+   </div>
+   {}
+   <div style={{
+    position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 60,
+    height: 34, display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
+    paddingBottom: 8, pointerEvents: 'none',
+   }}>
+    <div style={{
+     width: 139, height: 5, borderRadius: 100,
+     background: dark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.25)',
+    }} />
+   </div>
+  </div>
+ );
+}
+function IOSKeyboard({ dark = false }) {
+ const glyph = dark ? 'rgba(255,255,255,0.7)' : '#595959';
+ const sugg = dark ? 'rgba(255,255,255,0.6)' : '#333';
+ const keyBg = dark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.85)';
+ const icons = {
+  shift: <svg width="19" height="17" viewBox="0 0 19 17"><path d="M9.5 1L1 9.5h4.5V16h8V9.5H18L9.5 1z" fill={glyph}/></svg>,
+  del: <svg width="23" height="17" viewBox="0 0 23 17"><path d="M7 1h13a2 2 0 012 2v11a2 2 0 01-2 2H7l-6-7.5L7 1z" fill="none" stroke={glyph} strokeWidth="1.6" strokeLinejoin="round"/><path d="M10 5l7 7M17 5l-7 7" stroke={glyph} strokeWidth="1.6" strokeLinecap="round"/></svg>,
+  ret: <svg width="20" height="14" viewBox="0 0 20 14"><path d="M18 1v6H4m0 0l4-4M4 7l4 4" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+ };
+ const key = (content, { w, flex, ret, fs = 25, k } = {}) => (
+  <div key={k} style={{
+   height: 42, borderRadius: 8.5,
+   flex: flex ? 1 : undefined, width: w, minWidth: 0,
+   background: ret ? '#08f' : keyBg,
+   boxShadow: '0 1px 0 rgba(0,0,0,0.075)',
+   display: 'flex', alignItems: 'center', justifyContent: 'center',
+   fontFamily: '-apple-system, "SF Compact", system-ui',
+   fontSize: fs, fontWeight: 458, color: ret ? '#fff' : glyph,
+  }}>{content}</div>
+ );
+ const row = (keys, pad = 0) => (
+  <div style={{ display: 'flex', gap: 6.5, justifyContent: 'center', padding: `0 ${pad}px` }}>
+   {keys.map(l => key(l, { flex: true, k: l }))}
+  </div>
+ );
+ return (
+  <div style={{
+   position: 'relative', zIndex: 15, borderRadius: 27, overflow: 'hidden',
+   padding: '11px 0 2px',
+   display: 'flex', flexDirection: 'column', alignItems: 'center',
+   boxShadow: dark
+    ? '0 -2px 20px rgba(0,0,0,0.09)'
+    : '0 -1px 6px rgba(0,0,0,0.018), 0 -3px 20px rgba(0,0,0,0.012)',
+  }}>
+   {}
+   <div style={{
+    position: 'absolute', inset: 0, borderRadius: 27,
+    backdropFilter: 'blur(12px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+    background: dark ? 'rgba(120,120,128,0.14)' : 'rgba(255,255,255,0.25)',
+   }} />
+   <div style={{
+    position: 'absolute', inset: 0, borderRadius: 27,
+    boxShadow: dark
+     ? 'inset 1.5px 1.5px 1px rgba(255,255,255,0.15)'
+     : 'inset 1.5px 1.5px 1px rgba(255,255,255,0.7), inset -1px -1px 1px rgba(255,255,255,0.4)',
+    border: dark ? '0.5px solid rgba(255,255,255,0.15)' : '0.5px solid rgba(0,0,0,0.06)',
+    pointerEvents: 'none',
+   }} />
+   {}
+   <div style={{
+    display: 'flex', gap: 20, alignItems: 'center',
+    padding: '8px 22px 13px', width: '100%', boxSizing: 'border-box',
+    position: 'relative',
+   }}>
+    {['"The"', 'the', 'to'].map((w, i) => (
+     <React.Fragment key={i}>
+      {i > 0 && <div style={{ width: 1, height: 25, background: '#ccc', opacity: 0.3 }} />}
+      <div style={{
+       flex: 1, textAlign: 'center',
+       fontFamily: '-apple-system, system-ui', fontSize: 17,
+       color: sugg, letterSpacing: -0.43, lineHeight: '22px',
+      }}>{w}</div>
+     </React.Fragment>
+    ))}
+   </div>
+   {}
+   <div style={{
+    display: 'flex', flexDirection: 'column', gap: 13,
+    padding: '0 6.5px', width: '100%', boxSizing: 'border-box',
+    position: 'relative',
+   }}>
+    {row(['q','w','e','r','t','y','u','i','o','p'])}
+    {row(['a','s','d','f','g','h','j','k','l'], 20)}
+    <div style={{ display: 'flex', gap: 14.25, alignItems: 'center' }}>
+     {key(icons.shift, { w: 45, k: 'shift' })}
+     <div style={{ display: 'flex', gap: 6.5, flex: 1 }}>
+      {['z','x','c','v','b','n','m'].map(l => key(l, { flex: true, k: l }))}
+     </div>
+     {key(icons.del, { w: 45, k: 'del' })}
+    </div>
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+     {key('ABC', { w: 92.25, fs: 18, k: 'abc' })}
+     {key('', { flex: true, k: 'space' })}
+     {key(icons.ret, { w: 92.25, ret: true, k: 'ret' })}
+    </div>
+   </div>
+   {}
+   <div style={{ height: 56, width: '100%', position: 'relative' }} />
+  </div>
+ );
+}
+Object.assign(window, {
+ IOSDevice, IOSStatusBar, IOSNavBar, IOSGlassPill, IOSList, IOSListRow, IOSKeyboard,
+});
+</script>
+<script type="text/babel" data-presets="env,react">
+const FCThemeContext = React.createContext(true);
+function FlexCanvas({ children, style = {}, dark = true }) {
+ const bg = '#DCD2F5';
+ const stroke = 'rgba(11,11,18,0.06)';
+ const grid = "url(\"data:image/svg+xml,%3Csvg width='120' height='120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M120 0H0v120' fill='none' stroke='" + encodeURIComponent(stroke) + "' stroke-width='1'/%3E%3C/svg%3E\")";
+ return (
+  <FCThemeContext.Provider value={dark}>
+   <div className="fc-root" style={{
+    width: '100vw', minHeight: '100vh', overflow: 'auto',
+    background: bg,
+    backgroundImage: grid,
+    backgroundSize: '120px 120px',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+    padding: '60px 60px 120px',
+    ...style,
+   }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 80, width: 'max-content' }}>
+     {children}
+    </div>
+   </div>
+  </FCThemeContext.Provider>
+ );
+}
+function FCSection({ title, subtitle, children, gap = 48 }) {
+ const titleColor = 'rgba(20,12,40,0.92)';
+ const subColor = 'rgba(20,12,40,0.55)';
+ return (
+  <div>
+   <div style={{ marginBottom: 32 }}>
+    <div style={{ fontSize: 28, fontWeight: 600, color: titleColor, letterSpacing: -0.4, marginBottom: 6 }}>{title}</div>
+    {subtitle && <div style={{ fontSize: 16, color: subColor }}>{subtitle}</div>}
+   </div>
+   <div style={{ display: 'flex', gap, alignItems: 'flex-start', width: 'max-content' }}>
+    {children}
+   </div>
+  </div>
+ );
+}
+function FCArtboard({ label, width = 402, height = 874, children, style = {} }) {
+ const labelColor = 'rgba(20,12,40,0.6)';
+ return (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+   <div style={{ fontSize: 13, fontWeight: 500, color: labelColor, letterSpacing: 0, paddingLeft: 4 }}>
+    {label}
+   </div>
+   <div style={{ width, height, position: 'relative', ...style }}>
+    {children}
+   </div>
+  </div>
+ );
+}
+Object.assign(window, { FlexCanvas, FCSection, FCArtboard });
+</script>
+<script type="text/babel" data-presets="env,react">
+const __TWEAKS_STYLE = `
+ .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+  max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+  transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom right;
+  background:rgba(250,249,247,.78);color:#29261b;
+  -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+  border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+  box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+  font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+ .twk-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 8px 10px 14px;cursor:move;user-select:none}
+ .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+ .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+  width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+ .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+ .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+  overflow-y:auto;overflow-x:hidden;min-height:0;
+  scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+ .twk-body::-webkit-scrollbar{width:8px}
+ .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+ .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+  border:2px solid transparent;background-clip:content-box}
+ .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+  border:2px solid transparent;background-clip:content-box}
+ .twk-row{display:flex;flex-direction:column;gap:5px}
+ .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+ .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+  color:rgba(41,38,27,.72)}
+ .twk-lbl>span:first-child{font-weight:500}
+ .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+ .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:rgba(41,38,27,.45);padding:10px 0 0}
+ .twk-sect:first-child{padding-top:0}
+ .twk-field{appearance:none;width:100%;height:26px;padding:0 8px;
+  border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+  background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+ .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+ select.twk-field{padding-right:22px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+  background-repeat:no-repeat;background-position:right 8px center}
+ .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+  border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+ .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:14px;height:14px;border-radius:50%;background:#fff;
+  border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+ .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+  background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+ .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+  background:rgba(0,0,0,.06);user-select:none}
+ .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+  background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+  transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+ .twk-seg.dragging .twk-seg-thumb{transition:none}
+ .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+  background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+  border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+  overflow-wrap:anywhere}
+ .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+  background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+ .twk-toggle[data-on="1"]{background:#34c759}
+ .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+ .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+ .twk-num{display:flex;align-items:center;height:26px;padding:0 0 0 8px;
+  border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+ .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+  user-select:none;padding-right:8px}
+ .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+  font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+  outline:none;color:inherit;-moz-appearance:textfield}
+ .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+  -webkit-appearance:none;margin:0}
+ .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+ .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+  background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+ .twk-btn:hover{background:rgba(0,0,0,.88)}
+ .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+ .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+ .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+  border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+  background:transparent;flex-shrink:0}
+ .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+ .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+ .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+ .twk-chips{display:flex;gap:6px}
+ .twk-chip{position:relative;appearance:none;flex:1;min-width:0;height:46px;
+  padding:0;border:0;border-radius:6px;overflow:hidden;cursor:default;
+  box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.06);
+  transition:transform .12s cubic-bezier(.3,.7,.4,1),box-shadow .12s}
+ .twk-chip:hover{transform:translateY(-1px);
+  box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 4px 10px rgba(0,0,0,.12)}
+ .twk-chip[data-on="1"]{box-shadow:0 0 0 1.5px rgba(0,0,0,.85),
+  0 2px 6px rgba(0,0,0,.15)}
+ .twk-chip>span{position:absolute;top:0;bottom:0;right:0;width:34%;
+  display:flex;flex-direction:column;box-shadow:-1px 0 0 rgba(0,0,0,.1)}
+ .twk-chip>span>i{flex:1;box-shadow:0 -1px 0 rgba(0,0,0,.1)}
+ .twk-chip>span>i:first-child{box-shadow:none}
+ .twk-chip svg{position:absolute;top:6px;left:6px;width:13px;height:13px;
+  filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+`;
+function useTweaks(defaults) {
+ const [values, setValues] = React.useState(defaults);
+ const setTweak = React.useCallback((keyOrEdits, val) => {
+  const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+   ? keyOrEdits : { [keyOrEdits]: val };
+  setValues((prev) => ({ ...prev, ...edits }));
+  window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+  window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+ }, []);
+ return [values, setTweak];
+}
+function TweaksPanel({ title = 'Tweaks', noDeckControls = false, children }) {
+ const [open, setOpen] = React.useState(false);
+ const dragRef = React.useRef(null);
+ const hasDeckStage = React.useMemo(
+  () => typeof document !== 'undefined' && !!document.querySelector('deck-stage'),
+  [],
+ );
+ const [railEnabled, setRailEnabled] = React.useState(
+  () => hasDeckStage && !!document.querySelector('deck-stage')?._railEnabled,
+ );
+ React.useEffect(() => {
+  if (!hasDeckStage || railEnabled) return undefined;
+  const onMsg = (e) => {
+   if (e.data && e.data.type === '__omelette_rail_enabled') setRailEnabled(true);
+  };
+  window.addEventListener('message', onMsg);
+  return () => window.removeEventListener('message', onMsg);
+ }, [hasDeckStage, railEnabled]);
+ const [railVisible, setRailVisible] = React.useState(() => {
+  try { return localStorage.getItem('deck-stage.railVisible') !== '0'; } catch (e) { return true; }
+ });
+ const toggleRail = (on) => {
+  setRailVisible(on);
+  window.postMessage({ type: '__deck_rail_visible', on }, '*');
+ };
+ const offsetRef = React.useRef({ x: 16, y: 16 });
+ const PAD = 16;
+ const clampToViewport = React.useCallback(() => {
+  const panel = dragRef.current;
+  if (!panel) return;
+  const w = panel.offsetWidth, h = panel.offsetHeight;
+  const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+  const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+  offsetRef.current = {
+   x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+   y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+  };
+  panel.style.right = offsetRef.current.x + 'px';
+  panel.style.bottom = offsetRef.current.y + 'px';
+ }, []);
+ React.useEffect(() => {
+  if (!open) return;
+  clampToViewport();
+  if (typeof ResizeObserver === 'undefined') {
+   window.addEventListener('resize', clampToViewport);
+   return () => window.removeEventListener('resize', clampToViewport);
+  }
+  const ro = new ResizeObserver(clampToViewport);
+  ro.observe(document.documentElement);
+  return () => ro.disconnect();
+ }, [open, clampToViewport]);
+ React.useEffect(() => {
+  const onMsg = (e) => {
+   const t = e?.data?.type;
+   if (t === '__activate_edit_mode') setOpen(true);
+   else if (t === '__deactivate_edit_mode') setOpen(false);
+  };
+  window.addEventListener('message', onMsg);
+  window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+  return () => window.removeEventListener('message', onMsg);
+ }, []);
+ const dismiss = () => {
+  setOpen(false);
+  window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+ };
+ const onDragStart = (e) => {
+  const panel = dragRef.current;
+  if (!panel) return;
+  const r = panel.getBoundingClientRect();
+  const sx = e.clientX, sy = e.clientY;
+  const startRight = window.innerWidth - r.right;
+  const startBottom = window.innerHeight - r.bottom;
+  const move = (ev) => {
+   offsetRef.current = {
+    x: startRight - (ev.clientX - sx),
+    y: startBottom - (ev.clientY - sy),
+   };
+   clampToViewport();
+  };
+  const up = () => {
+   window.removeEventListener('mousemove', move);
+   window.removeEventListener('mouseup', up);
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+ };
+ if (!open) return null;
+ return (
+  <>
+   <style>{__TWEAKS_STYLE}</style>
+   <div ref={dragRef} className="twk-panel" data-noncommentable=""
+      style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+    <div className="twk-hd" onMouseDown={onDragStart}>
+     <b>{title}</b>
+     <button className="twk-x" aria-label="Close tweaks"
+         onMouseDown={(e) => e.stopPropagation()}
+         onClick={dismiss}>✕</button>
+    </div>
+    <div className="twk-body">
+     {children}
+     {hasDeckStage && railEnabled && !noDeckControls && (
+      <TweakSection label="Deck">
+       <TweakToggle label="Thumbnail rail" value={railVisible} onChange={toggleRail} />
+      </TweakSection>
+     )}
+    </div>
+   </div>
+  </>
+ );
+}
+function TweakSection({ label, children }) {
+ return (
+  <>
+   <div className="twk-sect">{label}</div>
+   {children}
+  </>
+ );
+}
+function TweakRow({ label, value, children, inline = false }) {
+ return (
+  <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+   <div className="twk-lbl">
+    <span>{label}</span>
+    {value != null && <span className="twk-val">{value}</span>}
+   </div>
+   {children}
+  </div>
+ );
+}
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+ return (
+  <TweakRow label={label} value={`${value}${unit}`}>
+   <input type="range" className="twk-slider" min={min} max={max} step={step}
+       value={value} onChange={(e) => onChange(Number(e.target.value))} />
+  </TweakRow>
+ );
+}
+function TweakToggle({ label, value, onChange }) {
+ return (
+  <div className="twk-row twk-row-h">
+   <div className="twk-lbl"><span>{label}</span></div>
+   <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+       role="switch" aria-checked={!!value}
+       onClick={() => onChange(!value)}><i /></button>
+  </div>
+ );
+}
+function TweakRadio({ label, value, options, onChange }) {
+ const trackRef = React.useRef(null);
+ const [dragging, setDragging] = React.useState(false);
+ const valueRef = React.useRef(value);
+ valueRef.current = value;
+ const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
+ const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
+ const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
+ if (!fitsAsSegments) {
+  const resolve = (s) => {
+   const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
+   return m === undefined ? s : typeof m === 'object' ? m.value : m;
+  };
+  return <TweakSelect label={label} value={value} options={options}
+            onChange={(s) => onChange(resolve(s))} />;
+ }
+ const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+ const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+ const n = opts.length;
+ const segAt = (clientX) => {
+  const r = trackRef.current.getBoundingClientRect();
+  const inner = r.width - 4;
+  const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+  return opts[Math.max(0, Math.min(n - 1, i))].value;
+ };
+ const onPointerDown = (e) => {
+  setDragging(true);
+  const v0 = segAt(e.clientX);
+  if (v0 !== valueRef.current) onChange(v0);
+  const move = (ev) => {
+   if (!trackRef.current) return;
+   const v = segAt(ev.clientX);
+   if (v !== valueRef.current) onChange(v);
+  };
+  const up = () => {
+   setDragging(false);
+   window.removeEventListener('pointermove', move);
+   window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+ };
+ return (
+  <TweakRow label={label}>
+   <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+      className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+    <div className="twk-seg-thumb"
+       style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+           width: `calc((100% - 4px) / ${n})` }} />
+    {opts.map((o) => (
+     <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+      {o.label}
+     </button>
+    ))}
+   </div>
+  </TweakRow>
+ );
+}
+function TweakSelect({ label, value, options, onChange }) {
+ return (
+  <TweakRow label={label}>
+   <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+    {options.map((o) => {
+     const v = typeof o === 'object' ? o.value : o;
+     const l = typeof o === 'object' ? o.label : o;
+     return <option key={v} value={v}>{l}</option>;
+    })}
+   </select>
+  </TweakRow>
+ );
+}
+function TweakText({ label, value, placeholder, onChange }) {
+ return (
+  <TweakRow label={label}>
+   <input className="twk-field" type="text" value={value} placeholder={placeholder}
+       onChange={(e) => onChange(e.target.value)} />
+  </TweakRow>
+ );
+}
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+ const clamp = (n) => {
+  if (min != null && n < min) return min;
+  if (max != null && n > max) return max;
+  return n;
+ };
+ const startRef = React.useRef({ x: 0, val: 0 });
+ const onScrubStart = (e) => {
+  e.preventDefault();
+  startRef.current = { x: e.clientX, val: value };
+  const decimals = (String(step).split('.')[1] || '').length;
+  const move = (ev) => {
+   const dx = ev.clientX - startRef.current.x;
+   const raw = startRef.current.val + dx * step;
+   const snapped = Math.round(raw / step) * step;
+   onChange(clamp(Number(snapped.toFixed(decimals))));
+  };
+  const up = () => {
+   window.removeEventListener('pointermove', move);
+   window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+ };
+ return (
+  <div className="twk-num">
+   <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+   <input type="number" value={value} min={min} max={max} step={step}
+       onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+   {unit && <span className="twk-num-unit">{unit}</span>}
+  </div>
+ );
+}
+function __twkIsLight(hex) {
+ const h = String(hex).replace('#', '');
+ const x = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.padEnd(6, '0');
+ const n = parseInt(x.slice(0, 6), 16);
+ if (Number.isNaN(n)) return true;
+ const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+ return r * 299 + g * 587 + b * 114 > 148000;
+}
+const __TwkCheck = ({ light }) => (
+ <svg viewBox="0 0 14 14" aria-hidden="true">
+  <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
+     strokeLinecap="round" strokeLinejoin="round"
+     stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
+ </svg>
+);
+function TweakColor({ label, value, options, onChange }) {
+ if (!options || !options.length) {
+  return (
+   <div className="twk-row twk-row-h">
+    <div className="twk-lbl"><span>{label}</span></div>
+    <input type="color" className="twk-swatch" value={value}
+        onChange={(e) => onChange(e.target.value)} />
+   </div>
+  );
+ }
+ const key = (o) => String(JSON.stringify(o)).toLowerCase();
+ const cur = key(value);
+ return (
+  <TweakRow label={label}>
+   <div className="twk-chips" role="radiogroup">
+    {options.map((o, i) => {
+     const colors = Array.isArray(o) ? o : [o];
+     const [hero, ...rest] = colors;
+     const sup = rest.slice(0, 4);
+     const on = key(o) === cur;
+     return (
+      <button key={i} type="button" className="twk-chip" role="radio"
+          aria-checked={on} data-on={on ? '1' : '0'}
+          aria-label={colors.join(', ')} title={colors.join(' · ')}
+          style={{ background: hero }}
+          onClick={() => onChange(o)}>
+       {sup.length > 0 && (
+        <span>
+         {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
+        </span>
+       )}
+       {on && <__TwkCheck light={__twkIsLight(hero)} />}
+      </button>
+     );
+    })}
+   </div>
+  </TweakRow>
+ );
+}
+function TweakButton({ label, onClick, secondary = false }) {
+ return (
+  <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+      onClick={onClick}>{label}</button>
+ );
+}
+Object.assign(window, {
+ useTweaks, TweaksPanel, TweakSection, TweakRow,
+ TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+ TweakText, TweakNumber, TweakColor, TweakButton,
+});
+</script>
+<script type="text/babel" data-presets="env,react">
+const CLICKFY_THEMES = {
+ light: {
+  bg: '#F4F2EE',
+  surface: '#FFFFFF',
+  surfaceElev: '#FFFFFF',
+  surfaceMuted: '#F7F6F3',
+  ink: '#0B0B12',
+  inkMuted: '#6E6B78',
+  inkSubtle: '#A09DAA',
+  border: '#ECEAE3',
+  borderStrong: '#D9D6CD',
+  chipBg: '#0B0B12',
+  chipInk: '#FFFFFF',
+  pill: '#0B0B12',
+ },
+ dark: {
+  bg: '#0A0A10',
+  surface: '#14141C',
+  surfaceElev: '#1B1B25',
+  surfaceMuted: '#101019',
+  ink: '#FFFFFF',
+  inkMuted: '#9B98A8',
+  inkSubtle: '#62606E',
+  border: '#22222E',
+  borderStrong: '#2C2C3A',
+  chipBg: '#FFFFFF',
+  chipInk: '#0B0B12',
+  pill: '#FFFFFF',
+ },
+};
+const CLICKFY_ACCENTS = {
+ violet:  { solid: '#6E3CFF', soft: '#EDE5FF', deep: '#3B1AAD', ink: '#FFFFFF', glow: 'rgba(110,60,255,.35)' },
+ coral:   { solid: '#FF5A3C', soft: '#FFE6DF', deep: '#C7361B', ink: '#FFFFFF', glow: 'rgba(255,90,60,.30)' },
+ citrus:  { solid: '#D8E83C', soft: '#F4F8C6', deep: '#7C8A0E', ink: '#0B0B12', glow: 'rgba(216,232,60,.45)' },
+ ocean:   { solid: '#2B7BFF', soft: '#E3EEFF', deep: '#0F4DC4', ink: '#FFFFFF', glow: 'rgba(43,123,255,.30)' },
+};
+const CLICKFY_GOLD = { solid: '#F0B33A', soft: '#FFEFC8', ink: '#3D2A00' };
+const clickfyFontStack = '"Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
+const clickfyMonoStack = '"Geist Mono", "JetBrains Mono", ui-monospace, monospace';
+const clickfyDisplayStack = '"Instrument Serif", "Times New Roman", serif';
+const cf_img = (id, w = 600) => `https://images.unsplash.com/photo-${id}?w=${w}&q=80&auto=format&fit=crop`;
+const CLICKFY_CATEGORIES = [
+ { id: 'all',      label: 'All',       img: null, color: '#0B0B12' },
+ { id: 'skincare', label: 'Skincare',  img: cf_img('1556228720-195a672e8a03', 200), color: '#F4D9C9' },
+ { id: 'product',  label: 'Product',   img: cf_img('1542291026-7eec264c27ff', 200), color: '#E8E4DA' },
+ { id: 'food',     label: 'Food',      img: cf_img('1565299624946-b28f40a0ae38', 200), color: '#E2C9A0' },
+ { id: 'beverage', label: 'Beverage',  img: cf_img('1551024601-bec78aea704b', 200), color: '#FFD1A8' },
+ { id: 'fashion',  label: 'Fashion',   img: cf_img('1539109136881-3be0616acf4b', 200), color: '#D8CFC2' },
+ { id: 'beauty',   label: 'Beauty',    img: cf_img('1596462502278-27bfdc403348', 200), color: '#F2C5C0' },
+ { id: 'tech',     label: 'Tech',      img: cf_img('1550009158-9ebf69173e03', 200), color: '#1E2230' },
+ { id: 'home',     label: 'Home',      img: cf_img('1513519245088-0e12902e5a38', 200), color: '#E5D6C5' },
+ { id: 'auto',     label: 'Auto',      img: cf_img('1494976388531-d1058494cdd8', 200), color: '#1F2326' },
+];
+const CLICKFY_TEMPLATES = [
+ { id: 't1',  cat: 'skincare', kind: 'image',  title: 'Glow Bottle Hero',     by: 'Clickfy Studio', uses: '12.4k', credits: 4, img: cf_img('1556228720-195a672e8a03'), aspect: '4/5' },
+ { id: 't2',  cat: 'skincare', kind: 'set',    title: 'Serum Lifestyle Set',  by: 'Atelier Lab',    uses: '8.1k',  credits: 6, img: cf_img('1620916566398-39f1143ab7be'), aspect: '4/5' },
+ { id: 't3',  cat: 'skincare', kind: 'video',  title: 'Cream Reveal · 6s',    by: 'Looma',          uses: '3.9k',  credits: 12, img: cf_img('1571781926291-c477ebfd024b'), aspect: '4/5' },
+ { id: 't4',  cat: 'product',  kind: 'image',  title: 'Sneaker Pedestal',     by: 'Studio Forma',   uses: '21.2k', credits: 4, img: cf_img('1542291026-7eec264c27ff'), aspect: '1/1' },
+ { id: 't5',  cat: 'product',  kind: 'image',  title: 'Watch on Marble',      by: 'Tide & Co',      uses: '6.0k',  credits: 4, img: cf_img('1523275335684-37898b6baf30'), aspect: '4/5' },
+ { id: 't6',  cat: 'product',  kind: 'video',  title: 'Spin Showcase · 4s',   by: 'Clickfy Studio', uses: '5.5k',  credits: 10, img: cf_img('1505740420928-5e560c06d30e'), aspect: '4/5' },
+ { id: 't7',  cat: 'food',     kind: 'image',  title: 'Top-down Hero Plate',  by: 'Pantry',         uses: '14.7k', credits: 4, img: cf_img('1565299624946-b28f40a0ae38'), aspect: '1/1' },
+ { id: 't8',  cat: 'food',     kind: 'video',  title: 'Pasta Twirl · 5s',     by: 'Looma',          uses: '4.3k',  credits: 12, img: cf_img('1608897013039-887f21d8c804'), aspect: '4/5' },
+ { id: 't9',  cat: 'food',     kind: 'set',    title: 'Menu 6-Pack',          by: 'Pantry',         uses: '9.2k',  credits: 8, img: cf_img('1546069901-ba9599a7e63c'), aspect: '4/5' },
+ { id: 't10', cat: 'beverage', kind: 'image',  title: 'Pour Splash',          by: 'Atelier Lab',    uses: '11.1k', credits: 4, img: cf_img('1551024601-bec78aea704b'), aspect: '4/5' },
+ { id: 't11', cat: 'beverage', kind: 'video',  title: 'Cold Brew Drip · 6s',  by: 'Studio Forma',   uses: '2.8k',  credits: 12, img: cf_img('1495474472287-4d71bcdd2085'), aspect: '4/5' },
+ { id: 't12', cat: 'fashion',  kind: 'set',    title: 'Studio Portrait Set',  by: 'Looma',          uses: '18.0k', credits: 8, img: cf_img('1539109136881-3be0616acf4b'), aspect: '4/5' },
+ { id: 't13', cat: 'fashion',  kind: 'image',  title: 'Streetwear Lookbook',  by: 'Atelier Lab',    uses: '7.4k',  credits: 4, img: cf_img('1483985988355-763728e1935b'), aspect: '4/5' },
+ { id: 't14', cat: 'beauty',   kind: 'image',  title: 'Lipstick Macro',       by: 'Tide & Co',      uses: '5.2k',  credits: 4, img: cf_img('1596462502278-27bfdc403348'), aspect: '1/1' },
+ { id: 't15', cat: 'beauty',   kind: 'video',  title: 'Powder Burst · 3s',    by: 'Clickfy Studio', uses: '3.1k',  credits: 12, img: cf_img('1503236823255-94609f598e71'), aspect: '4/5' },
+ { id: 't16', cat: 'tech',     kind: 'image',  title: 'Gadget Float',         by: 'Studio Forma',   uses: '6.6k',  credits: 4, img: cf_img('1550009158-9ebf69173e03'), aspect: '4/5' },
+ { id: 't17', cat: 'home',     kind: 'image',  title: 'Candle Glow',          by: 'Pantry',         uses: '4.0k',  credits: 4, img: cf_img('1513519245088-0e12902e5a38'), aspect: '4/5' },
+];
+const CLICKFY_SECTIONS = {
+ trending: ['t4', 't1', 't12', 't10', 't7', 't13'],
+ videos:   ['t6', 't8', 't3', 't11', 't15'],
+ sets:     ['t2', 't9', 't12'],
+ food:     ['t7', 't8', 't9', 't10'],
+ product:  ['t4', 't5', 't6', 't16'],
+ beauty:   ['t1', 't14', 't15', 't2'],
+};
+const CLICKFY_PROJECTS = [
+ { id: 'p1', tplId: 't4',  title: 'AirGlide Spotlight',  when: '2 min ago',  status: 'ready',     count: 4 },
+ { id: 'p2', tplId: 't7',  title: 'Sushi Tasting Menu',  when: '1 h ago',    status: 'ready',     count: 6 },
+ { id: 'p3', tplId: 't1',  title: 'Velvet Serum Launch', when: 'Yesterday',  status: 'ready',     count: 1 },
+ { id: 'p4', tplId: 't8',  title: 'Carbonara Promo',     when: '2 days ago', status: 'ready',     count: 1 },
+ { id: 'p5', tplId: 't12', title: 'SS26 Lookbook',       when: '3 days ago', status: 'ready',     count: 8 },
+];
+const cf_template = (id) => CLICKFY_TEMPLATES.find((t) => t.id === id);
+Object.assign(window, {
+ CLICKFY_THEMES, CLICKFY_ACCENTS, CLICKFY_GOLD,
+ CLICKFY_CATEGORIES, CLICKFY_TEMPLATES, CLICKFY_SECTIONS, CLICKFY_PROJECTS,
+ clickfyFontStack, clickfyMonoStack, clickfyDisplayStack,
+ cf_img, cf_template,
+});
+</script>
+<script type="text/babel" data-presets="env,react">
+const cf_icon = (paths, vb = '0 0 24 24') => ({ size = 22, color = 'currentColor', strokeWidth = 1.6, fill = 'none', style }) => (
+ <svg width={size} height={size} viewBox={vb} fill={fill} stroke={color} strokeWidth={strokeWidth}
+  strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, ...style }}>
+  {paths}
+ </svg>
+);
+const IconMenu      = cf_icon(<><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h12"/></>);
+const IconSearch    = cf_icon(<><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></>);
+const IconPlus      = cf_icon(<><path d="M12 5v14"/><path d="M5 12h14"/></>);
+const IconClose     = cf_icon(<><path d="M6 6l12 12"/><path d="M18 6L6 18"/></>);
+const IconChevR     = cf_icon(<path d="M9 5l7 7-7 7"/>);
+const IconChevL     = cf_icon(<path d="M15 5l-7 7 7 7"/>);
+const IconChevD     = cf_icon(<path d="M5 9l7 7 7-7"/>);
+const IconArrowR    = cf_icon(<><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></>);
+const IconHeart     = cf_icon(<path d="M12 20s-7.5-4.5-7.5-10A4.5 4.5 0 0112 6a4.5 4.5 0 017.5 4c0 5.5-7.5 10-7.5 10z"/>);
+const IconBookmark  = cf_icon(<path d="M6 4h12v17l-6-4-6 4z"/>);
+const IconShare     = cf_icon(<><circle cx="6" cy="12" r="2.4"/><circle cx="17" cy="6" r="2.4"/><circle cx="17" cy="18" r="2.4"/><path d="M8.2 11l6.6-3.8"/><path d="M8.2 13l6.6 3.8"/></>);
+const IconDownload  = cf_icon(<><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></>);
+const IconUpload    = cf_icon(<><path d="M12 20V8"/><path d="M7 13l5-5 5 5"/><path d="M5 4h14"/></>);
+const IconCamera    = cf_icon(<><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></>);
+const IconImage     = cf_icon(<><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="M5 18l5-5 4 4 2-2 4 4"/></>);
+const IconVideo     = cf_icon(<><rect x="3" y="6" width="14" height="12" rx="2.5"/><path d="M17 10l4-2v8l-4-2z"/></>);
+const IconLayers    = cf_icon(<><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/><path d="M3 17l9 5 9-5" opacity=".55"/></>);
+const IconStar      = cf_icon(<path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6L12 16.8 6.5 19.6l1-6L3.3 9.4l6-.9z"/>);
+const IconSpark     = cf_icon(<><path d="M12 3v6"/><path d="M12 15v6"/><path d="M3 12h6"/><path d="M15 12h6"/><path d="M5.6 5.6L9 9"/><path d="M15 15l3.4 3.4"/><path d="M5.6 18.4L9 15"/><path d="M15 9l3.4-3.4"/></>);
+const IconBolt      = cf_icon(<path d="M13 3L4 14h6l-1 7 9-11h-6z"/>);
+const IconClock     = cf_icon(<><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></>);
+const IconFolder    = cf_icon(<path d="M3 7a2 2 0 012-2h4l2 2.5h8a2 2 0 012 2V18a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>);
+const IconCompass   = cf_icon(<><circle cx="12" cy="12" r="9"/><path d="M16 8l-2 6-6 2 2-6z" fill="currentColor" stroke="none"/></>);
+const IconGrid      = cf_icon(<><rect x="3.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.4"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.4"/></>);
+const IconUser      = cf_icon(<><circle cx="12" cy="8" r="3.8"/><path d="M4 21c1.5-4.5 5-6 8-6s6.5 1.5 8 6"/></>);
+const IconCheck     = cf_icon(<path d="M5 12.5l4.5 4.5L19 7.5"/>);
+const IconRefresh   = cf_icon(<><path d="M3 12a9 9 0 0115.5-6.3L21 8"/><path d="M21 4v4h-4"/><path d="M21 12a9 9 0 01-15.5 6.3L3 16"/><path d="M3 20v-4h4"/></>);
+const IconSliders   = cf_icon(<><path d="M5 6h7"/><path d="M16 6h3"/><path d="M5 12h3"/><path d="M12 12h7"/><path d="M5 18h11"/><path d="M19 18h0"/><circle cx="14" cy="6" r="1.8"/><circle cx="10" cy="12" r="1.8"/><circle cx="18" cy="18" r="1.8"/></>);
+const IconWand      = cf_icon(<><path d="M4 20l9-9"/><path d="M14 4l1.5 3.5L19 9l-3.5 1.5L14 14l-1.5-3.5L9 9l3.5-1.5z" fill="currentColor" stroke="none" opacity=".9"/><path d="M19 14l.8 1.8L21.5 17l-1.7.8L19 19.5l-.8-1.7L16.5 17l1.7-1.2z" fill="currentColor" stroke="none" opacity=".9"/></>);
+const IconBell      = cf_icon(<><path d="M6 17h12l-1.5-2V11a4.5 4.5 0 10-9 0v4z"/><path d="M10 20a2 2 0 004 0"/></>);
+const IconLogout    = cf_icon(<><path d="M14 8V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h7a2 2 0 002-2v-3"/><path d="M10 12h11"/><path d="M18 8l3 4-3 4"/></>);
+const IconCard      = cf_icon(<><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><path d="M7 15h4"/></>);
+const IconHelp      = cf_icon(<><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 015 .3c0 1.5-2.5 1.8-2.5 3.5"/><path d="M12 17h.01"/></>);
+const IconGift      = cf_icon(<><rect x="3.5" y="9.5" width="17" height="11" rx="1.5"/><path d="M3.5 14h17"/><path d="M12 9.5V21"/><path d="M8 9.5C5 9.5 5 5 8 5c1.5 0 4 4.5 4 4.5"/><path d="M16 9.5c3 0 3-4.5 0-4.5-1.5 0-4 4.5-4 4.5"/></>);
+const IconLock      = cf_icon(<><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 018 0v2.5"/></>);
+const IconShield    = cf_icon(<path d="M12 3l8 3v6c0 4.5-3.5 8-8 9-4.5-1-8-4.5-8-9V6z"/>);
+const IconMoon      = cf_icon(<path d="M20 14a8 8 0 01-10-10 8.5 8.5 0 1010 10z"/>);
+const IconHash      = cf_icon(<><path d="M5 9h14"/><path d="M5 15h14"/><path d="M10 4l-2 16"/><path d="M16 4l-2 16"/></>);
+const IconType      = cf_icon(<><path d="M5 6h14"/><path d="M12 6v14"/><path d="M9 20h6"/></>);
+const IconPlay      = cf_icon(<path d="M7 5l12 7-12 7z" fill="currentColor"/>);
+function ClickfyMark({ size = 28, color = '#0B0B12', accent }) {
+ return (
+  <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+   <path d="M16 4a12 12 0 100 24 12 12 0 008.5-3.5" stroke={color} strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+   <circle cx="24" cy="8" r="3.6" fill={accent || color}/>
+  </svg>
+ );
+}
+function ClickfyWordmark({ color = '#0B0B12', accent = '#6E3CFF', size = 18 }) {
+ return (
+  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: clickfyFontStack,
+   fontSize: size, fontWeight: 700, letterSpacing: -0.6, color, lineHeight: 1 }}>
+   Clickfy<span style={{ width: size * 0.22, height: size * 0.22, borderRadius: '50%',
+    background: accent, marginLeft: 3, marginBottom: -2 }}/>
+  </span>
+ );
+}
+Object.assign(window, {
+ IconMenu, IconSearch, IconPlus, IconClose, IconChevR, IconChevL, IconChevD, IconArrowR,
+ IconHeart, IconBookmark, IconShare, IconDownload, IconUpload, IconCamera, IconImage, IconVideo,
+ IconLayers, IconStar, IconSpark, IconBolt, IconClock, IconFolder, IconCompass, IconGrid,
+ IconUser, IconCheck, IconRefresh, IconSliders, IconWand, IconBell, IconLogout, IconCard,
+ IconHelp, IconGift, IconLock, IconShield, IconMoon, IconHash, IconType, IconPlay,
+ ClickfyMark, ClickfyWordmark,
+});
+</script>
+<script type="text/babel" data-presets="env,react">
+const cfTheme = (dark) => CLICKFY_THEMES[dark ? 'dark' : 'light'];
+const cfAccent = (key) => CLICKFY_ACCENTS[key] || CLICKFY_ACCENTS.violet;
+function CFTopBar({ dark, accent, credits = 248, plan = 'Pro', onMenu, onProfile, transparent }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ return (
+  <div style={{
+   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+   padding: '8px 16px 8px', gap: 12,
+   background: transparent ? 'transparent' : c.bg,
+  }}>
+   <button onClick={onMenu} style={{
+    width: 44, height: 44, borderRadius: 14, background: c.surface,
+    border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center',
+    boxShadow: '0 1px 2px rgba(0,0,0,.04)', cursor: 'pointer', padding: 0,
+   }}>
+    <IconMenu color={c.ink} size={20}/>
+   </button>
+   <ClickfyWordmark color={c.ink} accent={a.solid} size={20}/>
+   <button onClick={onProfile} style={{
+    height: 44, padding: '0 6px 0 14px', borderRadius: 22,
+    background: c.surface, border: `1px solid ${c.border}`,
+    display: 'flex', alignItems: 'center', gap: 10,
+    boxShadow: '0 1px 2px rgba(0,0,0,.04)', cursor: 'pointer',
+   }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+     <span style={{ width: 14, height: 14, borderRadius: '50%',
+      background: `radial-gradient(circle at 30% 30%, ${a.solid}, ${a.deep})`,
+      boxShadow: `0 0 0 2px ${c.surface}, 0 0 8px ${a.glow}` }}/>
+     <span style={{ fontFamily: clickfyMonoStack, fontSize: 14, fontWeight: 600,
+      color: c.ink, letterSpacing: -0.2 }}>{credits}</span>
+    </span>
+    <span style={{
+     height: 28, padding: '0 10px', borderRadius: 16,
+     background: c.ink, color: c.surface,
+     display: 'inline-flex', alignItems: 'center', gap: 4,
+     fontSize: 11.5, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase',
+    }}>
+     <span style={{ width: 4, height: 4, borderRadius: '50%', background: a.solid }}/>
+     {plan}
+    </span>
+   </button>
+  </div>
+ );
+}
+function CFSearchBar({ dark, value = '', placeholder = 'Search 12,400+ templates', onClick }) {
+ const c = cfTheme(dark);
+ return (
+  <button onClick={onClick} style={{
+   width: '100%', height: 52, padding: '0 16px',
+   borderRadius: 18, background: c.surface, border: `1px solid ${c.border}`,
+   display: 'flex', alignItems: 'center', gap: 12, cursor: 'text',
+   boxShadow: '0 1px 2px rgba(0,0,0,.03)',
+  }}>
+   <IconSearch color={c.inkMuted} size={20}/>
+   <span style={{ flex: 1, textAlign: 'left', color: value ? c.ink : c.inkMuted,
+    fontSize: 15, fontWeight: 450 }}>
+    {value || placeholder}
+   </span>
+   <span style={{
+    width: 32, height: 32, borderRadius: 10, background: c.surfaceMuted,
+    display: 'grid', placeItems: 'center',
+   }}>
+    <IconSliders color={c.ink} size={16}/>
+   </span>
+  </button>
+ );
+}
+function CFCategoryChip({ cat, active, dark, accent, onClick }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const allChip = cat.id === 'all';
+ return (
+  <button onClick={onClick} style={{
+   display: 'flex', flexDirection: 'column', alignItems: 'center',
+   gap: 8, padding: 0, background: 'transparent', border: 0, cursor: 'pointer',
+   flexShrink: 0,
+  }}>
+   <div style={{
+    width: 64, height: 64, borderRadius: '50%', position: 'relative',
+    background: allChip ? c.ink : cat.color,
+    display: 'grid', placeItems: 'center',
+    outline: active ? `2px solid ${a.solid}` : 'none',
+    outlineOffset: 3,
+    overflow: 'hidden',
+   }}>
+    {allChip ? (
+     <IconGrid color={c.surface} size={26}/>
+    ) : (
+     <img src={cat.img} alt={cat.label} style={{
+      width: '100%', height: '100%', objectFit: 'cover',
+      filter: active ? 'none' : 'saturate(.92)',
+     }}/>
+    )}
+    {active && !allChip && (
+     <div style={{ position: 'absolute', inset: 0, borderRadius: '50%',
+      border: `2px solid ${a.solid}`, boxShadow: `0 0 0 4px ${c.bg}` }}/>
+    )}
+   </div>
+   <span style={{
+    fontSize: 12.5, fontWeight: active ? 600 : 500, letterSpacing: -0.1,
+    color: active ? c.ink : c.inkMuted,
+   }}>{cat.label}</span>
+  </button>
+ );
+}
+function CFTemplateCard({ t, dark, accent, w, onClick, hideMeta }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const KindGlyph = t.kind === 'video' ? IconPlay : t.kind === 'set' ? IconLayers : IconImage;
+ return (
+  <button onClick={onClick} style={{
+   width: w || '100%', textAlign: 'left', background: 'transparent',
+   border: 0, padding: 0, cursor: 'pointer',
+   display: 'flex', flexDirection: 'column', gap: 10,
+   flexShrink: 0,
+  }}>
+   <div style={{
+    width: '100%', aspectRatio: t.aspect, borderRadius: 18,
+    position: 'relative', overflow: 'hidden',
+    background: c.surfaceMuted,
+    boxShadow: '0 1px 2px rgba(0,0,0,.06), 0 8px 22px rgba(20,18,30,.06)',
+   }}>
+    <img src={t.img} alt={t.title} style={{
+     width: '100%', height: '100%', objectFit: 'cover',
+    }}/>
+    {}
+    <div style={{
+     position: 'absolute', top: 10, left: 10,
+     height: 26, padding: '0 10px 0 8px', borderRadius: 13,
+     background: 'rgba(11,11,18,.6)', backdropFilter: 'blur(12px)',
+     color: '#FFF', display: 'inline-flex', alignItems: 'center', gap: 5,
+     fontSize: 11, fontWeight: 600, letterSpacing: 0.2, textTransform: 'uppercase',
+    }}>
+     <KindGlyph color="#FFF" size={12}/>
+     {t.kind === 'set' ? `Set · ${t.kind === 'set' ? '6' : ''}` : t.kind}
+    </div>
+    {}
+    <div style={{
+     position: 'absolute', bottom: 10, right: 10,
+     height: 26, padding: '0 9px', borderRadius: 13,
+     background: a.solid, color: a.ink,
+     display: 'inline-flex', alignItems: 'center', gap: 4,
+     fontSize: 11.5, fontWeight: 700, fontFamily: clickfyMonoStack,
+    }}>
+     <span style={{ width: 6, height: 6, borderRadius: '50%', background: a.ink, opacity: .9 }}/>
+     {t.credits}
+    </div>
+   </div>
+   {!hideMeta && (
+    <div style={{ padding: '0 2px' }}>
+     <div style={{ fontSize: 14.5, fontWeight: 600, color: c.ink,
+      letterSpacing: -0.2, lineHeight: 1.25,
+      display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+     }}>{t.title}</div>
+     <div style={{ marginTop: 3, fontSize: 12, color: c.inkMuted, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span>{t.by}</span>
+      <span style={{ width: 2, height: 2, borderRadius: '50%', background: c.inkMuted, opacity: .6 }}/>
+      <span>{t.uses} uses</span>
+     </div>
+    </div>
+   )}
+  </button>
+ );
+}
+function CFSectionHeader({ title, subtitle, action = 'See all', dark, onAction }) {
+ const c = cfTheme(dark);
+ return (
+  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+   padding: '0 20px', marginBottom: 14 }}>
+   <div>
+    <div style={{ fontSize: 22, fontWeight: 700, color: c.ink, letterSpacing: -0.6,
+     fontFamily: clickfyFontStack, lineHeight: 1.05 }}>{title}</div>
+    {subtitle && (
+     <div style={{ marginTop: 4, fontSize: 13, color: c.inkMuted }}>{subtitle}</div>
+    )}
+   </div>
+   {action && (
+    <button onClick={onAction} style={{
+     background: 'transparent', border: 0, color: c.inkMuted, cursor: 'pointer',
+     fontSize: 13, fontWeight: 600, padding: 4, display: 'inline-flex', alignItems: 'center', gap: 2,
+    }}>
+     {action}<IconChevR color={c.inkMuted} size={14}/>
+    </button>
+   )}
+  </div>
+ );
+}
+function CFBottomNav({ active = 'explore', dark, accent, onChange }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const items = [
+  { id: 'explore',  label: 'Explore',   Icon: IconCompass },
+  { id: 'library',  label: 'Library',   Icon: IconGrid },
+  { id: 'create',   label: 'Create',    Icon: null,    big: true },
+  { id: 'projects', label: 'Projects',  Icon: IconFolder },
+  { id: 'me',       label: 'Profile',   Icon: IconUser },
+ ];
+ return (
+  <div style={{
+   position: 'absolute', left: 12, right: 12, bottom: 14,
+   height: 72, borderRadius: 28, padding: '0 8px',
+   background: dark ? 'rgba(20,20,28,.85)' : 'rgba(255,255,255,.92)',
+   border: `1px solid ${c.border}`,
+   backdropFilter: 'blur(20px) saturate(160%)',
+   WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+   boxShadow: '0 12px 30px rgba(15,12,30,.12), 0 1px 0 rgba(255,255,255,.6) inset',
+   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+   zIndex: 10,
+  }}>
+   {items.map((it) => {
+    if (it.big) {
+     return (
+      <button key={it.id} onClick={() => onChange?.(it.id)} style={{
+       width: 56, height: 56, borderRadius: 20,
+       background: `linear-gradient(140deg, ${a.solid}, ${a.deep})`,
+       boxShadow: `0 8px 22px ${a.glow}, inset 0 1px 0 rgba(255,255,255,.35)`,
+       border: 0, display: 'grid', placeItems: 'center', cursor: 'pointer',
+       flexShrink: 0,
+      }}>
+       <IconPlus color={a.ink} size={26} strokeWidth={2.4}/>
+      </button>
+     );
+    }
+    const on = active === it.id;
+    return (
+     <button key={it.id} onClick={() => onChange?.(it.id)} style={{
+      flex: 1, height: 56, borderRadius: 18,
+      background: 'transparent', border: 0, cursor: 'pointer',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      gap: 4, padding: 0,
+     }}>
+      <it.Icon color={on ? c.ink : c.inkMuted} size={22} strokeWidth={on ? 2 : 1.6}/>
+      <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 500,
+       color: on ? c.ink : c.inkMuted, letterSpacing: 0.1 }}>
+       {it.label}
+      </span>
+     </button>
+    );
+   })}
+  </div>
+ );
+}
+function CFButton({ children, dark, accent, kind = 'primary', icon, full, onClick, size = 'md' }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const h = size === 'lg' ? 56 : size === 'sm' ? 36 : 48;
+ const styles = {
+  primary: {
+   background: c.ink, color: c.surface,
+   boxShadow: `0 6px 14px rgba(11,11,18,.18)`,
+  },
+  accent: {
+   background: `linear-gradient(140deg, ${a.solid}, ${a.deep})`,
+   color: a.ink,
+   boxShadow: `0 10px 24px ${a.glow}, inset 0 1px 0 rgba(255,255,255,.4)`,
+  },
+  ghost: {
+   background: c.surface, color: c.ink, border: `1px solid ${c.border}`,
+  },
+  soft: {
+   background: a.soft, color: a.deep,
+  },
+ }[kind];
+ return (
+  <button onClick={onClick} style={{
+   width: full ? '100%' : 'auto', height: h, padding: `0 ${size === 'sm' ? 14 : 22}px`,
+   borderRadius: h / 2, border: 0, cursor: 'pointer',
+   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+   fontSize: size === 'sm' ? 13.5 : 15.5, fontWeight: 700, letterSpacing: -0.2,
+   ...styles,
+  }}>
+   {icon}{children}
+  </button>
+ );
+}
+function CFPill({ children, active, dark, accent, onClick, size = 'md' }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const h = size === 'sm' ? 30 : 34;
+ return (
+  <button onClick={onClick} style={{
+   height: h, padding: `0 ${size === 'sm' ? 12 : 14}px`, borderRadius: h / 2,
+   border: `1px solid ${active ? c.ink : c.border}`,
+   background: active ? c.ink : c.surface, color: active ? c.surface : c.ink,
+   fontSize: size === 'sm' ? 12.5 : 13, fontWeight: 600, letterSpacing: -0.1,
+   cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+   flexShrink: 0,
+  }}>
+   {children}
+  </button>
+ );
+}
+Object.assign(window, {
+ cfTheme, cfAccent,
+ CFTopBar, CFSearchBar, CFCategoryChip, CFTemplateCard, CFSectionHeader,
+ CFBottomNav, CFButton, CFPill,
+});
+</script>
+<script type="text/babel" data-presets="env,react">
+const CF_SCREEN_W = 402;
+const CF_SCREEN_H = 874;
+function CFBody({ children, pad = 16, dark, withBottomNav = true, padTop = 0 }) {
+ const c = cfTheme(dark);
+ return (
+  <div style={{
+   flex: 1, overflow: 'auto', background: c.bg,
+   paddingTop: padTop, paddingBottom: withBottomNav ? 110 : 24,
+  }}>
+   {children}
+  </div>
+ );
+}
+function CFHRow({ children, pad = 20, gap = 12 }) {
+ return (
+  <div style={{
+   display: 'flex', gap, padding: `0 ${pad}px`,
+   overflowX: 'auto', scrollSnapType: 'x mandatory',
+   scrollbarWidth: 'none',
+  }}>{children}</div>
+ );
+}
+function CFHome({ dark, accent, density = 'regular' }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const [activeCat, setActiveCat] = React.useState('all');
+ const cats = CLICKFY_CATEGORIES;
+ const t = (id) => cf_template(id);
+ const sections = activeCat === 'all'
+  ? [
+    { key: 'trending', title: 'Trending now', subtitle: 'What everyone is cloning today', tids: CLICKFY_SECTIONS.trending, kind: 'bento' },
+    { key: 'videos',   title: 'Video templates', subtitle: '4–8 second product motion', tids: CLICKFY_SECTIONS.videos,   kind: 'h' },
+    { key: 'food',     title: 'Food & menu',     subtitle: 'Plates, drinks, full menus',  tids: CLICKFY_SECTIONS.food,     kind: 'h' },
+    { key: 'sets',     title: 'Multi-image sets', subtitle: 'Carousels, lookbooks, e-com', tids: CLICKFY_SECTIONS.sets,     kind: 'h' },
+    { key: 'beauty',   title: 'Beauty & skincare', subtitle: 'Hero shots & macro reveals', tids: CLICKFY_SECTIONS.beauty, kind: 'h' },
+   ]
+  : [
+    { key: activeCat, title: 'Featured',  subtitle: 'Top picks in this category', tids: CLICKFY_TEMPLATES.filter(x => x.cat === activeCat).slice(0, 6).map(x => x.id), kind: 'bento' },
+    { key: activeCat + '-new', title: 'New this week', subtitle: '', tids: CLICKFY_TEMPLATES.filter(x => x.cat === activeCat).slice(0, 4).map(x => x.id), kind: 'h' },
+   ];
+ return (
+  <>
+   <CFTopBar dark={dark} accent={accent} credits={248} plan="Pro"/>
+   <div style={{ padding: '4px 16px 14px' }}>
+    <CFSearchBar dark={dark}/>
+   </div>
+   <CFBody dark={dark}>
+    {}
+    <div style={{ paddingBottom: 24 }}>
+     <CFHRow pad={16} gap={12}>
+      {cats.map((cat) => (
+       <CFCategoryChip key={cat.id} cat={cat} dark={dark} accent={accent}
+        active={activeCat === cat.id} onClick={() => setActiveCat(cat.id)}/>
+      ))}
+     </CFHRow>
+    </div>
+    {}
+    <div style={{ padding: '0 20px 22px' }}>
+     <div style={{
+      position: 'relative', borderRadius: 22, padding: 18,
+      background: `linear-gradient(120deg, ${a.deep}, ${a.solid})`,
+      color: a.ink, overflow: 'hidden',
+      boxShadow: `0 18px 40px ${a.glow}`,
+     }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+       <div style={{
+        width: 46, height: 46, borderRadius: 14,
+        background: 'rgba(255,255,255,.18)', display: 'grid', placeItems: 'center',
+        backdropFilter: 'blur(10px)',
+       }}>
+        <IconWand color={a.ink} size={22}/>
+       </div>
+       <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 16.5, fontWeight: 700, letterSpacing: -0.3 }}>Need a fresh angle?</div>
+        <div style={{ marginTop: 2, fontSize: 12.5, opacity: .85 }}>Describe your product, we'll match templates.</div>
+       </div>
+       <IconArrowR color={a.ink} size={20}/>
+      </div>
+      <div aria-hidden style={{
+       position: 'absolute', right: -30, top: -40, width: 160, height: 160,
+       borderRadius: '50%', background: 'rgba(255,255,255,.12)',
+      }}/>
+     </div>
+    </div>
+    {}
+    {sections.map((sec, i) => (
+     <div key={sec.key} style={{ marginBottom: 30 }}>
+      <CFSectionHeader title={sec.title} subtitle={sec.subtitle} dark={dark}/>
+      {sec.kind === 'bento' ? (
+       <CFBento tids={sec.tids} dark={dark} accent={accent}/>
+      ) : (
+       <CFHRow pad={20} gap={14}>
+        {sec.tids.map((id) => {
+         const tpl = t(id); if (!tpl) return null;
+         return <div key={id} style={{ width: 200, flexShrink: 0 }}>
+          <CFTemplateCard t={tpl} dark={dark} accent={accent}/>
+         </div>;
+        })}
+        <div style={{ width: 4, flexShrink: 0 }}/>
+       </CFHRow>
+      )}
+     </div>
+    ))}
+   </CFBody>
+   <CFBottomNav active="explore" dark={dark} accent={accent}/>
+  </>
+ );
+}
+function CFBento({ tids, dark, accent }) {
+ const t0 = cf_template(tids[0]);
+ const small = tids.slice(1, 5).map(cf_template).filter(Boolean);
+ const c = cfTheme(dark);
+ if (!t0) return null;
+ return (
+  <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+   {}
+   <CFTemplateCard t={{ ...t0, aspect: '16/10' }} dark={dark} accent={accent}/>
+   {}
+   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+    {small.slice(0, 2).map((tpl) => (
+     <CFTemplateCard key={tpl.id} t={{ ...tpl, aspect: '4/5' }} dark={dark} accent={accent}/>
+    ))}
+   </div>
+   {}
+   {small.slice(2, 5).length === 2 && (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+     {small.slice(2, 4).map((tpl) => (
+      <CFTemplateCard key={tpl.id} t={{ ...tpl, aspect: '4/5' }} dark={dark} accent={accent}/>
+     ))}
+    </div>
+   )}
+  </div>
+ );
+}
+function CFCategoryDetail({ dark, accent, catId = 'product' }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const cat = CLICKFY_CATEGORIES.find((x) => x.id === catId);
+ const list = CLICKFY_TEMPLATES.filter((x) => x.cat === catId).concat(
+  CLICKFY_TEMPLATES.filter((x) => x.cat !== catId).slice(0, 6)
+ );
+ const filters = ['All', 'Image', 'Video', 'Set', 'Trending'];
+ const [filter, setFilter] = React.useState('All');
+ return (
+  <>
+   {}
+   <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconChevL color={c.ink} size={20}/>
+    </button>
+    <div style={{ flex: 1 }}/>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconSliders color={c.ink} size={20}/>
+    </button>
+   </div>
+   {}
+   <div style={{ padding: '8px 20px 16px' }}>
+    <div style={{ fontSize: 13, color: c.inkMuted, fontWeight: 600,
+     letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 6 }}>
+     Category
+    </div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+     <div style={{ fontSize: 36, fontWeight: 700, color: c.ink, letterSpacing: -1.2,
+      lineHeight: 1, fontFamily: clickfyFontStack }}>
+      {cat?.label || 'Templates'}
+     </div>
+     {cat?.img && (
+      <div style={{ width: 52, height: 52, borderRadius: '50%', overflow: 'hidden',
+       background: cat.color }}>
+       <img src={cat.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+      </div>
+     )}
+    </div>
+    <div style={{ marginTop: 8, fontSize: 13.5, color: c.inkMuted, lineHeight: 1.4 }}>
+     {list.length} templates · sorted by popular
+    </div>
+   </div>
+   {}
+   <div style={{ paddingBottom: 14 }}>
+    <CFHRow pad={20} gap={8}>
+     {filters.map((f) => (
+      <CFPill key={f} dark={dark} accent={accent}
+       active={filter === f} onClick={() => setFilter(f)}>{f}</CFPill>
+     ))}
+    </CFHRow>
+   </div>
+   <CFBody dark={dark} padTop={4}>
+    <div style={{ padding: '0 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+     {list.map((tpl) => (
+      <CFTemplateCard key={tpl.id} t={{ ...tpl, aspect: '4/5' }} dark={dark} accent={accent}/>
+     ))}
+    </div>
+   </CFBody>
+   <CFBottomNav active="library" dark={dark} accent={accent}/>
+  </>
+ );
+}
+function CFTemplateDetail({ dark, accent, tid = 't4' }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const t = cf_template(tid) || CLICKFY_TEMPLATES[0];
+ return (
+  <div style={{ height: '100%', position: 'relative', overflow: 'hidden', background: c.bg }}>
+   {}
+   <div style={{ position: 'relative', height: 520, overflow: 'hidden' }}>
+    <img src={cf_img(t.img.match(/photo-([^?]+)/)?.[1] || '', 1000)} alt={t.title}
+     onError={(e)=>{e.target.src = t.img}}
+     style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+    <div style={{ position: 'absolute', inset: 0,
+     background: 'linear-gradient(180deg, rgba(0,0,0,.25) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 60%, rgba(0,0,0,.55) 100%)' }}/>
+    {}
+    <div style={{ position: 'absolute', top: 64, left: 16, right: 16,
+     display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+     <button style={{ width: 44, height: 44, borderRadius: 22,
+      background: 'rgba(255,255,255,.92)', border: 0,
+      display: 'grid', placeItems: 'center',
+      backdropFilter: 'blur(10px)', cursor: 'pointer' }}>
+      <IconChevL color="#0B0B12" size={20}/>
+     </button>
+     <div style={{ display: 'flex', gap: 10 }}>
+      {[IconHeart, IconShare].map((Ic, i) => (
+       <button key={i} style={{ width: 44, height: 44, borderRadius: 22,
+        background: 'rgba(255,255,255,.92)', border: 0,
+        display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+        <Ic color="#0B0B12" size={20}/>
+       </button>
+      ))}
+     </div>
+    </div>
+   </div>
+   {}
+   <div style={{
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    height: 480, background: c.surface,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    boxShadow: '0 -10px 30px rgba(0,0,0,.12)',
+    padding: '16px 20px 24px',
+    overflow: 'auto',
+   }}>
+    <div style={{ width: 40, height: 4, borderRadius: 2, background: c.borderStrong,
+     margin: '0 auto 14px' }}/>
+    {}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+     <span style={{ height: 26, padding: '0 10px', borderRadius: 13,
+      background: a.soft, color: a.deep, display: 'inline-flex', alignItems: 'center', gap: 4,
+      fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
+     }}>
+      <IconImage color={a.deep} size={12}/>{t.kind}
+     </span>
+     <span style={{ fontSize: 12.5, color: c.inkMuted }}>{t.uses} uses</span>
+     <span style={{ fontSize: 12.5, color: c.inkMuted, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <IconStar color={'#F0B33A'} size={12} fill={'#F0B33A'}/>4.9
+     </span>
+    </div>
+    <h2 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: c.ink, letterSpacing: -0.6,
+     lineHeight: 1.1, fontFamily: clickfyFontStack }}>{t.title}</h2>
+    <div style={{ marginTop: 6, fontSize: 13, color: c.inkMuted }}>
+     by <span style={{ color: c.ink, fontWeight: 600 }}>{t.by}</span>
+    </div>
+    <p style={{ marginTop: 14, fontSize: 14, lineHeight: 1.55, color: c.inkMuted }}>
+     Drop your product on a soft pedestal in a controlled studio. Generates a hero
+     image with editorial lighting and a clean shadow ground.
+    </p>
+    {}
+    <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+     <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5,
+      textTransform: 'uppercase', color: c.inkMuted }}>You'll provide</div>
+     {[
+      { Ic: IconCamera, l: 'Product photo',     d: 'Plain background, well lit' },
+      { Ic: IconType,   l: 'Brand name',        d: 'Optional · added subtly' },
+      { Ic: IconHash,   l: 'Mood',              d: '3 of 8 presets' },
+     ].map((row, i) => (
+      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12,
+       padding: 14, borderRadius: 16, border: `1px solid ${c.border}`, background: c.surfaceMuted }}>
+       <div style={{ width: 36, height: 36, borderRadius: 10, background: c.surface,
+        display: 'grid', placeItems: 'center', border: `1px solid ${c.border}` }}>
+        <row.Ic color={c.ink} size={18}/>
+       </div>
+       <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, color: c.ink, letterSpacing: -0.2 }}>{row.l}</div>
+        <div style={{ fontSize: 12.5, color: c.inkMuted, marginTop: 1 }}>{row.d}</div>
+       </div>
+      </div>
+     ))}
+    </div>
+   </div>
+   {}
+   <div style={{
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    padding: '14px 16px 22px',
+    background: `linear-gradient(180deg, transparent 0%, ${c.surface} 30%)`,
+    display: 'flex', alignItems: 'center', gap: 12,
+   }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+     <span style={{ fontSize: 11, color: c.inkMuted, fontWeight: 600,
+      letterSpacing: 0.4, textTransform: 'uppercase' }}>Costs</span>
+     <span style={{ fontSize: 17, fontWeight: 700, color: c.ink, fontFamily: clickfyMonoStack }}>
+      {t.credits} credits
+     </span>
+    </div>
+    <CFButton dark={dark} accent={accent} kind="accent" size="lg"
+     icon={<IconWand color={cfAccent(accent).ink} size={20}/>}>
+     Use template
+    </CFButton>
+   </div>
+  </div>
+ );
+}
+function CFUseTemplate({ dark, accent, tid = 't4' }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const t = cf_template(tid) || CLICKFY_TEMPLATES[0];
+ const [moods, setMoods] = React.useState(['Editorial', 'Warm']);
+ const moodOptions = ['Editorial', 'Warm', 'Studio', 'Outdoor', 'Sunset', 'Pastel', 'Neon', 'Mono'];
+ const toggle = (m) => setMoods((s) => s.includes(m) ? s.filter(x=>x!==m) : [...s, m].slice(-3));
+ return (
+  <>
+   {}
+   <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconClose color={c.ink} size={20}/>
+    </button>
+    <div style={{ flex: 1, textAlign: 'center' }}>
+     <div style={{ fontSize: 11, color: c.inkMuted, fontWeight: 600,
+      letterSpacing: 0.5, textTransform: 'uppercase' }}>Step 1 of 1</div>
+     <div style={{ fontSize: 14.5, fontWeight: 700, color: c.ink, marginTop: 2 }}>Use template</div>
+    </div>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconHelp color={c.ink} size={20}/>
+    </button>
+   </div>
+   <CFBody dark={dark} withBottomNav={false}>
+    {}
+    <div style={{ padding: '0 20px 18px', display: 'flex', gap: 14, alignItems: 'center' }}>
+     <div style={{ width: 64, height: 80, borderRadius: 14, overflow: 'hidden',
+      boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
+      <img src={t.img} alt="" style={{ width:'100%', height:'100%', objectFit: 'cover' }}/>
+     </div>
+     <div style={{ flex: 1 }}>
+      <div style={{ fontSize: 17, fontWeight: 700, color: c.ink, letterSpacing: -0.3 }}>{t.title}</div>
+      <div style={{ fontSize: 12.5, color: c.inkMuted, marginTop: 2 }}>by {t.by}</div>
+      <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6,
+       padding: '4px 10px', borderRadius: 12, background: a.soft, color: a.deep,
+       fontSize: 12, fontWeight: 700 }}>
+       <span style={{ width: 6, height: 6, borderRadius: '50%', background: a.solid }}/>
+       {t.credits} credits
+      </div>
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '0 20px 18px' }}>
+     <Label dark={dark}>Product photo <Req/></Label>
+     <div style={{
+      position: 'relative',
+      height: 200, borderRadius: 22,
+      background: c.surfaceMuted,
+      border: `1.5px dashed ${c.borderStrong}`,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      gap: 8,
+      backgroundImage: `radial-gradient(circle at 50% 40%, ${a.soft} 0%, transparent 60%)`,
+     }}>
+      <div style={{ width: 56, height: 56, borderRadius: 18,
+       background: c.surface, display: 'grid', placeItems: 'center',
+       boxShadow: '0 6px 18px rgba(0,0,0,.07)' }}>
+       <IconUpload color={a.solid} size={24}/>
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: c.ink, letterSpacing: -0.2 }}>
+       Drop your product photo
+      </div>
+      <div style={{ fontSize: 12.5, color: c.inkMuted }}>PNG, JPG up to 8MB · Plain bg works best</div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+       <CFButton dark={dark} accent={accent} kind="primary" size="sm"
+        icon={<IconUpload color="#FFF" size={14}/>}>Upload</CFButton>
+       <CFButton dark={dark} accent={accent} kind="ghost" size="sm"
+        icon={<IconCamera color={c.ink} size={14}/>}>Take photo</CFButton>
+      </div>
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '0 20px 18px' }}>
+     <Label dark={dark}>Brand name <Optional/></Label>
+     <div style={{
+      height: 56, borderRadius: 16, background: c.surface,
+      border: `1px solid ${c.border}`,
+      display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10,
+     }}>
+      <span style={{ fontSize: 16, color: c.ink, fontWeight: 500 }}>AirGlide</span>
+      <span style={{ width: 1.5, height: 20, background: a.solid, animation: 'cf-blink 1s steps(2) infinite' }}/>
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '0 20px 22px' }}>
+     <Label dark={dark}>Mood <span style={{ color: c.inkMuted, fontWeight: 500 }}>· choose up to 3</span></Label>
+     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {moodOptions.map((m) => {
+       const on = moods.includes(m);
+       return (
+        <button key={m} onClick={() => toggle(m)} style={{
+         height: 38, padding: '0 14px', borderRadius: 19,
+         border: `1px solid ${on ? c.ink : c.border}`,
+         background: on ? c.ink : c.surface,
+         color: on ? c.surface : c.ink,
+         fontSize: 13, fontWeight: 600, cursor: 'pointer',
+         display: 'inline-flex', alignItems: 'center', gap: 5,
+        }}>
+         {on && <IconCheck color={c.surface} size={13} strokeWidth={2.5}/>}
+         {m}
+        </button>
+       );
+      })}
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '0 20px 22px' }}>
+     <Label dark={dark}>How many to generate</Label>
+     <div style={{ display: 'flex', gap: 8 }}>
+      {[1, 2, 4].map((n, i) => (
+       <button key={n} style={{
+        flex: 1, height: 56, borderRadius: 16,
+        border: `1px solid ${i === 1 ? c.ink : c.border}`,
+        background: i === 1 ? c.ink : c.surface,
+        color: i === 1 ? c.surface : c.ink,
+        fontSize: 16, fontWeight: 700, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: 6,
+       }}>
+        {n}
+        <span style={{ fontSize: 11, opacity: .6, fontWeight: 600 }}>
+         · {n * t.credits} cr
+        </span>
+       </button>
+      ))}
+     </div>
+    </div>
+   </CFBody>
+   {}
+   <div style={{
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    padding: '14px 16px 26px',
+    background: `linear-gradient(180deg, transparent 0%, ${c.bg} 30%)`,
+    display: 'flex', alignItems: 'center', gap: 12,
+   }}>
+    <CFButton dark={dark} accent={accent} kind="accent" size="lg" full
+     icon={<IconWand color={a.ink} size={20}/>}>
+     Generate · 8 credits
+    </CFButton>
+   </div>
+   <style>{`@keyframes cf-blink{50%{opacity:0}}`}</style>
+  </>
+ );
+}
+function Label({ children, dark }) {
+ const c = cfTheme(dark);
+ return <div style={{ fontSize: 12.5, fontWeight: 700, color: c.ink, letterSpacing: 0.2,
+  textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>{children}</div>;
+}
+function Req() { return <span style={{ color: '#FF5A3C', fontWeight: 700 }}>*</span>; }
+function Optional() { return <span style={{ color: '#A09DAA', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>· optional</span>; }
+function CFGenerating({ dark, accent }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const steps = [
+  { label: 'Reading your photo',         done: true  },
+  { label: 'Composing the scene',        done: true  },
+  { label: 'Applying mood · Editorial',  done: false, active: true },
+  { label: 'Final pass · upscaling',     done: false },
+ ];
+ return (
+  <div style={{ height: '100%', background: c.bg, position: 'relative',
+   display: 'flex', flexDirection: 'column' }}>
+   <div style={{ padding: '8px 16px' }}>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconChevL color={c.ink} size={20}/>
+    </button>
+   </div>
+   {}
+   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+    justifyContent: 'center', padding: '0 24px', textAlign: 'center', gap: 24 }}>
+    <div style={{ position: 'relative', width: 220, height: 220 }}>
+     <div style={{ position: 'absolute', inset: 0, borderRadius: '50%',
+      background: `conic-gradient(from 0deg, ${a.solid}, ${a.deep}, ${a.solid})`,
+      filter: 'blur(28px)', opacity: .55, animation: 'cf-spin 6s linear infinite' }}/>
+     <div style={{ position: 'absolute', inset: 28, borderRadius: '50%',
+      background: c.surface, boxShadow: '0 30px 60px rgba(0,0,0,.18)' }}/>
+     <div style={{ position: 'absolute', inset: 28, borderRadius: '50%',
+      display: 'grid', placeItems: 'center' }}>
+      <IconWand color={a.solid} size={48}/>
+     </div>
+     <div style={{ position: 'absolute', inset: 0, borderRadius: '50%',
+      border: `2px dashed ${a.solid}`, opacity: .5, animation: 'cf-spin 14s linear infinite' }}/>
+    </div>
+    <div>
+     <div style={{ fontSize: 26, fontWeight: 700, color: c.ink, letterSpacing: -0.6,
+      fontFamily: clickfyFontStack, lineHeight: 1.1 }}>
+      Cooking your shot…
+     </div>
+     <div style={{ marginTop: 8, fontSize: 14, color: c.inkMuted, lineHeight: 1.5,
+      maxWidth: 280, marginInline: 'auto' }}>
+      Usually takes 20–40 seconds. Feel free to leave — we'll ping you when it's ready.
+     </div>
+    </div>
+    {}
+    <div style={{ width: '100%', maxWidth: 340, padding: 18, borderRadius: 22,
+     background: c.surface, border: `1px solid ${c.border}`,
+     boxShadow: '0 8px 22px rgba(0,0,0,.05)' }}>
+     {steps.map((s, i) => (
+      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12,
+       padding: '8px 0',
+       opacity: s.done || s.active ? 1 : 0.45,
+       borderBottom: i < steps.length - 1 ? `1px solid ${c.border}` : 'none',
+      }}>
+       <div style={{
+        width: 24, height: 24, borderRadius: '50%',
+        background: s.done ? a.solid : s.active ? c.surface : c.surfaceMuted,
+        border: s.done ? 'none' : s.active ? `2px solid ${a.solid}` : `1px solid ${c.border}`,
+        display: 'grid', placeItems: 'center',
+        animation: s.active ? 'cf-pulse 1.4s ease-in-out infinite' : 'none',
+       }}>
+        {s.done && <IconCheck color={a.ink} size={14} strokeWidth={3}/>}
+       </div>
+       <div style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: c.ink, textAlign: 'left' }}>
+        {s.label}
+       </div>
+       {s.active && <span style={{ fontSize: 12, color: a.solid, fontWeight: 600 }}>Working…</span>}
+      </div>
+     ))}
+    </div>
+   </div>
+   <div style={{ padding: '0 20px 30px', display: 'flex', justifyContent: 'center' }}>
+    <CFButton dark={dark} accent={accent} kind="ghost" size="md">
+     Run in background
+    </CFButton>
+   </div>
+   <style>{`
+    @keyframes cf-spin { to { transform: rotate(360deg); } }
+    @keyframes cf-pulse { 50% { transform: scale(1.1); box-shadow: 0 0 0 6px ${a.glow}; } }
+   `}</style>
+  </div>
+ );
+}
+function CFResults({ dark, accent, tid = 't4' }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const t = cf_template(tid) || CLICKFY_TEMPLATES[0];
+ const variants = [
+  cf_template('t4'), cf_template('t5'), cf_template('t1'), cf_template('t14'),
+ ].filter(Boolean);
+ const hero = variants[0];
+ const others = variants.slice(1);
+ return (
+  <>
+   {}
+   <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconChevL color={c.ink} size={20}/>
+    </button>
+    <div style={{ flex: 1 }}/>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconRefresh color={c.ink} size={20}/>
+    </button>
+   </div>
+   <div style={{ padding: '0 20px 14px' }}>
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+     borderRadius: 12, background: a.soft, color: a.deep, fontSize: 11.5, fontWeight: 700,
+     textTransform: 'uppercase', letterSpacing: 0.4 }}>
+     <IconCheck color={a.deep} size={12} strokeWidth={3}/> Ready
+    </div>
+    <h2 style={{ margin: '8px 0 4px', fontSize: 30, fontWeight: 700, color: c.ink,
+     letterSpacing: -0.8, lineHeight: 1.05, fontFamily: clickfyFontStack }}>
+     AirGlide spotlight
+    </h2>
+    <div style={{ fontSize: 13, color: c.inkMuted }}>
+     4 variations · {t.title} template
+    </div>
+   </div>
+   <CFBody dark={dark} padTop={6}>
+    {}
+    <div style={{ padding: '0 20px 14px' }}>
+     <div style={{ position: 'relative', borderRadius: 24, overflow: 'hidden',
+      aspectRatio: '4/5',
+      boxShadow: '0 14px 40px rgba(0,0,0,.18)' }}>
+      <img src={hero.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+      {}
+      <div style={{
+       position: 'absolute', left: 14, right: 14, bottom: 14,
+       display: 'flex', gap: 10,
+      }}>
+       {[
+        { Ic: IconBookmark, tip: 'Save' },
+        { Ic: IconShare, tip: 'Share' },
+       ].map((it, i) => (
+        <button key={i} style={{
+         width: 44, height: 44, borderRadius: 22, border: 0,
+         background: 'rgba(255,255,255,.92)', display: 'grid', placeItems: 'center',
+         backdropFilter: 'blur(12px)', cursor: 'pointer',
+        }}>
+         <it.Ic color="#0B0B12" size={18}/>
+        </button>
+       ))}
+       <div style={{ flex: 1 }}/>
+       <button style={{
+        height: 44, padding: '0 16px', borderRadius: 22, border: 0,
+        background: '#0B0B12', color: '#FFF',
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        fontSize: 14, fontWeight: 700, cursor: 'pointer',
+       }}>
+        <IconDownload color="#FFF" size={16}/>Download
+       </button>
+      </div>
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '6px 20px 14px' }}>
+     <div style={{ fontSize: 13, fontWeight: 700, color: c.ink, letterSpacing: 0.3,
+      textTransform: 'uppercase', marginBottom: 12 }}>
+      Variations
+     </div>
+     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+      {others.map((v, i) => (
+       <div key={v.id + i} style={{ position: 'relative', aspectRatio: '4/5',
+        borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
+        boxShadow: '0 4px 10px rgba(0,0,0,.08)' }}>
+        <img src={v.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+       </div>
+      ))}
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '6px 20px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+     <CFButton dark={dark} accent={accent} kind="accent" size="lg" full
+      icon={<IconRefresh color={a.ink} size={18}/>}>
+      Regenerate · 8 credits
+     </CFButton>
+     <CFButton dark={dark} accent={accent} kind="ghost" size="md" full
+      icon={<IconSliders color={c.ink} size={16}/>}>
+      Tweak inputs
+     </CFButton>
+    </div>
+   </CFBody>
+  </>
+ );
+}
+function CFProjects({ dark, accent }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ return (
+  <>
+   <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconSearch color={c.ink} size={20}/>
+    </button>
+    <div style={{ flex: 1 }}/>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconSliders color={c.ink} size={20}/>
+    </button>
+   </div>
+   <div style={{ padding: '8px 20px 16px' }}>
+    <div style={{ fontSize: 12, fontWeight: 700, color: c.inkMuted, letterSpacing: 0.5,
+     textTransform: 'uppercase', marginBottom: 6 }}>Library</div>
+    <h2 style={{ margin: 0, fontSize: 36, fontWeight: 700, color: c.ink,
+     letterSpacing: -1.2, lineHeight: 1, fontFamily: clickfyFontStack }}>
+     Your projects
+    </h2>
+    <div style={{ marginTop: 8, fontSize: 13, color: c.inkMuted }}>
+     {CLICKFY_PROJECTS.length} generations · 19 outputs total
+    </div>
+   </div>
+   <div style={{ padding: '0 20px 14px' }}>
+    <CFHRow pad={0} gap={8}>
+     {['All', 'Today', 'Saved', 'Sets', 'Videos'].map((f, i) => (
+      <CFPill key={f} dark={dark} accent={accent} active={i === 0}>{f}</CFPill>
+     ))}
+    </CFHRow>
+   </div>
+   <CFBody dark={dark}>
+    <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+     {CLICKFY_PROJECTS.map((p) => {
+      const tpl = cf_template(p.tplId);
+      return (
+       <div key={p.id} style={{
+        display: 'flex', alignItems: 'center', gap: 14,
+        padding: 12, borderRadius: 20,
+        background: c.surface, border: `1px solid ${c.border}`,
+       }}>
+        <div style={{ width: 64, height: 80, borderRadius: 14, overflow: 'hidden', position: 'relative',
+         flexShrink: 0 }}>
+         <img src={tpl.img} alt="" style={{ width:'100%', height:'100%', objectFit: 'cover' }}/>
+         {p.count > 1 && (
+          <div style={{ position: 'absolute', top: 4, right: 4,
+           padding: '2px 6px', borderRadius: 6,
+           background: 'rgba(11,11,18,.7)', backdropFilter: 'blur(6px)',
+           color: '#FFF', fontSize: 10.5, fontWeight: 700,
+           display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+           <IconLayers color="#FFF" size={10}/>{p.count}
+          </div>
+         )}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+         <div style={{ fontSize: 15, fontWeight: 700, color: c.ink,
+          letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden',
+          textOverflow: 'ellipsis' }}>{p.title}</div>
+         <div style={{ marginTop: 3, fontSize: 12.5, color: c.inkMuted,
+          display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>{tpl.title}</span>
+          <span style={{ width: 2, height: 2, borderRadius: '50%', background: c.inkMuted, opacity: .6 }}/>
+          <span>{p.when}</span>
+         </div>
+        </div>
+        <button style={{ width: 36, height: 36, borderRadius: 12, background: c.surfaceMuted,
+         border: 0, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+         <IconChevR color={c.inkMuted} size={16}/>
+        </button>
+       </div>
+      );
+     })}
+    </div>
+   </CFBody>
+   <CFBottomNav active="projects" dark={dark} accent={accent}/>
+  </>
+ );
+}
+function CFProfile({ dark, accent }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const tiers = [
+  { name: 'Free',     credits: 10,  price: '$0', cycle: '',         active: false, dim: true },
+  { name: 'Pro',      credits: 250, price: '$19',cycle: '/ month', active: true,  highlight: true },
+  { name: 'Ultimate', credits: 1500,price: '$59',cycle: '/ month', active: false },
+ ];
+ return (
+  <>
+   <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconChevL color={c.ink} size={20}/>
+    </button>
+    <button style={{ width: 44, height: 44, borderRadius: 14, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+     <IconBell color={c.ink} size={20}/>
+    </button>
+   </div>
+   <CFBody dark={dark}>
+    {}
+    <div style={{ padding: '6px 20px 22px', display: 'flex', alignItems: 'center', gap: 14 }}>
+     <div style={{ width: 64, height: 64, borderRadius: '50%',
+      background: `radial-gradient(circle at 30% 30%, ${a.solid}, ${a.deep})`,
+      display: 'grid', placeItems: 'center',
+      color: '#FFF', fontSize: 24, fontWeight: 700, letterSpacing: -0.5,
+      boxShadow: `0 10px 24px ${a.glow}` }}>SR</div>
+     <div style={{ flex: 1 }}>
+      <div style={{ fontSize: 19, fontWeight: 700, color: c.ink, letterSpacing: -0.4 }}>Sara Reyes</div>
+      <div style={{ fontSize: 13, color: c.inkMuted, marginTop: 2 }}>sara@studioforma.co</div>
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '0 20px 22px' }}>
+     <div style={{
+      position: 'relative', borderRadius: 26, overflow: 'hidden',
+      background: dark ? '#101019' : '#0B0B12', color: '#FFF',
+      padding: 22,
+     }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+       <div>
+        <div style={{ fontSize: 11.5, opacity: .6, fontWeight: 700,
+         letterSpacing: 0.5, textTransform: 'uppercase' }}>Credits left this cycle</div>
+        <div style={{ marginTop: 6, fontFamily: clickfyMonoStack,
+         fontSize: 56, fontWeight: 600, letterSpacing: -2, lineHeight: 1 }}>248</div>
+        <div style={{ fontSize: 12.5, opacity: .65, marginTop: 4 }}>of 250 · resets in 18 days</div>
+       </div>
+       <div style={{
+        width: 48, height: 48, borderRadius: 16,
+        background: a.solid, display: 'grid', placeItems: 'center',
+        boxShadow: `0 12px 24px ${a.glow}`,
+       }}>
+        <IconBolt color={a.ink} size={24} fill={a.ink}/>
+       </div>
+      </div>
+      {}
+      <div style={{ marginTop: 16, height: 6, borderRadius: 3,
+       background: 'rgba(255,255,255,.08)', overflow: 'hidden' }}>
+       <div style={{ height: '100%', width: '99%', borderRadius: 3,
+        background: `linear-gradient(90deg, ${a.solid}, ${a.deep})` }}/>
+      </div>
+      <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
+       <button style={{
+        flex: 1, height: 44, borderRadius: 14, border: 0,
+        background: a.solid, color: a.ink,
+        fontSize: 14, fontWeight: 700, cursor: 'pointer',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+       }}>
+        <IconPlus color={a.ink} size={16} strokeWidth={2.6}/>Top up
+       </button>
+       <button style={{
+        flex: 1, height: 44, borderRadius: 14, border: '1px solid rgba(255,255,255,.18)',
+        background: 'transparent', color: '#FFF',
+        fontSize: 14, fontWeight: 700, cursor: 'pointer',
+       }}>
+        Manage plan
+       </button>
+      </div>
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '0 20px 16px' }}>
+     <div style={{ fontSize: 13, fontWeight: 700, color: c.ink, letterSpacing: 0.3,
+      textTransform: 'uppercase', marginBottom: 12 }}>Plan</div>
+     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {tiers.map((tier) => (
+       <div key={tier.name} style={{
+        position: 'relative', padding: 16, borderRadius: 20,
+        background: tier.highlight ? c.ink : c.surface,
+        color: tier.highlight ? c.surface : c.ink,
+        border: tier.highlight ? 'none' : `1px solid ${c.border}`,
+        opacity: tier.dim ? 0.65 : 1,
+       }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>{tier.name}</div>
+          {tier.active && (
+           <span style={{ height: 22, padding: '0 8px', borderRadius: 11,
+            background: a.solid, color: a.ink, fontSize: 10.5, fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: 0.5,
+            display: 'inline-flex', alignItems: 'center' }}>Current</span>
+          )}
+         </div>
+         <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.4,
+          fontFamily: clickfyMonoStack }}>
+          {tier.price}<span style={{ fontSize: 12, opacity: .55, fontFamily: clickfyFontStack }}>{tier.cycle}</span>
+         </div>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 13, opacity: .7 }}>
+         {tier.credits} credits / month
+        </div>
+       </div>
+      ))}
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '14px 20px 20px' }}>
+     <div style={{ fontSize: 13, fontWeight: 700, color: c.ink, letterSpacing: 0.3,
+      textTransform: 'uppercase', marginBottom: 12 }}>Account</div>
+     <div style={{ borderRadius: 18, background: c.surface, border: `1px solid ${c.border}`, overflow: 'hidden' }}>
+      {[
+       { Ic: IconCard,    l: 'Billing & invoices', r: 'Visa · 4242' },
+       { Ic: IconGift,    l: 'Refer a friend',     r: '+50 cr each' },
+       { Ic: IconShield,  l: 'Privacy',            r: '' },
+       { Ic: IconHelp,    l: 'Help center',        r: '' },
+       { Ic: IconLogout,  l: 'Sign out',           r: '', last: true, danger: true },
+      ].map((row, i, arr) => (
+       <div key={i} style={{
+        display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
+        borderBottom: i < arr.length - 1 ? `1px solid ${c.border}` : 'none',
+        cursor: 'pointer',
+       }}>
+        <div style={{ width: 32, height: 32, borderRadius: 10, background: c.surfaceMuted,
+         display: 'grid', placeItems: 'center' }}>
+         <row.Ic color={row.danger ? '#FF5A3C' : c.ink} size={16}/>
+        </div>
+        <div style={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: row.danger ? '#FF5A3C' : c.ink,
+         letterSpacing: -0.2 }}>{row.l}</div>
+        {row.r && <div style={{ fontSize: 13, color: c.inkMuted }}>{row.r}</div>}
+        {!row.danger && <IconChevR color={c.inkSubtle} size={14}/>}
+       </div>
+      ))}
+     </div>
+    </div>
+   </CFBody>
+   <CFBottomNav active="me" dark={dark} accent={accent}/>
+  </>
+ );
+}
+function CFMenuDrawer({ dark, accent }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ return (
+  <div style={{ height: '100%', position: 'relative', background: 'rgba(11,11,18,.45)' }}>
+   {}
+   <div style={{ position: 'absolute', inset: 0,
+    backgroundImage: `url(${cf_img('1542291026-7eec264c27ff', 800)})`,
+    backgroundSize: 'cover', backgroundPosition: 'center',
+    opacity: 0.18, filter: 'blur(8px)' }}/>
+   <div style={{ position: 'absolute', inset: 0, background: 'rgba(11,11,18,.55)',
+    backdropFilter: 'blur(8px)' }}/>
+   {}
+   <div style={{
+    position: 'absolute', top: 0, bottom: 0, left: 0, width: 320,
+    background: c.bg, padding: '60px 20px 30px',
+    borderTopRightRadius: 28, borderBottomRightRadius: 28,
+    boxShadow: '14px 0 40px rgba(0,0,0,.25)',
+    display: 'flex', flexDirection: 'column',
+   }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+     marginBottom: 26 }}>
+     <ClickfyWordmark color={c.ink} accent={a.solid} size={22}/>
+     <button style={{ width: 36, height: 36, borderRadius: 12, background: c.surface,
+      border: `1px solid ${c.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+      <IconClose color={c.ink} size={16}/>
+     </button>
+    </div>
+    {}
+    <div style={{ padding: 14, borderRadius: 18, background: c.surface,
+     border: `1px solid ${c.border}`, marginBottom: 22, display: 'flex', alignItems: 'center', gap: 12 }}>
+     <div style={{ width: 44, height: 44, borderRadius: '50%',
+      background: `radial-gradient(circle at 30% 30%, ${a.solid}, ${a.deep})`,
+      color: '#FFF', display: 'grid', placeItems: 'center',
+      fontWeight: 700, fontSize: 16 }}>SR</div>
+     <div style={{ flex: 1 }}>
+      <div style={{ fontSize: 14.5, fontWeight: 700, color: c.ink, letterSpacing: -0.2 }}>Sara Reyes</div>
+      <div style={{ fontSize: 12, color: c.inkMuted, marginTop: 1 }}>Pro · 248 credits</div>
+     </div>
+    </div>
+    {}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+     {[
+      { Ic: IconCompass, l: 'Explore', on: true },
+      { Ic: IconGrid,    l: 'Categories' },
+      { Ic: IconFolder,  l: 'Projects' },
+      { Ic: IconBookmark,l: 'Saved templates' },
+      { Ic: IconBolt,    l: 'Buy credits' },
+      { Ic: IconGift,    l: 'Refer a friend' },
+      { Ic: IconBell,    l: 'Notifications' },
+      { Ic: IconSliders, l: 'Settings' },
+     ].map((row, i) => (
+      <div key={i} style={{
+       display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px',
+       borderRadius: 14,
+       background: row.on ? c.surface : 'transparent',
+       border: row.on ? `1px solid ${c.border}` : '1px solid transparent',
+       cursor: 'pointer',
+      }}>
+       <row.Ic color={row.on ? a.solid : c.ink} size={20} strokeWidth={row.on ? 2 : 1.6}/>
+       <div style={{ flex: 1, fontSize: 15, fontWeight: row.on ? 700 : 500,
+        color: c.ink, letterSpacing: -0.2 }}>{row.l}</div>
+      </div>
+     ))}
+    </div>
+    <div style={{ flex: 1 }}/>
+    {}
+    <div style={{ padding: 14, borderRadius: 16, background: c.surface,
+     border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+     <IconMoon color={c.ink} size={18}/>
+     <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: c.ink }}>Dark mode</div>
+     <div style={{ width: 36, height: 22, borderRadius: 11, background: dark ? a.solid : c.borderStrong,
+      position: 'relative', transition: 'background .2s' }}>
+      <div style={{ position: 'absolute', top: 2, left: dark ? 16 : 2,
+       width: 18, height: 18, borderRadius: '50%', background: '#FFF', transition: 'left .2s',
+       boxShadow: '0 1px 3px rgba(0,0,0,.2)' }}/>
+     </div>
+    </div>
+   </div>
+  </div>
+ );
+}
+Object.assign(window, {
+ CF_SCREEN_W, CF_SCREEN_H,
+ CFHome, CFCategoryDetail, CFTemplateDetail, CFUseTemplate,
+ CFGenerating, CFResults, CFProjects, CFProfile, CFMenuDrawer,
+});
+</script>
+<script type="text/babel" data-presets="env,react">
+const CFHomeStudio = (props) => <CFHome {...props}/>;
+function CFHomeEditorial({ dark, accent }) {
+ const c = cfTheme(dark);
+ const a = cfAccent(accent);
+ const cats = CLICKFY_CATEGORIES.filter((x) => x.id !== 'all').slice(0, 6);
+ const trending = CLICKFY_SECTIONS.trending.map(cf_template).filter(Boolean);
+ return (
+  <>
+   <CFTopBar dark={dark} accent={accent} credits={248} plan="Pro"/>
+   <CFBody dark={dark} padTop={4}>
+    {}
+    <div style={{ padding: '4px 22px 6px' }}>
+     <div style={{ fontSize: 11, color: c.inkMuted, fontWeight: 700,
+      letterSpacing: 1, textTransform: 'uppercase' }}>Issue 12 · May 2026</div>
+    </div>
+    <div style={{ padding: '0 22px 4px' }}>
+     <h1 style={{ margin: 0, fontFamily: clickfyDisplayStack, fontWeight: 400,
+      fontSize: 60, lineHeight: 0.95, letterSpacing: -2.4, color: c.ink }}>
+      Today, in <em style={{ color: a.solid, fontStyle: 'italic' }}>motion</em>.
+     </h1>
+     <p style={{ marginTop: 14, fontSize: 14.5, lineHeight: 1.55, color: c.inkMuted, maxWidth: 320 }}>
+      Hand-picked templates from our editors. Tap any cover to clone it for your brand.
+     </p>
+    </div>
+    {}
+    <div style={{ padding: '18px 22px 22px' }}>
+     <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+      paddingBottom: 12, borderBottom: `1px solid ${c.border}` }}>
+      <IconSearch color={c.inkMuted} size={18}/>
+      <span style={{ flex: 1, fontSize: 14.5, color: c.inkMuted }}>Search 12,400+ templates</span>
+      <span style={{ fontSize: 12, color: c.inkMuted, fontWeight: 600 }}>⌘ K</span>
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '0 22px 26px' }}>
+     <div style={{ position: 'relative', borderRadius: 4, overflow: 'hidden',
+      aspectRatio: '4/5' }}>
+      <img src={trending[0].img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+      <div style={{ position: 'absolute', inset: 0,
+       background: 'linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(0,0,0,.7) 100%)' }}/>
+      <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18, color: '#FFF' }}>
+       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6,
+        textTransform: 'uppercase', opacity: .8 }}>Cover · Trending</div>
+       <div style={{ fontFamily: clickfyDisplayStack, fontSize: 28, fontWeight: 400,
+        lineHeight: 1.05, letterSpacing: -0.6, marginTop: 6 }}>{trending[0].title}</div>
+       <div style={{ marginTop: 8, fontSize: 12.5, opacity: .85 }}>by {trending[0].by} · {trending[0].uses} uses</div>
+      </div>
+     </div>
+    </div>
+    {}
+    <div style={{ padding: '0 22px 24px' }}>
+     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
+      <h3 style={{ margin: 0, fontFamily: clickfyDisplayStack, fontSize: 26, fontWeight: 400,
+       letterSpacing: -0.6, color: c.ink }}>The Edit</h3>
+      <span style={{ fontSize: 12, color: c.inkMuted, fontWeight: 600 }}>05 picks →</span>
+     </div>
+     {trending.slice(1, 5).map((tpl, i) => (
+      <div key={tpl.id} style={{ display: 'flex', gap: 14, padding: '14px 0',
+       borderTop: i === 0 ? `1px solid ${c.border}` : 'none',
+       borderBottom: `1px solid ${c.border}` }}>
+       <div style={{ width: 88, height: 110, borderRadius: 4, overflow: 'hidden', flexShrink: 0 }}>
+        <img src={tpl.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+       </div>
+       <div style={{ flex: 1, paddingTop: 4 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: a.solid,
+         letterSpacing: 0.5, textTransform: 'uppercase' }}>{tpl.cat}</div>
+        <div style={{ marginTop: 4, fontFamily: clickfyDisplayStack, fontSize: 22,
+         fontWeight: 400, lineHeight: 1.05, letterSpacing: -0.4, color: c.ink }}>
+         {tpl.title}
+        </div>
+        <div style={{ marginTop: 6, fontSize: 12, color: c.inkMuted }}>
+         {tpl.uses} uses · {tpl.credits} credits
+        </div>
+       </div>
+      </div>
+     ))}
+    </div>
+    {}
+    <div style={{ padding: '0 22px 30px' }}>
+     <h3 style={{ margin: '0 0 14px', fontFamily: clickfyDisplayStack,
+      fontSize: 26, fontWeight: 400, letterSpacing: -0.6, color: c.ink }}>Departments</h3>
+     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      {cats.map((cat) => (
+       <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden',
+         background: cat.color }}>
+         <img src={cat.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+        </div>
+        <div>
+         <div style={{ fontSize: 14.5, fontWeight: 600, color: c.ink, letterSpacing: -0.2 }}>{cat.label}</div>
+         <div style={{ fontSize: 11.5, color: c.inkMuted, marginTop: 1 }}>
+          {CLICKFY_TEMPLATES.filter(t => t.cat === cat.id).length} templates
+         </div>
+        </div>
+       </div>
+      ))}
+     </div>
+    </div>
+   </CFBody>
+   <CFBottomNav active="explore" dark={dark} accent={accent}/>
+  </>
+ );
+}
+function CFHomeCinematic({ accent }) {
+ const dark = true;
+ const c = cfTheme(true);
+ const a = cfAccent(accent);
+ const trending = CLICKFY_SECTIONS.trending.map(cf_template).filter(Boolean);
+ const videos = CLICKFY_SECTIONS.videos.map(cf_template).filter(Boolean);
+ const cats = CLICKFY_CATEGORIES;
+ const [active, setActive] = React.useState('all');
+ return (
+  <div style={{ height: '100%', background: '#0A0A10', display: 'flex', flexDirection: 'column' }}>
+   {}
+   <div aria-hidden style={{ position: 'absolute', top: -120, left: -80, right: -80, height: 360,
+    background: `radial-gradient(circle at 50% 0%, ${a.solid}40, transparent 60%)`,
+    pointerEvents: 'none', zIndex: 0 }}/>
+   <div style={{ position: 'relative', zIndex: 1 }}>
+    <CFTopBar dark={true} accent={accent} credits={248} plan="Pro" transparent/>
+    <div style={{ padding: '4px 16px 14px' }}>
+     <CFSearchBar dark={true}/>
+    </div>
+   </div>
+   <CFBody dark={true} padTop={0}>
+    <div style={{ padding: '0 22px 18px' }}>
+     <div style={{ fontSize: 13, fontWeight: 700, color: a.solid, letterSpacing: 0.8,
+      textTransform: 'uppercase' }}>Welcome back, Sara</div>
+     <h1 style={{ margin: '8px 0 0', fontSize: 36, fontWeight: 700, letterSpacing: -1.2,
+      color: '#FFF', lineHeight: 1.05, fontFamily: clickfyFontStack }}>
+      What are we<br/>making today?
+     </h1>
+    </div>
+    {}
+    <div style={{ paddingBottom: 22 }}>
+     <CFHRow pad={20} gap={8}>
+      {cats.map((cat) => {
+       const on = active === cat.id;
+       return (
+        <button key={cat.id} onClick={() => setActive(cat.id)} style={{
+         height: 38, padding: '0 14px', borderRadius: 19,
+         border: `1px solid ${on ? a.solid : c.border}`,
+         background: on ? `${a.solid}25` : c.surface,
+         color: on ? '#FFF' : c.inkMuted,
+         fontSize: 13, fontWeight: 600, cursor: 'pointer',
+         display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0,
+         boxShadow: on ? `0 0 22px ${a.glow}` : 'none',
+        }}>
+         {cat.id !== 'all' && (
+          <span style={{ width: 18, height: 18, borderRadius: '50%', overflow: 'hidden', background: cat.color }}>
+           <img src={cat.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+          </span>
+         )}
+         {cat.label}
+        </button>
+       );
+      })}
+     </CFHRow>
+    </div>
+    {}
+    <div style={{ padding: '0 20px 24px' }}>
+     <div style={{ position: 'relative', borderRadius: 26, overflow: 'hidden',
+      aspectRatio: '4/5',
+      boxShadow: `0 18px 50px ${a.glow}, 0 0 0 1px ${c.border}` }}>
+      <img src={trending[0].img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+      <div style={{ position: 'absolute', inset: 0,
+       background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.85) 100%)' }}/>
+      <div style={{ position: 'absolute', left: 20, right: 20, bottom: 20 }}>
+       <span style={{ height: 26, padding: '0 10px', borderRadius: 13,
+        background: a.solid, color: a.ink, display: 'inline-flex', alignItems: 'center',
+        fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: a.ink, marginRight: 6,
+         animation: 'cf-blink 1s steps(2) infinite' }}/>
+        Trending #1
+       </span>
+       <div style={{ marginTop: 12, fontSize: 24, fontWeight: 700, letterSpacing: -0.6,
+        color: '#FFF', lineHeight: 1.1 }}>{trending[0].title}</div>
+       <div style={{ marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,.7)' }}>
+        {trending[0].uses} cloned this week · {trending[0].credits} credits
+       </div>
+      </div>
+     </div>
+    </div>
+    {}
+    <div style={{ marginBottom: 22 }}>
+     <CFSectionHeader title="Made for motion" subtitle="Short product videos" dark={true}/>
+     <CFHRow pad={20} gap={14}>
+      {videos.map((v) => (
+       <div key={v.id} style={{ width: 180, flexShrink: 0 }}>
+        <div style={{ position: 'relative', borderRadius: 18, overflow: 'hidden',
+         aspectRatio: '9/16',
+         boxShadow: `0 0 0 1px ${c.border}, 0 10px 24px rgba(0,0,0,.4)` }}>
+         <img src={v.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+         <div style={{ position: 'absolute', inset: 0,
+          background: 'linear-gradient(180deg, transparent 50%, rgba(0,0,0,.7) 100%)' }}/>
+         <div style={{ position: 'absolute', top: 10, left: 10,
+          width: 32, height: 32, borderRadius: '50%',
+          background: 'rgba(255,255,255,.92)',
+          display: 'grid', placeItems: 'center' }}>
+          <IconPlay color="#0B0B12" size={14}/>
+         </div>
+         <div style={{ position: 'absolute', left: 10, right: 10, bottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#FFF', letterSpacing: -0.2,
+           textShadow: '0 1px 8px rgba(0,0,0,.6)' }}>{v.title}</div>
+         </div>
+        </div>
+       </div>
+      ))}
+      <div style={{ width: 4, flexShrink: 0 }}/>
+     </CFHRow>
+    </div>
+    <div style={{ marginBottom: 24 }}>
+     <CFSectionHeader title="Picked for you" dark={true}/>
+     <div style={{ padding: '0 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      {trending.slice(1, 5).map((tpl) => (
+       <CFTemplateCard key={tpl.id} t={{ ...tpl, aspect: '4/5' }} dark={true} accent={accent}/>
+      ))}
+     </div>
+    </div>
+   </CFBody>
+   <CFBottomNav active="explore" dark={true} accent={accent}/>
+   <style>{`@keyframes cf-blink{50%{opacity:.4}}`}</style>
+  </div>
+ );
+}
+Object.assign(window, { CFHomeStudio, CFHomeEditorial, CFHomeCinematic });
+</script>
+<script type="text/babel" data-presets="env,react">
+const { FlexCanvas, FCSection, FCArtboard } = window;
+const DesignCanvas = FlexCanvas;
+const DCSection = FCSection;
+const DCArtboard = FCArtboard;
+const CFTW_DEFAULTS = {
+ "dark": true,
+ "accent": "violet",
+ "density": "regular",
+ "showVariants": true
+};
+function ClickfyApp() {
+ const [tw, setTweak] = useTweaks(CFTW_DEFAULTS);
+ const { dark, accent, density, showVariants } = tw;
+ React.useEffect(() => {
+  const bg = dark ? '#0B0B12' : '#DCD2F5';
+  document.documentElement.style.background = bg;
+  document.body.style.background = bg;
+ }, [dark]);
+ const ThemeToggleButton = (
+  <button
+   onClick={() => setTweak('dark', !dark)}
+   title={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+   style={{
+    position: 'fixed', top: 12, right: 12, zIndex: 9999,
+    height: 36, padding: '0 12px', borderRadius: 9999,
+    display: 'inline-flex', alignItems: 'center', gap: 8,
+    fontFamily: "'Bricolage Grotesque', system-ui, sans-serif",
+    fontSize: 13, fontWeight: 600, letterSpacing: 0.2,
+    color: dark ? '#0B0B12' : '#fff',
+    background: dark ? '#fff' : '#0B0B12',
+    border: dark ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.12)',
+    boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+    cursor: 'pointer',
+   }}>
+   <span style={{ fontSize: 14, lineHeight: 1 }}>{dark ? '☀' : '☾'}</span>
+   <span>{dark ? 'Light' : 'Dark'}</span>
+  </button>
+ );
+ const Frame = ({ children }) => (
+  <div style={{ display: 'grid', placeItems: 'center', padding: 18,
+   width: '100%', height: '100%' }}>
+   <IOSDevice width={CF_SCREEN_W} height={CF_SCREEN_H} dark={dark}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column',
+     paddingTop: 54, position: 'relative', background: cfTheme(dark).bg }}>
+     {children}
+    </div>
+   </IOSDevice>
+  </div>
+ );
+ const ABW = CF_SCREEN_W + 36;
+ const ABH = CF_SCREEN_H + 36;
+ return (
+  <>
+   {ThemeToggleButton}
+   <DesignCanvas dark={dark}>
+    <DCSection id="flow" title="Clickfy · Core flow"
+     subtitle="Discover → preview → fill → generate → review">
+     <DCArtboard id="home"      label="01 · Home"            width={ABW} height={ABH}>
+      <Frame><CFHome dark={dark} accent={accent} density={density}/></Frame>
+     </DCArtboard>
+     <DCArtboard id="category"  label="02 · Category"        width={ABW} height={ABH}>
+      <Frame><CFCategoryDetail dark={dark} accent={accent} catId="product"/></Frame>
+     </DCArtboard>
+     <DCArtboard id="detail"    label="03 · Template detail" width={ABW} height={ABH}>
+      <Frame><CFTemplateDetail dark={dark} accent={accent} tid="t4"/></Frame>
+     </DCArtboard>
+     <DCArtboard id="use"       label="04 · Use template"    width={ABW} height={ABH}>
+      <Frame><CFUseTemplate dark={dark} accent={accent} tid="t4"/></Frame>
+     </DCArtboard>
+     <DCArtboard id="generating" label="05 · Generating"     width={ABW} height={ABH}>
+      <Frame><CFGenerating dark={dark} accent={accent}/></Frame>
+     </DCArtboard>
+     <DCArtboard id="results"   label="06 · Results"         width={ABW} height={ABH}>
+      <Frame><CFResults dark={dark} accent={accent} tid="t4"/></Frame>
+     </DCArtboard>
+    </DCSection>
+    <DCSection id="account" title="Account & library"
+     subtitle="Where projects live, plan & credits, side menu">
+     <DCArtboard id="projects"  label="07 · Projects"        width={ABW} height={ABH}>
+      <Frame><CFProjects dark={dark} accent={accent}/></Frame>
+     </DCArtboard>
+     <DCArtboard id="profile"   label="08 · Profile + plan"  width={ABW} height={ABH}>
+      <Frame><CFProfile dark={dark} accent={accent}/></Frame>
+     </DCArtboard>
+     <DCArtboard id="menu"      label="09 · Side menu"       width={ABW} height={ABH}>
+      <Frame><CFMenuDrawer dark={dark} accent={accent}/></Frame>
+     </DCArtboard>
+    </DCSection>
+    {showVariants && (
+     <DCSection id="variants" title="Home — three directions"
+      subtitle="Pick a visual rhythm for the explore feed">
+      <DCArtboard id="v-studio"  label="A · Studio (current)" width={ABW} height={ABH}>
+       <Frame><CFHomeStudio dark={dark} accent={accent}/></Frame>
+      </DCArtboard>
+      <DCArtboard id="v-edito"   label="B · Editorial"        width={ABW} height={ABH}>
+       <Frame><CFHomeEditorial dark={dark} accent={accent}/></Frame>
+      </DCArtboard>
+      <DCArtboard id="v-cinema"  label="C · Cinematic dark"   width={ABW} height={ABH}>
+       <Frame><CFHomeCinematic accent={accent}/></Frame>
+      </DCArtboard>
+     </DCSection>
+    )}
+   </DesignCanvas>
+   {}
+   <TweaksPanel title="Tweaks">
+    <TweakSection title="Theme">
+     <TweakToggle label="Dark mode"
+      value={dark} onChange={(v) => setTweak('dark', v)}/>
+     <TweakColor label="Accent" value={accent}
+      options={[
+       { value: 'violet', color: '#6E3CFF' },
+       { value: 'amber',  color: '#F59022' },
+       { value: 'lime',   color: '#B2E63A' },
+       { value: 'rose',   color: '#FF4D87' },
+       { value: 'sky',    color: '#2A8DFF' },
+       { value: 'graphite', color: '#0B0B12' },
+      ].map(o => o.value)}
+      onChange={(v) => setTweak('accent', v)}/>
+    </TweakSection>
+    <TweakSection title="Layout">
+     <TweakRadio label="Density" value={density}
+      options={[
+       { value: 'regular', label: 'Regular' },
+       { value: 'compact', label: 'Compact' },
+      ]}
+      onChange={(v) => setTweak('density', v)}/>
+     <TweakToggle label="Show home variants section"
+      value={showVariants} onChange={(v) => setTweak('showVariants', v)}/>
+    </TweakSection>
+   </TweaksPanel>
+  </>
+ );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<ClickfyApp/>);
+</script>
+</body></html>

@@ -1,0 +1,25 @@
+{
+  "name": "@clickfy/jobs-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf .trigger dist .turbo"
+  },
+  "dependencies": {
+    "@clickfy/db": "workspace:*",
+    "@clickfy/providers": "workspace:*",
+    "@clickfy/types": "workspace:*",
+    "@trigger.dev/sdk": "^4.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@clickfy/tsconfig": "workspace:*",
+    "@types/node": "^22.10.5",
+    "trigger.dev": "^4.0.0",
+    "typescript": "^5.6.3"
+  }
+}

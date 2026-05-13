@@ -1,0 +1,22 @@
+# Local Workers dev secrets. Copy to `.dev.vars` and fill in.
+# Production secrets are set with `wrangler secret put <NAME>`.
+
+# Neon Postgres connection string. Get it from
+# https://console.neon.tech → your project → Connection Details.
+# Must include `?sslmode=require`.
+DATABASE_URL=
+
+# Clerk — get from https://dashboard.clerk.com → API Keys.
+# Publishable key is OPTIONAL on the server (only used by some helpers).
+CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+
+# Clerk "JWT public key" (PEM). Used for offline JWT verification
+# on the Worker (no network round-trip per request). Multi-line value
+# must be wrapped in double quotes.
+CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----
+...
+-----END PUBLIC KEY-----"
+
+# RevenueCat webhook signing secret. Filled when subscriptions go live.
+REVENUECAT_WEBHOOK_SECRET=

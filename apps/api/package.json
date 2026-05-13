@@ -1,0 +1,31 @@
+{
+  "name": "@clickfy/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "dev:bridge": "node ../../scripts/lan-bridge.mjs",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "clean": "rm -rf .wrangler dist .turbo"
+  },
+  "dependencies": {
+    "@clerk/backend": "^3.4.7",
+    "@clickfy/db": "workspace:*",
+    "@clickfy/providers": "workspace:*",
+    "@clickfy/types": "workspace:*",
+    "@hono/zod-validator": "^0.8.0",
+    "hono": "^4.6.14",
+    "svix": "^1.93.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@clickfy/tsconfig": "workspace:*",
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^4.0.0"
+  }
+}

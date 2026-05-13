@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1778586484622,
+      "tag": "0000_fine_mindworm",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779051600000,
+      "tag": "0001_template_kind_refactor",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779120000000,
+      "tag": "0002_user_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779638400000,
+      "tag": "0003_credit_ledger_note",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779710400000,
+      "tag": "0004_saved_templates",
+      "breakpoints": true
+    }
+  ]
+}

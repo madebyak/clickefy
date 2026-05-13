@@ -1,0 +1,23 @@
+{
+  "name": "@clickfy/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mock": "./src/clients/mock.ts",
+    "./http": "./src/clients/http.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clickfy/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@clickfy/tsconfig": "workspace:*",
+    "typescript": "~5.9.2"
+  }
+}

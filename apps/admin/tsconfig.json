@@ -1,0 +1,22 @@
+{
+  "extends": "@clickfy/tsconfig/nextjs.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "noUncheckedIndexedAccess": false,
+    "verbatimModuleSyntax": false,
+    "paths": {
+      "@/*": ["./*"],
+      "@clickfy/types": ["../../packages/types/src/index.ts"],
+      "@clickfy/types/*": ["../../packages/types/src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules", ".next", ".turbo"]
+}

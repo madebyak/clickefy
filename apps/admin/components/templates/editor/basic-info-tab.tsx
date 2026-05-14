@@ -527,7 +527,7 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
                 </>
               ) : template.coverMedia ? (
                 <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  { }
                   <img
                     src={mediaPreviewUrl(template.coverMedia)}
                     alt="Cover"
@@ -697,7 +697,7 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
                 key={`${item.r2Key}-${idx}`}
                 className="relative aspect-square rounded-lg overflow-hidden border bg-muted/20 group"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                { }
                 <img
                   src={mediaPreviewUrl(item)}
                   alt={`Gallery ${idx + 1}`}

@@ -126,11 +126,12 @@ export function CategoryTree({
               key={category.id}
               category={category}
               isExpanded={expandedIds.has(category.id)}
-              children={getChildren(category.id)}
               onToggleExpand={() => toggleExpand(category.id)}
               onEdit={onEdit}
               onDelete={onDelete}
-            />
+            >
+              {getChildren(category.id)}
+            </SortableRow>
           ))}
         </div>
       </SortableContext>
@@ -295,7 +296,7 @@ function CategoryRow({
 
         <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-md bg-muted">
           {category.iconUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
+             
             <img
               src={category.iconUrl}
               alt=""

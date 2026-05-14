@@ -486,7 +486,7 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                         key={ref.id}
                                         className="flex items-start gap-3 p-3 rounded-lg border bg-muted/20"
                                       >
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        { }
                                         <img
                                           src={referencePreviewUrl(ref)}
                                           alt={ref.label || 'Reference'}

@@ -9,7 +9,7 @@ import {
 } from '@clickfy/ui';
 import type { GenerationProgress } from '@clickfy/sdk';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';

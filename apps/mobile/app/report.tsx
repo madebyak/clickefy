@@ -150,7 +150,7 @@ export default function ReportScreen() {
               Report content
             </Text>
             <Text variant="title" color="ink">
-              What's wrong with this?
+              What&apos;s wrong with this?
             </Text>
             <Text variant="caption" color="inkMuted">
               Reports are anonymous to the creator. A human reviewer looks at every flagged item.

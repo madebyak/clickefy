@@ -10,6 +10,7 @@ import {
   Users,
   Briefcase,
   BarChart3,
+  Bell,
   Settings,
   Sparkles,
 } from 'lucide-react';
@@ -58,6 +59,11 @@ const navItems = [
     title: 'Reports',
     href: '/admin/reports',
     icon: Flag,
+  },
+  {
+    title: 'Push',
+    href: '/admin/push',
+    icon: Bell,
   },
   {
     title: 'Analytics',

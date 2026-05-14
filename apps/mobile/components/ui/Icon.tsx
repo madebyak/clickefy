@@ -35,7 +35,6 @@ import {
   Envelope,
   EyeSlash,
   Eye,
-  FilmStrip,
   Flag,
   FolderSimple,
   Funnel,

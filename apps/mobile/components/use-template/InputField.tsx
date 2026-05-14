@@ -1,4 +1,4 @@
-import { Box, Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
+import { Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import type { TemplateInput } from '@clickfy/types';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -109,7 +109,7 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const userInputs = template.userInputs || [];
+  const userInputs = useMemo(() => template.userInputs || [], [template.userInputs]);
   const stages = template.generation?.stages || [];
   const hasRequiredInputs = userInputs.filter((i) => i.required).every((i) => testInputs[i.fieldKey]?.value);
   const hasStages = stages.length > 0;
@@ -172,6 +172,42 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
       delete next[fieldKey];
       return next;
     });
+  };
+
+  // Declared before `runStage` so the closure reference inside the
+  // `useCallback` body has a stable binding from the first render —
+  // hoisting also satisfies `react-hooks/immutability` which (rightly)
+  // complains about a `let`/`const` accessed before its declaration.
+  const pollForCompletion = async (
+    taskId: string,
+    provider: string,
+    variant: string,
+  ): Promise<StageOutput[]> => {
+    const maxAttempts = 60;
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
+      const response = await fetch(
+        `/api/generate/status?taskId=${encodeURIComponent(taskId)}&provider=${encodeURIComponent(provider)}&variant=${encodeURIComponent(variant)}`,
+      );
+      const data = await response.json();
+
+      if (data.status === 'completed' && data.outputs) {
+        return data.outputs.map(
+          (output: { type: string; url?: string; durationSec?: number }) => ({
+            type: output.type,
+            url: output.url,
+            durationSec: output.durationSec,
+          }),
+        );
+      }
+
+      if (data.error) {
+        throw new Error(data.error.message ?? 'Video generation failed');
+      }
+    }
+
+    throw new Error('Video generation timed out');
   };
 
   const runStage = useCallback(
@@ -268,38 +304,6 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
     },
     [testInputs, userInputs]
   );
-
-  const pollForCompletion = async (
-    taskId: string,
-    provider: string,
-    variant: string,
-  ): Promise<StageOutput[]> => {
-    const maxAttempts = 60;
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-
-      const response = await fetch(
-        `/api/generate/status?taskId=${encodeURIComponent(taskId)}&provider=${encodeURIComponent(provider)}&variant=${encodeURIComponent(variant)}`,
-      );
-      const data = await response.json();
-
-      if (data.status === 'completed' && data.outputs) {
-        return data.outputs.map(
-          (output: { type: string; url?: string; durationSec?: number }) => ({
-            type: output.type,
-            url: output.url,
-            durationSec: output.durationSec,
-          }),
-        );
-      }
-
-      if (data.error) {
-        throw new Error(data.error.message ?? 'Video generation failed');
-      }
-    }
-
-    throw new Error('Video generation timed out');
-  };
 
   const handleRunTest = async () => {
     const runId = `run-${Date.now()}`;

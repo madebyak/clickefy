@@ -16,7 +16,7 @@ import { useSignUp } from '@clerk/expo/legacy';
 import { isClerkAPIResponseError } from '@clerk/react/errors';
 import { Button, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
-import Checkbox from 'expo-checkbox';
+import { Checkbox } from 'expo-checkbox';
 import { useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
 import {

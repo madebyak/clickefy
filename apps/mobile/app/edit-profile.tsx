@@ -37,7 +37,7 @@ import { useSession } from '@/lib/use-session';
 
 type Locale = 'en' | 'ar';
 
-const LOCALE_OPTIONS: Array<{ value: Locale; label: string; native: string }> = [
+const LOCALE_OPTIONS: { value: Locale; label: string; native: string }[] = [
   { value: 'en', label: 'English', native: 'EN' },
   { value: 'ar', label: 'العربية', native: 'AR' },
 ];

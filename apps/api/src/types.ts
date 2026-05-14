@@ -33,6 +33,15 @@ export interface Bindings {
    */
   SENTRY_DSN?: string;
 
+  // ─── Expo push notifications ──────────────────────────────────
+  /**
+   * Optional access token from https://expo.dev/accounts/<you>/settings/access-tokens.
+   * When set, the push API exempts us from anonymous rate limits and
+   * the project is attributed in Expo's dashboard. Sends still work
+   * without it — useful for local dev.
+   */
+  EXPO_ACCESS_TOKEN?: string;
+
   // ─── Job orchestration (Trigger.dev) ──────────────────────────
   /**
    * API key used to fire generation runs against the Trigger.dev

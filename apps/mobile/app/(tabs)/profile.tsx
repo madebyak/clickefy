@@ -1,7 +1,6 @@
 import {
   Avatar,
   Badge,
-  Box,
   Button,
   Card,
   Chip,
@@ -16,15 +15,14 @@ import {
   type AccentKey,
 } from '@clickfy/ui';
 import { useRouter } from 'expo-router';
+import { Alert, ScrollView, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/ui/Icon';
-import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/lib/use-appearance';
 import { LEGAL_DOCS, LEGAL_DOC_ORDER } from '@/lib/legal-content';
 import { useSession } from '@/lib/use-session';
-import { Alert } from 'react-native';
 
 const ACCENT_OPTIONS: AccentKey[] = ['violet', 'coral', 'citrus', 'ocean'];
 

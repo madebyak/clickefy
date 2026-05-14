@@ -16,6 +16,7 @@ export * from './json-types';
 export * from './admin-audit-log';
 export * from './categories';
 export * from './credit-ledger';
+export * from './device-tokens';
 export * from './jobs';
 export * from './provider-models';
 export * from './reports';

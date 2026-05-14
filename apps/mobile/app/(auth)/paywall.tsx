@@ -1,4 +1,4 @@
-import { Box, Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
+import { Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -45,7 +45,7 @@ const PLANS: Plan[] = [
   },
 ];
 
-const PERKS: Array<{ icon: IconName; title: string; subtitle: string }> = [
+const PERKS: { icon: IconName; title: string; subtitle: string }[] = [
   { icon: 'wand', title: 'Unlimited templates', subtitle: 'Every studio + premium template' },
   { icon: 'video', title: 'Video generations', subtitle: '4K motion clips up to 8s' },
   { icon: 'imageStack', title: 'Multi-image sets', subtitle: 'Carousels & lookbooks in one tap' },

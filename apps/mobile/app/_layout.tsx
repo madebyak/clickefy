@@ -1,6 +1,7 @@
 import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import * as Sentry from '@sentry/react-native';
+import * as Notifications from 'expo-notifications';
 import { Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold } from '@expo-google-fonts/geist';
 import { GeistMono_500Medium, GeistMono_600SemiBold, GeistMono_700Bold } from '@expo-google-fonts/geist-mono';
 import { InstrumentSerif_400Regular, InstrumentSerif_400Regular_Italic } from '@expo-google-fonts/instrument-serif';
@@ -9,7 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@clickfy/ui';
 import { useFonts } from 'expo-font';
 import { requireOptionalNativeModule } from 'expo-modules-core';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -128,6 +129,25 @@ function RootLayout() {
       }),
     [],
   );
+
+  // Notification deep-link handler. When the user taps a push, we
+  // read the `data` payload the backend sent and route accordingly.
+  // The Expo router is mounted by the time this layout runs, so
+  // calling `router.push` here is safe.
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as
+        | { type?: string; jobId?: string }
+        | undefined;
+      if (!data) return;
+      if (data.type === 'job_completed' && typeof data.jobId === 'string') {
+        router.push(`/result/${data.jobId}`);
+      } else if (data.type === 'job_failed' && typeof data.jobId === 'string') {
+        router.push(`/result/${data.jobId}`);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {

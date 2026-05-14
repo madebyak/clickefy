@@ -29,6 +29,8 @@ import {
 } from '@clickfy/types';
 import { useCallback, useEffect } from 'react';
 
+import { registerForPushNotificationsAsync } from './push-notifications';
+
 import { config } from './config';
 
 export interface SessionUser {
@@ -78,6 +80,25 @@ export function useSession() {
       Sentry.setUser(null);
     }
   }, [clerkLoaded, isSignedIn, clerkUser?.id]);
+
+  // Register this device for push notifications once we have an
+  // authenticated session. Idempotent — the backend upserts by token
+  // so calling on every cold start is safe. We deliberately do NOT
+  // block the sign-in flow on the result; a denied permission, an
+  // emulator, or a network blip should never prevent the user from
+  // continuing into the app.
+  useEffect(() => {
+    if (!isSignedIn || !clerkUser?.id) return;
+    void registerForPushNotificationsAsync(async () => getToken()).then((result) => {
+      if (result.token) {
+        console.log('[push] registered', result.token.slice(0, 24) + '...');
+      } else if (result.reason && result.reason !== 'simulator') {
+        // 'simulator' is the expected outcome on iOS Sim / Android
+        // Emulator and not worth surfacing as a warning.
+        console.log('[push] register skipped:', result.reason);
+      }
+    });
+  }, [isSignedIn, clerkUser?.id, getToken]);
 
   const meQuery = useQuery({
     queryKey: ME_QUERY_KEY,

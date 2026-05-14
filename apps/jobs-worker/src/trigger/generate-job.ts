@@ -59,6 +59,7 @@ import { env } from '../env';
 import { getDb } from '../lib/db';
 import { resolveJobInputs } from '../lib/input-resolver';
 import { reportStage, updateJobProgress } from '../lib/progress';
+import { pushUser } from '../lib/push';
 import { writeOutputObject } from '../lib/r2';
 import { isRefundable, refundForJob } from '../lib/refund';
 
@@ -347,6 +348,23 @@ export const generateJob = task({
       .where(eq(jobs.id, jobId));
 
     logger.info('generate-job:done', { jobId, durationMs, outputCount: userVisibleKeys.length });
+
+    // Ping the user that the generation is ready. Fire-and-forget —
+    // a push failure must not flip a completed job's status. Done
+    // here (rather than in a trailing cron) so the user sees the
+    // notification within seconds of the last R2 PUT landing.
+    void pushUser({
+      userId: jobRow.userId,
+      title: 'Your creation is ready',
+      body:
+        template.title.length > 0
+          ? `${template.title} is done. Tap to view.`
+          : 'Tap to view your latest generation.',
+      // Payload the mobile handler uses to deep-link straight into
+      // the result screen instead of the home tab.
+      data: { type: 'job_completed', jobId },
+    });
+
     return { status: 'completed' as const, durationMs, outputs: userVisibleKeys.length };
   },
 });
@@ -456,19 +474,21 @@ function errorToMessage(err: unknown): string {
 }
 
 async function failJob(jobId: string, error: JobError): Promise<{ status: 'failed'; error: JobError }> {
-  await getDb()
+  const [row] = await getDb()
     .update(jobs)
     .set({
       status: 'failed',
       error,
       completedAt: new Date(),
     })
-    .where(eq(jobs.id, jobId));
+    .where(eq(jobs.id, jobId))
+    .returning();
 
   // Refund credits for infra-class failures only. User-fault codes
   // (bad inputs, unknown_model) stay debited so the user has to
   // correct their submission rather than retrying for free.
-  if (isRefundable(error.code)) {
+  const refunded = isRefundable(error.code);
+  if (refunded) {
     try {
       await refundForJob(jobId);
     } catch (refundErr) {
@@ -480,6 +500,22 @@ async function failJob(jobId: string, error: JobError): Promise<{ status: 'faile
         err: String(refundErr),
       });
     }
+  }
+
+  // Push the user about the failure too — silent failures (job
+  // sitting in "failed" forever with no notification) are the worst
+  // possible UX. Copy is intentionally generic: we don't surface the
+  // internal error code, and the deep-link sends them to the result
+  // screen where they can hit "Try again".
+  if (row?.userId) {
+    void pushUser({
+      userId: row.userId,
+      title: 'Generation didn’t complete',
+      body: refunded
+        ? 'Something went wrong on our end — your credits were refunded.'
+        : 'Something went wrong. Tap to see what happened.',
+      data: { type: 'job_failed', jobId, refunded },
+    });
   }
 
   return { status: 'failed', error };

@@ -16,6 +16,7 @@
  * PEM in `CLERK_JWT_KEY`, so no network round-trip per request.
  */
 
+import * as Sentry from '@sentry/cloudflare';
 import { createMiddleware } from 'hono/factory';
 import { verifyToken } from '@clerk/backend';
 import { eq } from 'drizzle-orm';
@@ -144,6 +145,7 @@ export function withCurrentUser() {
         .catch((err) => console.error('users.lastSeenAt update failed', err));
 
       c.set('user', existing);
+      tagSentryUser(existing.id, clerkUserId);
       return next();
     }
 
@@ -168,8 +170,24 @@ export function withCurrentUser() {
     }
 
     c.set('user', created);
+    tagSentryUser(created.id, clerkUserId);
     return next();
   });
+}
+
+/**
+ * Attach the resolved user id to the current Sentry scope so any
+ * exception captured downstream is tagged with them. We pass the
+ * internal `users.id` UUID (not the Clerk id) because that's the
+ * stable identifier across services. Wrapped in a try/catch so a
+ * Sentry-side failure can never break an authenticated request.
+ */
+function tagSentryUser(userId: string, clerkUserId: string) {
+  try {
+    Sentry.setUser({ id: userId, username: clerkUserId });
+  } catch {
+    // no-op: Sentry not initialised (local dev w/o DSN).
+  }
 }
 
 /**

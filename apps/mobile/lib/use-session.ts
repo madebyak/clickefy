@@ -18,6 +18,7 @@
  */
 
 import { useAuth, useUser } from '@clerk/expo';
+import * as Sentry from '@sentry/react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DEFAULT_USER_PREFERENCES,
@@ -26,7 +27,7 @@ import {
   type UpdateProfileInput,
   type UserPreferences,
 } from '@clickfy/types';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 import { config } from './config';
 
@@ -66,6 +67,17 @@ export function useSession() {
   const { isLoaded: clerkLoaded, isSignedIn, getToken, signOut } = useAuth();
   const { user: clerkUser } = useUser();
   const queryClient = useQueryClient();
+
+  // Mirror the Clerk user id into Sentry's user scope so any captured
+  // exception is automatically tagged. Cleared on sign-out so we don't
+  // mis-attribute errors after a user signs out on a shared device.
+  useEffect(() => {
+    if (isSignedIn && clerkUser?.id) {
+      Sentry.setUser({ id: clerkUser.id });
+    } else if (clerkLoaded && !isSignedIn) {
+      Sentry.setUser(null);
+    }
+  }, [clerkLoaded, isSignedIn, clerkUser?.id]);
 
   const meQuery = useQuery({
     queryKey: ME_QUERY_KEY,

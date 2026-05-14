@@ -1,5 +1,6 @@
 import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
+import * as Sentry from '@sentry/react-native';
 import { Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold } from '@expo-google-fonts/geist';
 import { GeistMono_500Medium, GeistMono_600SemiBold, GeistMono_700Bold } from '@expo-google-fonts/geist-mono';
 import { InstrumentSerif_400Regular, InstrumentSerif_400Regular_Italic } from '@expo-google-fonts/instrument-serif';
@@ -27,6 +28,31 @@ if (!CLERK_PUBLISHABLE_KEY) {
   throw new Error(
     'Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Add it to apps/mobile/.env',
   );
+}
+
+/**
+ * Initialise Sentry before any other side-effect so it can catch
+ * startup errors (font loading, ClerkProvider boot, etc.). DSNs are
+ * not secrets — they're rate-limited public identifiers — so embedding
+ * the value via an `EXPO_PUBLIC_*` env var is the recommended pattern.
+ *
+ * In Expo Go this captures JS-level exceptions only; native crash
+ * handlers require a development build / EAS Build. That's fine for
+ * the current phase (TestFlight on Expo Go) — JS errors are the bulk
+ * of what we ship today.
+ */
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    // Lower sample rate in production to keep costs predictable. Adjust
+    // upward if we ever need higher-fidelity perf traces.
+    tracesSampleRate: __DEV__ ? 1.0 : 0.2,
+    // Captures the first error before the JS bundle finishes loading.
+    enableNativeCrashHandling: true,
+    // Helpful in TestFlight where we want to differentiate dev/staging.
+    environment: __DEV__ ? 'development' : 'production',
+  });
 }
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -75,7 +101,7 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-export default function RootLayout() {
+function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Geist_400Regular,
     Geist_500Medium,
@@ -122,7 +148,18 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <ThemeProvider defaultMode="system" defaultAccentKey="violet">
               <ThemedShell>
-              <ErrorBoundary FallbackComponent={ErrorFallback} onError={(err) => console.error('[ErrorBoundary]', err)}>
+              <ErrorBoundary
+                FallbackComponent={ErrorFallback}
+                onError={(err, info) => {
+                  console.error('[ErrorBoundary]', err);
+                  // Forward to Sentry with the React component stack
+                  // attached as context — that's what makes the issue
+                  // navigable in the dashboard.
+                  Sentry.captureException(err, {
+                    contexts: { react: { componentStack: info.componentStack } },
+                  });
+                }}
+              >
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
@@ -184,6 +221,15 @@ export default function RootLayout() {
     </ClerkProvider>
   );
 }
+
+/**
+ * Wrap the root component with Sentry so it can auto-instrument the
+ * React tree (touchables, navigation transitions, slow renders). This
+ * is the post-v5 replacement for the older `Sentry.wrap(App)` helper
+ * and is the only call you need at the entry point — everything else
+ * is handled by the JS init + native config plugin in `app.json`.
+ */
+export default Sentry.wrap(RootLayout);
 
 /**
  * Hands Clerk's `getToken()` to the module-scoped SDK so authenticated

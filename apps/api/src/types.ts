@@ -25,6 +25,14 @@ export interface Bindings {
   // ─── Payments ─────────────────────────────────────────────────
   REVENUECAT_WEBHOOK_SECRET?: string;
 
+  // ─── Observability (Sentry) ───────────────────────────────────
+  /**
+   * Sentry DSN for the API Worker project (one per environment). When
+   * unset, `Sentry.withSentry` becomes a no-op wrapper — useful in
+   * local dev where you don't want the noise.
+   */
+  SENTRY_DSN?: string;
+
   // ─── Job orchestration (Trigger.dev) ──────────────────────────
   /**
    * API key used to fire generation runs against the Trigger.dev

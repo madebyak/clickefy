@@ -13,6 +13,7 @@
     "@clickfy/db": "workspace:*",
     "@clickfy/providers": "workspace:*",
     "@clickfy/types": "workspace:*",
+    "@sentry/node": "^10.53.1",
     "@trigger.dev/sdk": "^4.0.0",
     "zod": "^3.25.76"
   },

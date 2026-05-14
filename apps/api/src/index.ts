@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
@@ -17,7 +18,7 @@ import { usersRoute } from './routes/users';
 import { outputsRoute } from './routes/outputs';
 import { uploadsAdminRoute, uploadsPublicRoute, uploadsUserRoute } from './routes/uploads';
 import { clerkWebhookRoute } from './routes/webhooks/clerk';
-import type { AppEnv } from './types';
+import type { AppEnv, Bindings } from './types';
 
 const app = new Hono<AppEnv>();
 
@@ -76,6 +77,20 @@ app.notFound((c) =>
 );
 
 app.onError((err, c) => {
+  // Surface to Sentry. `withSentry` would catch *uncaught* errors, but
+  // Hono's `onError` rescues them first and returns a 500 JSON body, so
+  // we forward explicitly. Tag the user when known so the issue page
+  // can show who tripped it.
+  const clerkUserId = c.get('clerkUserId');
+  if (clerkUserId) {
+    Sentry.setUser({ id: clerkUserId });
+  }
+  Sentry.captureException(err, {
+    tags: {
+      route: c.req.path,
+      method: c.req.method,
+    },
+  });
   console.error('Unhandled error:', err);
   return c.json(
     { error: { code: 'internal_error', message: err.message ?? 'Something went wrong' } },
@@ -83,4 +98,32 @@ app.onError((err, c) => {
   );
 });
 
-export default app;
+/**
+ * Wrap the Hono handler with Sentry's Cloudflare SDK so the Worker
+ * lifecycle (fetch, scheduled, queue) gets automatic error capture and
+ * tracing. `withSentry` runs *before* any of our middleware, so it sees
+ * every request — including ones rejected by CORS or rate limiting.
+ *
+ * The DSN is sourced from the `SENTRY_DSN` Worker secret. When unset
+ * (e.g. local dev with `pnpm dev`), the wrapper short-circuits to a
+ * no-op so you don't pollute the dashboard with test traffic.
+ *
+ * `tracesSampleRate: 0.1` keeps traces cheap while still giving us a
+ * representative sample of real production latency.
+ */
+const handler = {
+  fetch: (request, env, ctx) => app.fetch(request, env, ctx),
+} satisfies ExportedHandler<Bindings>;
+
+export default Sentry.withSentry(
+  (env: Bindings) => ({
+    dsn: env.SENTRY_DSN,
+    environment: env.ENVIRONMENT,
+    // We tag users manually from withCurrentUser; IPs add little signal
+    // for a JSON API and put us closer to PII regulations than we want
+    // to be by default.
+    sendDefaultPii: false,
+    tracesSampleRate: env.ENVIRONMENT === 'production' ? 0.1 : 1.0,
+  }),
+  handler,
+);

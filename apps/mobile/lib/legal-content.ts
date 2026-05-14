@@ -10,12 +10,19 @@
  *     change is a normal PR diff. We bump `EFFECTIVE_DATE` whenever
  *     the substance changes.
  *
- * IMPORTANT: This is a baseline, App Store-survivable legal pack.
- * Before launch the customer should have an attorney review and
- * customise the entity name, address, governing law, and any
- * jurisdiction-specific clauses (CCPA / GDPR / Saudi PDPL etc.).
- * Placeholder strings are marked with `[COMPANY]` and `[CONTACT_EMAIL]`
- * so a single find-and-replace finalises the document.
+ * IMPORTANT: This is a baseline, App Store-survivable legal pack
+ * authored for a UAE-registered operator. Governing law is the
+ * United Arab Emirates and the doc references the relevant UAE
+ * statutes (PDPL 2021, Consumer Protection Law 2020, Copyright Law
+ * 2021, Cybercrime Law 2021). Before launch a UAE-qualified attorney
+ * should review and customise the entity name, address, registered
+ * emirate, and any optional clauses (DIFC vs onshore courts, ADGM,
+ * cross-border transfer mechanisms, etc.). The placeholder strings
+ * below are designed to be replaced via a single search:
+ *
+ *   [COMPANY]         → full registered legal name
+ *   [CONTACT_EMAIL]   → support / legal contact (e.g. legal@clickefy.ai)
+ *   [EMIRATE_COURTS]  → e.g. "Courts of Dubai" or "DIFC Courts"
  *
  * Slugs map 1:1 to mobile route params: /legal/terms, /legal/privacy, etc.
  */
@@ -47,6 +54,7 @@ export interface LegalDoc {
 
 const COMPANY = '[COMPANY]';
 const CONTACT = '[CONTACT_EMAIL]';
+const COURTS = '[EMIRATE_COURTS]';
 
 const TERMS: LegalDoc = {
   slug: 'terms',
@@ -74,13 +82,13 @@ const TERMS: LegalDoc = {
       paragraphs: [
         'Clickefy operates on a credit system. Credits are consumed when you generate content. Subscription plans grant a recurring monthly credit allotment. One-time top-ups never expire.',
         'Credit costs per generation are displayed before you confirm a job. Once a generation begins, credits are typically non-refundable. If a generation fails for a reason on our side (provider outage, internal error), the credits are automatically refunded to your balance.',
-        'Subscriptions auto-renew through the App Store or Google Play. You can cancel anytime through the platform\u2019s subscription settings; cancellation takes effect at the end of the current billing period. We do not offer pro-rated refunds for unused time, but you keep the credits already granted until they are spent.',
+        'Subscriptions auto-renew through the App Store or Google Play. You can cancel anytime through the platform\u2019s subscription settings; cancellation takes effect at the end of the current billing period. We do not offer pro-rated refunds for unused time, but you keep the credits already granted until they are spent. Nothing in this clause limits any non-waivable right you may have under UAE Federal Law No. 15 of 2020 on Consumer Protection or any equivalent law in your country of residence.',
       ],
     },
     {
       heading: '4. Acceptable use',
       paragraphs: [
-        'You agree NOT to use Clickefy to create or distribute content that: (a) depicts minors in any sexual or suggestive context; (b) targets a real person in a sexual, defamatory, harassing, or non-consensual way; (c) incites violence or hatred toward an individual or group; (d) infringes someone else\u2019s copyright, trademark, or right of publicity; (e) violates any applicable law in your jurisdiction.',
+        'You agree NOT to use Clickefy to create or distribute content that: (a) depicts minors in any sexual or suggestive context; (b) targets a real person in a sexual, defamatory, harassing, or non-consensual way; (c) incites violence or hatred toward an individual or group; (d) infringes someone else\u2019s copyright, trademark, or right of publicity; (e) violates the UAE Federal Decree-Law No. 34 of 2021 on Combating Rumours and Cybercrimes, the UAE\u2019s public-decency standards, or any other applicable law in the country where you live or use the App.',
         'Detailed examples and definitions live in our Content Policy.',
         'We may remove content and suspend accounts that violate these rules, with or without notice. Egregious violations (e.g. CSAM) are escalated to law-enforcement reporting bodies as required by law.',
       ],
@@ -115,7 +123,8 @@ const TERMS: LegalDoc = {
     {
       heading: '9. Governing law and disputes',
       paragraphs: [
-        'These Terms are governed by the laws of [JURISDICTION]. You agree that any dispute will be resolved in the courts of [JURISDICTION], unless mandatory consumer-protection law in your country requires otherwise.',
+        `These Terms are governed by, and construed in accordance with, the federal laws of the United Arab Emirates and the applicable laws of the Emirate in which ${COMPANY} is registered. Any dispute arising out of or in connection with these Terms will be submitted to the exclusive jurisdiction of the ${COURTS}.`,
+        'If you are a consumer resident outside the UAE, nothing in these Terms removes any mandatory consumer-protection right you have under the law of your country of residence.',
       ],
     },
     {
@@ -169,7 +178,7 @@ const PRIVACY: LegalDoc = {
     {
       heading: '4. International transfers',
       paragraphs: [
-        'Our infrastructure runs on globally-distributed networks (Cloudflare\u2019s edge, Neon\u2019s US/EU regions). Your data may be processed in countries other than where you live. We rely on standard contractual clauses or equivalent safeguards where required.',
+        'Our infrastructure runs on globally-distributed networks (Cloudflare\u2019s edge, Neon\u2019s US/EU regions). Your data may be processed in countries other than the United Arab Emirates. For transfers regulated by the UAE PDPL we rely on the cross-border transfer mechanisms permitted by Article 22 of the PDPL (transfers to jurisdictions with an adequate level of protection, transfers under standard contractual safeguards, or transfers based on your explicit consent). For EU/UK transfers we use the European Commission\u2019s Standard Contractual Clauses or an equivalent safeguard.',
       ],
     },
     {
@@ -183,10 +192,10 @@ const PRIVACY: LegalDoc = {
     {
       heading: '6. Your rights',
       paragraphs: [
-        'Depending on where you live, you may have the right to access, correct, delete, or export your personal data, and to object to certain processing.',
-        'You can exercise all of these inside the App (Profile \u2192 Account) or by emailing ' + CONTACT + '. We respond within 30 days.',
-        'EU/UK users: our lawful bases are contract (to provide the App), legitimate interests (security, abuse prevention), legal obligation, and consent (for optional features).',
-        'California users: we do not sell or share your personal information as those terms are defined by the CCPA/CPRA.',
+        'UAE residents — under UAE Federal Decree-Law No. 45 of 2021 on the Protection of Personal Data (the "PDPL"), you have the right to: (a) request information about how we process your data; (b) ask us to correct inaccurate data; (c) ask us to delete your data; (d) request a portable copy of the data you provided to us; (e) restrict or object to certain processing; and (f) withdraw consent at any time where consent is the basis for processing.',
+        'You can exercise all of these inside the App (Profile \u2192 Account \u2192 Delete account) or by emailing ' + CONTACT + '. We respond within 30 days. If you believe we have not handled your data properly you may contact the UAE Data Office.',
+        'EU/UK residents: our lawful bases under the GDPR / UK GDPR are contract performance (to provide the App), legitimate interests (security, abuse prevention), legal obligation, and consent (for optional features).',
+        'California residents: we do not sell or share your personal information as those terms are defined by the CCPA/CPRA.',
       ],
     },
     {
@@ -305,7 +314,7 @@ const DMCA: LegalDoc = {
     {
       heading: 'Our position',
       paragraphs: [
-        `${COMPANY} respects the intellectual-property rights of others and expects users of Clickefy to do the same. We respond to clear notices of alleged copyright infringement that comply with the Digital Millennium Copyright Act ("DMCA") and equivalent laws in other jurisdictions.`,
+        `${COMPANY} respects the intellectual-property rights of others and expects users of Clickefy to do the same. We act on clear notices of alleged copyright infringement under UAE Federal Decree-Law No. 38 of 2021 on Copyright and Neighbouring Rights, the United States Digital Millennium Copyright Act ("DMCA"), and equivalent laws in other jurisdictions.`,
       ],
     },
     {
@@ -323,7 +332,7 @@ const DMCA: LegalDoc = {
     {
       heading: 'Counter-notice',
       paragraphs: [
-        'If you believe material you created was removed by mistake or misidentification, you can send a counter-notice with the same contact, identifying the removed material, a statement under penalty of perjury that you have a good-faith belief it was removed in error, and your consent to the jurisdiction of the applicable federal court.',
+        `If you believe material you created was removed by mistake or misidentification, you can send a counter-notice to ${CONTACT}. The notice must identify the removed material, include a statement under penalty of perjury that you have a good-faith belief it was removed in error, and confirm your consent to the jurisdiction of the ${COURTS} (and, where you are a US-based complainant, of the applicable US federal court).`,
       ],
     },
     {

@@ -126,6 +126,18 @@ export interface UploadSource {
   name: string;
   /** Mime type. Lowercase, e.g. `image/jpeg`. */
   type: string;
+  /**
+   * File size in bytes. When provided the SDK uses the presigned-PUT
+   * upload path (faster, doesn't stream through the Worker). When
+   * omitted it falls back to the multipart `POST /v1/uploads/user`
+   * route, which works for any caller but is slower on cellular and
+   * burns Worker CPU on the upload body.
+   *
+   * The mobile picker can populate this from `ImagePicker.assets[i]
+   * .fileSize` directly, or by calling
+   * `FileSystem.getInfoAsync(uri).size` after a compression step.
+   */
+  sizeBytes?: number;
 }
 
 /**

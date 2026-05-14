@@ -27,12 +27,21 @@
  * ratio — never enlarges, never crops.
  */
 
+import * as FileSystem from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 export interface CompressedImage {
   /** Local file:// URI of the compressed JPEG in the cache directory. */
   uri: string;
   mimeType: 'image/jpeg';
+  /**
+   * Size of the compressed file in bytes. Used by the SDK to switch
+   * to the presigned-PUT upload path (the multipart route does not
+   * need this and ignores it). Best-effort: returns 0 if
+   * `getInfoAsync` fails for any reason — the SDK then falls back to
+   * the multipart route on its own.
+   */
+  sizeBytes: number;
 }
 
 export interface CompressImageOptions {
@@ -73,5 +82,19 @@ export async function compressImage(
     compress: quality,
   });
 
-  return { uri: saved.uri, mimeType: 'image/jpeg' };
+  // Read the file size after the save lands on disk. We ignore errors
+  // and surface 0 — the SDK treats a non-positive size as "size
+  // unknown" and falls back to the multipart upload route, which is
+  // slower but always works.
+  let sizeBytes = 0;
+  try {
+    const info = await FileSystem.getInfoAsync(saved.uri);
+    if (info.exists && typeof info.size === 'number') {
+      sizeBytes = info.size;
+    }
+  } catch (err) {
+    console.warn('[compressImage] getInfoAsync failed:', err);
+  }
+
+  return { uri: saved.uri, mimeType: 'image/jpeg', sizeBytes };
 }

@@ -18,6 +18,7 @@ import { usersRoute } from './routes/users';
 import { outputsRoute } from './routes/outputs';
 import { uploadsAdminRoute, uploadsPublicRoute, uploadsUserRoute } from './routes/uploads';
 import { clerkWebhookRoute } from './routes/webhooks/clerk';
+import { revenuecatWebhookRoute } from './routes/webhooks/revenuecat';
 import type { AppEnv, Bindings } from './types';
 
 const app = new Hono<AppEnv>();
@@ -71,6 +72,7 @@ app.route('/v1/uploads', uploadsPublicRoute);
 app.route('/v1/admin/uploads', uploadsAdminRoute);
 app.route('/v1/outputs', outputsRoute);
 app.route('/v1/webhooks/clerk', clerkWebhookRoute);
+app.route('/v1/webhooks/revenuecat', revenuecatWebhookRoute);
 
 app.notFound((c) =>
   c.json({ error: { code: 'not_found', message: `Route ${c.req.path} not found` } }, 404),

@@ -19,6 +19,7 @@ export * from './credit-ledger';
 export * from './jobs';
 export * from './provider-models';
 export * from './reports';
+export * from './revenuecat-events';
 export * from './saved-templates';
 export * from './template-versions';
 export * from './templates';

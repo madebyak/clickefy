@@ -624,6 +624,97 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           if (token) headers.Authorization = `Bearer ${token}`;
         }
 
+        // ── Presigned PUT path (preferred) ──────────────────────────
+        //
+        // Triggered when the caller knows the file size upfront — the
+        // presign endpoint needs it so it can enforce the size cap
+        // BEFORE we hand the client a URL. The flow is:
+        //
+        //   1. POST /v1/uploads/user/presign  { contentType, sizeBytes }
+        //      → { uploadUrl, key, headers }
+        //   2. XHR PUT uploadUrl with the file body + signed headers,
+        //      reporting progress along the way.
+        //   3. POST /v1/uploads/user/finalize { key }
+        //      → { key, url, contentType, sizeBytes }
+        //
+        // We never see the file bytes in the Worker on this path, so
+        // big videos no longer eat CPU time or hit the request-body
+        // limit. The multipart fallback below stays in place for
+        // callers that haven't been updated yet.
+        if (typeof source.sizeBytes === 'number' && source.sizeBytes > 0) {
+          const presignRes = await fetch(`${baseUrl}/v1/uploads/user/presign`, {
+            method: 'POST',
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contentType: source.type,
+              sizeBytes: source.sizeBytes,
+            }),
+          });
+          if (!presignRes.ok) {
+            const text = await presignRes.text().catch(() => '');
+            throw new Error(`upload.presign ${presignRes.status}: ${text.slice(0, 200)}`);
+          }
+          const presigned = (await presignRes.json()) as {
+            data: {
+              uploadUrl: string;
+              key: string;
+              contentType: string;
+              expiresAt: string;
+              headers: Record<string, string>;
+            };
+          };
+
+          // PUT the file to R2 directly. XHR is the only way to get
+          // upload progress in React Native, so we always use it on
+          // this path — the per-call overhead vs. `fetch` is trivial.
+          const onProgress = opts?.onProgress;
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', presigned.data.uploadUrl);
+            for (const [k, v] of Object.entries(presigned.data.headers)) {
+              xhr.setRequestHeader(k, v);
+            }
+            if (onProgress) {
+              xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable && event.total > 0) {
+                  onProgress(Math.min(1, event.loaded / event.total));
+                }
+              };
+            }
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                onProgress?.(1);
+                resolve();
+              } else {
+                reject(
+                  new Error(`upload.put ${xhr.status}: ${xhr.responseText.slice(0, 200)}`),
+                );
+              }
+            };
+            xhr.onerror = () => reject(new Error('upload.put: network error'));
+            xhr.ontimeout = () => reject(new Error('upload.put: timed out'));
+            // React Native accepts `{ uri }` as a body and streams the
+            // file from disk; on web/Node this would need a Blob, but
+            // the SDK ships exclusively to RN today.
+            //
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            xhr.send({ uri: source.uri } as any);
+          });
+
+          const finalizeRes = await fetch(`${baseUrl}/v1/uploads/user/finalize`, {
+            method: 'POST',
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: presigned.data.key }),
+          });
+          if (!finalizeRes.ok) {
+            const text = await finalizeRes.text().catch(() => '');
+            throw new Error(`upload.finalize ${finalizeRes.status}: ${text.slice(0, 200)}`);
+          }
+          const finalized = (await finalizeRes.json()) as { data: UploadedAssetRef };
+          return finalized.data;
+        }
+
+        // ── Multipart fallback (no size known) ──────────────────────
         const body = new FormData();
         // React Native's `FormData` accepts the `{ uri, name, type }`
         // triple — the bridge converts it into a multipart part with

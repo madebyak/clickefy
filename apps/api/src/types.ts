@@ -59,6 +59,26 @@ export interface Bindings {
   /** AI-generated outputs persisted by Trigger.dev tasks. */
   OUTPUTS?: R2Bucket;
 
+  // ─── R2 S3-compatible credentials (for presigned PUT uploads) ──
+  /**
+   * Used by `/v1/uploads/user/presign` to mint short-lived PUT URLs
+   * the mobile app uploads directly to. Lets us cut the Worker out of
+   * the upload data path entirely — faster on cellular and removes
+   * the 100MB request-body ceiling for big videos later.
+   *
+   * Generate at: Cloudflare → R2 → Manage R2 API Tokens →
+   *              "Create S3 Auth Token" (Object Read & Write on the
+   *              `clickfy-uploads` bucket is enough; bucket scope is
+   *              tighter than account-wide).
+   *
+   * The endpoint is `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`
+   * which we derive in code from the access key's account hash.
+   */
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  /** Cloudflare account id used in the S3 endpoint hostname. */
+  R2_ACCOUNT_ID?: string;
+
   // ─── Rate limiting (native binding, see middleware/with-rate-limit) ─
   /** Public reads (catalog, public R2 fetch). Keyed by IP. */
   RL_PUBLIC_IP?: RateLimit;

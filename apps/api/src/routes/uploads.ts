@@ -17,7 +17,10 @@
  * with a string prefix comparison.
  */
 
+import { AwsClient } from 'aws4fetch';
 import { Hono } from 'hono';
+import { z } from 'zod';
+import { zValidator } from '@hono/zod-validator';
 
 import type { AppEnv } from '../types';
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
@@ -441,5 +444,207 @@ uploadsUserRoute.post(
       },
       201,
     );
+  },
+);
+
+// ─── Presigned PUT flow ────────────────────────────────────────────
+//
+// The multipart upload above streams through the Worker — fine for
+// small images but slow on cellular and capped by the Worker request-
+// body limit. The presigned flow lets the mobile app talk to R2's S3
+// endpoint directly:
+//
+//   1. POST /v1/uploads/user/presign   { contentType, sizeBytes }
+//      → returns a short-lived signed PUT URL + the R2 key we want
+//        the client to use.
+//   2. Client does an HTTP PUT to that URL with the raw file body
+//      (`Content-Type` header must match what was presigned).
+//      Native XHR gives us upload-progress events for free.
+//   3. POST /v1/uploads/user/finalize  { key }
+//      → HEAD-checks the object exists, returns the same shape the
+//        multipart route returned so the SDK is a drop-in swap.
+//
+// Why a separate `finalize` call rather than trusting the client to
+// say "I uploaded it":
+//   - It confirms the object actually landed in the bucket (the
+//     client could lie or the PUT could have silently failed).
+//   - It centralises the place we record file size and content type
+//     into our DB, should we want to add a row in `user_assets` later.
+//
+// The PUT URL TTL is short (15 min) so a leaked link can't be reused
+// hours later. The key is namespaced to the user so even if someone
+// uploaded a file under another user's prefix they couldn't — the
+// signature ties the URL to the exact key we generated.
+
+const PresignSchema = z.object({
+  contentType: z.string().min(1).max(80),
+  sizeBytes: z.number().int().positive(),
+});
+
+const FinalizeSchema = z.object({
+  key: z.string().min(1).max(300),
+});
+
+const PUT_URL_TTL_SECONDS = 15 * 60;
+
+uploadsUserRoute.post(
+  '/presign',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  zValidator('json', PresignSchema),
+  async (c) => {
+    const { R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID } = c.env;
+    if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_ACCOUNT_ID) {
+      return c.json(
+        {
+          error: {
+            code: 'presign_unconfigured',
+            message:
+              'R2 S3 credentials missing. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID.',
+          },
+        },
+        503,
+      );
+    }
+
+    const user = c.var.user;
+    if (!user) {
+      return c.json({ error: { code: 'unauthenticated', message: 'Sign-in required.' } }, 401);
+    }
+
+    const { contentType, sizeBytes } = c.req.valid('json');
+
+    // MIME and size validation match the multipart route exactly so
+    // the two upload paths can't disagree on what's accepted.
+    const isImage = USER_ALLOWED_IMAGE_MIME.has(contentType);
+    const isVideo = USER_ALLOWED_VIDEO_MIME.has(contentType);
+    if (!isImage && !isVideo) {
+      const allowed = [...USER_ALLOWED_IMAGE_MIME, ...USER_ALLOWED_VIDEO_MIME].join(', ');
+      return c.json(
+        {
+          error: {
+            code: 'invalid_mime',
+            message: `Unsupported file type "${contentType}". Allowed: ${allowed}.`,
+          },
+        },
+        400,
+      );
+    }
+    if (sizeBytes > USER_MAX_BYTES) {
+      return c.json(
+        {
+          error: {
+            code: 'file_too_large',
+            message: `Max upload size is ${USER_MAX_BYTES / 1024 / 1024}MB.`,
+          },
+        },
+        413,
+      );
+    }
+
+    const ext = EXT_BY_MIME[contentType] ?? 'bin';
+    const key = `user-uploads/${user.id}/${crypto.randomUUID()}.${ext}`;
+
+    // aws4fetch signs the URL using SigV4 with empty body hash —
+    // legal for PUT URLs and matches what Cloudflare expects for R2's
+    // S3 endpoint. Region `auto` is the R2 convention.
+    const client = new AwsClient({
+      accessKeyId: R2_ACCESS_KEY_ID,
+      secretAccessKey: R2_SECRET_ACCESS_KEY,
+      service: 's3',
+      region: 'auto',
+    });
+
+    const endpoint = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
+    const target = new URL(`${endpoint}/clickfy-uploads/${key}`);
+    // Encode the TTL into the URL via X-Amz-Expires; aws4fetch threads
+    // it into the signature so the URL is invalid after the window.
+    target.searchParams.set('X-Amz-Expires', String(PUT_URL_TTL_SECONDS));
+
+    const signed = await client.sign(
+      new Request(target.toString(), {
+        method: 'PUT',
+        // The client must echo this exact Content-Type back when
+        // doing the upload, otherwise SigV4 will reject the request.
+        headers: { 'content-type': contentType },
+      }),
+      { aws: { signQuery: true } },
+    );
+
+    const expiresAt = new Date(Date.now() + PUT_URL_TTL_SECONDS * 1000).toISOString();
+
+    return c.json({
+      data: {
+        uploadUrl: signed.url,
+        key,
+        contentType,
+        expiresAt,
+        // Echoed back so the client knows exactly which headers to
+        // send on the PUT. Adding any other header — or omitting this
+        // one — breaks the signature.
+        headers: { 'content-type': contentType },
+      },
+    });
+  },
+);
+
+uploadsUserRoute.post(
+  '/finalize',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  zValidator('json', FinalizeSchema),
+  async (c) => {
+    const bucket = c.env.UPLOADS;
+    if (!bucket) {
+      return c.json(
+        { error: { code: 'r2_not_configured', message: 'Uploads bucket binding missing.' } },
+        503,
+      );
+    }
+
+    const user = c.var.user;
+    if (!user) {
+      return c.json({ error: { code: 'unauthenticated', message: 'Sign-in required.' } }, 401);
+    }
+
+    const { key } = c.req.valid('json');
+
+    // Defense-in-depth: re-check that the key the client is asking us
+    // to finalise actually belongs to them. The presigner already
+    // generates the key, so under normal flow this is always true,
+    // but defensive coding here means a compromised SDK can't
+    // finalise an arbitrary key it didn't upload.
+    const expectedPrefix = `user-uploads/${user.id}/`;
+    if (!key.startsWith(expectedPrefix)) {
+      return c.json(
+        { error: { code: 'forbidden_key', message: 'Key does not belong to this user.' } },
+        403,
+      );
+    }
+
+    const head = await bucket.head(key);
+    if (!head) {
+      return c.json(
+        {
+          error: {
+            code: 'object_not_uploaded',
+            message: 'No object found at this key. Upload the file before calling finalize.',
+          },
+        },
+        404,
+      );
+    }
+
+    const origin = new URL(c.req.url).origin;
+    return c.json({
+      data: {
+        key,
+        url: `${origin}/v1/uploads/${key}`,
+        contentType: head.httpMetadata?.contentType ?? 'application/octet-stream',
+        sizeBytes: head.size,
+      },
+    });
   },
 );

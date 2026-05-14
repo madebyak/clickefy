@@ -102,7 +102,12 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
   // image compression (we display the original local pick, but upload
   // the JPEG-encoded compressed copy). Stashed here so the retry button
   // re-tries the same upload without re-running compression.
-  const lastUploadAttempt = useRef<{ uri: string; mime?: string; name?: string } | null>(null);
+  const lastUploadAttempt = useRef<{
+    uri: string;
+    mime?: string;
+    name?: string;
+    sizeBytes?: number;
+  } | null>(null);
 
   // External clears (parent resetting `value` to '') are handled inline
   // by the trash button below — we intentionally do NOT mirror that in
@@ -119,9 +124,19 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
     onUploadComplete?.(null);
   };
 
-  const startUpload = async (assetUri: string, assetMime: string | undefined, assetName?: string) => {
+  const startUpload = async (
+    assetUri: string,
+    assetMime: string | undefined,
+    assetName?: string,
+    assetSizeBytes?: number,
+  ) => {
     const myToken = ++uploadToken.current;
-    lastUploadAttempt.current = { uri: assetUri, mime: assetMime, name: assetName };
+    lastUploadAttempt.current = {
+      uri: assetUri,
+      mime: assetMime,
+      name: assetName,
+      sizeBytes: assetSizeBytes,
+    };
     setUploadState({ phase: 'uploading', progress: 0 });
 
     try {
@@ -131,6 +146,10 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
           uri: assetUri,
           name: assetName ?? assetUri.split('/').pop() ?? `upload.${isVideo ? 'mp4' : 'jpg'}`,
           type: assetMime ?? inferMimeType(assetUri, fallbackMime),
+          // When known, opts the SDK into the presigned-PUT path that
+          // streams direct to R2 (bypasses the Worker). Undefined here
+          // means "size unknown" → SDK falls back to multipart.
+          sizeBytes: assetSizeBytes,
         },
         {
           // Drop stale progress events from older uploads — if the user
@@ -163,9 +182,17 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
     onChange(asset.uri);
 
     // Videos go straight to upload — see compress-image.ts for why we
-    // deliberately skip on-device transcoding.
+    // deliberately skip on-device transcoding. The picker reports
+    // `fileSize` on iOS for assets pulled from Photos; on Android it
+    // is sometimes absent, in which case the SDK transparently falls
+    // back to multipart.
     if (isVideo) {
-      void startUpload(asset.uri, asset.mimeType ?? undefined, asset.fileName ?? undefined);
+      void startUpload(
+        asset.uri,
+        asset.mimeType ?? undefined,
+        asset.fileName ?? undefined,
+        asset.fileSize ?? undefined,
+      );
       return;
     }
 
@@ -176,13 +203,26 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
     const h = asset.height ?? 0;
     try {
       const compressed = await compressImage(asset.uri, w, h);
-      void startUpload(compressed.uri, compressed.mimeType, asset.fileName ?? undefined);
+      void startUpload(
+        compressed.uri,
+        compressed.mimeType,
+        asset.fileName ?? undefined,
+        // `sizeBytes` from the compressor is the size of the JPEG we'll
+        // actually upload, which is what the presign endpoint wants to
+        // check against the cap.
+        compressed.sizeBytes > 0 ? compressed.sizeBytes : undefined,
+      );
     } catch (err) {
       // Compression failed (corrupt file, unsupported format). Fall back
       // to the original — the Worker may still accept it, and a failed
       // upload surfaces a retry button anyway.
       console.warn('[InputField] compress failed, uploading original:', err);
-      void startUpload(asset.uri, asset.mimeType ?? undefined, asset.fileName ?? undefined);
+      void startUpload(
+        asset.uri,
+        asset.mimeType ?? undefined,
+        asset.fileName ?? undefined,
+        asset.fileSize ?? undefined,
+      );
     }
   };
 
@@ -217,7 +257,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
     // empty (component remount with cached value, etc.).
     const last = lastUploadAttempt.current;
     if (last) {
-      void startUpload(last.uri, last.mime, last.name);
+      void startUpload(last.uri, last.mime, last.name, last.sizeBytes);
       return;
     }
     if (!value) return;

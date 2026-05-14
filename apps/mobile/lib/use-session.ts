@@ -188,6 +188,40 @@ export function useSession() {
     },
   });
 
+  /**
+   * Permanently delete the current account.
+   *
+   * Backend `DELETE /v1/users/me` soft-deletes the row, scrubs PII,
+   * schedules asset purge, and calls Clerk's delete API. On success
+   * we explicitly sign out + drop the React-Query cache so no stale
+   * data lingers across the screen-transition to the welcome page.
+   *
+   * Required by App Store guideline 5.1.1(v) / Google Play Account
+   * Deletion policy. The mutation is exposed here so call-sites only
+   * have to wrap it in a confirmation modal.
+   */
+  const deleteAccount = useMutation({
+    mutationFn: async (): Promise<void> => {
+      const token = await getToken();
+      const res = await fetch(`${config.apiUrl}/v1/users/me`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok && res.status !== 204) {
+        const body = await res.text();
+        throw new Error(`DELETE /v1/users/me ${res.status}: ${body.slice(0, 200)}`);
+      }
+    },
+    onSuccess: async () => {
+      try {
+        await signOut();
+      } catch (err) {
+        console.warn('[deleteAccount] signOut after delete failed', err);
+      }
+      queryClient.removeQueries();
+    },
+  });
+
   // ── Derived shapes ─────────────────────────────────────────────────
 
   const isReady = clerkLoaded && (!isSignedIn || !meQuery.isLoading);
@@ -249,5 +283,6 @@ export function useSession() {
     meQuery,
     updateProfile,
     uploadAvatar,
+    deleteAccount,
   };
 }

@@ -123,7 +123,7 @@ export default function SavedTemplatesScreen() {
                   template={t}
                   accentSoft={accent.soft}
                   accentDeep={accent.deep}
-                  onPress={() => router.push(`/template/${t.id}` as any)}
+                  onPress={() => router.push(`/template/${t.id}`)}
                 />
               </View>
             ))}

@@ -124,6 +124,17 @@ export default function ResultScreen() {
               output={hero}
               onShare={handleShare}
               onDownload={() => void downloadOutput(hero)}
+              onReport={() =>
+                router.push({
+                  pathname: '/report',
+                  // Targeting the job itself, not a specific output index.
+                  // The admin queue reviews the whole job's outputs at
+                  // once, which matches how a reporter actually thinks
+                  // about an objectionable generation ("this whole result
+                  // is bad", not "image #3 specifically").
+                  params: { targetType: 'job_output', targetId: jobId! },
+                })
+              }
             />
           </Box>
         ) : null}
@@ -199,10 +210,12 @@ function HeroSlot({
   output,
   onShare,
   onDownload,
+  onReport,
 }: {
   output: JobOutput;
   onShare: () => void;
   onDownload: () => void;
+  onReport: () => void;
 }) {
   const { colors } = useTheme();
 
@@ -244,6 +257,11 @@ function HeroSlot({
         }}
       >
         <GlassButton icon="share" label="Share result" onPress={onShare} />
+        {/* Flag — required by App Store guideline 1.2 for any UGC.
+            Sits next to Share so it's discoverable without scrolling,
+            but the colour stays neutral-glass so it doesn't compete
+            with the primary Download CTA on the right. */}
+        <GlassButton icon="flag" label="Report this generation" onPress={onReport} />
         <View style={{ flex: 1 }} />
         <Pressable
           onPress={onDownload}
@@ -367,7 +385,7 @@ function GlassButton({
   label,
   onPress,
 }: {
-  icon: 'share';
+  icon: 'share' | 'flag';
   label: string;
   onPress: () => void;
 }) {

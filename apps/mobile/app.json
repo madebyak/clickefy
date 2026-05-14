@@ -10,7 +10,30 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "ai.clickfy.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "LSApplicationCategoryType": "public.app-category.photography"
+      },
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": ["C617.1", "0A2A.1", "3B52.1"]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
+            "NSPrivacyAccessedAPITypeReasons": ["E174.1", "85F4.1"]
+          }
+        ]
+      }
     },
     "android": {
       "package": "ai.clickfy.app",
@@ -47,9 +70,17 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Clickefy needs access to save the images and videos you generate to your photo library.",
-          "savePhotosPermission": "Clickefy needs permission to save the images and videos you generate to your photo library.",
+          "photosPermission": "Clickefy reads your photo library so you can use existing photos as inputs for AI generation.",
+          "savePhotosPermission": "Clickefy needs permission to save your generated images and videos to your photo library.",
           "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Clickefy reads your photo library so you can use existing photos as inputs for AI generation.",
+          "cameraPermission": "Clickefy uses the camera so you can capture product photos to use as input for AI generation.",
+          "microphonePermission": "Clickefy uses the microphone if you record video inputs for AI generation."
         }
       ]
     ],

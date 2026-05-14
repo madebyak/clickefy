@@ -50,7 +50,16 @@ export interface Bindings {
   UPLOADS?: R2Bucket;
   /** AI-generated outputs persisted by Trigger.dev tasks. */
   OUTPUTS?: R2Bucket;
-  RATE_LIMIT?: KVNamespace;
+
+  // ─── Rate limiting (native binding, see middleware/with-rate-limit) ─
+  /** Public reads (catalog, public R2 fetch). Keyed by IP. */
+  RL_PUBLIC_IP?: RateLimit;
+  /** Authenticated GETs. Keyed by Clerk user id. */
+  RL_USER_READ?: RateLimit;
+  /** Authenticated mutations (PATCH/POST/DELETE, excluding job create). */
+  RL_USER_WRITE?: RateLimit;
+  /** `POST /v1/jobs` — stricter because each call costs credits and spawns a worker run. */
+  RL_USER_JOB?: RateLimit;
 }
 
 /** Row shape from the `users` table — `users.$inferSelect`. */

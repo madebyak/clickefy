@@ -162,6 +162,17 @@ export default function RootLayout() {
                   contentStyle: { backgroundColor: 'transparent' },
                 }}
               />
+              <Stack.Screen
+                name="legal/[doc]"
+                options={{ presentation: 'card', animation: 'slide_from_right' }}
+              />
+              <Stack.Screen
+                name="report"
+                options={{
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom',
+                }}
+              />
               <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
             </Stack>
               </ErrorBoundary>

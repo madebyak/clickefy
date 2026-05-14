@@ -1,11 +1,12 @@
 import { Badge, Box, Button, Card, HStack, Skeleton, Stack, Text, useTheme } from '@clickfy/ui';
 import type { UserProject } from '@clickfy/sdk';
+import { FlashList } from '@shopify/flash-list';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useCallback, useRef } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, View } from 'react-native';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -148,32 +149,25 @@ export default function ProjectsScreen() {
           </Text>
         </Stack>
       </Box>
-      <ScrollView
-        contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 120 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            // `isRefetching` is true for both initial mount fetches
-            // and subsequent refetches. We gate on `!isLoading` so
-            // the spinner only shows for explicit refreshes — the
-            // first-paint case has its own skeleton row.
-            refreshing={projectsQuery.isRefetching && !projectsQuery.isLoading}
-            onRefresh={() => void projectsQuery.refetch()}
-            tintColor={colors.inkMuted}
-          />
-        }
-      >
-        {projectsQuery.isLoading ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={86} radius={18} />)
-        ) : items.length === 0 ? (
-          <EmptyState />
-        ) : (
-          items.map((p) => (
+      {projectsQuery.isLoading ? (
+        // First-paint skeleton state — small fixed count, no need for
+        // virtualization. Lives outside the FlashList so the list's
+        // own ListEmptyComponent path stays reserved for the real
+        // "no projects" case.
+        <View style={{ padding: 20, gap: 12 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} height={86} radius={18} />
+          ))}
+        </View>
+      ) : (
+        <FlashList
+          data={items}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
             <ProjectRow
-              key={p.id}
-              project={p}
-              onOpen={() => handleOpenProject(p)}
-              onRequestDelete={() => handleConfirmDelete(p)}
+              project={item}
+              onOpen={() => handleOpenProject(item)}
+              onRequestDelete={() => handleConfirmDelete(item)}
               registerOpenRow={(row) => {
                 // Auto-close any previously-open row on a new swipe.
                 if (openRowRef.current && openRowRef.current !== row) {
@@ -182,11 +176,32 @@ export default function ProjectsScreen() {
                 openRowRef.current = row;
               }}
             />
-          ))
-        )}
-      </ScrollView>
+          )}
+          // FlashList v2 auto-measures every item — no estimatedItemSize
+          // hint required. ItemSeparator handles the inter-row gap;
+          // composing with a container `gap` would break virtualization.
+          ItemSeparatorComponent={ItemGap}
+          ListEmptyComponent={<EmptyState />}
+          contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={projectsQuery.isRefetching && !projectsQuery.isLoading}
+              onRefresh={() => void projectsQuery.refetch()}
+              tintColor={colors.inkMuted}
+            />
+          }
+        />
+      )}
     </View>
   );
+}
+
+// Vertical gap between rows — FlashList prefers ItemSeparatorComponent
+// over `gap` on the container because the latter doesn't compose with
+// item recycling. 12pt matches the prior ScrollView's `gap: 12`.
+function ItemGap() {
+  return <View style={{ height: 12 }} />;
 }
 
 // ─── Row ────────────────────────────────────────────────────────────
@@ -369,7 +384,7 @@ function EmptyState() {
       <Text variant="caption" color="inkMuted" align="center">
         Generate your first image from a template and it&apos;ll show up here.
       </Text>
-      <Button variant="accent" size="md" onPress={() => router.push('/(tabs)' as any)}>
+      <Button variant="accent" size="md" onPress={() => router.push('/(tabs)')}>
         Browse templates
       </Button>
     </View>

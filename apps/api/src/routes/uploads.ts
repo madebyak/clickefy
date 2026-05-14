@@ -21,6 +21,7 @@ import { Hono } from 'hono';
 
 import type { AppEnv } from '../types';
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
+import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
 
 const ALLOWED_FOLDERS = new Set(['categories', 'templates']);
 
@@ -118,7 +119,10 @@ function parseRange(
 
 export const uploadsPublicRoute = new Hono<AppEnv>();
 
-uploadsPublicRoute.get('/:key{.+}', async (c) => {
+uploadsPublicRoute.get(
+  '/:key{.+}',
+  withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
+  async (c) => {
   const bucket = c.env.UPLOADS;
   if (!bucket) {
     return c.json(
@@ -195,7 +199,7 @@ uploadsPublicRoute.get('/:key{.+}', async (c) => {
 
 // Explicit HEAD route — Hono doesn't auto-route HEAD to GET handlers,
 // and AVPlayer's initial probe is a HEAD on some iOS versions.
-uploadsPublicRoute.on('HEAD', '/:key{.+}', async (c) => {
+uploadsPublicRoute.on('HEAD', '/:key{.+}', withRateLimit((env) => env.RL_PUBLIC_IP, byIp), async (c) => {
   const bucket = c.env.UPLOADS;
   if (!bucket) return c.body(null, 503);
   const key = c.req.param('key');
@@ -344,6 +348,7 @@ export const uploadsUserRoute = new Hono<AppEnv>();
 uploadsUserRoute.post(
   '/',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
   withCurrentUser(),
   async (c) => {
     const bucket = c.env.UPLOADS;

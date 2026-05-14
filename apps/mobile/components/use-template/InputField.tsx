@@ -6,6 +6,7 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, TextInput, View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
+import { compressImage } from '@/lib/compress-image';
 import { getSDK } from '@/lib/sdk';
 
 /**
@@ -81,7 +82,7 @@ function inferMimeType(uri: string, fallback: string): string {
 
 type UploadState =
   | { phase: 'idle' }
-  | { phase: 'uploading' }
+  | { phase: 'uploading'; progress: number }
   | { phase: 'done'; key: string }
   | { phase: 'error'; message: string };
 
@@ -97,6 +98,11 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
   // so a stale slow upload can't clobber the latest selection.
   const [uploadState, setUploadState] = useState<UploadState>({ phase: 'idle' });
   const uploadToken = useRef(0);
+  // The actual upload URI may differ from the displayed `value` after
+  // image compression (we display the original local pick, but upload
+  // the JPEG-encoded compressed copy). Stashed here so the retry button
+  // re-tries the same upload without re-running compression.
+  const lastUploadAttempt = useRef<{ uri: string; mime?: string; name?: string } | null>(null);
 
   // External clears (parent resetting `value` to '') are handled inline
   // by the trash button below — we intentionally do NOT mirror that in
@@ -107,6 +113,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
 
   const clearSelection = () => {
     uploadToken.current += 1;
+    lastUploadAttempt.current = null;
     setUploadState({ phase: 'idle' });
     onChange('');
     onUploadComplete?.(null);
@@ -114,15 +121,27 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
 
   const startUpload = async (assetUri: string, assetMime: string | undefined, assetName?: string) => {
     const myToken = ++uploadToken.current;
-    setUploadState({ phase: 'uploading' });
+    lastUploadAttempt.current = { uri: assetUri, mime: assetMime, name: assetName };
+    setUploadState({ phase: 'uploading', progress: 0 });
 
     try {
       const sdk = getSDK();
-      const result = await sdk.uploads.uploadUserAsset({
-        uri: assetUri,
-        name: assetName ?? assetUri.split('/').pop() ?? `upload.${isVideo ? 'mp4' : 'jpg'}`,
-        type: assetMime ?? inferMimeType(assetUri, fallbackMime),
-      });
+      const result = await sdk.uploads.uploadUserAsset(
+        {
+          uri: assetUri,
+          name: assetName ?? assetUri.split('/').pop() ?? `upload.${isVideo ? 'mp4' : 'jpg'}`,
+          type: assetMime ?? inferMimeType(assetUri, fallbackMime),
+        },
+        {
+          // Drop stale progress events from older uploads — if the user
+          // re-picks mid-upload the new token wins and any straggler
+          // events from the previous run are ignored.
+          onProgress: (fraction) => {
+            if (myToken !== uploadToken.current) return;
+            setUploadState({ phase: 'uploading', progress: fraction });
+          },
+        },
+      );
       if (myToken !== uploadToken.current) return;
       setUploadState({ phase: 'done', key: result.key });
       onUploadComplete?.({
@@ -138,9 +157,33 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
     }
   };
 
-  const handlePickedAsset = (asset: ImagePicker.ImagePickerAsset) => {
+  const handlePickedAsset = async (asset: ImagePicker.ImagePickerAsset) => {
+    // Show the local URI immediately so the preview tile flips out of
+    // the empty state without waiting on compression.
     onChange(asset.uri);
-    void startUpload(asset.uri, asset.mimeType ?? undefined, asset.fileName ?? undefined);
+
+    // Videos go straight to upload — see compress-image.ts for why we
+    // deliberately skip on-device transcoding.
+    if (isVideo) {
+      void startUpload(asset.uri, asset.mimeType ?? undefined, asset.fileName ?? undefined);
+      return;
+    }
+
+    // Images run through the compressor: HEIC → JPEG conversion and a
+    // 2048px-longest-side cap, in one pass. Source dimensions come from
+    // the picker so we don't need a separate read.
+    const w = asset.width ?? 0;
+    const h = asset.height ?? 0;
+    try {
+      const compressed = await compressImage(asset.uri, w, h);
+      void startUpload(compressed.uri, compressed.mimeType, asset.fileName ?? undefined);
+    } catch (err) {
+      // Compression failed (corrupt file, unsupported format). Fall back
+      // to the original — the Worker may still accept it, and a failed
+      // upload surfaces a retry button anyway.
+      console.warn('[InputField] compress failed, uploading original:', err);
+      void startUpload(asset.uri, asset.mimeType ?? undefined, asset.fileName ?? undefined);
+    }
   };
 
   const pickFromLibrary = async () => {
@@ -152,7 +195,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
       quality: 0.9,
     });
     if (!result.canceled && result.assets[0]) {
-      handlePickedAsset(result.assets[0]);
+      void handlePickedAsset(result.assets[0]);
     }
   };
 
@@ -164,11 +207,19 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
       quality: 0.9,
     });
     if (!result.canceled && result.assets[0]) {
-      handlePickedAsset(result.assets[0]);
+      void handlePickedAsset(result.assets[0]);
     }
   };
 
   const retryUpload = () => {
+    // Prefer the exact URI we last attempted (which is the compressed
+    // copy for images), falling back to `value` if the ref is somehow
+    // empty (component remount with cached value, etc.).
+    const last = lastUploadAttempt.current;
+    if (last) {
+      void startUpload(last.uri, last.mime, last.name);
+      return;
+    }
     if (!value) return;
     void startUpload(value, undefined);
   };
@@ -209,24 +260,54 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
                 the preview, opinionated enough that the user knows
                 the file is in flight. */}
             {uploadState.phase === 'uploading' ? (
+              // A spinner alone tells the user *something* is happening
+              // but not *how far along*. A real percentage + a thin
+              // determinate bar gives the user a confident "almost done"
+              // signal — important for cellular uploads of multi-MB
+              // photos where the spinner-alone window can feel like the
+              // app is stuck. Falls back to "Uploading…" copy while the
+              // first progress event hasn't fired yet.
               <View
                 style={{
                   position: 'absolute',
                   left: 10,
+                  right: 10,
                   bottom: 10,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 14,
                   backgroundColor: colors.overlayStrong,
-                  flexDirection: 'row',
-                  alignItems: 'center',
                   gap: 6,
                 }}
               >
-                <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text color="#FFFFFF" weight="600" style={{ fontSize: 12 }}>
-                  Uploading…
-                </Text>
+                <HStack align="center" gap="xs">
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text color="#FFFFFF" weight="600" style={{ fontSize: 12, flex: 1 }}>
+                    {uploadState.progress > 0
+                      ? `Uploading ${Math.round(uploadState.progress * 100)}%`
+                      : 'Uploading…'}
+                  </Text>
+                </HStack>
+                {/* Thin determinate progress bar. We keep the visual
+                    weight low (3pt height, 60% white track) so it
+                    complements the preview rather than dominating. */}
+                <View
+                  style={{
+                    height: 3,
+                    borderRadius: 2,
+                    backgroundColor: 'rgba(255,255,255,0.25)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: `${Math.max(2, Math.round(uploadState.progress * 100))}%`,
+                      height: '100%',
+                      backgroundColor: '#FFFFFF',
+                      borderRadius: 2,
+                    }}
+                  />
+                </View>
               </View>
             ) : uploadState.phase === 'done' ? (
               <View

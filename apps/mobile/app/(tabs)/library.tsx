@@ -1,5 +1,6 @@
 import { Box, Chip, Pressable, Stack, Skeleton, Text, useTheme } from '@clickfy/ui';
 import type { UserProject } from '@clickfy/sdk';
+import { FlashList } from '@shopify/flash-list';
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -74,7 +75,7 @@ export default function LibraryScreen() {
               spend a top-level slot on something most users will
               visit infrequently. */}
           <Pressable
-            onPress={() => router.push('/saved' as any)}
+            onPress={() => router.push('/saved')}
             accessibilityRole="button"
             accessibilityLabel="Saved templates"
             haptic="light"
@@ -110,37 +111,50 @@ export default function LibraryScreen() {
         ))}
       </ScrollView>
 
-      {/* Grid */}
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 12, paddingHorizontal: 20, paddingBottom: 120, gap: 14 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={libraryQuery.isRefetching && !libraryQuery.isLoading}
-            onRefresh={() => void libraryQuery.refetch()}
-            tintColor={colors.inkMuted}
-          />
-        }
-      >
-        {libraryQuery.isLoading ? (
+      {/* Grid — FlashList in 2-column mode so a long history doesn't
+          mount every card upfront. Card heights are roughly uniform
+          (aspect-ratio 4:5 image + 2 lines text) so virtualization
+          works cleanly without per-row measurement. */}
+      {libraryQuery.isLoading ? (
+        <View style={{ paddingTop: 12, paddingHorizontal: 20 }}>
           <GridSkeleton />
-        ) : filtered.length === 0 ? (
-          <EmptyState filter={filter} />
-        ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-            {filtered.map((p) => (
-              <View key={p.templateId} style={{ width: '47.5%' }}>
-                <RecentTemplateCard
-                  project={p}
-                  onPress={() => router.push(`/template/${p.templateId}` as any)}
-                />
-              </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+        </View>
+      ) : (
+        <FlashList
+          data={filtered}
+          keyExtractor={(item) => item.templateId}
+          numColumns={2}
+          renderItem={({ item }) => (
+            // Outer wrapper provides the horizontal padding inside each
+            // column cell so the column gap reads as visual breathing
+            // room rather than a sharp edge — matches the prior
+            // `flexWrap` + `gap: 14` layout pixel-for-pixel.
+            <View style={{ paddingHorizontal: 7 }}>
+              <RecentTemplateCard
+                project={item}
+                onPress={() => router.push(`/template/${item.templateId}`)}
+              />
+            </View>
+          )}
+          ItemSeparatorComponent={GridRowGap}
+          ListEmptyComponent={<EmptyState filter={filter} />}
+          contentContainerStyle={{ paddingTop: 12, paddingHorizontal: 13, paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={libraryQuery.isRefetching && !libraryQuery.isLoading}
+              onRefresh={() => void libraryQuery.refetch()}
+              tintColor={colors.inkMuted}
+            />
+          }
+        />
+      )}
     </View>
   );
+}
+
+function GridRowGap() {
+  return <View style={{ height: 14 }} />;
 }
 
 function RecentTemplateCard({

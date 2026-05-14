@@ -33,12 +33,13 @@ import { eq } from 'drizzle-orm';
 
 import {
   jobs,
-  templates,
+  templateVersions,
   type JobError,
   type JobInputValue,
   type JobResult,
   type MediaRef,
   type StreamRef,
+  type Template,
 } from '@clickfy/db';
 import {
   compile,
@@ -104,23 +105,30 @@ export const generateJob = task({
       .set({ status: 'processing', startedAt, progress: emptyProgress() })
       .where(eq(jobs.id, jobId));
 
-    // We could read `template_versions.snapshot` for a perfect
-    // historical replay, but the working `templates` row is
-    // identical in shape and lives in a hot index. For mobile-driven
-    // jobs (where the version was just published moments earlier
-    // and rarely diverges in seconds), reading the live row is fine
-    // — and saves a JSONB deserialisation.
-    const template = await db.query.templates.findFirst({
-      where: eq(templates.id, jobRow.templateId),
+    // Read from `template_versions.snapshot` (not the live `templates`
+    // row) so a published edit between job submit and worker pickup
+    // can never retroactively change what the user actually paid for.
+    // `jobRow.templateVersionId` is set by the atomic CTE in
+    // `apps/api/src/lib/job-create.ts` from `version_lookup.id`, so
+    // it's always populated for jobs that made it past debit.
+    //
+    // The snapshot column is typed `jsonb` (unknown) because older
+    // snapshots may carry columns we've since renamed. At runtime the
+    // shape matches `Template` because every snapshot is written from
+    // a `Template` row at publish time — the cast below documents that
+    // assumption and lets the rest of this task stay strongly typed.
+    const versionRow = await db.query.templateVersions.findFirst({
+      where: eq(templateVersions.id, jobRow.templateVersionId),
     });
-    if (!template) {
+    if (!versionRow) {
       return failJob(jobId, {
         code: 'template_missing',
-        message: 'Template no longer exists.',
+        message: 'Template version no longer exists.',
         stage: 0,
         retryCount: 0,
       });
     }
+    const template = versionRow.snapshot as Template;
 
     // ── Resolve inputs (R2 reads in parallel) ────────────────────
     let inputs: Record<string, RuntimeInputValue>;

@@ -128,6 +128,23 @@ export interface UploadSource {
   type: string;
 }
 
+/**
+ * Optional knobs for an upload. `onProgress` is the primary reason
+ * this exists — passing a callback switches the HTTP client to an
+ * XHR-backed implementation that emits real-time progress events
+ * (`fetch` in React Native has no upload progress hook). Omitting
+ * the callback keeps the simpler `fetch` code path.
+ */
+export interface UploadOptions {
+  /**
+   * Called repeatedly during the upload with `[0..1]` progress.
+   * 0 fires immediately after the request opens, 1 once the body
+   * has been fully transmitted (note: this is "uploaded", not
+   * "accepted by server" — the server's response can still 4xx).
+   */
+  onProgress?: (fraction: number) => void;
+}
+
 export interface UploadsClient {
   /**
    * Stream a user-picked file to R2 via the Worker. The mobile app
@@ -137,7 +154,7 @@ export interface UploadsClient {
    * Throws on auth failure, size cap, or unsupported MIME type — the
    * caller is expected to surface a user-friendly toast.
    */
-  uploadUserAsset(source: UploadSource): Promise<UploadedAssetRef>;
+  uploadUserAsset(source: UploadSource, opts?: UploadOptions): Promise<UploadedAssetRef>;
 }
 
 export interface LibraryClient {

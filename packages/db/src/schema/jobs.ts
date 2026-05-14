@@ -67,6 +67,14 @@ export const jobs = pgTable(
   },
   (t) => [
     index('jobs_user_created_idx').on(t.userId, t.createdAt),
+    // Matches the cursor pagination in `GET /v1/jobs`: the ORDER BY
+    // is `(createdAt DESC, id DESC)` with the cursor predicate
+    // `(createdAt, id) < (cursorTs, cursorId)`. A compound DESC index
+    // lets the planner do an index-only seek and avoids the tiebreak
+    // sort when two inserts share the same microsecond `now()`.
+    // We keep `jobs_user_created_idx` as well so the migration can be
+    // applied without dropping a live index under load.
+    index('jobs_user_pagination_idx').on(t.userId, t.createdAt.desc(), t.id.desc()),
     index('jobs_status_created_idx').on(t.status, t.createdAt),
     index('jobs_template_completed_idx').on(t.templateId, t.completedAt),
     index('jobs_purge_idx').on(t.purgeAt),

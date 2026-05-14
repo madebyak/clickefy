@@ -36,6 +36,7 @@ import {
   EyeSlash,
   Eye,
   FilmStrip,
+  Flag,
   FolderSimple,
   Funnel,
   Gear,
@@ -129,6 +130,7 @@ export type IconName =
   | 'pin'
   | 'edit'
   | 'trash'
+  | 'flag'
   | 'send'
   | 'play'
   // Status
@@ -190,6 +192,7 @@ const ICONS: Record<IconName, PhosphorIcon> = {
   pin: PushPinSimple,
   edit: Pencil,
   trash: Trash,
+  flag: Flag,
   send: PaperPlaneTilt,
   play: Play,
   info: Info,

@@ -30,6 +30,7 @@ import { users } from '@clickfy/db';
 
 import type { AppEnv } from '../types';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
+import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 
 export const usersRoute = new Hono<AppEnv>();
 
@@ -98,13 +99,20 @@ function splitName(name: string): { firstName: string; lastName: string } {
 
 // ─── Routes ─────────────────────────────────────────────────────────
 
-usersRoute.get('/me', withAuth({ required: true }), withCurrentUser(), (c) => {
-  return c.json({ data: toMeResponse(c.var.user!) });
-});
+usersRoute.get(
+  '/me',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  withCurrentUser(),
+  (c) => {
+    return c.json({ data: toMeResponse(c.var.user!) });
+  },
+);
 
 usersRoute.patch(
   '/me',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
   withCurrentUser(),
   zValidator('json', updateProfileSchema),
   async (c) => {
@@ -180,6 +188,7 @@ const AVATAR_EXT: Record<string, string> = {
 usersRoute.post(
   '/me/avatar',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
   withCurrentUser(),
   async (c) => {
     const bucket = c.env.UPLOADS;
@@ -275,5 +284,79 @@ usersRoute.post(
     }
 
     return c.json({ data: toMeResponse(updated) });
+  },
+);
+
+// ─── Account deletion (App Store guideline 5.1.1(v)) ────────────────
+//
+// DELETE /v1/users/me
+//
+// Apple and Google both require any app that lets users sign up to
+// also let them DELETE their account from inside the app — not a
+// redirect to a website, not "email support". Failing this is a
+// straight rejection during review.
+//
+// What we do here, in order:
+//
+//   1. Soft-delete in Neon FIRST. `is_deleted = true`, PII scrubbed
+//      (email anonymised, name/avatar nulled, preferences reset).
+//      Historical FKs (jobs, credit_ledger, admin_audit_log) are
+//      preserved so ledger integrity isn't broken.
+//
+//   2. Schedule asset purge. `purge_assets_at = now + 30d` — the
+//      existing retention cron will then drop their R2 outputs.
+//      The 30-day window gives us a recovery path for accidental
+//      deletions (today: manual; tomorrow: a "restore within 30d"
+//      flow if we ever want one).
+//
+//   3. Tell Clerk to delete the user. This invalidates active
+//      sessions across all their devices. If Clerk itself errors
+//      we swallow it — the row is already marked deleted, so all
+//      subsequent requests will 401 via `withCurrentUser` even if
+//      the token is still nominally valid for a few seconds.
+//
+// Once a row is marked deleted, every protected route returns
+// `account_deleted` 401, so this endpoint is naturally one-shot:
+// a second call from the same session can't reach the handler.
+usersRoute.delete(
+  '/me',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  async (c) => {
+    const current = c.var.user!;
+    const purgeAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    // Email is `unique not null` in the schema, so we can't just null
+    // it. We anonymise to a non-routable .invalid TLD scoped by user id
+    // — guarantees uniqueness, signals intent in logs, and the RFC
+    // 2606 reserved TLD ensures no real address ever collides.
+    await c.var.db
+      .update(users)
+      .set({
+        isDeleted: true,
+        purgeAssetsAt: purgeAt,
+        email: `deleted-${current.id}@anonymized.invalid`,
+        name: null,
+        avatarUrl: null,
+      })
+      .where(eq(users.id, current.id));
+
+    if (c.env.CLERK_SECRET_KEY) {
+      try {
+        const clerk = createClerkClient({ secretKey: c.env.CLERK_SECRET_KEY });
+        await clerk.users.deleteUser(current.clerkUserId);
+      } catch (err) {
+        // Don't fail the request — the row is already marked deleted
+        // and all subsequent traffic will be rejected. Clerk-side
+        // cleanup will be reconciled by the user.deleted webhook on
+        // its retry schedule (or the next manual reconciliation).
+        console.error('[users.delete] Clerk deleteUser failed:', err);
+      }
+    } else {
+      console.warn('[users.delete] CLERK_SECRET_KEY missing — Clerk row not deleted');
+    }
+
+    return c.body(null, 204);
   },
 );

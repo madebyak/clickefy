@@ -1,29 +1,33 @@
 /**
  * `recoverStuckJobs` — scheduled sweeper that rescues jobs which
- * never made it out of the `queued` state.
+ * never made it to a terminal state. Two distinct failure modes:
  *
- * Why this exists: the Worker's POST /v1/jobs handler dispatches a
- * Trigger.dev run *after* the row is committed. If Trigger.dev is
- * down, mid-deploy, or the dispatch HTTP call fails for any reason,
- * the job sits in `queued` forever — credits debited, user staring
- * at a spinner on the `generating` screen.
+ *   A) Stuck in `queued` — the POST /v1/jobs handler debited credits
+ *      and inserted the row, but the follow-up `generateJob.trigger()`
+ *      call to Trigger.dev failed (network blip, mid-deploy, etc.).
+ *      Recovery: re-trigger up to MAX_RECOVERY_ATTEMPTS times.
  *
- * Strategy: every 60 seconds, find rows that have been `queued`
- * longer than 30 seconds. Re-trigger them (idempotent — the task's
- * own `already_terminal` guard plus our refund-dedup CTE prevent
- * double-execution). After 5 failed sweeps for the same job,
- * declare it `failed` with `internal_error` so the user gets their
- * credits back and isn't stuck forever.
+ *   B) Stuck in `processing` — Trigger.dev picked up the job, the
+ *      worker marked it `processing`, then the run hard-crashed
+ *      (provider hung past maxDuration, isolate OOM, etc.) without
+ *      writing back a terminal status. Recovery: declare it failed
+ *      and refund. No re-trigger because the AI call may have already
+ *      consumed provider quota — silently retrying could double-bill.
  *
- * Cron: every minute. The window is small (30s grace) so users
- * recover quickly; the cost is one cheap SELECT per minute even on
- * an idle system.
+ * Cron: every 60s. Cheap (two indexed SELECTs per minute) and gives
+ * users a quick path out of a stuck UI.
  *
- * Atomicity: we re-fire `generateJob.trigger()` without changing
- * the row's status. If the original dispatch did go through and
- * the run is in flight, the recovery trigger is harmless — the
- * `already_terminal` / `processing` guards in generate-job.ts
- * make it a no-op.
+ * Atomicity for (A): we re-fire `generateJob.trigger()` without
+ * changing the row's status. If the original dispatch did go through
+ * and the run is in flight, the recovery trigger is harmless — the
+ * `already_terminal` / `processing` guards in generate-job.ts make
+ * it a no-op. The attempt counter is bumped FIRST so even if the
+ * trigger throws, the next sweep sees the higher count.
+ *
+ * Atomicity for (B): the abandon UPDATE is gated on
+ * `status = 'processing'`. If the worker happens to complete
+ * mid-sweep and writes `completed`, our UPDATE matches zero rows
+ * and we leave the row alone — no double-finalize.
  */
 
 import { logger, schedules } from '@trigger.dev/sdk';
@@ -36,9 +40,14 @@ import { generateJob } from './generate-job';
 
 /** Max recovery attempts before we mark the job failed and refund. */
 const MAX_RECOVERY_ATTEMPTS = 5;
-/** Only consider jobs older than this when sweeping. Keeps the
- *  sweeper out of the way of normal dispatch latency. */
-const STUCK_AFTER_SECONDS = 30;
+/** Only consider `queued` jobs older than this when sweeping. Keeps
+ *  the sweeper out of the way of normal dispatch latency. */
+const QUEUED_STUCK_AFTER_SECONDS = 30;
+/** Cap on legitimate `processing` runtime. Our longest provider call
+ *  (Kling video) finishes well under 5 minutes; 10 min is a generous
+ *  ceiling beyond which the run is almost certainly a crashed worker
+ *  rather than slow-but-alive. Bump if a new provider takes longer. */
+const PROCESSING_STUCK_AFTER_SECONDS = 600;
 
 export const recoverStuckJobs = schedules.task({
   id: 'recover-stuck-jobs',
@@ -48,11 +57,10 @@ export const recoverStuckJobs = schedules.task({
   run: async () => {
     const db = getDb();
 
-    // Find all `queued` rows older than the grace window. The
-    // `created_at < now() - interval` predicate is index-friendly
-    // (jobs table is indexed on `created_at DESC`) and `status` is
-    // selective enough that the planner picks it without a hint.
-    const stuck = await db.execute<{
+    // ── Pass A: jobs stuck in `queued` ──────────────────────────────
+    // Dispatch to Trigger.dev failed; the run never started. We can
+    // safely re-trigger because no provider call has happened yet.
+    const stuckQueued = await db.execute<{
       id: string;
       created_at: Date;
       recovery_attempts: number;
@@ -63,36 +71,56 @@ export const recoverStuckJobs = schedules.task({
         COALESCE((error->>'retryCount')::int, 0) AS recovery_attempts
       FROM jobs
       WHERE status = 'queued'
-        AND created_at < now() - (${STUCK_AFTER_SECONDS} || ' seconds')::interval
+        AND created_at < now() - (${QUEUED_STUCK_AFTER_SECONDS} || ' seconds')::interval
       ORDER BY created_at ASC
       LIMIT 50
     `);
-    const rows = (Array.isArray(stuck) ? stuck : (stuck as { rows?: unknown[] }).rows ?? []) as Array<{
+    const queuedRows = (Array.isArray(stuckQueued)
+      ? stuckQueued
+      : (stuckQueued as { rows?: unknown[] }).rows ?? []) as Array<{
       id: string;
       created_at: Date;
       recovery_attempts: number;
     }>;
 
-    if (rows.length === 0) return { recovered: 0, abandoned: 0 };
+    // ── Pass B: jobs stuck in `processing` ──────────────────────────
+    // Worker crashed mid-run. We do NOT re-trigger (provider quota may
+    // already be spent); we mark failed and refund.
+    const stuckProcessing = await db.execute<{ id: string }>(sql`
+      SELECT id
+      FROM jobs
+      WHERE status = 'processing'
+        AND started_at IS NOT NULL
+        AND started_at < now() - (${PROCESSING_STUCK_AFTER_SECONDS} || ' seconds')::interval
+      ORDER BY started_at ASC
+      LIMIT 50
+    `);
+    const processingRows = (Array.isArray(stuckProcessing)
+      ? stuckProcessing
+      : (stuckProcessing as { rows?: unknown[] }).rows ?? []) as Array<{ id: string }>;
 
-    logger.info('recover-stuck-jobs:found', { count: rows.length });
+    if (queuedRows.length === 0 && processingRows.length === 0) {
+      return { recovered: 0, abandoned: 0 };
+    }
+
+    logger.info('recover-stuck-jobs:found', {
+      queued: queuedRows.length,
+      processing: processingRows.length,
+    });
 
     let recovered = 0;
     let abandoned = 0;
 
-    for (const row of rows) {
-      // Give up after MAX attempts — mark failed, refund, and move on.
-      // We bake the attempts counter into `error.retryCount` so it
-      // survives across sweeper invocations without a new column.
+    // ── Handle queued ────────────────────────────────────────────────
+    for (const row of queuedRows) {
       if (row.recovery_attempts >= MAX_RECOVERY_ATTEMPTS) {
-        await abandonJob(row.id, row.recovery_attempts);
+        await abandonJob(row.id, 'queued', row.recovery_attempts);
         abandoned += 1;
         continue;
       }
 
-      // Bump the attempt counter first — even if the trigger call
-      // throws, the next sweep sees a higher count and won't loop
-      // forever on a permanently broken row.
+      // Bump attempt counter first so a permanently-broken row can't
+      // loop the sweeper forever.
       await db
         .update(jobs)
         .set({
@@ -121,18 +149,47 @@ export const recoverStuckJobs = schedules.task({
       }
     }
 
+    // ── Handle processing-too-long ──────────────────────────────────
+    // No retry attempt; provider may have already charged us. Mark
+    // failed + refund. The UPDATE's `status = 'processing'` predicate
+    // means if the worker finishes between our SELECT and UPDATE we
+    // leave the row alone — no double-finalize.
+    for (const row of processingRows) {
+      await abandonJob(row.id, 'processing', 0);
+      abandoned += 1;
+      logger.warn('recover-stuck-jobs:processing-timeout', { jobId: row.id });
+    }
+
     return { recovered, abandoned };
   },
 });
 
 /**
- * Mark a job permanently failed after MAX_RECOVERY_ATTEMPTS and
- * issue a refund. We import the refund helper lazily here to avoid
- * a circular module graph (refund.ts → db.ts; this file → refund.ts).
+ * Mark a job permanently failed and issue a refund.
+ *
+ * `fromStatus` gates the UPDATE so we never overwrite a row that
+ * raced into a terminal state between our SELECT and our UPDATE.
+ * For `queued` abandonments the message blames dispatch; for
+ * `processing` abandonments it blames a crashed worker.
+ *
+ * Refund is delegated to the existing `refundForJob` helper (lazy
+ * import avoids a circular module graph: refund.ts → db.ts; this
+ * file → refund.ts). If the refund itself errors we log + continue —
+ * the row is already `failed` and the user will see that; manual
+ * reconciliation from credit_ledger can recover credits later.
  */
-async function abandonJob(jobId: string, attempts: number): Promise<void> {
+async function abandonJob(
+  jobId: string,
+  fromStatus: 'queued' | 'processing',
+  attempts: number,
+): Promise<void> {
   const { refundForJob } = await import('../lib/refund');
   const db = getDb();
+
+  const message =
+    fromStatus === 'queued'
+      ? `Job could not be dispatched after ${attempts} attempts.`
+      : `Job exceeded the ${PROCESSING_STUCK_AFTER_SECONDS}s processing window — worker likely crashed.`;
 
   await db
     .update(jobs)
@@ -140,13 +197,13 @@ async function abandonJob(jobId: string, attempts: number): Promise<void> {
       status: 'failed',
       error: {
         code: 'internal_error',
-        message: `Job could not be dispatched after ${attempts} attempts.`,
+        message,
         stage: 0,
         retryCount: attempts,
       },
       completedAt: new Date(),
     })
-    .where(and(eq(jobs.id, jobId), eq(jobs.status, 'queued')));
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, fromStatus)));
 
   try {
     await refundForJob(jobId);
@@ -157,5 +214,5 @@ async function abandonJob(jobId: string, attempts: number): Promise<void> {
     });
   }
 
-  logger.warn('recover-stuck-jobs:abandoned', { jobId, attempts });
+  logger.warn('recover-stuck-jobs:abandoned', { jobId, fromStatus, attempts });
 }

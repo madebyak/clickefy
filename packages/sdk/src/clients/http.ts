@@ -612,7 +612,10 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
     },
 
     uploads: {
-      async uploadUserAsset(source: UploadSource): Promise<UploadedAssetRef> {
+      async uploadUserAsset(
+        source: UploadSource,
+        opts?: { onProgress?: (fraction: number) => void },
+      ): Promise<UploadedAssetRef> {
         // Auth required: the Worker derives the user-scoped R2 prefix
         // from the Clerk session, so we must attach a fresh token.
         const headers: Record<string, string> = { Accept: 'application/json' };
@@ -621,16 +624,11 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           if (token) headers.Authorization = `Bearer ${token}`;
         }
 
+        const body = new FormData();
         // React Native's `FormData` accepts the `{ uri, name, type }`
         // triple — the bridge converts it into a multipart part with
         // the file streamed off-disk. Casting through `any` because
         // the DOM TS types don't model this RN-specific form.
-        //
-        // Don't set `Content-Type: multipart/form-data; boundary=...`
-        // manually — `fetch` does that automatically and a manual
-        // header would override (and break) the auto-generated
-        // boundary.
-        const body = new FormData();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (body as any).append('file', {
           uri: source.uri,
@@ -638,18 +636,71 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           type: source.type,
         } as unknown as Blob);
 
-        const res = await fetch(`${baseUrl}/v1/uploads/user`, {
-          method: 'POST',
-          headers,
-          body,
-        });
+        const url = `${baseUrl}/v1/uploads/user`;
 
-        if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          throw new Error(`upload ${res.status}: ${text.slice(0, 200)}`);
+        // No progress callback → use the simpler `fetch` path. This
+        // is what the admin web app and any non-mobile consumer hits.
+        // `fetch` automatically sets the multipart boundary header.
+        if (!opts?.onProgress) {
+          const res = await fetch(url, { method: 'POST', headers, body });
+          if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(`upload ${res.status}: ${text.slice(0, 200)}`);
+          }
+          const json = (await res.json()) as { data: UploadedAssetRef };
+          return json.data;
         }
-        const json = (await res.json()) as { data: UploadedAssetRef };
-        return json.data;
+
+        // Progress requested → fall back to XMLHttpRequest. `fetch` in
+        // React Native (and Web) does not expose upload progress —
+        // there's no equivalent of `xhr.upload.onprogress`. XHR is
+        // available in every JS runtime we ship to (browser, RN,
+        // modern Node) so we don't need a polyfill.
+        //
+        // Lifecycle:
+        //   - `xhr.upload.onprogress` fires while the body is being
+        //     transmitted. `loaded / total` is the fraction we hand
+        //     back to the caller.
+        //   - `xhr.onload` fires once the server has fully responded;
+        //     this is where we parse + resolve.
+        //   - `xhr.onerror` / `xhr.ontimeout` collapse into a single
+        //     network-error rejection so the caller's catch handles
+        //     both uniformly.
+        const onProgress = opts.onProgress;
+        return new Promise<UploadedAssetRef>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', url);
+          for (const [k, v] of Object.entries(headers)) {
+            // Don't set Content-Type; XHR will populate it with the
+            // correct multipart boundary when given a FormData body.
+            if (k.toLowerCase() === 'content-type') continue;
+            xhr.setRequestHeader(k, v);
+          }
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable && event.total > 0) {
+              onProgress(Math.min(1, event.loaded / event.total));
+            }
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const parsed = JSON.parse(xhr.responseText) as { data: UploadedAssetRef };
+                // Make sure listeners observe a clean 1.0 frame even if
+                // the last `progress` event reported 0.99 (common with
+                // server-side buffering between TLS close and headers).
+                onProgress(1);
+                resolve(parsed.data);
+              } catch (err) {
+                reject(new Error(`upload: malformed response: ${(err as Error).message}`));
+              }
+            } else {
+              reject(new Error(`upload ${xhr.status}: ${xhr.responseText.slice(0, 200)}`));
+            }
+          };
+          xhr.onerror = () => reject(new Error('upload: network error'));
+          xhr.ontimeout = () => reject(new Error('upload: timed out'));
+          xhr.send(body);
+        });
       },
     },
   };

@@ -15,6 +15,7 @@ import { categories } from '@clickfy/db';
 
 import type { AppEnv } from '../types';
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
+import { byIp, withRateLimit } from '../middleware/with-rate-limit';
 
 export const categoriesRoute = new Hono<AppEnv>();
 
@@ -36,14 +37,18 @@ const updateCategorySchema = createCategorySchema.partial();
 
 // ─── Read ───────────────────────────────────────────────────────────
 
-categoriesRoute.get('/', async (c) => {
-  const rows = await c.var.db.query.categories.findMany({
-    orderBy: [asc(categories.sortOrder), asc(categories.name)],
-  });
-  return c.json({ data: rows });
-});
+categoriesRoute.get(
+  '/',
+  withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
+  async (c) => {
+    const rows = await c.var.db.query.categories.findMany({
+      orderBy: [asc(categories.sortOrder), asc(categories.name)],
+    });
+    return c.json({ data: rows });
+  },
+);
 
-categoriesRoute.get('/:id', async (c) => {
+categoriesRoute.get('/:id', withRateLimit((env) => env.RL_PUBLIC_IP, byIp), async (c) => {
   const row = await c.var.db.query.categories.findFirst({
     where: eq(categories.id, c.req.param('id')),
   });

@@ -10,7 +10,9 @@ import { categoriesRoute } from './routes/categories';
 import { jobsRoute } from './routes/jobs';
 import { libraryRoute } from './routes/library';
 import { templatesRoute } from './routes/templates';
+import { adminReportsRoute } from './routes/admin-reports';
 import { adminUsersRoute } from './routes/admin-users';
+import { reportsRoute } from './routes/reports';
 import { usersRoute } from './routes/users';
 import { outputsRoute } from './routes/outputs';
 import { uploadsAdminRoute, uploadsPublicRoute, uploadsUserRoute } from './routes/uploads';
@@ -55,8 +57,10 @@ app.route('/v1/catalog', catalog);
 app.route('/v1/categories', categoriesRoute);
 app.route('/v1/admin/templates', templatesRoute);
 app.route('/v1/admin/users', adminUsersRoute);
+app.route('/v1/admin/reports', adminReportsRoute);
 app.route('/v1/jobs', jobsRoute);
 app.route('/v1/library', libraryRoute);
+app.route('/v1/reports', reportsRoute);
 app.route('/v1/users', usersRoute);
 // `/v1/uploads/user` MUST be registered before the public GET route
 // below, because Hono matches in registration order and the public

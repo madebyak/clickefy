@@ -39,6 +39,7 @@ import { findCapabilities } from '@clickfy/providers';
 
 import type { AppEnv } from '../types';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
+import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 import { createJobSchema } from '../lib/job-schemas';
 import { validateJobSubmission } from '../lib/job-validation';
 import { createJobAtomically } from '../lib/job-create';
@@ -52,6 +53,7 @@ export const jobsRoute = new Hono<AppEnv>();
 jobsRoute.post(
   '/',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_JOB, byClerkUserId),
   withCurrentUser(),
   zValidator('json', createJobSchema),
   async (c) => {
@@ -261,6 +263,7 @@ jobsRoute.post(
 jobsRoute.get(
   '/',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
   async (c) => {
     const clerkUserId = c.var.clerkUserId;
     if (!clerkUserId) {
@@ -433,6 +436,7 @@ jobsRoute.get(
 jobsRoute.get(
   '/:id',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
   async (c) => {
     const clerkUserId = c.var.clerkUserId;
     if (!clerkUserId) {
@@ -546,6 +550,7 @@ jobsRoute.get(
 jobsRoute.delete(
   '/:id',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
   async (c) => {
     const clerkUserId = c.var.clerkUserId;
     if (!clerkUserId) {

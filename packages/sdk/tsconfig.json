@@ -4,7 +4,13 @@
   "compilerOptions": {
     "rootDir": "./src",
     "noEmit": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    // The SDK is consumed exclusively by browser-like runtimes
+    // (admin web + React Native mobile). DOM lib gives us
+    // `fetch`, `FormData`, and `XMLHttpRequest` typings — the API
+    // Worker / jobs-worker never imports this package so the
+    // Workers tsconfig isn't affected.
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src/**/*"]
 }

@@ -58,7 +58,58 @@ bucket_name = "clickfy-uploads"
 binding = "OUTPUTS"
 bucket_name = "clickfy-outputs"
 
-# KV namespace for rate limiting (create with `wrangler kv namespace create RATE_LIMIT`)
-# [[kv_namespaces]]
-# binding = "RATE_LIMIT"
-# id = "REPLACE_WITH_KV_ID"
+# ── Rate limiting (native binding) ───────────────────────────────
+# Each `[[ratelimits]]` block declares a fixed-window counter that
+# `env.<name>.limit({ key }).success` consults. Counters live in the
+# same Cloudflare-managed substrate as WAF rate-limiting rules:
+# locally cached, asynchronously synced, no network round-trip per
+# call. Limits are per Cloudflare location (not global) — fine for our
+# mobile-first traffic where a single session pins to one POP.
+#
+# `namespace_id` must be a unique positive integer per binding in this
+# account. Two bindings sharing an id (even across Workers) share the
+# same counters — useful for fanning out a single limit across services
+# but not what we want here, so each one gets a fresh number.
+#
+# `simple.period` must be either 10 or 60 seconds. Tuning notes:
+#   - RL_PUBLIC_IP  120/60s  guards anonymous catalog + R2 read.
+#                            IP-keyed, so generous to absorb shared NAT.
+#   - RL_USER_READ  240/60s  authed GETs (jobs list, library, me).
+#                            ~4/sec sustained which no real user hits.
+#   - RL_USER_WRITE  30/60s  authed mutations (profile edit, favourite,
+#                            upload). Bursty UI taps are fine; loops abort.
+#   - RL_USER_JOB    10/60s  job creation specifically. Each call debits
+#                            credits and spawns a Trigger.dev run, so the
+#                            tightest tier. ~1 every 6s — well above the
+#                            human creation pace.
+#
+# These are dialled CONSERVATIVELY on purpose. If a real user ever
+# brushes the ceiling, bump the limit, redeploy, done — no migration.
+
+[[ratelimits]]
+name = "RL_PUBLIC_IP"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
+[[ratelimits]]
+name = "RL_USER_READ"
+namespace_id = "1002"
+  [ratelimits.simple]
+  limit = 240
+  period = 60
+
+[[ratelimits]]
+name = "RL_USER_WRITE"
+namespace_id = "1003"
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
+[[ratelimits]]
+name = "RL_USER_JOB"
+namespace_id = "1004"
+  [ratelimits.simple]
+  limit = 10
+  period = 60

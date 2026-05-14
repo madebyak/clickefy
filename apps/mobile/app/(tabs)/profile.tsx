@@ -22,7 +22,9 @@ import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/lib/use-appearance';
+import { LEGAL_DOCS, LEGAL_DOC_ORDER } from '@/lib/legal-content';
 import { useSession } from '@/lib/use-session';
+import { Alert } from 'react-native';
 
 const ACCENT_OPTIONS: AccentKey[] = ['violet', 'coral', 'citrus', 'ocean'];
 
@@ -37,6 +39,7 @@ export default function ProfileScreen() {
     preferences,
     updateProfile,
     signOut,
+    deleteAccount,
   } = useSession();
   const { mode, scheme, accentKey, setMode, setAccent, toggleScheme } = useAppearance();
   const session = isAuthed && user ? { user, plan } : null;
@@ -264,11 +267,37 @@ export default function ProfileScreen() {
               disabled={!session}
             />
             <Divider />
-            <ProfileRow icon="bookmark" label="Saved templates" onPress={() => {}} />
+            <ProfileRow icon="bookmark" label="Saved templates" onPress={() => router.push('/saved')} />
             <Divider />
             <ProfileRow icon="gift" label="Refer a friend" onPress={() => {}} />
             <Divider />
             <ProfileRow icon="sliders" label="Settings" onPress={() => {}} />
+          </Stack>
+        </Card>
+
+        {/* Legal & policies
+            App Store guideline 1.5 requires every app to surface its
+            Terms + Privacy from inside the app. Grouping the full pack
+            here keeps reviewers happy AND gives users a single place
+            to find every policy without us having to inline a giant
+            footer everywhere. */}
+        <Card>
+          <Stack gap="sm">
+            <Text variant="overline" color="inkMuted" transform="uppercase">
+              Legal & policies
+            </Text>
+            {LEGAL_DOC_ORDER.map((slug, i) => (
+              <View key={slug}>
+                <ProfileRow
+                  icon="info"
+                  label={LEGAL_DOCS[slug].title}
+                  onPress={() =>
+                    router.push({ pathname: '/legal/[doc]', params: { doc: slug } })
+                  }
+                />
+                {i < LEGAL_DOC_ORDER.length - 1 ? <Divider /> : null}
+              </View>
+            ))}
           </Stack>
         </Card>
 
@@ -285,6 +314,78 @@ export default function ProfileScreen() {
             Sign in
           </Button>
         )}
+
+        {/* Danger zone — required by App Store guideline 5.1.1(v) and
+            Google Play's Account-Deletion policy. The two-step
+            confirmation (native Alert + destructive style) is the
+            App Store-blessed pattern. Mutation handles sign-out +
+            cache flush internally; we just navigate away. */}
+        {session ? (
+          <Card>
+            <Stack gap="sm">
+              <Text variant="overline" color="danger" transform="uppercase" weight="700">
+                Danger zone
+              </Text>
+              <Text variant="caption" color="inkMuted">
+                Deleting your account is permanent. Your library, history,
+                and any unused credits are removed and can&apos;t be restored.
+              </Text>
+              <Pressable
+                onPress={() =>
+                  Alert.alert(
+                    'Delete your account?',
+                    'This permanently removes your account, library, and any unused credits. We can\u2019t undo this.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete account',
+                        style: 'destructive',
+                        onPress: () => {
+                          deleteAccount.mutate(undefined, {
+                            onSuccess: () => {
+                              router.replace('/(auth)/welcome');
+                            },
+                            onError: (err) => {
+                              Alert.alert(
+                                'Could not delete',
+                                err instanceof Error
+                                  ? err.message
+                                  : 'Check your connection and try again.',
+                              );
+                            },
+                          });
+                        },
+                      },
+                    ],
+                  )
+                }
+                haptic="warning"
+                pressedOpacity={0.9}
+                disabled={deleteAccount.isPending}
+              >
+                <HStack
+                  align="center"
+                  justify="space-between"
+                  py="sm"
+                  px="md"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.danger,
+                    borderRadius: 14,
+                    backgroundColor: colors.surface,
+                  }}
+                >
+                  <HStack align="center" gap="md">
+                    <Icon name="trash" size={18} color={colors.danger} weight="bold" />
+                    <Text variant="bodySemi" color="danger">
+                      {deleteAccount.isPending ? 'Deleting\u2026' : 'Delete account'}
+                    </Text>
+                  </HStack>
+                </HStack>
+              </Pressable>
+            </Stack>
+          </Card>
+        ) : null}
 
         <Text variant="caption" color="inkSubtle" align="center">
           Active accent: {accentKey} · Scheme: {scheme} · Brand: {accent.solid}

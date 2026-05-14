@@ -13,10 +13,12 @@
 export * from './enums';
 export * from './json-types';
 
+export * from './admin-audit-log';
 export * from './categories';
 export * from './credit-ledger';
 export * from './jobs';
 export * from './provider-models';
+export * from './reports';
 export * from './saved-templates';
 export * from './template-versions';
 export * from './templates';

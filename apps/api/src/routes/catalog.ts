@@ -24,6 +24,7 @@ import type { AppEnv } from '../types';
 import { templateToMobileDTO } from '../lib/template-dto';
 import { buildHomeSections } from '../lib/section-builder';
 import { withAuth } from '../middleware/with-auth';
+import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
 
 export const catalog = new Hono<AppEnv>();
 
@@ -81,7 +82,11 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
-catalog.get('/templates', zValidator('query', listQuerySchema), async (c) => {
+catalog.get(
+  '/templates',
+  withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
+  zValidator('query', listQuerySchema),
+  async (c) => {
   const q = c.req.valid('query');
 
   const whereParts: SQL[] = [eq(templates.status, 'published')];
@@ -170,7 +175,11 @@ const sectionsQuerySchema = z.object({
   categoryId: z.string().optional(),
 });
 
-catalog.get('/sections', zValidator('query', sectionsQuerySchema), async (c) => {
+catalog.get(
+  '/sections',
+  withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
+  zValidator('query', sectionsQuerySchema),
+  async (c) => {
   const { categoryId } = c.req.valid('query');
   const publicBaseUrl = new URL(c.req.url).origin;
   const sections = await buildHomeSections(c.var.db, {
@@ -188,6 +197,7 @@ const idParamSchema = z.object({ id: z.string().uuid() });
 catalog.get(
   '/templates/:id',
   withAuth({ required: false }),
+  withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -251,6 +261,7 @@ catalog.get(
 catalog.post(
   '/templates/:id/favorite',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -289,6 +300,7 @@ catalog.post(
 catalog.delete(
   '/templates/:id/favorite',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');

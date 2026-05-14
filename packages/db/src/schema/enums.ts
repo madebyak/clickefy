@@ -78,3 +78,41 @@ export const modelStatusEnum = pgEnum('model_status', [
   'preview',
   'deprecated',
 ]);
+
+/**
+ * `report_reason` — the discrete bucket a user picks when flagging
+ * content. Mirrors the App Store / Play Store UGC moderation
+ * categories so we can map straight to platform escalation paths
+ * (CSAM → NCMEC; copyright → DMCA queue; everything else → internal
+ * triage).
+ */
+export const reportReasonEnum = pgEnum('report_reason', [
+  'csam',
+  'sexual_content',
+  'violence_or_threats',
+  'hate_speech',
+  'harassment',
+  'spam',
+  'copyright',
+  'other',
+]);
+
+export const reportStatusEnum = pgEnum('report_status', [
+  'open',
+  'reviewing',
+  'resolved',
+  'dismissed',
+]);
+
+/**
+ * `report_target_type` — what kind of resource a report is about.
+ * `target_id` is intentionally a text column (not a typed FK) so a
+ * single `reports` table can fan out across job outputs, templates,
+ * and future user-content types without N FK columns or a join
+ * table per kind.
+ */
+export const reportTargetTypeEnum = pgEnum('report_target_type', [
+  'job_output',
+  'template',
+  'user',
+]);

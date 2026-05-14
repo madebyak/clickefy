@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   FileText,
+  Flag,
   FolderTree,
   Users,
   Briefcase,
@@ -52,6 +53,11 @@ const navItems = [
     title: 'Jobs & Runs',
     href: '/admin/jobs',
     icon: Briefcase,
+  },
+  {
+    title: 'Reports',
+    href: '/admin/reports',
+    icon: Flag,
   },
   {
     title: 'Analytics',

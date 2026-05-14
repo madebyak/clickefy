@@ -19,6 +19,7 @@ import { savedTemplates, templates, users } from '@clickfy/db';
 import type { AppEnv } from '../types';
 import { templateToMobileDTO } from '../lib/template-dto';
 import { withAuth } from '../middleware/with-auth';
+import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 
 export const libraryRoute = new Hono<AppEnv>();
 
@@ -36,6 +37,7 @@ export const libraryRoute = new Hono<AppEnv>();
 libraryRoute.get(
   '/saved',
   withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
   async (c) => {
     const clerkUserId = c.var.clerkUserId!;
     const userRow = await c.var.db.query.users.findFirst({

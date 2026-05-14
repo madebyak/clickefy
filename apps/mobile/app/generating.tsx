@@ -164,7 +164,7 @@ export default function GeneratingScreen() {
                 Try again
               </Button>
             ) : (
-              <Button variant="primary" full onPress={() => router.replace('/(tabs)' as any)}>
+              <Button variant="primary" full onPress={() => router.replace('/(tabs)')}>
                 Back to home
               </Button>
             )}

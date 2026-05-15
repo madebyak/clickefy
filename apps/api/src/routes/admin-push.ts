@@ -121,12 +121,16 @@ adminPushRoute.post(
     const recipients = await resolveTokens(c.var.db, audience);
 
     if (recipients.length === 0) {
+      // Distinct warning code so the admin UI can surface "no devices
+      // registered" instead of pretending the send succeeded. The
+      // response is still 200 — the request itself was valid, there's
+      // just nothing to fan out to.
       return c.json({
         data: {
-          sent: 0,
-          failed: 0,
           recipientCount: 0,
-          deactivated: 0,
+          firstBatch: { sent: 0, failed: 0, deactivated: 0 },
+          queuedRemaining: 0,
+          warning: 'no_active_devices',
         },
       });
     }
@@ -186,6 +190,136 @@ adminPushRoute.post(
           deactivated: firstDead.length,
         },
         queuedRemaining: remaining.length,
+      },
+    });
+  },
+);
+
+// ─── Self-test push (admin → admin's own devices) ───────────────────
+
+const TestPushSchema = z
+  .object({
+    title: z.string().min(1).max(80).optional(),
+    body: z.string().min(1).max(240).optional(),
+  })
+  .optional();
+
+/**
+ * POST /v1/admin/push/test
+ *
+ * Sends a push to every device registered to the calling admin's
+ * `users.id`. Used as the "Send test to me" button on /admin/push so
+ * an operator can verify the full pipeline (token → Expo → APNs/FCM
+ * → device) without composing a broadcast or risking noisy fan-out.
+ *
+ * Returns the same shape as /broadcast for UI parity, plus a hint
+ * about whether the admin has any devices registered. If the admin
+ * has never signed in on a mobile device the request is rejected
+ * with a clear error message — that's the most common confusion path.
+ */
+adminPushRoute.post(
+  '/test',
+  withAuth({ required: true }),
+  withCurrentUser(),
+  withAdmin(),
+  zValidator('json', TestPushSchema),
+  async (c) => {
+    const body = c.req.valid('json') ?? {};
+    const admin = c.var.user!;
+
+    const rows = await c.var.db
+      .select({ token: deviceTokens.expoPushToken, userId: deviceTokens.userId })
+      .from(deviceTokens)
+      .where(and(eq(deviceTokens.isActive, true), eq(deviceTokens.userId, admin.id)));
+
+    if (rows.length === 0) {
+      return c.json(
+        {
+          error: {
+            code: 'no_device_for_admin',
+            message:
+              "You don't have a device registered for push. Sign in to the mobile app on a physical device first.",
+          },
+        },
+        409,
+      );
+    }
+
+    const accessToken = c.env.EXPO_ACCESS_TOKEN;
+    const title = body.title ?? 'Clickefy test push';
+    const text = body.body ?? `Hi ${admin.name ?? 'there'} — push is working ✅`;
+
+    const messages: ExpoPushMessage[] = rows.map((r) => ({
+      to: r.token,
+      title,
+      body: text,
+      data: { type: 'admin_test', sentAt: new Date().toISOString() },
+      sound: 'default',
+      priority: 'high',
+    }));
+
+    const tickets = await sendExpoPush(messages, { accessToken });
+    const dead = tokensToDeactivate(tickets);
+    if (dead.length > 0) {
+      await c.var.db
+        .update(deviceTokens)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(inArray(deviceTokens.expoPushToken, dead));
+    }
+
+    const ok = tickets.filter((t) => t.status === 'ok').length;
+    const failed = tickets.length - ok;
+    // Surface the first error (if any) so the admin can read it in
+    // the toast — Expo's error messages are usually self-explanatory
+    // ('DeviceNotRegistered', 'InvalidCredentials', etc.).
+    const firstError = tickets.find((t) => t.status === 'error');
+
+    return c.json({
+      data: {
+        recipientCount: rows.length,
+        sent: ok,
+        failed,
+        deactivated: dead.length,
+        firstError: firstError
+          ? {
+              token: firstError.to.slice(0, 24) + '...',
+              message: firstError.message,
+              errorType: firstError.errorType,
+            }
+          : null,
+      },
+    });
+  },
+);
+
+// ─── Stats: how many active devices exist right now ─────────────────
+
+/**
+ * GET /v1/admin/push/stats
+ *
+ * Tiny endpoint the admin UI uses to render a "0 devices registered"
+ * warning banner above the broadcast composer. Saves the operator
+ * from having to send a broadcast just to discover there's nothing
+ * to send to.
+ */
+adminPushRoute.get(
+  '/stats',
+  withAuth({ required: true }),
+  withCurrentUser(),
+  withAdmin(),
+  async (c) => {
+    const rows = await c.var.db
+      .select({ token: deviceTokens.expoPushToken, platform: deviceTokens.platform })
+      .from(deviceTokens)
+      .where(eq(deviceTokens.isActive, true));
+    const ios = rows.filter((r) => r.platform === 'ios').length;
+    const android = rows.filter((r) => r.platform === 'android').length;
+    return c.json({
+      data: {
+        totalActive: rows.length,
+        ios,
+        android,
+        other: rows.length - ios - android,
       },
     });
   },

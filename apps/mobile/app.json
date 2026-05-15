@@ -2,7 +2,7 @@
   "expo": {
     "name": "Clickefy",
     "slug": "clickfy",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "clickfy",
@@ -90,6 +90,15 @@
           "photosPermission": "Clickefy reads your photo library so you can use existing photos as inputs for AI generation.",
           "cameraPermission": "Clickefy uses the camera so you can capture product photos to use as input for AI generation.",
           "microphonePermission": "Clickefy uses the microphone if you record video inputs for AI generation."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#7C3AED",
+          "defaultChannel": "default",
+          "enableBackgroundRemoteNotifications": false
         }
       ],
       "@sentry/react-native"

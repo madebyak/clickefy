@@ -165,3 +165,51 @@ export async function unregisterPushAsync(
     console.warn('[push] unregister threw:', err);
   }
 }
+
+/**
+ * Subscribe to Expo push-token rotation events.
+ *
+ * Expo tokens are stable in 99% of cases but can rotate after device
+ * restore, OS major upgrades, or app reinstalls without a fresh
+ * sign-in. Without this listener a rotated token leaves us pushing
+ * to a stale address — the device silently stops receiving.
+ *
+ * Wire this once at app start (after the first registerForPush call).
+ * Returns the subscription handle so the caller can dispose it on
+ * sign-out.
+ */
+export function subscribeToTokenRotation(
+  getToken: () => Promise<string | null>,
+): { remove: () => void } {
+  const sub = Notifications.addPushTokenListener(async (newToken) => {
+    if (!newToken?.data) return;
+    console.log('[push] token rotated, re-registering…');
+    try {
+      const bearer = await getToken();
+      const res = await fetch(`${config.apiUrl}/v1/devices/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        },
+        body: JSON.stringify({
+          expoPushToken: newToken.data,
+          platform:
+            Platform.OS === 'ios'
+              ? 'ios'
+              : Platform.OS === 'android'
+                ? 'android'
+                : 'unknown',
+          appVersion: Constants.expoConfig?.version ?? undefined,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        console.warn('[push] rotation register failed', res.status, text.slice(0, 200));
+      }
+    } catch (err) {
+      console.warn('[push] rotation register threw:', err);
+    }
+  });
+  return sub;
+}

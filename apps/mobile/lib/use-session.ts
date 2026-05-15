@@ -29,7 +29,10 @@ import {
 } from '@clickfy/types';
 import { useCallback, useEffect } from 'react';
 
-import { registerForPushNotificationsAsync } from './push-notifications';
+import {
+  registerForPushNotificationsAsync,
+  subscribeToTokenRotation,
+} from './push-notifications';
 
 import { config } from './config';
 
@@ -98,6 +101,14 @@ export function useSession() {
         console.log('[push] register skipped:', result.reason);
       }
     });
+
+    // Listen for token rotation. Stable for the lifetime of the
+    // signed-in session; cleaned up below so a sign-out → sign-in
+    // hand-off doesn't double-subscribe.
+    const rotationSub = subscribeToTokenRotation(async () => getToken());
+    return () => {
+      rotationSub.remove();
+    };
   }, [isSignedIn, clerkUser?.id, getToken]);
 
   const meQuery = useQuery({

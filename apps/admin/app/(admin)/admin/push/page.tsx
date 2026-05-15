@@ -13,10 +13,10 @@
  * `withAdmin()` middleware on the API side.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { toast } from 'sonner';
-import { Bell, Loader2, Send } from 'lucide-react';
+import { AlertTriangle, Bell, Loader2, Send, Sparkles } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +42,22 @@ interface BroadcastResult {
   recipientCount: number;
   firstBatch: { sent: number; failed: number; deactivated: number };
   queuedRemaining: number;
+  warning?: 'no_active_devices';
+}
+
+interface PushStats {
+  totalActive: number;
+  ios: number;
+  android: number;
+  other: number;
+}
+
+interface TestPushResult {
+  recipientCount: number;
+  sent: number;
+  failed: number;
+  deactivated: number;
+  firstError: { token: string; message?: string; errorType?: string } | null;
 }
 
 const ENTITLEMENT_OPTIONS = ['free', 'pro', 'pro_max'] as const;
@@ -62,6 +78,55 @@ export default function PushBroadcastPage() {
   const [previewing, setPreviewing] = useState(false);
   const [sending, setSending] = useState(false);
   const [lastResult, setLastResult] = useState<BroadcastResult | null>(null);
+  const [stats, setStats] = useState<PushStats | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  // Fetch device-token stats so we can render a "0 devices registered"
+  // warning before the admin wastes a broadcast on an empty audience.
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch<PushStats>('/v1/admin/push/stats', { getToken: tokenGetter })
+      .then((data) => {
+        if (!cancelled) setStats(data);
+      })
+      .catch(() => {
+        /* non-critical; banner just won't appear */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenGetter]);
+
+  async function runTestPush() {
+    setTesting(true);
+    try {
+      const data = await apiFetch<TestPushResult>('/v1/admin/push/test', {
+        method: 'POST',
+        getToken: tokenGetter,
+        json: {},
+      });
+      if (data.sent > 0) {
+        toast.success(`Test push sent to ${data.sent} device${data.sent === 1 ? '' : 's'}.`);
+      } else if (data.firstError) {
+        toast.error(
+          `Send returned 0 successes. First error: ${data.firstError.errorType ?? data.firstError.message ?? 'unknown'}`,
+        );
+      } else {
+        toast.warning('Push delivered to Expo but no successful ticket received.');
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'no_device_for_admin') {
+        toast.warning(
+          'No device registered for your account yet. Sign in to the mobile app on a physical device first.',
+          { duration: 8000 },
+        );
+      } else {
+        toast.error(err instanceof ApiError ? err.message : 'Test push failed');
+      }
+    } finally {
+      setTesting(false);
+    }
+  }
 
   const audience = useMemo(() => {
     if (audienceType === 'all') return { type: 'all' as const };
@@ -135,9 +200,20 @@ export default function PushBroadcastPage() {
         json: { title: title.trim(), body: body.trim(), audience },
       });
       setLastResult(data);
-      toast.success(
-        `Sent to ${data.firstBatch.sent} devices (${data.queuedRemaining} more queued).`,
-      );
+      if (data.warning === 'no_active_devices') {
+        toast.warning(
+          'No devices are registered. The send succeeded but reached 0 users — check that the mobile app is installed and signed-in.',
+          { duration: 8000 },
+        );
+      } else if (data.firstBatch.sent === 0) {
+        toast.warning(
+          `Sent to 0 of ${data.recipientCount} devices. ${data.firstBatch.deactivated} stale tokens deactivated.`,
+        );
+      } else {
+        toast.success(
+          `Sent to ${data.firstBatch.sent} devices (${data.queuedRemaining} more queued).`,
+        );
+      }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Broadcast failed';
       toast.error(msg);
@@ -148,16 +224,46 @@ export default function PushBroadcastPage() {
 
   return (
     <div className="container mx-auto max-w-3xl space-y-6 p-6">
-      <div className="flex items-center gap-3">
-        <Bell className="h-6 w-6 text-primary-purple" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Push broadcasts</h1>
-          <p className="text-sm text-muted-foreground">
-            Send a notification to a segment of users. The first 100 devices fire
-            synchronously; the rest are queued in the background.
-          </p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Bell className="h-6 w-6 text-primary-purple" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Push broadcasts</h1>
+            <p className="text-sm text-muted-foreground">
+              Send a notification to a segment of users. The first 100 devices fire
+              synchronously; the rest are queued in the background.
+            </p>
+          </div>
         </div>
+        <Button variant="outline" onClick={runTestPush} disabled={testing}>
+          {testing ? (
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="mr-1 h-4 w-4" />
+          )}
+          Send test to me
+        </Button>
       </div>
+
+      {stats && stats.totalActive === 0 ? (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-500" />
+          <div className="flex-1 text-sm">
+            <p className="font-medium">No devices are registered for push.</p>
+            <p className="mt-1 text-muted-foreground">
+              Until at least one user signs in to the mobile app on a physical device
+              (or a development build), every broadcast will reach 0 recipients. iOS
+              works in Expo Go; Android requires an EAS Build (SDK 53+).
+            </p>
+          </div>
+        </div>
+      ) : stats ? (
+        <div className="rounded-lg border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+          {stats.totalActive} active device{stats.totalActive === 1 ? '' : 's'} registered ·{' '}
+          {stats.ios} iOS · {stats.android} Android
+          {stats.other > 0 ? ` · ${stats.other} other` : ''}
+        </div>
+      ) : null}
 
       <div className="space-y-4 rounded-2xl border bg-card p-6">
         <div className="space-y-2">

@@ -3,6 +3,7 @@ import { Roboto, Roboto_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { Providers } from "@/components/providers";
 import "./globals.css";
 
 const roboto = Roboto({
@@ -35,10 +36,12 @@ export default function RootLayout({
         className={`${roboto.variable} ${robotoMono.variable}`}
       >
         <body>
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
-          <Toaster richColors position="top-right" />
+          <Providers>
+            <TooltipProvider>
+              {children}
+            </TooltipProvider>
+            <Toaster richColors position="top-right" />
+          </Providers>
         </body>
       </html>
     </ClerkProvider>

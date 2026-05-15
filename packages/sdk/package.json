@@ -7,7 +7,6 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./mock": "./src/clients/mock.ts",
     "./http": "./src/clients/http.ts"
   },
   "scripts": {

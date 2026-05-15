@@ -164,13 +164,29 @@ export function validateCategorySet(input: {
 }
 
 /**
- * Atomically replace the membership set for `templateId`.
+ * Replace the membership set for `templateId`.
  *
- * Uses a single CTE so `DELETE … RETURNING` and `INSERT … RETURNING`
- * land in one statement — neon-http's stateless mode can't open an
- * interactive transaction, but a multi-CTE query is its own atomic
- * unit. The partial unique index makes "two primaries" impossible
- * even if a concurrent writer tried.
+ * Implementation note (read before "optimising" this):
+ *
+ *   We do DELETE and INSERT as two separate statements rather than
+ *   a single CTE. A CTE looks tempting (`WITH deleted AS (DELETE …)
+ *   INSERT …`) but Postgres runs every leg of a single statement
+ *   against the *same snapshot*: the INSERT's uniqueness check on
+ *   `(template_id, category_id)` never sees the DELETE's effects,
+ *   so any pair that existed before AND appears in the new set
+ *   trips the PK and we get a 500. The classic shape is "admin
+ *   changes the primary but keeps category X as an extra".
+ *
+ *   Two separate calls cost one extra HTTP round-trip on neon-http
+ *   and dodge the snapshot trap entirely. The brief window between
+ *   delete and insert where the template has zero memberships is
+ *   acceptable: reads in that window simply see an empty list, and
+ *   the partial unique index on `(template_id) WHERE is_primary`
+ *   still rejects any "two primaries" pathology if anything were
+ *   to race us.
+ *
+ *   neon-http is stateless so we can't wrap these in a real Postgres
+ *   transaction — accepted trade-off for the gain in simplicity.
  */
 export async function replaceTemplateCategories(
   db: Db,
@@ -184,31 +200,23 @@ export async function replaceTemplateCategories(
   });
   if (!v.ok) throw new Error(v.reason);
 
-  // Build the VALUES clause: one row per (categoryId, isPrimary,
-  // sortOrder). Primary first (sortOrder doesn't matter for primary
-  // but we set it to 0 for tidiness), then extras with ascending
-  // sort_order matching the array index.
-  const rows: Array<{ categoryId: string; isPrimary: boolean; sortOrder: number }> = [
-    { categoryId: primary, isPrimary: true, sortOrder: 0 },
-    ...extras.map((id, idx) => ({ categoryId: id, isPrimary: false, sortOrder: idx })),
+  // Build the rows: primary first (sortOrder 0; sortOrder is unused
+  // for the primary in the UI but we keep it tidy), then extras with
+  // ascending sort_order matching the array index.
+  const rows = [
+    { templateId, categoryId: primary, isPrimary: true, sortOrder: 0 },
+    ...extras.map((id, idx) => ({
+      templateId,
+      categoryId: id,
+      isPrimary: false,
+      sortOrder: idx,
+    })),
   ];
-  const valuesSql = sql.join(
-    rows.map(
-      (r) =>
-        sql`(${templateId}::uuid, ${r.categoryId}::uuid, ${r.isPrimary}, ${r.sortOrder})`,
-    ),
-    sql`, `,
-  );
 
-  await db.execute(sql`
-    WITH deleted AS (
-      DELETE FROM ${templateCategories}
-      WHERE ${templateCategories.templateId} = ${templateId}::uuid
-      RETURNING 1
-    )
-    INSERT INTO ${templateCategories} (template_id, category_id, is_primary, sort_order)
-    VALUES ${valuesSql}
-  `);
+  await db
+    .delete(templateCategories)
+    .where(eq(templateCategories.templateId, templateId));
+  await db.insert(templateCategories).values(rows);
 }
 
 /**

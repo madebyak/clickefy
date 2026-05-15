@@ -15,13 +15,17 @@ export * from './json-types';
 
 export * from './admin-audit-log';
 export * from './categories';
+export * from './credit-broadcasts';
 export * from './credit-ledger';
+export * from './credit-packs';
 export * from './device-tokens';
+export * from './grant-policies';
 export * from './jobs';
 export * from './provider-models';
 export * from './reports';
 export * from './revenuecat-events';
 export * from './saved-templates';
+export * from './subscription-plans';
 export * from './template-versions';
 export * from './templates';
 export * from './users';

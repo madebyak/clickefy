@@ -16,9 +16,9 @@
 
 import { Hono } from 'hono';
 import { Webhook } from 'svix';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
-import { creditLedger, users } from '@clickfy/db';
+import { creditLedger, grantPolicies, users } from '@clickfy/db';
 
 import type { AppEnv } from '../../types';
 
@@ -44,8 +44,13 @@ interface ClerkEvent {
   data: ClerkUserData & { deleted?: boolean };
 }
 
-/** How many free credits to grant on signup. */
-const SIGNUP_BONUS_CREDITS = 3;
+/**
+ * Welcome-bonus fallback if the `grant_policies` row is missing or
+ * disabled. Set to 0 so a misconfigured DB never accidentally hands out
+ * credits — the canonical amount lives in `grant_policies` where kind =
+ * 'welcome' and is managed from `/admin/credits/grants`.
+ */
+const WELCOME_BONUS_FALLBACK = 0;
 
 function pickPrimaryEmail(data: ClerkUserData): string | null {
   if (!data.email_addresses?.length) return null;
@@ -128,30 +133,39 @@ clerkWebhookRoute.post('/', async (c) => {
       );
     }
 
-    // Grant signup bonus exactly once (idempotent on retries) — the
-    // ledger is our atomic guard. If the row is absent we credit + write
-    // the ledger entry; if present we skip.
+    // Welcome bonus — granted exactly once per user, idempotently (the
+    // ledger lookup is our guard). Amount is read from `grant_policies`
+    // so the operator can change it from `/admin/credits/grants`
+    // without a deploy.
     const existingBonus = await c.var.db.query.creditLedger.findFirst({
-      where: (cl, { and, eq: eqOp }) =>
-        and(eqOp(cl.userId, user.id), eqOp(cl.reason, 'signup_bonus')),
+      where: and(eq(creditLedger.userId, user.id), eq(creditLedger.reason, 'signup_bonus')),
     });
 
     if (!existingBonus) {
-      // Bump balance and capture the new value atomically.
-      const [bumped] = await c.var.db
-        .update(users)
-        .set({
-          creditsBalance: sql`${users.creditsBalance} + ${SIGNUP_BONUS_CREDITS}`,
-        })
-        .where(eq(users.id, user.id))
-        .returning();
-
-      await c.var.db.insert(creditLedger).values({
-        userId: user.id,
-        delta: SIGNUP_BONUS_CREDITS,
-        reason: 'signup_bonus',
-        balanceAfter: bumped?.creditsBalance ?? SIGNUP_BONUS_CREDITS,
+      const policy = await c.var.db.query.grantPolicies.findFirst({
+        where: and(eq(grantPolicies.kind, 'welcome'), eq(grantPolicies.isActive, true)),
       });
+      const amount = policy?.amount ?? WELCOME_BONUS_FALLBACK;
+
+      if (amount > 0) {
+        const [bumped] = await c.var.db
+          .update(users)
+          .set({
+            promoCredits: sql`${users.promoCredits} + ${amount}`,
+            creditsBalance: sql`${users.creditsBalance} + ${amount}`,
+          })
+          .where(eq(users.id, user.id))
+          .returning();
+
+        await c.var.db.insert(creditLedger).values({
+          userId: user.id,
+          delta: amount,
+          reason: 'signup_bonus',
+          balanceAfter: bumped?.creditsBalance ?? amount,
+          bucket: 'promo',
+          metadata: { policyKind: 'welcome' },
+        });
+      }
     }
 
     return c.json({ ok: true, userId: user.id });

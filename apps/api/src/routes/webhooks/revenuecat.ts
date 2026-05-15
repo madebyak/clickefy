@@ -6,75 +6,61 @@
  *   URL:    https://api.clickefy.ai/v1/webhooks/revenuecat
  *   Header: Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>
  *
- * Unlike Clerk (Svix-HMAC) or Stripe (HMAC-SHA256), RevenueCat
- * authenticates webhooks with a **static bearer token** that you set
- * yourself in the dashboard. The Worker constant-time-compares the
- * inbound `Authorization` header against the secret stored as
- * `REVENUECAT_WEBHOOK_SECRET`. Without the secret matching we 401 —
- * no DB write, no event row, nothing.
+ * Auth model: RC uses a STATIC bearer token rather than HMAC. We
+ * constant-time-compare the inbound header against
+ * `REVENUECAT_WEBHOOK_SECRET`.
  *
- * Event semantics (subset we care about today — full reference at
- * https://www.revenuecat.com/docs/integrations/webhooks/event-types):
+ * Event semantics (subset we care about):
  *
- *   INITIAL_PURCHASE  — first time a user buys this subscription
- *   RENEWAL           — recurring billing cycle succeeded
- *   PRODUCT_CHANGE    — user upgraded/downgraded between tiers
- *   CANCELLATION      — user cancelled but still inside paid period
- *   UNCANCELLATION    — user resubscribed before period_end
- *   EXPIRATION        — paid period elapsed and was NOT renewed
- *   BILLING_ISSUE     — payment failed but grace period is active
- *   NON_RENEWING_PURCHASE — one-time credit pack (no recurrence)
+ *   INITIAL_PURCHASE      — first time the user buys this subscription
+ *   RENEWAL               — recurring billing cycle succeeded
+ *   PRODUCT_CHANGE        — user upgraded/downgraded between tiers
+ *   CANCELLATION          — informational; still inside paid period
+ *   UNCANCELLATION        — user resubscribed before period_end
+ *   EXPIRATION            — paid period elapsed; NOT renewed
+ *   BILLING_ISSUE         — payment failed; grace-period managed by RC
+ *   NON_RENEWING_PURCHASE — one-time consumable (credit pack)
  *
- * Mapping to `users`:
+ * Bucket routing:
  *
- *   - For grant events (INITIAL_PURCHASE, RENEWAL, PRODUCT_CHANGE,
- *     UNCANCELLATION) we set `entitlement` and bump credits via the
- *     ledger. Period boundaries come from `expiration_at_ms` in the
- *     event body.
- *   - For revoke events (EXPIRATION) we set `entitlement` back to
- *     'free'. We do NOT clear credits already granted — that's a
- *     UX-hostile policy.
- *   - CANCELLATION is informational only (the user still has paid
- *     access until period_end). We log it but don't change the row.
- *   - BILLING_ISSUE is informational; the actual grace-period
- *     management is owned by RC. We log it.
+ *   NON_RENEWING_PURCHASE  → look up productId in `credit_packs`;
+ *                            grant `credits + bonus_credits` to the
+ *                            `topup_credits` bucket. Never resets.
+ *   INITIAL_PURCHASE /     → look up productId in `subscription_plans`;
+ *   RENEWAL /                set entitlement + period dates; ZERO the
+ *   PRODUCT_CHANGE /         user's existing `subscription_credits`
+ *   UNCANCELLATION           (writing a 'subscription_reset' ledger row
+ *                            if there was a balance), then grant the
+ *                            plan's `credits_per_period`.
+ *   EXPIRATION             → flip entitlement back to 'free'; zero out
+ *                            subscription_credits (with a reset ledger
+ *                            row). `topup_credits` is NOT cleared —
+ *                            those credits remain on the row but become
+ *                            unspendable until the user resubscribes.
+ *                            CANCELLATION / BILLING_ISSUE / TRANSFER /
+ *                            SUBSCRIPTION_PAUSED are recorded only.
  *
  * Idempotency:
  *
- *   - `revenuecat_events.event_id` is UNIQUE. RC's at-least-once
- *     retries are deduped at insert time via `onConflictDoNothing()`.
- *   - The mutation on `users` happens inside the same handler call as
- *     the audit insert, so a successful return implies both ran. A
- *     replay of the same event will hit the unique-constraint short
- *     circuit and exit before re-mutating.
+ *   - `revenuecat_events.event_id` is UNIQUE; RC's at-least-once
+ *     retries dedup at insert via `onConflictDoNothing()`.
+ *   - Mutations happen only on first-insert; replay short-circuits.
  */
 
 import { Hono } from 'hono';
 import { eq, sql } from 'drizzle-orm';
 
-import { creditLedger, revenuecatEvents, users } from '@clickfy/db';
+import {
+  creditLedger,
+  creditPacks,
+  revenuecatEvents,
+  subscriptionPlans,
+  users,
+} from '@clickfy/db';
 
 import type { AppEnv } from '../../types';
 
 export const revenuecatWebhookRoute = new Hono<AppEnv>();
-
-/**
- * Product → credit grant mapping. When RC fires a successful purchase
- * or renewal, we add this many credits to the user's balance. Set per
- * your pricing decision — these are placeholders until the customer
- * locks pricing in App Store Connect + RC dashboard.
- *
- * Note: it's intentional that this map is local rather than a DB
- * table. Subscription tiers change rarely and are tightly coupled to
- * the App Store SKUs, so a code change + redeploy is the right
- * audit trail.
- */
-const PRODUCT_CREDITS: Record<string, { credits: number; entitlement: 'pro' | 'pro_max' }> = {
-  // Placeholder SKUs — update when products are created in ASC.
-  clickefy_weekly: { credits: 30, entitlement: 'pro' },
-  clickefy_monthly: { credits: 120, entitlement: 'pro' },
-  clickefy_yearly: { credits: 1500, entitlement: 'pro' },
-};
 
 const ENTITLEMENT_FROM_RC = (rcId: string | undefined): 'pro' | 'pro_max' => {
   if (rcId === 'Clickefy.Ai Pro Max') return 'pro_max';
@@ -92,7 +78,6 @@ interface RcEventBody {
     type: string;
     event_timestamp_ms: number;
     app_user_id: string;
-    /** RC's internal id for the customer; usually identical to app_user_id once we logIn(). */
     original_app_user_id?: string;
     product_id?: string;
     entitlement_id?: string;
@@ -107,21 +92,16 @@ interface RcEventBody {
   api_version?: string;
 }
 
-const GRANT_EVENTS = new Set([
+const SUBSCRIPTION_GRANT_EVENTS = new Set([
   'INITIAL_PURCHASE',
   'RENEWAL',
   'PRODUCT_CHANGE',
   'UNCANCELLATION',
-  'NON_RENEWING_PURCHASE',
 ]);
-
-const REVOKE_EVENTS = new Set(['EXPIRATION']);
 
 /**
  * Constant-time string compare. Avoids early-exit timing leaks that
- * could let an attacker brute-force the secret one byte at a time —
- * we're a tiny target, but treating the comparison correctly is
- * cheaper than explaining later why we didn't.
+ * could let an attacker brute-force the secret one byte at a time.
  */
 function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -172,23 +152,17 @@ revenuecatWebhookRoute.post('/', async (c) => {
     );
   }
 
-  // Try to resolve `app_user_id` to an internal users row. On the
-  // mobile side we call `Purchases.logIn(user.id)` after Clerk auth
-  // resolves, so RC stamps every event with our internal UUID. If a
-  // user purchased BEFORE we wired logIn() they'll have RC's
-  // auto-generated `$RCAnonymousID:…` instead — those are recorded but
-  // not applied (`userId` stays null and an operator can reconcile
-  // later via the admin queue).
+  // Resolve `app_user_id` to our internal user. Mobile calls
+  // `Purchases.logIn(user.id)` after Clerk resolves, so `app_user_id`
+  // should match our UUID. Pre-logIn purchases land with an
+  // `$RCAnonymousID:` — recorded but not applied.
   const userRow = ev.app_user_id.startsWith('$RCAnonymousID')
     ? null
     : await c.var.db.query.users.findFirst({
         where: eq(users.id, ev.app_user_id),
       });
 
-  // Audit row first — even on processing failure we keep a record.
-  // Insert with onConflictDoNothing so RC retries are idempotent: if
-  // the event was already recorded (and processed) we return 200
-  // immediately. Otherwise we continue to the mutation.
+  // Idempotent audit insert first.
   const inserted = await c.var.db
     .insert(revenuecatEvents)
     .values({
@@ -205,16 +179,11 @@ revenuecatWebhookRoute.post('/', async (c) => {
     .returning();
 
   if (inserted.length === 0) {
-    // Duplicate delivery — already on file. RC expects 2xx so it stops
-    // retrying, and we don't re-apply.
     return c.json({ ok: true, deduped: true });
   }
 
   const eventRowId = inserted[0]!.id;
 
-  // No matching user? Record it; operators can reconcile from the
-  // admin queue (typically by logging in on mobile to fire a follow-up
-  // `Purchases.logIn(internalId)` that links the RC customer to us).
   if (!userRow) {
     await c.var.db
       .update(revenuecatEvents)
@@ -227,21 +196,27 @@ revenuecatWebhookRoute.post('/', async (c) => {
   }
 
   try {
-    if (GRANT_EVENTS.has(ev.type)) {
-      await applyGrant({
+    if (ev.type === 'NON_RENEWING_PURCHASE') {
+      await applyTopupPurchase({
         db: c.var.db,
         userId: userRow.id,
         productId: ev.product_id ?? null,
-        entitlementId: ev.entitlement_id ?? ev.entitlement_ids?.[0],
+        environment: ev.environment,
+      });
+    } else if (SUBSCRIPTION_GRANT_EVENTS.has(ev.type)) {
+      await applySubscriptionGrant({
+        db: c.var.db,
+        userId: userRow.id,
+        productId: ev.product_id ?? null,
+        entitlementIdHint: ev.entitlement_id ?? ev.entitlement_ids?.[0],
         expirationMs: ev.expiration_at_ms ?? null,
         environment: ev.environment,
       });
-    } else if (REVOKE_EVENTS.has(ev.type)) {
-      await applyRevoke({ db: c.var.db, userId: userRow.id });
+    } else if (ev.type === 'EXPIRATION') {
+      await applySubscriptionExpire({ db: c.var.db, userId: userRow.id });
     }
     // CANCELLATION, BILLING_ISSUE, TRANSFER, SUBSCRIPTION_PAUSED etc.
-    // are recorded but not applied — they're informational for the
-    // current schema.
+    // are recorded but not applied.
 
     await c.var.db
       .update(revenuecatEvents)
@@ -256,42 +231,144 @@ revenuecatWebhookRoute.post('/', async (c) => {
       .update(revenuecatEvents)
       .set({ processedAt: new Date(), processingError: message })
       .where(eq(revenuecatEvents.id, eventRowId));
-    // Return 200 anyway so RC stops retrying — we have the event on
-    // file and an operator will action it from the admin queue.
     return c.json({ ok: true, applied: false, reason: 'processing_error' });
   }
 });
 
-async function applyGrant(args: {
+/**
+ * NON_RENEWING_PURCHASE → grant credit-pack credits into the topup bucket.
+ *
+ * The pack is looked up by `store_product_id`; an unknown productId
+ * means the admin hasn't registered it in `/admin/credits/packs` yet —
+ * we record the event but don't mutate.
+ */
+async function applyTopupPurchase(args: {
   db: AppEnv['Variables']['db'];
   userId: string;
   productId: string | null;
-  entitlementId: string | undefined;
+  environment: 'SANDBOX' | 'PRODUCTION' | undefined;
+}) {
+  const { db, userId, productId, environment } = args;
+  if (!productId) {
+    throw new Error('NON_RENEWING_PURCHASE without product_id');
+  }
+
+  const pack = await db.query.creditPacks.findFirst({
+    where: eq(creditPacks.storeProductId, productId),
+  });
+  if (!pack) {
+    throw new Error(`unknown credit pack productId='${productId}' — register it in /admin/credits/packs`);
+  }
+
+  const grant = pack.credits + pack.bonusCredits;
+  if (grant <= 0) return;
+
+  const [updated] = await db
+    .update(users)
+    .set({
+      topupCredits: sql`${users.topupCredits} + ${grant}`,
+      creditsBalance: sql`${users.creditsBalance} + ${grant}`,
+    })
+    .where(eq(users.id, userId))
+    .returning();
+
+  if (!updated) throw new Error('users.update returned no row');
+
+  await db.insert(creditLedger).values({
+    userId,
+    delta: grant,
+    reason: 'purchase',
+    balanceAfter: updated.creditsBalance,
+    bucket: 'topup',
+    metadata: {
+      storeProductId: productId,
+      credits: pack.credits,
+      bonusCredits: pack.bonusCredits,
+      environment: environment ?? 'PRODUCTION',
+    },
+    note: `RC topup ${productId} ${environment ?? 'PRODUCTION'}`.slice(0, 200),
+  });
+}
+
+/**
+ * Subscription grant (INITIAL / RENEWAL / PRODUCT_CHANGE / UNCANCELLATION).
+ *
+ * Two-step bucket update:
+ *   1. Zero out any leftover `subscription_credits` from the previous
+ *      period and write a `subscription_reset` ledger row (only if
+ *      there was a non-zero balance — avoids ledger noise on first
+ *      purchase).
+ *   2. Grant the new period's `credits_per_period` into
+ *      `subscription_credits` and write a `subscription_grant` row.
+ *
+ * Both steps adjust `credits_balance` so the denormalised sum
+ * (promo + subscription + topup) stays consistent.
+ */
+async function applySubscriptionGrant(args: {
+  db: AppEnv['Variables']['db'];
+  userId: string;
+  productId: string | null;
+  entitlementIdHint: string | undefined;
   expirationMs: number | null;
   environment: 'SANDBOX' | 'PRODUCTION' | undefined;
 }) {
-  const { db, userId, productId, entitlementId, expirationMs, environment } = args;
+  const { db, userId, productId, entitlementIdHint, expirationMs, environment } = args;
 
-  const mapping = productId ? PRODUCT_CREDITS[productId] : undefined;
-  const entitlement = entitlementId ? ENTITLEMENT_FROM_RC(entitlementId) : (mapping?.entitlement ?? 'pro');
-  const grantCredits = mapping?.credits ?? 0;
+  const plan = productId
+    ? await db.query.subscriptionPlans.findFirst({
+        where: eq(subscriptionPlans.storeProductId, productId),
+      })
+    : null;
 
-  // Set entitlement + period dates first (atomic with the credit bump
-  // below via SQL — Neon's serverless driver lacks true multi-statement
-  // tx support so we sequence carefully).
+  // Entitlement: prefer the plan's setting; fall back to the RC
+  // entitlement hint; final default to 'pro' so a missing plan row
+  // still upgrades the user.
+  const entitlement =
+    plan?.entitlement === 'free'
+      ? 'pro'
+      : (plan?.entitlement ?? ENTITLEMENT_FROM_RC(entitlementIdHint));
+  const grantCredits = plan?.creditsPerPeriod ?? 0;
+
+  // Step 1: read current subscription_credits to know if we need a
+  // reset ledger row.
+  const currentUser = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { subscriptionCredits: true },
+  });
+  const leftover = currentUser?.subscriptionCredits ?? 0;
+
+  // Step 2: apply reset + new grant in one UPDATE so the denormalised
+  // sum is consistent at every observable point.
+  const netDelta = grantCredits - leftover;
   const [updated] = await db
     .update(users)
     .set({
       entitlement,
       subscriptionRenewsAt: expirationMs ? new Date(expirationMs) : null,
       subscriptionExpiresAt: expirationMs ? new Date(expirationMs) : null,
-      creditsBalance: sql`${users.creditsBalance} + ${grantCredits}`,
+      subscriptionCredits: grantCredits,
+      creditsBalance: sql`${users.creditsBalance} + ${netDelta}`,
     })
     .where(eq(users.id, userId))
     .returning();
 
-  if (!updated) {
-    throw new Error('users.update returned no row');
+  if (!updated) throw new Error('users.update returned no row');
+
+  // Step 3: ledger rows. The reset row is omitted when leftover is 0
+  // to keep the audit trail tight.
+  if (leftover > 0) {
+    await db.insert(creditLedger).values({
+      userId,
+      delta: -leftover,
+      reason: 'subscription_reset',
+      balanceAfter: updated.creditsBalance - grantCredits,
+      bucket: 'subscription',
+      metadata: {
+        storeProductId: productId,
+        environment: environment ?? 'PRODUCTION',
+      },
+      note: `RC subscription reset ${productId ?? '?'} ${environment ?? 'PRODUCTION'}`.slice(0, 200),
+    });
   }
 
   if (grantCredits > 0) {
@@ -300,20 +377,60 @@ async function applyGrant(args: {
       delta: grantCredits,
       reason: 'subscription_grant',
       balanceAfter: updated.creditsBalance,
+      bucket: 'subscription',
+      metadata: {
+        storeProductId: productId,
+        creditsPerPeriod: grantCredits,
+        environment: environment ?? 'PRODUCTION',
+      },
       note: `RC ${productId ?? '?'} ${environment ?? 'PRODUCTION'}`.slice(0, 200),
     });
   }
 }
 
-async function applyRevoke(args: { db: AppEnv['Variables']['db']; userId: string }) {
-  // We don't strip credits — already-granted credits remain spendable.
-  // Pure entitlement downgrade.
-  await args.db
+/**
+ * EXPIRATION → flip entitlement to 'free' and zero out subscription_credits.
+ *
+ * `topup_credits` is intentionally preserved on the row; the credits
+ * become unspendable (the job-create CTE refuses to draw from topup
+ * when `entitlement = 'free'`) but remain available the moment the
+ * user resubscribes.
+ */
+async function applySubscriptionExpire(args: {
+  db: AppEnv['Variables']['db'];
+  userId: string;
+}) {
+  const { db, userId } = args;
+
+  const currentUser = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { subscriptionCredits: true },
+  });
+  const leftover = currentUser?.subscriptionCredits ?? 0;
+
+  const [updated] = await db
     .update(users)
     .set({
       entitlement: 'free',
       subscriptionRenewsAt: null,
       subscriptionExpiresAt: null,
+      subscriptionCredits: 0,
+      creditsBalance: sql`${users.creditsBalance} - ${leftover}`,
     })
-    .where(eq(users.id, args.userId));
+    .where(eq(users.id, userId))
+    .returning();
+
+  if (!updated) return;
+
+  if (leftover > 0) {
+    await db.insert(creditLedger).values({
+      userId,
+      delta: -leftover,
+      reason: 'subscription_reset',
+      balanceAfter: updated.creditsBalance,
+      bucket: 'subscription',
+      metadata: { reason: 'expiration' },
+      note: 'RC subscription expired',
+    });
+  }
 }

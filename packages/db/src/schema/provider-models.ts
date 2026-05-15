@@ -40,11 +40,19 @@ export const providerModels = pgTable(
 
     /** USD per call, decimal — kept as numeric to avoid float drift. */
     costPerCallUsd: numeric('cost_per_call_usd', { precision: 10, scale: 4 }).notNull(),
+    /**
+     * What a user is charged in credits for one call against this model.
+     * Set by an admin from `/admin/credits/models`. Templates compute
+     * their total cost as the sum of the `cost_credits` of every model
+     * in their pipeline (snapshotted into the template version on publish).
+     */
+    costCredits: integer('cost_credits').default(0).notNull(),
     timeoutMs: integer('timeout_ms').default(60000).notNull(),
 
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
+    updatedByAdminId: uuid('updated_by_admin_id'),
   },
   (t) => [unique('provider_models_unique').on(t.provider, t.modelKey)],
 );

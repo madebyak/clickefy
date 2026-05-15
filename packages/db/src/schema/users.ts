@@ -39,7 +39,18 @@ export const users = pgTable(
     locale: localeEnum('locale').default('en').notNull(),
 
     entitlement: entitlementEnum('entitlement').default('free').notNull(),
+
+    // ── Credit buckets (see `CreditBucket` in enums.ts) ──────────────
+    // `creditsBalance` is a denormalised sum (promo + subscription +
+    // topup) kept in sync by the application on every credit movement.
+    // The ledger is the source of truth; the bucket columns let us
+    // honour bucket-specific rules (subscription resets on renewal;
+    // topup is gated to active subscribers).
     creditsBalance: integer('credits_balance').default(0).notNull(),
+    promoCredits: integer('promo_credits').default(0).notNull(),
+    subscriptionCredits: integer('subscription_credits').default(0).notNull(),
+    topupCredits: integer('topup_credits').default(0).notNull(),
+
     subscriptionRenewsAt: timestamp('subscription_renews_at', { withTimezone: true }),
     subscriptionExpiresAt: timestamp('subscription_expires_at', { withTimezone: true }),
 

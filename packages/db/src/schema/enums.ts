@@ -58,7 +58,27 @@ export const creditReasonEnum = pgEnum('credit_reason', [
   'admin_adjust',
   'signup_bonus',
   'daily_free',
+  // Added in migration 0010_credit_system:
+  'weekly_refresh',
+  'broadcast_grant',
+  'subscription_reset',
 ]);
+
+/**
+ * Which credit bucket a `credit_ledger` row affected. Stored as plain
+ * text (not a Postgres enum) because the set is small, stable, and we
+ * want to add buckets without a migration churn if the model evolves.
+ *
+ * Buckets:
+ *   - `promo`        — welcome bonus, weekly refresh, admin broadcasts.
+ *                      Always spendable; never expires.
+ *   - `subscription` — granted by the current subscription period.
+ *                      Resets to 0 on renewal.
+ *   - `topup`        — purchased one-off pack. Never expires. Only
+ *                      spendable while the user has an active
+ *                      subscription (entitlement != 'free').
+ */
+export type CreditBucket = 'promo' | 'subscription' | 'topup';
 
 /**
  * `provider` — AI provider families.

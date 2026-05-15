@@ -15,9 +15,9 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
-import { creditReasonEnum } from './enums';
+import { creditReasonEnum, type CreditBucket } from './enums';
 import { jobs } from './jobs';
 import { users } from './users';
 
@@ -46,6 +46,22 @@ export const creditLedger = pgTable(
      * Null for system-generated rows (job_charge, subscription_grant…).
      */
     note: text('note'),
+
+    /**
+     * Which credit bucket this row affected. Null only on legacy rows
+     * written before migration 0010 — every row written by the current
+     * code path sets this. The application uses it to reconstruct
+     * per-bucket balances from the ledger when needed.
+     */
+    bucket: text('bucket').$type<CreditBucket | null>(),
+
+    /**
+     * Free-form context the application attaches per row — e.g. the
+     * RevenueCat product id, the originating broadcast id, the cost
+     * breakdown across buckets for a job_charge ({fromPromo, fromSub,
+     * fromTopup}). Read-only by convention; never queried as a hot path.
+     */
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)

@@ -1,36 +1,33 @@
 /**
- * `createJobAtomically` — debit credits and queue a job in one atomic
- * SQL statement.
+ * `createJobAtomically` — debit credits across three buckets and queue
+ * a job in one atomic SQL statement.
  *
- * Why one statement: the Worker uses Drizzle's `neon-http` driver
- * (stateless HTTPS), which doesn't support interactive transactions
- * (`tx.select(...)` inside a `db.transaction(cb)` cannot branch on the
- * intermediate result — the callback's statements are batched and sent
- * as one round-trip, no read-back). The classic remedy is a CTE chain:
- * one SQL statement that runs as a single, isolated transaction
- * server-side and either succeeds in full or makes no change.
+ * Three buckets (see `CreditBucket` in `@clickfy/db`):
+ *   - `promo`        — welcome bonus / weekly refresh / admin broadcasts.
+ *                      Spendable always; never expires.
+ *   - `subscription` — granted by the current subscription period. Resets
+ *                      to 0 on RC renewal; only present while subscribed.
+ *   - `topup`        — purchased one-off pack. Never expires.
+ *                      Spendable ONLY while the user has an active
+ *                      subscription (entitlement != 'free').
  *
- * The chain in order:
+ * Spend order: `promo → subscription → topup`. Rationale:
+ *   - `promo` first  — costs us nothing; burn what's effectively free.
+ *   - `subscription` next — it'll reset on renewal anyway, no point hoarding.
+ *   - `topup` last   — purchased; precious; preserve as long as possible.
  *
- *   ┌─ template_lookup ─┐   confirm template is published, capture cost
- *   ├─ version_lookup ──┤   pick newest template_version (snapshot ptr)
- *   ├─ user_debit ──────┤   UPDATE users.credits_balance, ONLY if balance
- *   │                   │   ≥ cost AND template/version exist
- *   ├─ new_job ─────────┤   INSERT jobs (depends on user_debit row)
- *   └─ ledger ──────────┘   INSERT credit_ledger (depends on new_job row)
+ * Atomicity model: same as before — `neon-http` is stateless so we ship
+ * the entire decision and mutation as a single CTE chain that Postgres
+ * runs as one isolated transaction. Concurrent debits serialize on the
+ * row update; the predicates `promo_credits >= from_promo` etc. mean a
+ * loser sees the post-debit values and breaks the chain (zero rows
+ * returned). The caller treats null as `insufficient_credits`.
  *
- * If anything upstream returns 0 rows, the chain breaks: no debit, no
- * job row, no ledger row. Postgres serializes concurrent UPDATEs on the
- * same `users.id`, so a double-submit either both see the original
- * balance and one wins, or one sees the post-debit balance and fails
- * the `credits_balance >= cost` predicate. Either way, the invariant
- * (ledger SUM == users.credits_balance delta) holds.
- *
- * Returning shape: `{ jobId, creditsRemaining }` on success, or `null`
- * when the CTE broke. The caller is expected to have already
- * pre-validated and pre-checked balance (so a `null` here means a
- * race: someone submitted concurrently and ate our credits). The
- * caller translates that into an `insufficient_credits` response.
+ * Output: per-job, we write up to three `credit_ledger` rows (one per
+ * bucket where the delta is non-zero), each tagged with `bucket` and a
+ * `metadata` blob carrying the full {fromPromo, fromSubscription,
+ * fromTopup, cost} breakdown so an operator can answer "where did this
+ * charge come from" without re-deriving it.
  */
 
 import { sql } from 'drizzle-orm';
@@ -44,15 +41,16 @@ export interface CreateJobInput {
   cost: number;
   inputs: Record<string, JobInputValueParsed>;
   options: { aspectRatio?: string };
-  // null when the client didn't supply an `Idempotency-Key` header. We
-  // store it as-is so a duplicate submit returns the same job row from
-  // the idempotency lookup the caller does before invoking us.
+  // null when the client didn't supply an `Idempotency-Key` header.
   idempotencyKey: string | null;
 }
 
 export interface CreateJobResult {
   jobId: string;
   creditsRemaining: number;
+  fromPromo: number;
+  fromSubscription: number;
+  fromTopup: number;
 }
 
 export async function createJobAtomically(
@@ -61,22 +59,28 @@ export async function createJobAtomically(
 ): Promise<CreateJobResult | null> {
   const inputsJson = JSON.stringify(args.inputs);
   const optionsJson = JSON.stringify(args.options ?? {});
-  // Pre-negate in JS rather than emitting `-${cost}` in SQL. Postgres
-  // can't resolve the unary `-` operator against an untyped bind
-  // parameter (`ERROR: operator is not unique: - unknown`); passing
-  // the already-signed integer side-steps the ambiguity completely.
-  const debit = -args.cost;
+  const cost = args.cost;
 
-  // The CTE has to be a single raw SQL statement to fit `neon-http`.
-  // We use Drizzle's `sql` template for parameter binding so values
-  // are escaped properly; no string concatenation of user data.
+  // Single statement, single round-trip. The CTE chain:
+  //   1. template_lookup → template exists and is published
+  //   2. version_lookup  → latest version of that template
+  //   3. user_snapshot   → user's current bucket balances + sub state
+  //   4. alloc           → compute how much to draw from each bucket
+  //   5. user_debit      → UPDATE users, three buckets + sum; only fires
+  //                        if the allocation is feasible (incl. the
+  //                        "topup locked when unsubscribed" rule)
+  //   6. new_job         → INSERT jobs row (depends on user_debit)
+  //   7. ledger          → INSERT up to 3 credit_ledger rows
   const result = await db.execute<{
     job_id: string;
     credits_remaining: number;
+    from_promo: number;
+    from_sub: number;
+    from_topup: number;
   }>(sql`
     WITH
       template_lookup AS (
-        SELECT id, cost_credits, status
+        SELECT id, cost_credits
         FROM templates
         WHERE id = ${args.templateId}::uuid
           AND status = 'published'
@@ -88,14 +92,57 @@ export async function createJobAtomically(
         ORDER BY version_number DESC
         LIMIT 1
       ),
+      user_snapshot AS (
+        SELECT
+          id,
+          entitlement,
+          promo_credits,
+          subscription_credits,
+          topup_credits,
+          (entitlement <> 'free') AS is_subscribed
+        FROM users
+        WHERE id = ${args.userId}::uuid
+      ),
+      alloc AS (
+        SELECT
+          us.id AS user_id,
+          LEAST(us.promo_credits, ${cost}::int) AS from_promo,
+          LEAST(
+            us.subscription_credits,
+            GREATEST(0, ${cost}::int - LEAST(us.promo_credits, ${cost}::int))
+          ) AS from_sub,
+          GREATEST(
+            0,
+            ${cost}::int
+              - LEAST(us.promo_credits, ${cost}::int)
+              - LEAST(
+                  us.subscription_credits,
+                  GREATEST(0, ${cost}::int - LEAST(us.promo_credits, ${cost}::int))
+                )
+          ) AS need_topup,
+          CASE WHEN us.is_subscribed THEN us.topup_credits ELSE 0 END AS spendable_topup
+        FROM user_snapshot us
+      ),
       user_debit AS (
         UPDATE users
-        SET credits_balance = credits_balance - ${args.cost}
-        WHERE id = ${args.userId}::uuid
-          AND credits_balance >= ${args.cost}
+        SET
+          promo_credits        = users.promo_credits        - alloc.from_promo,
+          subscription_credits = users.subscription_credits - alloc.from_sub,
+          topup_credits        = users.topup_credits        - alloc.need_topup,
+          credits_balance      = users.credits_balance      - ${cost}::int
+        FROM alloc
+        WHERE users.id = alloc.user_id
+          AND alloc.need_topup <= alloc.spendable_topup
+          AND users.promo_credits        >= alloc.from_promo
+          AND users.subscription_credits >= alloc.from_sub
+          AND users.topup_credits        >= alloc.need_topup
           AND EXISTS (SELECT 1 FROM template_lookup)
           AND EXISTS (SELECT 1 FROM version_lookup)
-        RETURNING credits_balance AS balance_after
+        RETURNING
+          users.credits_balance AS new_balance,
+          alloc.from_promo,
+          alloc.from_sub,
+          alloc.need_topup AS from_topup
       ),
       new_job AS (
         INSERT INTO jobs (
@@ -115,32 +162,82 @@ export async function createJobAtomically(
       ),
       ledger AS (
         INSERT INTO credit_ledger (
-          user_id, delta, reason, job_id, balance_after
+          user_id, delta, reason, job_id, balance_after, bucket, metadata
         )
         SELECT
           ${args.userId}::uuid,
-          ${debit},
+          -ud.from_promo,
           'job_charge',
-          new_job.id,
-          user_debit.balance_after
-        FROM new_job, user_debit
+          nj.id,
+          ud.new_balance,
+          'promo',
+          jsonb_build_object(
+            'fromPromo',        ud.from_promo,
+            'fromSubscription', ud.from_sub,
+            'fromTopup',        ud.from_topup,
+            'cost',             ${cost}::int
+          )
+        FROM user_debit ud, new_job nj WHERE ud.from_promo > 0
+        UNION ALL
+        SELECT
+          ${args.userId}::uuid,
+          -ud.from_sub,
+          'job_charge',
+          nj.id,
+          ud.new_balance,
+          'subscription',
+          jsonb_build_object(
+            'fromPromo',        ud.from_promo,
+            'fromSubscription', ud.from_sub,
+            'fromTopup',        ud.from_topup,
+            'cost',             ${cost}::int
+          )
+        FROM user_debit ud, new_job nj WHERE ud.from_sub > 0
+        UNION ALL
+        SELECT
+          ${args.userId}::uuid,
+          -ud.from_topup,
+          'job_charge',
+          nj.id,
+          ud.new_balance,
+          'topup',
+          jsonb_build_object(
+            'fromPromo',        ud.from_promo,
+            'fromSubscription', ud.from_sub,
+            'fromTopup',        ud.from_topup,
+            'cost',             ${cost}::int
+          )
+        FROM user_debit ud, new_job nj WHERE ud.from_topup > 0
         RETURNING id
       )
     SELECT
-      new_job.id AS job_id,
-      user_debit.balance_after AS credits_remaining
-    FROM new_job, user_debit
+      nj.id          AS job_id,
+      ud.new_balance AS credits_remaining,
+      ud.from_promo  AS from_promo,
+      ud.from_sub    AS from_sub,
+      ud.from_topup  AS from_topup
+    FROM new_job nj, user_debit ud
   `);
 
   // `neon-http` returns `{ rows: T[] }`; Drizzle's `execute` exposes it
   // as an array directly. Empty array = CTE chain broke somewhere
-  // (template missing, no version, insufficient credits, or race).
+  // (template missing, no version, insufficient credits, topup locked
+  // because unsubscribed, or a race).
   const rows = Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? [];
   if (rows.length === 0) return null;
 
-  const row = rows[0] as { job_id: string; credits_remaining: number };
+  const row = rows[0] as {
+    job_id: string;
+    credits_remaining: number;
+    from_promo: number;
+    from_sub: number;
+    from_topup: number;
+  };
   return {
     jobId: row.job_id,
     creditsRemaining: row.credits_remaining,
+    fromPromo: row.from_promo,
+    fromSubscription: row.from_sub,
+    fromTopup: row.from_topup,
   };
 }

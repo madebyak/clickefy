@@ -10,6 +10,7 @@ import { BasicInfoTab } from '@/components/templates/editor/basic-info-tab';
 import { UserInputTab } from '@/components/templates/editor/user-input-tab';
 import { GenerationTab } from '@/components/templates/editor/generation-tab';
 import { PlaygroundTab } from '@/components/templates/editor/playground-tab';
+import { TemplateCostSummary } from '@/components/templates/template-cost-summary';
 import { useTemplatesStore } from '@/lib/stores/templates-store';
 import { useCategoriesStore } from '@/lib/stores/categories-store';
 import type { Template, TemplateFormData } from '@clickfy/types';
@@ -263,6 +264,13 @@ export default function TemplateEditorPage() {
           )}
         </div>
       </div>
+
+      {/* Live cost breakdown — auto-computed from current pipeline stages.
+          Mirrors the server-side rule in apps/api/src/lib/template-cost.ts. */}
+      <TemplateCostSummary
+        stages={templateData.generation?.stages}
+        getToken={tokenGetter}
+      />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

@@ -28,6 +28,7 @@ import { findCapabilities } from '@clickfy/providers';
 
 import type { AppEnv } from '../types';
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
+import { computeTemplateCost } from '../lib/template-cost';
 import {
   createTemplateSchema,
   publishTemplateSchema,
@@ -513,6 +514,12 @@ templatesRoute.post(
     const sanitized = sanitizeGenerationForPersist(body.generation);
     const derived = deriveGenerationAndOutput(sanitized, body.output);
 
+    // Auto-compute cost from per-stage model pricing — ignore any
+    // costCredits the form sent (no manual override per the credit
+    // system spec). Models with no price in provider_models contribute
+    // 0; the admin UI surfaces the unpriced-models warning separately.
+    const costBreakdown = await computeTemplateCost(c.var.db, derived.generation.stages);
+
     try {
       const [row] = await c.var.db
         .insert(templates)
@@ -532,11 +539,11 @@ templatesRoute.post(
           defaultAspectRatio: body.defaultAspectRatio ?? null,
           generation: derived.generation,
           output: derived.output,
-          costCredits: body.costCredits,
+          costCredits: costBreakdown.total,
           sortOrder: body.sortOrder,
         })
         .returning();
-      return c.json({ data: row }, 201);
+      return c.json({ data: { ...row, costBreakdown } }, 201);
     } catch (err) {
       if (err instanceof Error && err.message.includes('templates_slug_unique')) {
         return c.json(
@@ -585,15 +592,19 @@ templatesRoute.patch(
     // doesn't exist yet. If only `output` was sent (no `generation`),
     // we persist it as-is — the admin's later "Save & Publish"
     // round-trip will re-derive once the stages flow through.
+    let costBreakdown: Awaited<ReturnType<typeof computeTemplateCost>> | null = null;
     if (body.generation !== undefined) {
       const sanitized = sanitizeGenerationForPersist(body.generation);
       const derived = deriveGenerationAndOutput(sanitized, body.output);
       set.generation = derived.generation;
       set.output = derived.output;
+      // Re-derive cost whenever the pipeline changes. No manual
+      // override accepted — `body.costCredits` is ignored on purpose.
+      costBreakdown = await computeTemplateCost(c.var.db, derived.generation.stages);
+      set.costCredits = costBreakdown.total;
     } else if (body.output !== undefined) {
       set.output = body.output;
     }
-    if (body.costCredits !== undefined) set.costCredits = body.costCredits;
     if (body.sortOrder !== undefined) set.sortOrder = body.sortOrder;
 
     set.updatedAt = new Date();
@@ -607,7 +618,7 @@ templatesRoute.patch(
       if (!row) {
         return c.json({ error: { code: 'not_found', message: 'Template not found.' } }, 404);
       }
-      return c.json({ data: row });
+      return c.json({ data: costBreakdown ? { ...row, costBreakdown } : row });
     } catch (err) {
       if (err instanceof Error && err.message.includes('templates_slug_unique')) {
         return c.json(

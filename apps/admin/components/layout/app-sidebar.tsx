@@ -11,6 +11,7 @@ import {
   Briefcase,
   BarChart3,
   Bell,
+  Coins,
   Settings,
   Sparkles,
 } from 'lucide-react';
@@ -64,6 +65,11 @@ const navItems = [
     title: 'Push',
     href: '/admin/push',
     icon: Bell,
+  },
+  {
+    title: 'Credits',
+    href: '/admin/credits',
+    icon: Coins,
   },
   {
     title: 'Analytics',

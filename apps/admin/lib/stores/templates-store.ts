@@ -115,7 +115,6 @@ function toServerPayload(
   if (data.title !== undefined) payload.title = data.title;
   if (data.slug !== undefined) payload.slug = data.slug;
   if (data.description !== undefined) payload.description = data.description;
-  if (data.authorName !== undefined) payload.authorName = data.authorName;
   // Many-to-many category fields. We always send both the new explicit
   // pair and the legacy `categoryId` (= primary) so a brief deploy
   // skew between admin and API still works.

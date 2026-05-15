@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -87,6 +87,7 @@ const COVER_ACCEPTED_MIME = new Set<string>([
   ...ACCEPTED_VIDEO_MIME,
 ]);
 
+const GALLERY_ACCEPT_ATTR = ACCEPTED_IMAGE_MIME.join(',');
 const GALLERY_ACCEPTED_MIME = new Set<string>(ACCEPTED_IMAGE_MIME);
 
 /**
@@ -222,6 +223,29 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
   const [galleryDragActive, setGalleryDragActive] = useState(false);
 
   const gallery = template.gallery ?? [];
+  // Live ref so async upload handlers always read the latest gallery
+  // when they append. Without this, a rapid second drop captures the
+  // pre-first-drop array and `onChange` overwrites the first batch's
+  // additions when it finishes. Classic React closure trap. We key
+  // the sync effect on `template.gallery` (the stable identity from
+  // the parent store) rather than the per-render `gallery` array —
+  // the `?? []` fallback would otherwise allocate every render and
+  // re-fire the effect uselessly.
+  const galleryRef = useRef<MediaRef[]>(gallery);
+  useEffect(() => {
+    galleryRef.current = template.gallery ?? [];
+  }, [template.gallery]);
+
+  /**
+   * Append a freshly-uploaded image to the gallery using the LATEST
+   * ref'd array, not whatever was captured at handler invocation.
+   * Stable across overlapping batches.
+   */
+  const appendToGallery = (item: MediaRef) => {
+    const next = [...galleryRef.current, item];
+    galleryRef.current = next;
+    onChange({ gallery: next });
+  };
 
   const handleCoverUpload = async (file: File | null) => {
     if (!file) return;
@@ -301,42 +325,59 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
 
   const handleGalleryUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const remaining = MAX_GALLERY_IMAGES - gallery.length;
+    // Use the live ref instead of the render-time capture so a second
+    // batch dropped mid-upload still respects the real running count.
+    const remaining = MAX_GALLERY_IMAGES - galleryRef.current.length;
     if (remaining <= 0) {
       toast.error(`Gallery is full (max ${MAX_GALLERY_IMAGES} images).`);
       return;
     }
     const toUpload = Array.from(files).slice(0, remaining);
+    if (Array.from(files).length > remaining) {
+      toast.info(
+        `Gallery cap is ${MAX_GALLERY_IMAGES} images — uploading the first ${remaining} of this batch.`,
+      );
+    }
 
     setUploadingGallery(true);
     try {
-      // Upload sequentially so a single failure doesn't orphan a half-
-      // updated gallery in zustand. We accumulate successes and surface
-      // a single toast at the end.
-      const next: MediaRef[] = [...gallery];
-      let succeeded = 0;
-      for (const file of toUpload) {
-        try {
+      // Upload in parallel and progressively append each success.
+      // Progressive append means the admin sees thumbnails the moment
+      // each upload lands instead of waiting for the slowest file in
+      // the batch. `appendToGallery` reads the live ref each time, so
+      // overlapping batches don't clobber each other.
+      const results = await Promise.allSettled(
+        toUpload.map(async (file) => {
           const uploaded = await uploadImageAsset(file, 'templates', getToken);
-          next.push({
+          const item: MediaRef = {
             r2Key: uploaded.r2Key,
             cdnUrl: uploaded.cdnUrl,
             width: uploaded.width,
             height: uploaded.height,
             blurhash: uploaded.blurhash,
-          });
+          };
+          appendToGallery(item);
+          return file.name;
+        }),
+      );
+
+      let succeeded = 0;
+      results.forEach((r, idx) => {
+        if (r.status === 'fulfilled') {
           succeeded += 1;
-        } catch (err) {
-          const msg =
-            err instanceof ApiError
-              ? err.message
-              : err instanceof Error
-                ? err.message
-                : 'Upload failed';
-          toast.error(`${file.name}: ${msg}`);
+          return;
         }
-      }
-      onChange({ gallery: next });
+        const err = r.reason;
+        const msg =
+          err instanceof ApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Upload failed';
+        const fileName = toUpload[idx]?.name ?? 'file';
+        toast.error(`${fileName}: ${msg}`);
+      });
+
       if (succeeded > 0) {
         toast.success(
           succeeded === 1
@@ -420,20 +461,6 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
         selected={template.extraCategoryIds ?? []}
         onChange={(extras) => onChange({ extraCategoryIds: extras })}
       />
-
-      {/* Author */}
-      <div className="space-y-2">
-        <Label htmlFor="author">Author</Label>
-        <Input
-          id="author"
-          value={template.authorName ?? ''}
-          onChange={(e) => onChange({ authorName: e.target.value })}
-          placeholder="Clickfy Studio"
-        />
-        <p className="text-xs text-muted-foreground">
-          Credit shown on the template detail page in the mobile app.
-        </p>
-      </div>
 
       {/* Description — single field, line-clamped on cards */}
       <div className="space-y-2">
@@ -572,7 +599,7 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
                 if (uploadingCover) return;
                 const files = pickCoverFilesFromDataTransfer(e.dataTransfer);
                 if (files.length === 0) {
-                  toast.error('Only PNG / JPEG / WebP images or MP4 / MOV videos are accepted.');
+                  toast.error('Only PNG / JPEG / WebP / HEIC images or MP4 / MOV videos are accepted.');
                   return;
                 }
                 void handleCoverUpload(files[0] ?? null);
@@ -736,7 +763,7 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
                     if (galleryDisabled) return;
                     const files = pickImagesFromDataTransfer(e.dataTransfer);
                     if (files.length === 0) {
-                      toast.error('Only PNG, JPEG, and WebP images are accepted.');
+                      toast.error('Only PNG, JPEG, WebP, or HEIC images are accepted.');
                       return;
                     }
                     void handleGalleryUpload(filesToList(files));
@@ -781,7 +808,7 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
             <input
               ref={galleryInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept={GALLERY_ACCEPT_ATTR}
               multiple
               className="hidden"
               onChange={(e) => {

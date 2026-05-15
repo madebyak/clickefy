@@ -73,7 +73,6 @@ function buildFormPayload(
     title: templateData.title.trim(),
     slug: templateData.slug?.trim() || undefined,
     description: templateData.description ?? '',
-    authorName: templateData.authorName?.trim() || 'Clickfy Studio',
     primaryCategoryId,
     extraCategoryIds: extras,
     kind: templateData.kind,
@@ -132,7 +131,6 @@ export default function TemplateEditorPage() {
       setTemplateData({
         title: '',
         description: '',
-        authorName: 'Clickfy Studio',
         kind: 'image',
         status: 'draft',
         featured: false,

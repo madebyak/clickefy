@@ -20,9 +20,21 @@ import type { MediaRef } from '@clickfy/types';
 
 import { apiFetch, ApiError, type TokenGetter } from '@/lib/api';
 
-export const ACCEPTED_IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp'] as const;
+// Mirror the Worker's admin upload rules. HEIC/HEIF are accepted so
+// Mac admins can drop straight from Photos — Safari renders them
+// natively in <img>; Chrome will fail at the measurement step and
+// surface a clean "could not decode" toast before any bytes leave
+// the browser. 20 MB image cap matches real-world phone/DSLR JPEGs
+// (the old 4 MB cap silently rejected most camera uploads).
+export const ACCEPTED_IMAGE_MIME = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+] as const;
 export const ACCEPTED_VIDEO_MIME = ['video/mp4', 'video/quicktime'] as const;
-export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 export const MAX_VIDEO_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 /**
@@ -81,10 +93,12 @@ export async function uploadImageAsset(
   getToken: TokenGetter,
 ): Promise<UploadResult> {
   if (!ACCEPTED_IMAGE_MIME.includes(file.type as (typeof ACCEPTED_IMAGE_MIME)[number])) {
-    throw new Error('Image must be JPG, PNG, or WebP.');
+    throw new Error('Image must be JPG, PNG, WebP, or HEIC.');
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error(`Image must be under ${MAX_UPLOAD_BYTES / 1024 / 1024}MB.`);
+    throw new Error(
+      `Image must be under ${MAX_UPLOAD_BYTES / 1024 / 1024}MB (this one is ${(file.size / 1024 / 1024).toFixed(1)}MB).`,
+    );
   }
 
   const { width, height } = await measureImage(file);

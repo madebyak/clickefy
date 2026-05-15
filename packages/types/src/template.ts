@@ -224,7 +224,6 @@ export interface TemplateFormData {
   title: string;
   slug?: string;
   description: string;
-  authorName?: string;
   /** The primary category — required. */
   primaryCategoryId: string;
   /** 0..2 extra categories the template should also surface in. */

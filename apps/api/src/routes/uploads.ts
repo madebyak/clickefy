@@ -36,9 +36,26 @@ const ALLOWED_FOLDERS = new Set(['categories', 'templates']);
 // reasonable bitrate; longer/bigger clips should be compressed in
 // Handbrake / CloudConvert first. The cap is enforced both client-
 // and server-side so admins get a friendly toast before the request.
-const ADMIN_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+// HEIC/HEIF are intentionally accepted alongside JPEG/PNG/WebP — Mac
+// Photos exports HEIC by default and rejecting it surprises admins who
+// drag-drop straight from the library. Safari decodes HEIC natively; on
+// Chrome the admin-side measurement step (<img>.onload) will fail and
+// the form surfaces a clean "could not decode — try JPEG" error before
+// any bytes leave the browser, so we never have to teach the Worker
+// (or R2 readers) about HEIC.
+const ADMIN_IMAGE_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]);
 const ADMIN_VIDEO_MIME = new Set(['video/mp4', 'video/quicktime']);
-const ADMIN_MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4 MB
+// 20 MB image cap matches real-world phone / DSLR JPEGs (iPhone 14 Pro
+// ProRAW JPEG ≈ 7–12 MB, Sony A7 high-quality JPEG ≈ 15 MB). The old
+// 4 MB cap silently rejected most camera uploads before the request
+// even hit the network.
+const ADMIN_MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB
 const ADMIN_MAX_VIDEO_BYTES = 25 * 1024 * 1024; // 25 MB
 
 function adminUploadRulesFor(folder: string): {

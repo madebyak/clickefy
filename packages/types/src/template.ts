@@ -41,6 +41,17 @@ export interface Template {
   slug: string;
   description: string;
   authorName: string;
+  /**
+   * Primary category id — the "this is fundamentally an X template"
+   * choice. The full membership set lives in `categoryIds` (primary
+   * first, then extras).
+   */
+  primaryCategoryId: string;
+  /** Up to 2 additional categories this template also appears under. */
+  extraCategoryIds: string[];
+  /** Convenience: `[primaryCategoryId, ...extraCategoryIds]`. */
+  categoryIds: string[];
+  /** @deprecated Use `primaryCategoryId`. Kept for transition. */
   categoryId: string;
   kind: TemplateKind;
   status: TemplateStatus;
@@ -134,7 +145,18 @@ export interface MobileTemplate {
   title: string;
   slug: string;
   description: string;
+  /**
+   * Primary category id. Legacy single-category field kept on the
+   * wire so existing builds keep working — equal to `categoryIds[0]`.
+   * New code should prefer `categoryIds`.
+   * @deprecated Use `categoryIds[0]`.
+   */
   categoryId: string;
+  /**
+   * Full ordered list of category memberships, primary first then
+   * extras by display order. 1..3 entries.
+   */
+  categoryIds: string[];
   kind: TemplateKind;
   featured: boolean;
 
@@ -203,7 +225,12 @@ export interface TemplateFormData {
   slug?: string;
   description: string;
   authorName?: string;
-  categoryId: string;
+  /** The primary category — required. */
+  primaryCategoryId: string;
+  /** 0..2 extra categories the template should also surface in. */
+  extraCategoryIds?: string[];
+  /** @deprecated Use `primaryCategoryId`. Kept for older admin code. */
+  categoryId?: string;
   kind: TemplateKind;
   featured?: boolean;
 

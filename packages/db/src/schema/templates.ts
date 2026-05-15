@@ -45,7 +45,6 @@ import type {
   TemplateOutput,
   TemplateStats,
 } from './json-types';
-import { categories } from './categories';
 
 // Inlined as a raw SQL literal — drizzle-kit's diff engine doesn't accept
 // parameterized defaults, so we cannot interpolate JSON.stringify() here.
@@ -65,9 +64,11 @@ export const templates = pgTable(
     /** Display credit on the detail page. Defaults to in-house studio. */
     authorName: text('author_name').default('Clickfy Studio').notNull(),
 
-    categoryId: uuid('category_id')
-      .references(() => categories.id, { onDelete: 'restrict' })
-      .notNull(),
+    // Category membership lives in `template_categories` (many-to-many,
+    // 1..3 categories per template, one marked `is_primary`). The old
+    // single-FK `category_id` column was removed in migration 0011 —
+    // every read site that needs the primary now joins
+    // `template_categories WHERE is_primary` instead.
 
     /** User-facing output shape (image / video / image_set). The
      *  pipeline shape (e.g. "image then animate") lives in
@@ -127,9 +128,11 @@ export const templates = pgTable(
   },
   (t) => [
     index('templates_status_sort_idx').on(t.status, t.sortOrder),
-    index('templates_category_status_idx').on(t.categoryId, t.status),
     index('templates_featured_status_idx').on(t.featured, t.status),
     index('templates_kind_status_idx').on(t.kind, t.status),
+    // Note: `templates_category_status_idx` was dropped in 0011 when
+    // `category_id` moved out. Category lookups are now served by
+    // `template_categories_category_sort_idx` on the join table.
   ],
 );
 

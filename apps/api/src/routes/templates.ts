@@ -30,6 +30,14 @@ import type { AppEnv } from '../types';
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
 import { computeTemplateCost } from '../lib/template-cost';
 import {
+  insertTemplateCategories,
+  loadTemplateCategories,
+  loadTemplateCategoriesMap,
+  replaceTemplateCategories,
+  templateInCategory,
+  validateCategorySet,
+} from '../lib/template-categories';
+import {
   createTemplateSchema,
   publishTemplateSchema,
   reorderTemplatesSchema,
@@ -39,6 +47,52 @@ import {
 } from '../lib/template-schemas';
 
 export const templatesRoute = new Hono<AppEnv>();
+
+/**
+ * Resolve the (primaryCategoryId, extraCategoryIds) pair from a
+ * create/update body, accepting both the new explicit fields and the
+ * legacy `categoryId` field so a stale admin bundle keeps working
+ * across a deploy. Returns `null` when nothing was sent (legitimate
+ * on a PATCH that doesn't touch categories).
+ */
+function resolveCategoryFields(body: {
+  primaryCategoryId?: string;
+  extraCategoryIds?: string[];
+  categoryId?: string;
+}): { primary: string; extras: string[] } | null {
+  const primary = body.primaryCategoryId ?? body.categoryId;
+  if (!primary) return null;
+  return { primary, extras: body.extraCategoryIds ?? [] };
+}
+
+/**
+ * Attach the `categoryIds` / `primaryCategoryId` / `extraCategoryIds`
+ * trio to a raw `Template` row so the admin response carries
+ * everything the editor needs. Centralised so all read endpoints
+ * agree on the shape.
+ */
+type AdminTemplateRow = Template & {
+  categoryId: string;
+  primaryCategoryId: string;
+  extraCategoryIds: string[];
+  categoryIds: string[];
+};
+
+function attachAdminCategoryFields(
+  row: Template,
+  ordered: { primary: string; extras: string[]; all: string[] } | null,
+): AdminTemplateRow {
+  const primary = ordered?.primary ?? '';
+  const extras = ordered?.extras ?? [];
+  const all = ordered?.all ?? [];
+  return {
+    ...row,
+    categoryId: primary,
+    primaryCategoryId: primary,
+    extraCategoryIds: extras,
+    categoryIds: all,
+  };
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -273,7 +327,9 @@ templatesRoute.get(
   if (q.search) whereParts.push(ilike(templates.title, `%${q.search}%`));
   if (q.status) whereParts.push(eq(templates.status, q.status));
   if (q.kind) whereParts.push(eq(templates.kind, q.kind));
-  if (q.categoryId) whereParts.push(eq(templates.categoryId, q.categoryId));
+  // Match the primary OR any extra category — same predicate the
+  // public catalog uses, so admin filters mirror what the user sees.
+  if (q.categoryId) whereParts.push(templateInCategory(q.categoryId));
 
   // Cursor format: `<sortOrder>:<id>` (sortOrder is the primary axis,
   // id breaks ties when many rows share a sort order).
@@ -303,7 +359,18 @@ templatesRoute.get(
   const last = page[page.length - 1];
   const nextCursor = hasMore && last ? `${last.sortOrder}:${last.id}` : null;
 
-  return c.json({ data: page, nextCursor });
+  // Bulk-load category memberships for this page and decorate each
+  // row with the legacy `categoryId` (= primary) plus the new
+  // `primaryCategoryId` / `extraCategoryIds` / `categoryIds` fields.
+  const catsMap = await loadTemplateCategoriesMap(
+    c.var.db,
+    page.map((r) => r.id),
+  );
+  const data = page.map((row) =>
+    attachAdminCategoryFields(row, catsMap.get(row.id) ?? null),
+  );
+
+  return c.json({ data, nextCursor });
   },
 );
 
@@ -326,7 +393,8 @@ templatesRoute.get(
     if (!row) {
       return c.json({ error: { code: 'not_found', message: 'Template not found.' } }, 404);
     }
-    return c.json({ data: row });
+    const cats = await loadTemplateCategories(c.var.db, id);
+    return c.json({ data: attachAdminCategoryFields(row, cats) });
   },
 );
 
@@ -400,11 +468,23 @@ templatesRoute.post(
       .from(templateVersions)
       .where(eq(templateVersions.templateId, id));
 
+    // Load current category memberships and embed them in the
+    // snapshot JSON so a future "restore version N" can rebuild
+    // exactly what was published — full-restore semantics per the
+    // design discussion.
+    const cats = await loadTemplateCategories(c.var.db, id);
+    const snapshot = {
+      ...row,
+      primaryCategoryId: cats?.primary ?? '',
+      extraCategoryIds: cats?.extras ?? [],
+      categoryIds: cats?.all ?? [],
+    };
+
     const publishedAt = new Date();
     await c.var.db.insert(templateVersions).values({
       templateId: id,
       versionNumber: nextVersion,
-      snapshot: row,
+      snapshot,
       publishedBy: adminUser?.id ?? null,
       publishNote: body.publishNote ?? null,
       publishedAt,
@@ -416,7 +496,7 @@ templatesRoute.post(
       .where(eq(templates.id, id))
       .returning();
 
-    return c.json({ data: updated });
+    return c.json({ data: attachAdminCategoryFields(updated!, cats) });
   },
 );
 
@@ -464,6 +544,17 @@ templatesRoute.post(
       return c.json({ error: { code: 'not_found', message: 'Template not found.' } }, 404);
     }
 
+    // Copy categories alongside the row clone — the duplicate inherits
+    // the same primary + extras. Loaded BEFORE the insert so the source
+    // is unaffected by anything downstream.
+    const srcCats = await loadTemplateCategories(c.var.db, id);
+    if (!srcCats) {
+      return c.json(
+        { error: { code: 'orphaned_template', message: 'Source template has no categories — cannot duplicate.' } },
+        409,
+      );
+    }
+
     const slug = await uniqueSlug(c.var.db, `${src.slug}-copy`);
     const [clone] = await c.var.db
       .insert(templates)
@@ -472,7 +563,6 @@ templatesRoute.post(
         slug,
         description: src.description,
         authorName: src.authorName,
-        categoryId: src.categoryId,
         kind: src.kind,
         status: 'draft',
         featured: false,
@@ -489,7 +579,13 @@ templatesRoute.post(
       })
       .returning();
 
-    return c.json({ data: clone }, 201);
+    if (!clone) {
+      return c.json({ error: { code: 'create_failed', message: 'Failed to clone template.' } }, 500);
+    }
+
+    await insertTemplateCategories(c.var.db, clone.id, srcCats.primary, srcCats.extras);
+
+    return c.json({ data: attachAdminCategoryFields(clone, srcCats) }, 201);
   },
 );
 
@@ -503,6 +599,24 @@ templatesRoute.post(
   zValidator('json', createTemplateSchema),
   async (c) => {
     const body = c.req.valid('json');
+
+    // Resolve + validate category fields up-front so an obviously-bad
+    // payload (e.g. >3 categories, primary listed as extra) is
+    // rejected before we burn a slug + an insert.
+    const catFields = resolveCategoryFields(body);
+    if (!catFields) {
+      return c.json(
+        { error: { code: 'category_required', message: 'A primary category is required.' } },
+        400,
+      );
+    }
+    const valid = validateCategorySet({
+      primaryCategoryId: catFields.primary,
+      extraCategoryIds: catFields.extras,
+    });
+    if (!valid.ok) {
+      return c.json({ error: { code: 'invalid_categories', message: valid.reason } }, 400);
+    }
 
     const slug = body.slug
       ? await uniqueSlug(c.var.db, body.slug)
@@ -528,7 +642,6 @@ templatesRoute.post(
           slug,
           description: body.description,
           authorName: body.authorName,
-          categoryId: body.categoryId,
           kind: body.kind,
           featured: body.featured,
           coverMedia: body.coverMedia,
@@ -543,7 +656,33 @@ templatesRoute.post(
           sortOrder: body.sortOrder,
         })
         .returning();
-      return c.json({ data: { ...row, costBreakdown } }, 201);
+
+      if (!row) {
+        return c.json({ error: { code: 'create_failed', message: 'Insert returned no row.' } }, 500);
+      }
+
+      // Persist category memberships. If this fails the orphaned
+      // template row would be invisible to category-filtered queries;
+      // surface a 500 with a clean message so the admin retries.
+      try {
+        await insertTemplateCategories(c.var.db, row.id, catFields.primary, catFields.extras);
+      } catch (err) {
+        // Best-effort cleanup — keeps the DB tidy even though the
+        // failure is very unlikely (only category-FK violations
+        // realistically land here, which we already validated above).
+        await c.var.db.delete(templates).where(eq(templates.id, row.id));
+        throw err;
+      }
+
+      const ordered = {
+        primary: catFields.primary,
+        extras: catFields.extras,
+        all: [catFields.primary, ...catFields.extras],
+      };
+      return c.json(
+        { data: { ...attachAdminCategoryFields(row, ordered), costBreakdown } },
+        201,
+      );
     } catch (err) {
       if (err instanceof Error && err.message.includes('templates_slug_unique')) {
         return c.json(
@@ -567,6 +706,20 @@ templatesRoute.patch(
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
 
+    // Resolve + validate category fields when the admin sent them.
+    // `null` here means "the patch doesn't touch categories"; we
+    // leave the existing membership intact.
+    const catFields = resolveCategoryFields(body);
+    if (catFields) {
+      const valid = validateCategorySet({
+        primaryCategoryId: catFields.primary,
+        extraCategoryIds: catFields.extras,
+      });
+      if (!valid.ok) {
+        return c.json({ error: { code: 'invalid_categories', message: valid.reason } }, 400);
+      }
+    }
+
     // Build a `set` object that only includes fields the admin actually
     // sent. Using spread + conditional avoids overwriting columns with
     // `undefined` (Drizzle would happily NULL them otherwise).
@@ -575,7 +728,8 @@ templatesRoute.patch(
     if (body.slug !== undefined) set.slug = await uniqueSlug(c.var.db, body.slug, id);
     if (body.description !== undefined) set.description = body.description;
     if (body.authorName !== undefined) set.authorName = body.authorName;
-    if (body.categoryId !== undefined) set.categoryId = body.categoryId;
+    // Category membership lives in `template_categories` and is
+    // updated below, AFTER the template row update succeeds.
     if (body.kind !== undefined) set.kind = body.kind;
     if (body.featured !== undefined) set.featured = body.featured;
     if (body.coverMedia !== undefined) set.coverMedia = body.coverMedia;
@@ -618,7 +772,16 @@ templatesRoute.patch(
       if (!row) {
         return c.json({ error: { code: 'not_found', message: 'Template not found.' } }, 404);
       }
-      return c.json({ data: costBreakdown ? { ...row, costBreakdown } : row });
+
+      // If the admin touched categories, replace the whole membership
+      // set atomically (delete-then-insert inside a single CTE).
+      if (catFields) {
+        await replaceTemplateCategories(c.var.db, id, catFields.primary, catFields.extras);
+      }
+
+      const cats = await loadTemplateCategories(c.var.db, id);
+      const decorated = attachAdminCategoryFields(row, cats);
+      return c.json({ data: costBreakdown ? { ...decorated, costBreakdown } : decorated });
     } catch (err) {
       if (err instanceof Error && err.message.includes('templates_slug_unique')) {
         return c.json(

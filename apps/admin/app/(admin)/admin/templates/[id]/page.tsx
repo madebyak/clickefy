@@ -34,8 +34,19 @@ function buildFormPayload(
     toast.error('Title is required.');
     return null;
   }
-  if (!templateData.categoryId) {
-    toast.error('Pick a category before saving.');
+  const primaryCategoryId =
+    templateData.primaryCategoryId ?? templateData.categoryId;
+  if (!primaryCategoryId) {
+    toast.error('Pick a primary category before saving.');
+    return null;
+  }
+  const extras = templateData.extraCategoryIds ?? [];
+  if (extras.length > 2) {
+    toast.error('A template can have at most 3 categories (1 primary + 2 extras).');
+    return null;
+  }
+  if (extras.includes(primaryCategoryId)) {
+    toast.error('The primary category cannot also be listed as an extra.');
     return null;
   }
   if (!templateData.kind) {
@@ -63,7 +74,8 @@ function buildFormPayload(
     slug: templateData.slug?.trim() || undefined,
     description: templateData.description ?? '',
     authorName: templateData.authorName?.trim() || 'Clickfy Studio',
-    categoryId: templateData.categoryId,
+    primaryCategoryId,
+    extraCategoryIds: extras,
     kind: templateData.kind,
     featured: templateData.featured ?? false,
     // Non-null assertion is safe because the guard above already

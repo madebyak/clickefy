@@ -309,12 +309,16 @@ adminStatsRoute.get('/overview', async (c) => {
     `),
 
     // 11. Categories with no published templates (UX gap signal).
+    //     Membership now lives in `template_categories` — count any
+    //     join row to a published template (primary or extra).
     db.execute<{ empty: number }>(sql`
       SELECT COUNT(*)::int AS empty
       FROM categories c
       WHERE NOT EXISTS (
-        SELECT 1 FROM templates t
-        WHERE t.category_id = c.id AND t.status = 'published'
+        SELECT 1
+        FROM template_categories tc
+        JOIN templates t ON t.id = tc.template_id
+        WHERE tc.category_id = c.id AND t.status = 'published'
       )
     `),
 

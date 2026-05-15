@@ -78,6 +78,13 @@
       "when": 1779814400000,
       "tag": "0010_credit_system",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779900800000,
+      "tag": "0011_template_categories",
+      "breakpoints": true
     }
   ]
 }

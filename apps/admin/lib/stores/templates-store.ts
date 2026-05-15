@@ -116,7 +116,19 @@ function toServerPayload(
   if (data.slug !== undefined) payload.slug = data.slug;
   if (data.description !== undefined) payload.description = data.description;
   if (data.authorName !== undefined) payload.authorName = data.authorName;
-  if (data.categoryId !== undefined) payload.categoryId = data.categoryId;
+  // Many-to-many category fields. We always send both the new explicit
+  // pair and the legacy `categoryId` (= primary) so a brief deploy
+  // skew between admin and API still works.
+  if (data.primaryCategoryId !== undefined) {
+    payload.primaryCategoryId = data.primaryCategoryId;
+    payload.categoryId = data.primaryCategoryId;
+  } else if (data.categoryId !== undefined) {
+    payload.primaryCategoryId = data.categoryId;
+    payload.categoryId = data.categoryId;
+  }
+  if (data.extraCategoryIds !== undefined) {
+    payload.extraCategoryIds = data.extraCategoryIds;
+  }
   if (data.kind !== undefined) payload.kind = data.kind;
   if (data.featured !== undefined) payload.featured = data.featured;
   if (data.coverMedia !== undefined) payload.coverMedia = data.coverMedia;

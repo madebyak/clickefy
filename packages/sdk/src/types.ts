@@ -32,8 +32,19 @@ export interface CatalogTemplate {
   title: string;
   /** Marketing copy shown on the template detail page. Empty string when omitted. */
   description: string;
-  /** Category id this template belongs to */
+  /**
+   * Primary category id this template belongs to.
+   * @deprecated Use `categoryIds[0]` — kept on the wire for legacy
+   *             single-category clients.
+   */
   categoryId: string;
+  /**
+   * Full ordered category membership: primary first, then 0..2 extras.
+   * A template can appear in multiple categories; UI surfaces it in
+   * the primary's rail only (the API enforces cross-rail dedup on
+   * the home feed).
+   */
+  categoryIds: string[];
   kind: TemplateKind;
   /** Cover image URI (~600w) — used as poster behind the preview video too */
   coverImage: string;

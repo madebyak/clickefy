@@ -198,6 +198,7 @@ function mapTemplate(m: MobileTemplate & { isFavorited?: boolean }): CatalogTemp
     title: m.title,
     description: m.description,
     categoryId: m.categoryId,
+    categoryIds: m.categoryIds ?? [m.categoryId],
     kind: sdkKind,
     coverImage: m.coverImage.url,
     previewVideo: m.previewVideo?.hlsUrl,

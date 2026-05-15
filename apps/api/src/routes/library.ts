@@ -18,6 +18,7 @@ import { savedTemplates, templates, users } from '@clickfy/db';
 
 import type { AppEnv } from '../types';
 import { templateToMobileDTO } from '../lib/template-dto';
+import { loadTemplateCategoriesMap } from '../lib/template-categories';
 import { withAuth } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 
@@ -69,18 +70,23 @@ libraryRoute.get(
     });
 
     const publicBaseUrl = new URL(c.req.url).origin;
-    const items = rows
+    const visible = rows
       // Hide saved entries whose template was archived. We could
       // surface them as "unavailable" but it would just confuse —
       // a save list should always be tappable.
-      .filter((r) => r.template && r.template.status === 'published')
-      .map((r) => ({
-        ...templateToMobileDTO(r.template!, {
-          publicBaseUrl,
-        }),
-        isFavorited: true,
-        savedAt: r.createdAt.toISOString(),
-      }));
+      .filter((r) => r.template && r.template.status === 'published');
+    const catsMap = await loadTemplateCategoriesMap(
+      c.var.db,
+      visible.map((r) => r.template!.id),
+    );
+    const items = visible.map((r) => ({
+      ...templateToMobileDTO(r.template!, {
+        publicBaseUrl,
+        categoryIds: catsMap.get(r.template!.id)?.all ?? [],
+      }),
+      isFavorited: true,
+      savedAt: r.createdAt.toISOString(),
+    }));
 
     c.header('Cache-Control', 'private, max-age=5');
     return c.json({ data: { items } });

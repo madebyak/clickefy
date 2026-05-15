@@ -22,6 +22,11 @@ import { savedTemplates, templates, users } from '@clickfy/db';
 
 import type { AppEnv } from '../types';
 import { templateToMobileDTO } from '../lib/template-dto';
+import {
+  loadTemplateCategories,
+  loadTemplateCategoriesMap,
+  templateInCategory,
+} from '../lib/template-categories';
 import { buildHomeSections } from '../lib/section-builder';
 import { withAuth } from '../middleware/with-auth';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
@@ -92,7 +97,9 @@ catalog.get(
   const whereParts: SQL[] = [eq(templates.status, 'published')];
   if (q.search) whereParts.push(ilike(templates.title, `%${q.search}%`));
   if (q.kind) whereParts.push(eq(templates.kind, q.kind));
-  if (q.categoryId) whereParts.push(eq(templates.categoryId, q.categoryId));
+  // Many-to-many membership check; matches the primary OR any extra.
+  // Single source of truth for "this template is in category X".
+  if (q.categoryId) whereParts.push(templateInCategory(q.categoryId));
   if (q.featured !== undefined) whereParts.push(eq(templates.featured, q.featured));
 
   // Cursor format depends on the active sort. We keep them disjoint so
@@ -147,9 +154,16 @@ catalog.get(
       : null;
 
   const publicBaseUrl = new URL(c.req.url).origin;
+  // Bulk-load category memberships so we can hand each DTO its
+  // ordered `[primary, …extras]` list without an N+1.
+  const catsMap = await loadTemplateCategoriesMap(
+    c.var.db,
+    page.map((r) => r.id),
+  );
   const data = page.map((row) =>
     templateToMobileDTO(row, {
       publicBaseUrl,
+      categoryIds: catsMap.get(row.id)?.all ?? [],
     }),
   );
 
@@ -237,10 +251,12 @@ catalog.get(
       c.header('Cache-Control', PUBLIC_CACHE_HEADERS['Cache-Control']);
     }
 
+    const cats = await loadTemplateCategories(c.var.db, row.id);
     return c.json({
       data: {
         ...templateToMobileDTO(row, {
           publicBaseUrl,
+          categoryIds: cats?.all ?? [],
         }),
         isFavorited,
       },

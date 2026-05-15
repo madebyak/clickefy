@@ -124,6 +124,95 @@ function filesToList(files: File[]): FileList {
   return dt.files;
 }
 
+/**
+ * Multi-select-as-chips for the 0..2 extra categories a template can
+ * appear under in addition to its primary.
+ *
+ * Behaviour:
+ *   - The currently-selected primary is rendered as disabled — you
+ *     can't put it in both buckets (the API would reject it anyway).
+ *   - Tapping a chip toggles membership. Hitting the cap of 2 disables
+ *     all unselected chips with a hint.
+ *   - Order is by `categories` (which is the admin's drag-drop sort);
+ *     the join-table `sort_order` is server-assigned in selection
+ *     order, so the *first chip you tap* becomes the first extra.
+ */
+function ExtraCategoriesPicker({
+  categories,
+  primaryId,
+  selected,
+  onChange,
+}: {
+  categories: Category[];
+  primaryId: string;
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const MAX_EXTRAS = 2;
+  const atCap = selected.length >= MAX_EXTRAS;
+
+  function toggle(id: string) {
+    if (selected.includes(id)) {
+      onChange(selected.filter((x) => x !== id));
+      return;
+    }
+    if (atCap) return;
+    onChange([...selected, id]);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <Label>Also show in</Label>
+        <span className="text-xs text-muted-foreground">
+          {selected.length}/{MAX_EXTRAS} extras
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {categories.map((cat) => {
+          const isPrimary = cat.id === primaryId;
+          const isSelected = selected.includes(cat.id);
+          const disabled = isPrimary || (atCap && !isSelected);
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => toggle(cat.id)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors border',
+                isSelected
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-transparent text-muted-foreground hover:border-primary/40',
+                isPrimary && 'opacity-60 cursor-not-allowed',
+                disabled && !isPrimary && 'opacity-50 cursor-not-allowed',
+              )}
+              title={
+                isPrimary
+                  ? 'This is the primary category'
+                  : atCap && !isSelected
+                    ? `Max ${MAX_EXTRAS} extra categories`
+                    : isSelected
+                      ? 'Click to remove'
+                      : 'Click to add'
+              }
+            >
+              {cat.name}
+              {isPrimary ? <span className="text-[10px] opacity-70">primary</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Pick up to {MAX_EXTRAS} other categories where this template
+        should also be discoverable. On the home feed the template
+        still appears in the primary&apos;s rail only — extras affect
+        search filters and the category chip view.
+      </p>
+    </div>
+  );
+}
+
 export function BasicInfoTab({ template, categories, onChange, getToken }: BasicInfoTabProps) {
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
@@ -280,27 +369,29 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
         </div>
 
         <div className="space-y-2">
-          <Label>Category</Label>
-          {/*
-            Base UI's Select considers `value === undefined` to be the
-            uncontrolled state and flips to controlled the moment we
-            pass a string. The dev warning is loud and ugly. Coerce
-            to '' so the component is controlled from the first render;
-            the placeholder still shows because Base UI's `SelectValue`
-            falls back to its `placeholder` prop when no item matches.
-          */}
+          <Label>Primary category</Label>
           <Select
-            value={template.categoryId ?? ''}
-            onValueChange={(value) => onChange({ categoryId: value || undefined })}
+            // Resolve primary from the new field with fallback to the
+            // legacy `categoryId` so editors that loaded before a
+            // backend deploy still see the right pre-selected value.
+            value={template.primaryCategoryId ?? template.categoryId ?? ''}
+            onValueChange={(value) => {
+              const next = value || undefined;
+              // If the new primary is currently in the extras list,
+              // drop it from extras to keep the invariant clean — the
+              // backend would reject the request anyway.
+              const extras = (template.extraCategoryIds ?? []).filter(
+                (id) => id !== next,
+              );
+              onChange({
+                primaryCategoryId: next,
+                categoryId: next,
+                extraCategoryIds: extras,
+              });
+            }}
           >
             <SelectTrigger className="w-full">
-              {/*
-                Base UI's <SelectValue /> renders the raw `value` by default,
-                so a category UUID leaks into the trigger. The children
-                render-prop receives the current value and lets us look up
-                the display label ourselves.
-              */}
-              <SelectValue placeholder="Select a category">
+              <SelectValue placeholder="Select a primary category">
                 {(value) => {
                   if (!value || typeof value !== 'string') return null;
                   return categories.find((cat) => cat.id === value)?.name ?? value;
@@ -315,8 +406,20 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
               ))}
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">
+            The category this template most belongs to. Used for
+            breadcrumbs, analytics roll-ups, and home-feed placement.
+          </p>
         </div>
       </div>
+
+      {/* Also-show-in — secondary categories. Max 2 extras → 3 total. */}
+      <ExtraCategoriesPicker
+        categories={categories}
+        primaryId={template.primaryCategoryId ?? template.categoryId ?? ''}
+        selected={template.extraCategoryIds ?? []}
+        onChange={(extras) => onChange({ extraCategoryIds: extras })}
+      />
 
       {/* Author */}
       <div className="space-y-2">

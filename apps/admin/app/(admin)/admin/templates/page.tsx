@@ -52,7 +52,15 @@ export default function TemplatesPage() {
       const matchesSearch =
         template.title.toLowerCase().includes(filters.search.toLowerCase()) ||
         template.description.toLowerCase().includes(filters.search.toLowerCase());
-      const matchesCategory = !filters.category || template.categoryId === filters.category;
+      // Match against the full membership set — a template surfaces
+      // under any of its categories. `categoryIds` is set by the API
+      // response; fall back to legacy `categoryId` for safety during
+      // a deploy transition.
+      const matchesCategory =
+        !filters.category ||
+        (template.categoryIds?.length
+          ? template.categoryIds.includes(filters.category)
+          : template.categoryId === filters.category);
       const matchesStatus = !filters.status || template.status === filters.status;
       const matchesKind = !filters.kind || template.kind === filters.kind;
 

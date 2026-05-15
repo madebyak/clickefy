@@ -17,6 +17,7 @@ import { categories } from './categories';
 import { creditLedger } from './credit-ledger';
 import { jobs } from './jobs';
 import { savedTemplates } from './saved-templates';
+import { templateCategories } from './template-categories';
 import { templateVersions } from './template-versions';
 import { templates } from './templates';
 import { users } from './users';
@@ -42,17 +43,28 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
     relationName: 'category_parent',
   }),
   children: many(categories, { relationName: 'category_parent' }),
-  templates: many(templates),
+  // Many-to-many: a category lists every template (primary or extra)
+  // through the `template_categories` join row.
+  templateMemberships: many(templateCategories),
 }));
 
-export const templatesRelations = relations(templates, ({ one, many }) => ({
-  category: one(categories, {
-    fields: [templates.categoryId],
-    references: [categories.id],
-  }),
+export const templatesRelations = relations(templates, ({ many }) => ({
+  // 1..3 category memberships; exactly one has `isPrimary: true`.
+  categoryMemberships: many(templateCategories),
   versions: many(templateVersions),
   jobs: many(jobs),
   savedBy: many(savedTemplates),
+}));
+
+export const templateCategoriesRelations = relations(templateCategories, ({ one }) => ({
+  template: one(templates, {
+    fields: [templateCategories.templateId],
+    references: [templates.id],
+  }),
+  category: one(categories, {
+    fields: [templateCategories.categoryId],
+    references: [categories.id],
+  }),
 }));
 
 export const templateVersionsRelations = relations(templateVersions, ({ one, many }) => ({

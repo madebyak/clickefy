@@ -29,13 +29,17 @@
  *     per region per minute reaches the Worker on a steady-state feed.
  */
 
-import { and, asc, desc, eq, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, sql, type SQL } from 'drizzle-orm';
 
 import type { Db } from '@clickfy/db';
 import { categories, templates, type Template as DbTemplate } from '@clickfy/db';
 import type { MobileTemplate } from '@clickfy/types';
 
 import { templateToMobileDTO } from './template-dto';
+import {
+  loadTemplateCategoriesMap,
+  templateInCategory,
+} from './template-categories';
 
 export type HomeSectionLayout = 'bento' | 'carousel';
 
@@ -88,9 +92,11 @@ export async function buildHomeSections(
 
   // Helper closure: tack on the category-scope WHERE clause when set.
   // Kept inline rather than passed through every call site below.
+  // Category membership is now an EXISTS join against
+  // `template_categories` (primary OR extra match).
   const scoped = (...extra: SQL[]): SQL =>
     scopeCategoryId
-      ? publishedAnd(eq(templates.categoryId, scopeCategoryId), ...extra)
+      ? publishedAnd(templateInCategory(scopeCategoryId), ...extra)
       : publishedAnd(...extra);
 
   // Fan-out: featured, recently-published, kind=video, kind=image_set,
@@ -131,6 +137,11 @@ export async function buildHomeSections(
   // Second wave: one query per category, also in parallel. Categories
   // with zero published templates are pruned below.  Skipped entirely
   // in scoped mode (the user already chose a category).
+  //
+  // For per-category rails we use the primary-only predicate so a
+  // multi-category template surfaces only in its primary's rail
+  // (Q3 of the design discussion). The "Trending" / "New Arrivals"
+  // cross-cutting rails are unaffected and continue to feature it.
   const categoryTemplateRows = scopeCategoryId
     ? []
     : await Promise.all(
@@ -138,15 +149,28 @@ export async function buildHomeSections(
           db
             .select()
             .from(templates)
-            .where(publishedAnd(eq(templates.categoryId, cat.id)))
+            .where(publishedAnd(primaryCategoryMatch(cat.id)))
             .orderBy(desc(templates.publishedAt), desc(templates.createdAt))
             .limit(limit),
         ),
       );
 
+  // We need each row's categoryIds for the DTO. Collect every
+  // template id that lands in any rail and bulk-load.
+  const allRows = [
+    ...featuredRows,
+    ...recentRows,
+    ...videoRows,
+    ...setRows,
+    ...categoryTemplateRows.flat(),
+  ];
+  const ids = Array.from(new Set(allRows.map((r) => r.id)));
+  const catsMap = await loadTemplateCategoriesMap(db, ids);
+
   const toDto = (row: DbTemplate): MobileTemplate =>
     templateToMobileDTO(row, {
       publicBaseUrl: opts.publicBaseUrl,
+      categoryIds: catsMap.get(row.id)?.all ?? [],
     });
 
   const sections: HomeSection[] = [];
@@ -195,18 +219,49 @@ export async function buildHomeSections(
 
   // Per-category rails follow the admin's drag-drop order. Any
   // category without published templates is silently dropped.
+  //
+  // Cross-rail dedup: with multi-category templates a template could
+  // theoretically appear in multiple per-category rails. The product
+  // rule (confirmed with the user) is "show in primary's rail only" —
+  // and because we already query per-category rails with `is_primary
+  // = true`, no template can appear in more than one of these rails.
+  // The dedup pass below is a belt-and-braces guard: if two rails
+  // somehow share a template (e.g. a future change relaxes the
+  // primary filter), the first rail wins and later rails skip it.
+  const seenInCategoryRails = new Set<string>();
   for (let i = 0; i < categoryRows.length; i++) {
     const cat = categoryRows[i]!;
-    const rows = categoryTemplateRows[i]!;
-    if (rows.length === 0) continue;
+    const rowsForCat = categoryTemplateRows[i]!;
+    const filtered = rowsForCat.filter((r) => {
+      if (seenInCategoryRails.has(r.id)) return false;
+      seenInCategoryRails.add(r.id);
+      return true;
+    });
+    if (filtered.length === 0) continue;
     sections.push({
       key: `category-${cat.id}`,
       title: cat.name,
       subtitle: `Browse ${cat.name.toLowerCase()}`,
       layout: 'carousel',
-      templates: rows.map(toDto),
+      templates: filtered.map(toDto),
     });
   }
 
   return sections;
+}
+
+/**
+ * "Primary category of this template equals X" — used by per-category
+ * rails so the home feed shows each multi-cat template under its
+ * primary's rail only. EXISTS subquery on the join table with
+ * `is_primary = true`. The broader "primary OR extras" match is what
+ * `templateInCategory` provides for catalog list + scoped sections.
+ */
+function primaryCategoryMatch(categoryId: string): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM template_categories tc
+    WHERE tc.template_id = templates.id
+      AND tc.is_primary = true
+      AND tc.category_id = ${categoryId}::uuid
+  )`;
 }

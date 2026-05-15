@@ -164,10 +164,16 @@ export async function createJobAtomically(
         INSERT INTO credit_ledger (
           user_id, delta, reason, job_id, balance_after, bucket, metadata
         )
+        -- Casts are required because UNION ALL unifies branch column
+        -- types before the INSERT column-type context kicks in. With
+        -- bare 'job_charge' literals the union resolves to text, and
+        -- Postgres refuses to implicitly cast text to the user-defined
+        -- credit_reason enum. A single ::credit_reason on each branch
+        -- makes the union type already-correct.
         SELECT
           ${args.userId}::uuid,
           -ud.from_promo,
-          'job_charge',
+          'job_charge'::credit_reason,
           nj.id,
           ud.new_balance,
           'promo',
@@ -182,7 +188,7 @@ export async function createJobAtomically(
         SELECT
           ${args.userId}::uuid,
           -ud.from_sub,
-          'job_charge',
+          'job_charge'::credit_reason,
           nj.id,
           ud.new_balance,
           'subscription',
@@ -197,7 +203,7 @@ export async function createJobAtomically(
         SELECT
           ${args.userId}::uuid,
           -ud.from_topup,
-          'job_charge',
+          'job_charge'::credit_reason,
           nj.id,
           ud.new_balance,
           'topup',

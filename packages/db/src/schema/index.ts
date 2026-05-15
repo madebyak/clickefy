@@ -26,6 +26,7 @@ export * from './reports';
 export * from './revenuecat-events';
 export * from './saved-templates';
 export * from './subscription-plans';
+export * from './template-categories';
 export * from './template-versions';
 export * from './templates';
 export * from './users';

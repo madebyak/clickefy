@@ -150,13 +150,28 @@ function deriveOutputs(row: DbTemplate): MobileTemplateOutputSummary[] {
 export interface MobileDtoOptions {
   /** Origin of the API the mobile app talks to (no trailing slash). */
   publicBaseUrl: string;
+  /**
+   * Ordered category memberships: `[primary, ...extras]`. Required —
+   * since the schema move to many-to-many, the `DbTemplate` row no
+   * longer carries `categoryId` directly, so the route handler must
+   * load the join table and pass the list in.
+   *
+   * Old single-category clients keep reading `categoryId` from the
+   * DTO; new clients can use `categoryIds` for full multi-category
+   * UX. Both fields are always emitted.
+   */
+  categoryIds: ReadonlyArray<string>;
 }
 
 export function templateToMobileDTO(
   row: DbTemplate,
   opts: MobileDtoOptions,
 ): MobileTemplate {
-  const { publicBaseUrl } = opts;
+  const { publicBaseUrl, categoryIds } = opts;
+  // Defensive: if a template somehow has zero category rows (data
+  // integrity bug we'd want to spot), surface it as empty strings
+  // rather than crash the whole catalog response.
+  const primaryCategoryId = categoryIds[0] ?? '';
 
   const coverImage = mediaRefToImage(row.coverMedia, publicBaseUrl);
 
@@ -165,7 +180,9 @@ export function templateToMobileDTO(
     title: row.title,
     slug: row.slug,
     description: row.description,
-    categoryId: row.categoryId,
+    /** @deprecated kept for v1 mobile clients; use `categoryIds[0]`. */
+    categoryId: primaryCategoryId,
+    categoryIds: [...categoryIds],
     kind: row.kind,
     featured: row.featured,
 

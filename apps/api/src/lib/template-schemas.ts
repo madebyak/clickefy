@@ -210,7 +210,20 @@ export const createTemplateSchema = z.object({
     .optional(),
   description: z.string().max(2000).default(''),
   authorName: z.string().min(1).max(80).default('Clickfy Studio'),
-  categoryId: z.string().uuid(),
+
+  // Category membership — many-to-many. `primaryCategoryId` is the
+  // canonical "this is fundamentally an X template" choice (drives
+  // breadcrumbs, analytics roll-ups, and the cross-rail dedup on the
+  // home feed). `extraCategoryIds` are the 0..2 additional categories
+  // this template should *also* be discoverable in. Total membership
+  // is capped at 3.
+  //
+  // Older admin clients may still post `categoryId` — we accept it as
+  // a legacy alias for `primaryCategoryId` so the deployment is
+  // forwards-compatible if the admin bundle hasn't updated yet.
+  primaryCategoryId: z.string().uuid().optional(),
+  extraCategoryIds: z.array(z.string().uuid()).max(2).default([]),
+  categoryId: z.string().uuid().optional(),
   kind: templateKindSchema,
   featured: z.boolean().default(false),
 

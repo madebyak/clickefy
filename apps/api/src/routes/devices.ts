@@ -57,6 +57,17 @@ devicesRoute.post(
 
     const { expoPushToken, platform, appVersion, locale } = c.req.valid('json');
 
+    // Log every successful registration so `wrangler tail` shows
+    // exactly when devices come online. Crucial for diagnosing the
+    // "0 devices registered" case — if you don't see these lines
+    // when a tester opens the app, the request never reached us.
+    console.log('[devices.register]', {
+      userId: user.id,
+      tokenPrefix: expoPushToken.slice(0, 28) + '…',
+      platform,
+      appVersion: appVersion ?? null,
+    });
+
     // Upsert by token, reassigning ownership if it was registered by a
     // different user. This is the device-handoff case (sign-out then
     // sign-in on the same device).

@@ -22,7 +22,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/lib/use-appearance';
 import { LEGAL_DOCS, LEGAL_DOC_ORDER } from '@/lib/legal-content';
+import { registerForPushNotificationsAsync } from '@/lib/push-notifications';
 import { useSession } from '@/lib/use-session';
+import { useAuth } from '@clerk/expo';
+import { useState } from 'react';
 
 const ACCENT_OPTIONS: AccentKey[] = ['violet', 'coral', 'citrus', 'ocean'];
 
@@ -39,8 +42,46 @@ export default function ProfileScreen() {
     signOut,
     deleteAccount,
   } = useSession();
+  const { getToken } = useAuth();
+  const [diagBusy, setDiagBusy] = useState(false);
   const { mode, scheme, accentKey, setMode, setAccent, toggleScheme } = useAppearance();
   const session = isAuthed && user ? { user, plan } : null;
+
+  // Push diagnostic: re-runs the full registration flow on demand and
+  // surfaces exactly what's happening on this device. Used to debug
+  // empty `device_tokens` rows when testing on Expo Go — without this,
+  // failures are silent because users don't have Metro attached.
+  async function runPushDiagnostic() {
+    setDiagBusy(true);
+    try {
+      const result = await registerForPushNotificationsAsync(async () => getToken());
+      if (result.token) {
+        Alert.alert(
+          'Push registered ✅',
+          `Token: ${result.token.slice(0, 36)}…\n\nThis device is now reachable from the admin panel.`,
+        );
+      } else {
+        const friendly: Record<string, string> = {
+          simulator:
+            "You're on a simulator. Push tokens only work on a real device.",
+          permission_denied:
+            'Notification permission is OFF. Open iOS Settings → Notifications → Expo Go → enable Allow Notifications, then tap this button again.',
+          no_project_id:
+            "Couldn't find the Expo projectId. Restart the app from the QR code.",
+          token_fetch_failed:
+            'Expo could not issue a push token. Common causes: no internet, Apple Push servers blocked on this network.',
+          backend_register_failed:
+            "Got a token from Expo but our API rejected it. Check that you're signed in.",
+        };
+        Alert.alert(
+          'Push registration failed',
+          friendly[result.reason ?? ''] ?? `Unknown reason: ${result.reason}`,
+        );
+      }
+    } finally {
+      setDiagBusy(false);
+    }
+  }
 
   const isDark = scheme === 'dark';
 
@@ -251,6 +292,28 @@ export default function ProfileScreen() {
                 value={preferences.notifications.tipsAndTutorials}
                 onValueChange={() => onToggleNotification('tipsAndTutorials')}
               />
+              <Divider />
+              <Pressable
+                onPress={runPushDiagnostic}
+                disabled={diagBusy}
+                haptic="light"
+                pressedOpacity={0.85}
+              >
+                <HStack align="center" justify="space-between" py="sm">
+                  <HStack align="center" gap="md" style={{ flex: 1 }}>
+                    <Icon name="info" size={20} color={colors.ink} weight="fill" />
+                    <Stack gap="xs" style={{ flex: 1 }}>
+                      <Text variant="bodySemi" color="ink">
+                        {diagBusy ? 'Checking…' : 'Check notification setup'}
+                      </Text>
+                      <Text variant="caption" color="inkMuted">
+                        Tap to verify this device can receive push.
+                      </Text>
+                    </Stack>
+                  </HStack>
+                  <Icon name="chevronRight" size={16} color={colors.inkSubtle} weight="bold" />
+                </HStack>
+              </Pressable>
             </Stack>
           </Card>
         ) : null}

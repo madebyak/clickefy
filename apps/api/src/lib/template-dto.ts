@@ -173,7 +173,15 @@ export function templateToMobileDTO(
   // rather than crash the whole catalog response.
   const primaryCategoryId = categoryIds[0] ?? '';
 
-  const coverImage = mediaRefToImage(row.coverMedia, publicBaseUrl);
+  // Defensive: `coverMedia` is nullable on the DB row so drafts can
+  // exist without one, but every code path that calls this DTO
+  // already filters to `status='published'` and the publish handler
+  // enforces a cover. A null here is a data-integrity bug; fall back
+  // to a zero-dimension empty placeholder rather than throw and
+  // collapse the whole catalog response.
+  const coverImage = row.coverMedia
+    ? mediaRefToImage(row.coverMedia, publicBaseUrl)
+    : { url: '', width: 0, height: 0, blurhash: '' };
 
   return {
     id: row.id,

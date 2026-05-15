@@ -18,43 +18,48 @@ import { ArrowLeft, Save, Globe, Info, Upload, Zap, Play, Loader2 } from 'lucide
 import { toast } from 'sonner';
 
 /**
- * Build the body sent to `createTemplate` / `updateTemplate`. The
- * Worker's Zod schema requires `coverMedia`, `generation`, and
- * `output` on CREATE; we surface validation errors as toasts rather
- * than ship a 400 to the server.
+ * Build the body sent to `createTemplate` / `updateTemplate`.
+ *
+ * Validation is tiered:
+ *
+ *   - `intent: 'draft'` — only the bare minimum the API actually
+ *     needs (title + a generation/output skeleton). Cover image and
+ *     primary category may be missing; the admin can fill them in
+ *     later. The server's `cover_media` column is nullable for this
+ *     reason and the `/publish` endpoint enforces the rest.
+ *
+ *   - `intent: 'publish'` — everything a published template needs to
+ *     render on the mobile catalog (title, primary category, cover,
+ *     at least one pipeline stage). Failing here keeps the admin from
+ *     hitting a confusing 400 from the publish handler.
  *
  * Returns the typed `TemplateFormData` on success, or `null` if the
  * caller should not save.
  */
 function buildFormPayload(
   templateData: Partial<Template>,
-  { requireCoverForCreate }: { requireCoverForCreate: boolean },
+  { intent }: { intent: 'draft' | 'publish' },
 ): TemplateFormData | null {
   if (!templateData.title?.trim()) {
     toast.error('Title is required.');
     return null;
   }
+
   const primaryCategoryId =
-    templateData.primaryCategoryId ?? templateData.categoryId;
-  if (!primaryCategoryId) {
-    toast.error('Pick a primary category before saving.');
-    return null;
-  }
+    templateData.primaryCategoryId || templateData.categoryId || undefined;
   const extras = templateData.extraCategoryIds ?? [];
+
   if (extras.length > 2) {
     toast.error('A template can have at most 3 categories (1 primary + 2 extras).');
     return null;
   }
-  if (extras.includes(primaryCategoryId)) {
+  if (primaryCategoryId && extras.includes(primaryCategoryId)) {
     toast.error('The primary category cannot also be listed as an extra.');
     return null;
   }
+
   if (!templateData.kind) {
     toast.error('Pick a template kind (image / video / image set).');
-    return null;
-  }
-  if (requireCoverForCreate && !templateData.coverMedia) {
-    toast.error('Upload a cover image before creating the template.');
     return null;
   }
   // `generation` / `output` are always populated by the page on init,
@@ -69,6 +74,22 @@ function buildFormPayload(
     return null;
   }
 
+  if (intent === 'publish') {
+    if (!primaryCategoryId) {
+      toast.error('Pick a primary category before publishing.');
+      return null;
+    }
+    if (!templateData.coverMedia) {
+      toast.error('Upload a cover image before publishing.');
+      return null;
+    }
+    const stageCount = templateData.generation.stages?.length ?? 0;
+    if (stageCount === 0) {
+      toast.error('Add at least one generation stage before publishing.');
+      return null;
+    }
+  }
+
   return {
     title: templateData.title.trim(),
     slug: templateData.slug?.trim() || undefined,
@@ -77,11 +98,7 @@ function buildFormPayload(
     extraCategoryIds: extras,
     kind: templateData.kind,
     featured: templateData.featured ?? false,
-    // Non-null assertion is safe because the guard above already
-    // bailed if `coverMedia` is missing for a create. For updates we
-    // pass through whatever the form has (may be undefined → server
-    // PATCH leaves the column alone).
-    coverMedia: templateData.coverMedia!,
+    coverMedia: templateData.coverMedia ?? null,
     previewVideo: templateData.previewVideo ?? null,
     gallery: templateData.gallery ?? [],
     userInputs: templateData.userInputs ?? [],
@@ -169,7 +186,11 @@ export default function TemplateEditorPage() {
   };
 
   const handleSave = async () => {
-    const payload = buildFormPayload(templateData, { requireCoverForCreate: isNew });
+    // Save uses draft-grade validation regardless of `isNew`. A draft
+    // can legitimately have no cover and no category; the server will
+    // store nulls. Publishing is the only moment we enforce the full
+    // set of requirements.
+    const payload = buildFormPayload(templateData, { intent: 'draft' });
     if (!payload) return;
     setSaving(true);
     try {
@@ -192,8 +213,10 @@ export default function TemplateEditorPage() {
   const handlePublish = async () => {
     if (isNew) return;
     // Publish performs an implicit save first so the snapshot in
-    // `template_versions` matches the admin's current draft.
-    const payload = buildFormPayload(templateData, { requireCoverForCreate: false });
+    // `template_versions` matches the admin's current draft. Use the
+    // strict variant so we catch missing cover/category/stages
+    // client-side instead of bouncing off the server's 400.
+    const payload = buildFormPayload(templateData, { intent: 'publish' });
     if (!payload) return;
     setSaving(true);
     try {
@@ -297,7 +320,13 @@ export default function TemplateEditorPage() {
             <Zap className="h-4 w-4 mr-2" />
             Generation
           </TabsTrigger>
-          <TabsTrigger value="playground" disabled={isNew}>
+          {/* Playground does not need a saved template id — it
+              POSTs the in-memory pipeline to `/api/generate` (the
+              admin's local Next.js route), so admins can iterate on
+              a brand-new template before it's ever persisted. The
+              tab's own empty-state UI guides the admin to add stages
+              and required inputs. */}
+          <TabsTrigger value="playground">
             <Play className="h-4 w-4 mr-2" />
             Playground
           </TabsTrigger>

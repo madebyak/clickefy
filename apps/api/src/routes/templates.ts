@@ -459,6 +459,36 @@ templatesRoute.post(
       return c.json({ error: { code: 'not_found', message: 'Template not found.' } }, 404);
     }
 
+    // Load current category memberships up-front so we can both gate
+    // the publish on "must have a primary category" and embed them in
+    // the snapshot below.
+    const cats = await loadTemplateCategories(c.var.db, id);
+
+    // ── Publish-readiness guard ───────────────────────────────────────
+    // The mobile catalog assumes published templates always have a
+    // cover image, a primary category, and at least one generation
+    // stage. We allow drafts to skip those, so the only place to
+    // enforce them is right here. Collect every missing requirement
+    // and return them all at once so the admin doesn't have to play
+    // whack-a-mole.
+    const missing: string[] = [];
+    if (!row.coverMedia) missing.push('a cover image');
+    if (!cats?.primary) missing.push('a primary category');
+    const stageCount = row.generation?.stages?.length ?? 0;
+    if (stageCount === 0) missing.push('at least one generation stage');
+    if (missing.length > 0) {
+      return c.json(
+        {
+          error: {
+            code: 'not_ready_to_publish',
+            message: `This template can't be published yet — it's missing ${missing.join(', ')}.`,
+            details: { missing },
+          },
+        },
+        400,
+      );
+    }
+
     // Next version number — read current max, increment. Uniqueness is
     // enforced by the `(template_id, version_number)` unique index, so
     // a concurrent publish on the same template would surface as a
@@ -468,11 +498,9 @@ templatesRoute.post(
       .from(templateVersions)
       .where(eq(templateVersions.templateId, id));
 
-    // Load current category memberships and embed them in the
-    // snapshot JSON so a future "restore version N" can rebuild
-    // exactly what was published — full-restore semantics per the
-    // design discussion.
-    const cats = await loadTemplateCategories(c.var.db, id);
+    // Embed category memberships into the snapshot JSON so a future
+    // "restore version N" can rebuild exactly what was published —
+    // full-restore semantics per the design discussion.
     const snapshot = {
       ...row,
       primaryCategoryId: cats?.primary ?? '',
@@ -546,14 +574,9 @@ templatesRoute.post(
 
     // Copy categories alongside the row clone — the duplicate inherits
     // the same primary + extras. Loaded BEFORE the insert so the source
-    // is unaffected by anything downstream.
+    // is unaffected by anything downstream. A category-less source
+    // (legitimate for drafts) just produces a category-less clone.
     const srcCats = await loadTemplateCategories(c.var.db, id);
-    if (!srcCats) {
-      return c.json(
-        { error: { code: 'orphaned_template', message: 'Source template has no categories — cannot duplicate.' } },
-        409,
-      );
-    }
 
     const slug = await uniqueSlug(c.var.db, `${src.slug}-copy`);
     const [clone] = await c.var.db
@@ -583,7 +606,9 @@ templatesRoute.post(
       return c.json({ error: { code: 'create_failed', message: 'Failed to clone template.' } }, 500);
     }
 
-    await insertTemplateCategories(c.var.db, clone.id, srcCats.primary, srcCats.extras);
+    if (srcCats) {
+      await insertTemplateCategories(c.var.db, clone.id, srcCats.primary, srcCats.extras);
+    }
 
     return c.json({ data: attachAdminCategoryFields(clone, srcCats) }, 201);
   },
@@ -600,22 +625,19 @@ templatesRoute.post(
   async (c) => {
     const body = c.req.valid('json');
 
-    // Resolve + validate category fields up-front so an obviously-bad
-    // payload (e.g. >3 categories, primary listed as extra) is
-    // rejected before we burn a slug + an insert.
+    // Categories are optional at create time — a draft can be saved
+    // without one. If the admin DID send a category set, validate it
+    // up-front (max 3, no overlap) so a bad payload doesn't burn a
+    // slug + insert before failing.
     const catFields = resolveCategoryFields(body);
-    if (!catFields) {
-      return c.json(
-        { error: { code: 'category_required', message: 'A primary category is required.' } },
-        400,
-      );
-    }
-    const valid = validateCategorySet({
-      primaryCategoryId: catFields.primary,
-      extraCategoryIds: catFields.extras,
-    });
-    if (!valid.ok) {
-      return c.json({ error: { code: 'invalid_categories', message: valid.reason } }, 400);
+    if (catFields) {
+      const valid = validateCategorySet({
+        primaryCategoryId: catFields.primary,
+        extraCategoryIds: catFields.extras,
+      });
+      if (!valid.ok) {
+        return c.json({ error: { code: 'invalid_categories', message: valid.reason } }, 400);
+      }
     }
 
     const slug = body.slug
@@ -644,7 +666,10 @@ templatesRoute.post(
           authorName: body.authorName,
           kind: body.kind,
           featured: body.featured,
-          coverMedia: body.coverMedia,
+          // `coverMedia` is now nullable — a draft can be created
+          // without one. Coerce undefined to null so Drizzle sends
+          // an explicit NULL instead of dropping the column.
+          coverMedia: body.coverMedia ?? null,
           previewVideo: body.previewVideo ?? null,
           gallery: body.gallery,
           userInputs: body.userInputs,
@@ -661,24 +686,25 @@ templatesRoute.post(
         return c.json({ error: { code: 'create_failed', message: 'Insert returned no row.' } }, 500);
       }
 
-      // Persist category memberships. If this fails the orphaned
-      // template row would be invisible to category-filtered queries;
-      // surface a 500 with a clean message so the admin retries.
-      try {
-        await insertTemplateCategories(c.var.db, row.id, catFields.primary, catFields.extras);
-      } catch (err) {
-        // Best-effort cleanup — keeps the DB tidy even though the
-        // failure is very unlikely (only category-FK violations
-        // realistically land here, which we already validated above).
-        await c.var.db.delete(templates).where(eq(templates.id, row.id));
-        throw err;
+      // Persist category memberships only when the admin supplied
+      // them; a category-less draft is a legitimate state. If this
+      // call fails we roll back the template row so the admin doesn't
+      // end up with an orphan they can't easily see.
+      let ordered: { primary: string; extras: string[]; all: string[] } | null = null;
+      if (catFields) {
+        try {
+          await insertTemplateCategories(c.var.db, row.id, catFields.primary, catFields.extras);
+          ordered = {
+            primary: catFields.primary,
+            extras: catFields.extras,
+            all: [catFields.primary, ...catFields.extras],
+          };
+        } catch (err) {
+          await c.var.db.delete(templates).where(eq(templates.id, row.id));
+          throw err;
+        }
       }
 
-      const ordered = {
-        primary: catFields.primary,
-        extras: catFields.extras,
-        all: [catFields.primary, ...catFields.extras],
-      };
       return c.json(
         { data: { ...attachAdminCategoryFields(row, ordered), costBreakdown } },
         201,

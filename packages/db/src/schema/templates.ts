@@ -79,8 +79,14 @@ export const templates = pgTable(
 
     /** Poster image — shown on rails, used as the video poster when
      *  `previewVideo` is set. Hard-aimed at 4:5 portrait for grid
-     *  density. */
-    coverMedia: jsonb('cover_media').$type<MediaRef>().notNull(),
+     *  density.
+     *
+     *  Nullable so a draft can be saved before the cover is uploaded.
+     *  The API's publish handler refuses to flip status to
+     *  `published` while this is null, so the public catalog never
+     *  observes the null case — only the admin editor and the
+     *  in-progress draft list do. */
+    coverMedia: jsonb('cover_media').$type<MediaRef | null>(),
 
     /** Optional short autoplay clip (4–8s, muted, looped). When set,
      *  cards play it over the cover poster. Stored as a `MediaRef`

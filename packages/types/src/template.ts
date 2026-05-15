@@ -44,12 +44,14 @@ export interface Template {
   /**
    * Primary category id — the "this is fundamentally an X template"
    * choice. The full membership set lives in `categoryIds` (primary
-   * first, then extras).
+   * first, then extras). Empty string for drafts that haven't picked
+   * a category yet; the publish flow enforces presence.
    */
   primaryCategoryId: string;
   /** Up to 2 additional categories this template also appears under. */
   extraCategoryIds: string[];
-  /** Convenience: `[primaryCategoryId, ...extraCategoryIds]`. */
+  /** Convenience: `[primaryCategoryId, ...extraCategoryIds]`. Empty for
+   *  category-less drafts. */
   categoryIds: string[];
   /** @deprecated Use `primaryCategoryId`. Kept for transition. */
   categoryId: string;
@@ -57,7 +59,13 @@ export interface Template {
   status: TemplateStatus;
   featured: boolean;
 
-  coverMedia: MediaRef;
+  /**
+   * Cover image / video poster. Nullable while the template is a
+   * draft — the publish flow enforces a non-null cover before the
+   * mobile catalog ever surfaces the row, so `MobileTemplate` (the
+   * projected wire shape) can keep treating it as required.
+   */
+  coverMedia: MediaRef | null;
   /**
    * Optional cover preview clip — short, autoplay-looped, muted on
    * mobile. Hosted in R2 alongside images; the cover image (above)
@@ -224,8 +232,12 @@ export interface TemplateFormData {
   title: string;
   slug?: string;
   description: string;
-  /** The primary category — required. */
-  primaryCategoryId: string;
+  /**
+   * Primary category. Optional on the form (drafts can be saved
+   * without one), but enforced by the publish handler before the
+   * template can flip from `draft` to `published`.
+   */
+  primaryCategoryId?: string;
   /** 0..2 extra categories the template should also surface in. */
   extraCategoryIds?: string[];
   /** @deprecated Use `primaryCategoryId`. Kept for older admin code. */
@@ -233,7 +245,8 @@ export interface TemplateFormData {
   kind: TemplateKind;
   featured?: boolean;
 
-  coverMedia: MediaRef;
+  /** Optional on the form — a draft can be saved with no cover yet. */
+  coverMedia?: MediaRef | null;
   previewVideo?: MediaRef | null;
   gallery?: MediaRef[];
 

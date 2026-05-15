@@ -227,7 +227,10 @@ export const createTemplateSchema = z.object({
   kind: templateKindSchema,
   featured: z.boolean().default(false),
 
-  coverMedia: mediaRefSchema,
+  // Optional on the wire so a draft can be saved before the admin
+  // has uploaded a cover image. The publish handler enforces "must
+  // have a cover" before flipping status to `published`.
+  coverMedia: mediaRefSchema.nullable().optional(),
   previewVideo: mediaRefSchema.nullable().optional(),
   gallery: z.array(mediaRefSchema).max(12).default([]),
 

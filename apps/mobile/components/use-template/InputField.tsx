@@ -1,5 +1,6 @@
 import { Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import type { TemplateInput } from '@clickfy/types';
+import * as Sentry from '@sentry/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
@@ -171,6 +172,23 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
     } catch (err) {
       if (myToken !== uploadToken.current) return;
       const message = err instanceof Error ? err.message : 'Upload failed.';
+      // Surface to Sentry with the upload context so we can diagnose
+      // future failures without having to add log statements ad-hoc.
+      // `fingerprint` groups all upload errors together regardless of
+      // the dynamic suffix (status code, key) in `message`.
+      Sentry.captureException(err, {
+        tags: { feature: 'use-template', op: 'upload' },
+        contexts: {
+          upload: {
+            fieldKey: input.fieldKey,
+            inputType: input.type,
+            mimeType: assetMime ?? null,
+            sizeBytes: assetSizeBytes ?? null,
+            assetName: assetName ?? null,
+          },
+        },
+        fingerprint: ['use-template-upload-failed'],
+      });
       setUploadState({ phase: 'error', message });
       onUploadComplete?.(null);
     }
@@ -493,8 +511,29 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
           </>
         )}
       </Pressable>
+
+      {/* Failure detail. The red pill inside the tile is the tap
+          target (compact, glanceable). The full SDK error message
+          renders beneath so the user can actually tell *why* it
+          failed (auth, network, file too large, …) instead of just
+          tapping retry blindly. Trimmed to keep multi-MB JSON
+          payloads from blowing up the layout. */}
+      {uploadState.phase === 'error' ? (
+        <Text variant="caption" color="danger" style={{ paddingHorizontal: 4 }}>
+          {truncateForUi(uploadState.message)}
+        </Text>
+      ) : null}
     </Stack>
   );
+}
+
+// Keep server-leaked error strings from breaking the layout on
+// narrow phones. 160 chars is long enough to fit a status + a
+// short reason ("upload.put 413: file_too_large"), short enough
+// that the row never wraps past 3 lines.
+function truncateForUi(s: string, max = 160): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max - 1)}…`;
 }
 
 // ─── Text input ──────────────────────────────────────────────────────

@@ -27,7 +27,7 @@
  * ratio — never enlarges, never crops.
  */
 
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 export interface CompressedImage {
@@ -37,9 +37,9 @@ export interface CompressedImage {
   /**
    * Size of the compressed file in bytes. Used by the SDK to switch
    * to the presigned-PUT upload path (the multipart route does not
-   * need this and ignores it). Best-effort: returns 0 if
-   * `getInfoAsync` fails for any reason — the SDK then falls back to
-   * the multipart route on its own.
+   * need this and ignores it). Best-effort: returns 0 if the file
+   * metadata read throws for any reason — the SDK then falls back
+   * to the multipart route on its own.
    */
   sizeBytes: number;
 }
@@ -86,14 +86,21 @@ export async function compressImage(
   // and surface 0 — the SDK treats a non-positive size as "size
   // unknown" and falls back to the multipart upload route, which is
   // slower but always works.
+  //
+  // Uses the Expo SDK 54 `File` class API. The legacy
+  // `FileSystem.getInfoAsync` was removed in expo-file-system v19 —
+  // calling it throws at runtime, which historically silently
+  // collapsed every upload to the slow multipart fallback.
+  // `File#size` is a synchronous getter that returns 0 when the file
+  // is missing or unreadable, matching our best-effort contract.
   let sizeBytes = 0;
   try {
-    const info = await FileSystem.getInfoAsync(saved.uri);
-    if (info.exists && typeof info.size === 'number') {
-      sizeBytes = info.size;
+    const size = new File(saved.uri).size;
+    if (typeof size === 'number' && size > 0) {
+      sizeBytes = size;
     }
   } catch (err) {
-    console.warn('[compressImage] getInfoAsync failed:', err);
+    console.warn('[compressImage] File size read failed:', err);
   }
 
   return { uri: saved.uri, mimeType: 'image/jpeg', sizeBytes };

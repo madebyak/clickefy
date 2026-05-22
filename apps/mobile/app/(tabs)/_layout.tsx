@@ -13,8 +13,16 @@ import { useAuthGate } from '@/lib/auth-gate';
  * Guarded: redirects to onboarding if the user hasn't seen it,
  * then to sign-in if not authenticated.
  *
- * Icon weighting follows iOS HIG: 'fill' for the active tab, 'regular' for
- * inactive — same affordance Phosphor offers cross-platform.
+ * Icon treatment:
+ *   • Inactive → Phosphor `regular` weight, `inkMuted` line stroke.
+ *   • Active   → Phosphor `duotone` weight, **accent.solid** primary line,
+ *     soft accent fill underneath. Gives the selected tab a clear,
+ *     branded two-tone look without changing layout or weight balance.
+ *
+ * The label colour follows the same accent rule via `tabBarActiveTintColor`,
+ * so icon + label move as a single visual unit on selection. Animations
+ * (subtle cross-fade between screens) live in this screenOptions block too
+ * so they apply uniformly to every tab.
  */
 export default function TabLayout() {
   const { colors, accent } = useTheme();
@@ -28,19 +36,24 @@ export default function TabLayout() {
     return <Redirect href={hasOnboarded ? '/(auth)/welcome' : '/(auth)/onboarding'} />;
   }
 
-  const renderIcon = (name: IconName, color: string, focused: boolean) => (
+  const renderIcon = (name: IconName, focused: boolean) => (
     <Icon
       name={name}
-      color={color}
+      // Inactive uses theme inkMuted; active uses accent. The expo-router
+      // `color` prop is intentionally ignored — we want full control of the
+      // duotone palette per state instead of inheriting the navigator tint.
+      color={focused ? accent.solid : colors.inkMuted}
+      duotoneColor={focused ? accent.solid : undefined}
+      duotoneOpacity={focused ? 0.22 : undefined}
       size={26}
-      weight={focused ? 'fill' : 'regular'}
+      weight={focused ? 'duotone' : 'regular'}
     />
   );
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.ink,
+        tabBarActiveTintColor: accent.solid,
         tabBarInactiveTintColor: colors.inkMuted,
         tabBarStyle: {
           backgroundColor: colors.surface,
@@ -57,43 +70,45 @@ export default function TabLayout() {
         },
         headerShown: false,
         tabBarButton: HapticTab,
+        // Subtle cross-fade between tabs. `shifting`/`tabBarHideOnKeyboard`
+        // are left at defaults; animation is the only visual change so the
+        // tab bar itself never moves under the user. iOS-style 220 ms.
+        animation: 'fade',
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, focused }) => renderIcon('home', color, focused),
+          tabBarIcon: ({ focused }) => renderIcon('home', focused),
         }}
       />
       <Tabs.Screen
         name="library"
         options={{
           title: 'Library',
-          tabBarIcon: ({ color, focused }) => renderIcon('categories', color, focused),
+          tabBarIcon: ({ focused }) => renderIcon('categories', focused),
         }}
       />
       <Tabs.Screen
         name="create"
         options={{
           title: 'Create',
-          tabBarActiveTintColor: accent.solid,
-          tabBarIcon: ({ focused }) =>
-            renderIcon('create', accent.solid, focused),
+          tabBarIcon: ({ focused }) => renderIcon('create', focused),
         }}
       />
       <Tabs.Screen
         name="projects"
         options={{
           title: 'Projects',
-          tabBarIcon: ({ color, focused }) => renderIcon('projects', color, focused),
+          tabBarIcon: ({ focused }) => renderIcon('projects', focused),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, focused }) => renderIcon('profile', color, focused),
+          tabBarIcon: ({ focused }) => renderIcon('profile', focused),
         }}
       />
     </Tabs>

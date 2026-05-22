@@ -2,13 +2,19 @@ import { HStack, Pressable, Text, useTheme } from '@clickfy/ui';
 import { Pressable as RNPressable, View } from 'react-native';
 
 import { Logo } from '@/components/brand/Logo';
+import { PlanLabel } from '@/components/shared/PlanLabel';
 import { Icon } from '@/components/ui/Icon';
 
 export interface TopBarProps {
   credits: number;
   plan: string;
   onMenu?: () => void;
-  onProfile?: () => void;
+  /**
+   * Tap target on the credits/plan pill. Conventionally routes to the
+   * paywall (subscription + top-up) since the pill is a "buy more" CTA
+   * dressed up as a status indicator.
+   */
+  onCreditsPress?: () => void;
 }
 
 /**
@@ -17,10 +23,10 @@ export interface TopBarProps {
  *   ↑ left-aligned cluster            ↑ right-aligned
  *
  * The credits pill is a single unified surface containing:
- *   accent dot · credits number · vertical divider · plan label
+ *   diamond credit icon · credits number · vertical divider · plan label
  * No nested badges — keeps heights stable and visually clean.
  */
-export function TopBar({ credits, plan, onMenu, onProfile }: TopBarProps) {
+export function TopBar({ credits, plan, onMenu, onCreditsPress }: TopBarProps) {
   const { colors, accent } = useTheme();
 
   return (
@@ -52,7 +58,7 @@ export function TopBar({ credits, plan, onMenu, onProfile }: TopBarProps) {
 
       {/* Right: unified credits + plan pill */}
       <RNPressable
-        onPress={onProfile}
+        onPress={onCreditsPress}
         accessibilityLabel={`${plan} plan, ${credits} credits`}
         accessibilityRole="button"
         style={({ pressed }) => ({
@@ -68,18 +74,7 @@ export function TopBar({ credits, plan, onMenu, onProfile }: TopBarProps) {
           opacity: pressed ? 0.7 : 1,
         })}
       >
-        <View
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: accent.solid,
-            shadowColor: accent.solid,
-            shadowOpacity: 0.6,
-            shadowRadius: 4,
-            shadowOffset: { width: 0, height: 0 },
-          }}
-        />
+        <Icon name="credit" size={14} color={accent.solid} weight="fill" />
         <Text variant="mono" color="ink" weight="700" style={{ fontSize: 13 }}>
           {credits}
         </Text>
@@ -90,14 +85,7 @@ export function TopBar({ credits, plan, onMenu, onProfile }: TopBarProps) {
             backgroundColor: colors.border,
           }}
         />
-        <Text
-          color="inkMuted"
-          weight="700"
-          transform="uppercase"
-          style={{ fontSize: 10.5, letterSpacing: 0.6, lineHeight: 12 }}
-        >
-          {plan}
-        </Text>
+        <PlanLabel plan={plan} />
       </RNPressable>
     </HStack>
   );

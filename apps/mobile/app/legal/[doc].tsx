@@ -11,19 +11,18 @@
  * options inline.
  */
 
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Box,
   Card,
-  Pressable,
   Stack as VStack,
   Text,
   useTheme,
 } from '@clickfy/ui';
 
-import { Icon } from '@/components/ui/Icon';
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import {
   LEGAL_DOCS,
   type LegalDocSlug,
@@ -31,7 +30,6 @@ import {
 
 export default function LegalDocScreen() {
   const { doc } = useLocalSearchParams<{ doc: string }>();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
 
@@ -52,36 +50,16 @@ export default function LegalDocScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
       <Stack.Screen options={{ title: content.title, headerShown: false }} />
+      <ScreenHeader />
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + 12,
           paddingBottom: 80,
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Custom header — keeps tokens consistent with the rest of
-            the modal-ish screens (edit-profile, paywall) instead of
-            the platform stack header which has its own font. */}
         <Box px="lg" pb="md">
-          <Pressable
-            onPress={() => router.back()}
-            haptic="light"
-            accessibilityLabel="Back"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.surfaceMuted,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 16,
-            }}
-          >
-            <Icon name="chevronLeft" size={18} color={colors.ink} weight="bold" />
-          </Pressable>
-
           <VStack gap="sm">
             <Text variant="overline" color="inkMuted" transform="uppercase">
               Legal

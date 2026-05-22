@@ -22,6 +22,7 @@ import { useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { Icon } from '@/components/ui/Icon';
 import { LIBRARY_QUERY } from '@/lib/query-config';
 import { getSDK } from '@/lib/sdk';
@@ -55,27 +56,12 @@ export default function SavedTemplatesScreen() {
   }, [savedQuery.data, filter]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + 8 }}>
-      {/* Header — chevron back on the left, title block below */}
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
+      {/* Unified back-button header — same shape as result/generating/use
+          screens. Title block stays separate so the page can keep its
+          hero-style large title and counter beneath the navigation row. */}
+      <ScreenHeader />
       <Box px="lg" pb="md">
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-          <Pressable
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            haptic="light"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.surfaceMuted,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon name="chevronLeft" size={18} color={colors.ink} weight="bold" />
-          </Pressable>
-        </View>
         <Stack gap="sm">
           <Text variant="overline" color="inkMuted" transform="uppercase">
             Saved

@@ -353,10 +353,23 @@ jobsRoute.get(
       // Each output is tagged with its media kind so mobile renders
       // images with <Image> and videos with the player without
       // having to sniff URLs or guess from extensions.
-      const outputs: Array<{ url: string; kind: 'image' | 'video' }> = [
+      // Aspect ratio is sourced from the stored MediaRef per output —
+      // never hardcoded client-side. Image dimensions come straight off
+      // the asset; video dims aren't tracked in StreamRef yet, so those
+      // remain undefined and mobile falls back to its 9:16 default.
+      const outputs: Array<{
+        url: string;
+        kind: 'image' | 'video';
+        width?: number;
+        height?: number;
+        aspectRatio?: number;
+      }> = [
         ...finalImages.map((i) => ({
           url: `${origin}/v1/outputs/${i.r2Key}`,
           kind: 'image' as const,
+          width: i.width || undefined,
+          height: i.height || undefined,
+          aspectRatio: i.width && i.height ? i.width / i.height : undefined,
         })),
         ...finalVideos.map((v) => ({
           url: `${origin}/v1/outputs/${v.streamId}`,
@@ -500,10 +513,25 @@ jobsRoute.get(
     // own host name comes from the request URL so we don't have
     // to thread an env-var in just for this.
     const origin = new URL(c.req.url).origin;
-    const outputs: Array<{ url: string; kind: 'image' | 'video' }> = [];
+    // Mirror the list endpoint's output shape: surface stored dimensions
+    // and the convenience `aspectRatio` so the mobile result hero can lay
+    // the asset out at its real ratio instead of guessing 4:5 vs 9:16.
+    const outputs: Array<{
+      url: string;
+      kind: 'image' | 'video';
+      width?: number;
+      height?: number;
+      aspectRatio?: number;
+    }> = [];
     if (job.status === 'completed' && job.result) {
       for (const img of job.result.images ?? []) {
-        outputs.push({ url: `${origin}/v1/outputs/${img.r2Key}`, kind: 'image' });
+        outputs.push({
+          url: `${origin}/v1/outputs/${img.r2Key}`,
+          kind: 'image',
+          width: img.width || undefined,
+          height: img.height || undefined,
+          aspectRatio: img.width && img.height ? img.width / img.height : undefined,
+        });
       }
       for (const vid of job.result.videos ?? []) {
         outputs.push({ url: `${origin}/v1/outputs/${vid.streamId}`, kind: 'video' });

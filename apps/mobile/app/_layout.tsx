@@ -21,6 +21,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorFallback } from '@/components/ErrorFallback';
+import { ToastProvider } from '@/components/shared/Toast';
 import { Splash } from '@/components/Splash';
 import { attachTokenGetter } from '@/lib/sdk';
 
@@ -168,6 +169,7 @@ function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <ThemeProvider defaultMode="system" defaultAccentKey="violet">
               <ThemedShell>
+              <ToastProvider>
               <ErrorBoundary
                 FallbackComponent={ErrorFallback}
                 onError={(err, info) => {
@@ -233,6 +235,7 @@ function RootLayout() {
               <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
             </Stack>
               </ErrorBoundary>
+              </ToastProvider>
               </ThemedShell>
             </ThemeProvider>
           </QueryClientProvider>

@@ -144,15 +144,7 @@ export function TemplateCard({ template, onPress, aspect, hideMeta }: TemplateCa
             gap: 4,
           }}
         >
-          <View
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: accent.ink,
-              opacity: 0.9,
-            }}
-          />
+          <Icon name="credit" size={11} color={accent.ink} weight="fill" />
           <Text variant="mono" color={accent.ink} weight="700" style={{ fontSize: 11.5 }}>
             {template.credits}
           </Text>

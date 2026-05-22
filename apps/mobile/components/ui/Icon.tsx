@@ -30,6 +30,7 @@ import {
   Camera,
   Check,
   Clock,
+  Diamond,
   DotsThree,
   DownloadSimple,
   Envelope,
@@ -56,6 +57,7 @@ import {
   Plus,
   PushPinSimple,
   Question,
+  SealCheck,
   ShareNetwork,
   ShoppingBag,
   SignOut,
@@ -115,6 +117,9 @@ export type IconName =
   | 'star'
   | 'bolt'
   | 'gift'
+  // Credits / plan identity
+  | 'credit'
+  | 'planVerified'
   // Content kinds
   | 'image'
   | 'imageStack'
@@ -179,6 +184,8 @@ const ICONS: Record<IconName, PhosphorIcon> = {
   star: Star,
   bolt: Lightning,
   gift: Gift,
+  credit: Diamond,
+  planVerified: SealCheck,
   image: ImageIcon,
   imageStack: Images,
   video: VideoCamera,
@@ -210,12 +217,20 @@ const ICONS: Record<IconName, PhosphorIcon> = {
 
 export interface IconComponentProps {
   name: IconName;
-  /** Phosphor weight. 'regular' is the default; use 'fill' for selected/active. */
+  /** Phosphor weight. 'regular' is the default; use 'fill' for selected/active, 'duotone' for two-tone. */
   weight?: IconWeight;
   /** Pixel size — width and height. Default 22 to match iOS body symbol metric. */
   size?: number;
   /** Tint color. Default inherits from the consumer (theme typically). */
   color?: string;
+  /**
+   * Secondary tone color when `weight === 'duotone'`. Defaults to `color`
+   * with `duotoneOpacity` applied. Pass an explicit color to break that
+   * relationship (e.g. accent-coloured ink + soft accent fill).
+   */
+  duotoneColor?: string;
+  /** Opacity of the secondary tone (0–1). Default 0.25 — Phosphor's stock value. */
+  duotoneOpacity?: number;
   /** Pass-through for accessibility */
   accessibilityLabel?: string;
   testID?: string;
@@ -232,6 +247,8 @@ export function Icon({
   weight = 'regular',
   size = 22,
   color,
+  duotoneColor,
+  duotoneOpacity,
   accessibilityLabel,
   testID,
 }: IconComponentProps) {
@@ -247,6 +264,12 @@ export function Icon({
       weight={weight}
       size={size}
       color={color}
+      {...(weight === 'duotone'
+        ? {
+            duotoneColor: duotoneColor ?? color,
+            duotoneOpacity: duotoneOpacity ?? 0.25,
+          }
+        : {})}
       // Phosphor doesn't accept testID/aria directly, but RN passes through
       {...(accessibilityLabel ? { accessibilityLabel } : {})}
       {...(testID ? { testID } : {})}

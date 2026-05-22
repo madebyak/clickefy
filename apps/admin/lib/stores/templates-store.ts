@@ -44,6 +44,14 @@ interface TemplatesStore {
     status: string;
     /** User-facing output kind (image / video / image_set), or '' for all. */
     kind: string;
+    /**
+     * Mix archived rows into the listing alongside drafts/published.
+     * When false (the default), the API filters them out — the admin's
+     * primary view stays focused on live work. Picking the explicit
+     * `Archived` chip in the status filter still works regardless of
+     * this toggle (server treats explicit `status` as the override).
+     */
+    includeArchived: boolean;
   };
 
   fetchTemplates: (getToken: TokenGetter) => Promise<void>;
@@ -57,7 +65,21 @@ interface TemplatesStore {
     data: Partial<TemplateFormData>,
     getToken: TokenGetter,
   ) => Promise<Template>;
-  deleteTemplate: (id: string, getToken: TokenGetter) => Promise<void>;
+  /**
+   * Soft-archive: hides the template from the public catalog and from
+   * the default admin view, but keeps every row that references it
+   * (jobs, library entries, version history) intact. Reversible via
+   * {@link restoreTemplate}.
+   */
+  archiveTemplate: (id: string, getToken: TokenGetter) => Promise<Template>;
+  /** Bring an archived template back as a draft. */
+  restoreTemplate: (id: string, getToken: TokenGetter) => Promise<Template>;
+  /**
+   * Permanent hard-delete. The API refuses with `template_in_use`
+   * (HTTP 409) when any job has ever referenced the template; the
+   * caller surfaces that as a "Archive instead" toast.
+   */
+  purgeTemplate: (id: string, getToken: TokenGetter) => Promise<void>;
   duplicateTemplate: (id: string, getToken: TokenGetter) => Promise<Template>;
   publishTemplate: (id: string, getToken: TokenGetter) => Promise<Template>;
   unpublishTemplate: (id: string, getToken: TokenGetter) => Promise<Template>;
@@ -159,17 +181,22 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
     category: '',
     status: '',
     kind: '',
+    includeArchived: false,
   },
 
   fetchTemplates: async (getToken) => {
     set({ loading: true, error: null });
     try {
-      // The Worker returns `{ data, nextCursor }` — `apiFetch` already
-      // unwraps the top-level `data` envelope, so we destructure on
-      // `data` here and ignore pagination for the v1 admin UI (we'll
-      // wire infinite scroll if the catalog grows past ~200 templates).
+      // Push the archived-visibility flag down to the API so we
+      // don't ship archived rows over the wire just to hide them
+      // client-side. When the user explicitly picked the `Archived`
+      // status chip the server returns only archived rows regardless
+      // of `includeArchived`, matching the API's documented behavior.
+      const params = new URLSearchParams({ limit: '100' });
+      const f = get().filters;
+      if (f.includeArchived) params.set('includeArchived', 'true');
       const result = await apiFetch<TemplatesListResponse>(
-        '/v1/admin/templates?limit=100',
+        `/v1/admin/templates?${params.toString()}`,
         { getToken },
       );
       // `apiFetch` unwraps a single `data` layer. When the response
@@ -248,10 +275,68 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
     }
   },
 
-  deleteTemplate: async (id, getToken) => {
+  archiveTemplate: async (id, getToken) => {
     set({ loading: true, error: null });
     try {
-      await apiFetch(`/v1/admin/templates/${id}`, {
+      const archived = await apiFetch<Template>(`/v1/admin/templates/${id}`, {
+        method: 'DELETE',
+        getToken,
+      });
+      // If archived rows aren't currently in view, drop the row from
+      // the local list so it disappears from the grid; otherwise keep
+      // it (with the new status badge) so the admin can see what just
+      // happened and click Restore if it was a misfire.
+      const showArchived =
+        get().filters.includeArchived || get().filters.status === 'archived';
+      set({
+        templates: showArchived
+          ? get().templates.map((t) => (t.id === id ? archived : t))
+          : get().templates.filter((t) => t.id !== id),
+        currentTemplate:
+          get().currentTemplate?.id === id ? archived : get().currentTemplate,
+        loading: false,
+      });
+      return archived;
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'Failed to archive template';
+      set({ error: message, loading: false });
+      throw err;
+    }
+  },
+
+  restoreTemplate: async (id, getToken) => {
+    set({ loading: true, error: null });
+    try {
+      const restored = await apiFetch<Template>(
+        `/v1/admin/templates/${id}/restore`,
+        { method: 'POST', getToken },
+      );
+      // The server returns the row as `draft`. If the current view is
+      // filtered to "Archived only" the row no longer matches; drop
+      // it. Otherwise keep it (with the new draft status).
+      const archivedOnlyView = get().filters.status === 'archived';
+      set({
+        templates: archivedOnlyView
+          ? get().templates.filter((t) => t.id !== id)
+          : get().templates.map((t) => (t.id === id ? restored : t)),
+        currentTemplate:
+          get().currentTemplate?.id === id ? restored : get().currentTemplate,
+        loading: false,
+      });
+      return restored;
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'Failed to restore template';
+      set({ error: message, loading: false });
+      throw err;
+    }
+  },
+
+  purgeTemplate: async (id, getToken) => {
+    set({ loading: true, error: null });
+    try {
+      await apiFetch(`/v1/admin/templates/${id}/purge`, {
         method: 'DELETE',
         getToken,
       });
@@ -262,6 +347,9 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
         loading: false,
       });
     } catch (err) {
+      // Surface the API-side `template_in_use` (409) message verbatim
+      // — the caller renders it as a toast that explains why purge
+      // is refused and suggests Archive as the alternative.
       const message =
         err instanceof ApiError ? err.message : 'Failed to delete template';
       set({ error: message, loading: false });

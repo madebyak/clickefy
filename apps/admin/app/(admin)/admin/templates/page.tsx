@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { useTemplatesStore } from '@/lib/stores/templates-store';
 import { useCategoriesStore } from '@/lib/stores/categories-store';
+import { ApiError } from '@/lib/api';
 import type { Template } from '@clickfy/types';
 import { Plus, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -30,7 +31,9 @@ export default function TemplatesPage() {
     loading,
     filters,
     fetchTemplates,
-    deleteTemplate,
+    archiveTemplate,
+    restoreTemplate,
+    purgeTemplate,
     duplicateTemplate,
     publishTemplate,
     unpublishTemplate,
@@ -39,13 +42,20 @@ export default function TemplatesPage() {
 
   const { categories, fetchCategories } = useCategoriesStore();
 
+  // The dialog distinguishes archive (soft, default) from purge (hard,
+  // gated). Both share the same `selectedTemplate`; `dialogMode`
+  // decides which copy + action button we render.
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'archive' | 'purge'>('archive');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  // Refetch when the include-archived toggle or status filter
+  // changes — those translate to different server queries (the rest
+  // of the filters are applied client-side from the same payload).
   useEffect(() => {
     void fetchTemplates(tokenGetter);
     void fetchCategories();
-  }, [fetchTemplates, fetchCategories, tokenGetter]);
+  }, [fetchTemplates, fetchCategories, tokenGetter, filters.includeArchived, filters.status]);
 
   const filteredTemplates = useMemo(() => {
     return templates.filter((template) => {
@@ -96,21 +106,61 @@ export default function TemplatesPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleConfirmDialog = async () => {
     if (!selectedTemplate) return;
     try {
-      await deleteTemplate(selectedTemplate.id, tokenGetter);
-      setIsDeleteDialogOpen(false);
+      if (dialogMode === 'archive') {
+        await archiveTemplate(selectedTemplate.id, tokenGetter);
+        toast.success('Template archived', {
+          description:
+            'Hidden from the catalog. Existing user generations are preserved.',
+        });
+      } else {
+        await purgeTemplate(selectedTemplate.id, tokenGetter);
+        toast.success('Template permanently deleted');
+      }
+      setIsDialogOpen(false);
       setSelectedTemplate(null);
-      toast.success('Template deleted');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete template');
+      // The purge endpoint returns 409 `template_in_use` when any job
+      // has ever referenced the template. Catch that specific case
+      // and offer the archive fallback inline so the admin doesn't
+      // have to close the dialog and start over.
+      if (
+        dialogMode === 'purge' &&
+        err instanceof ApiError &&
+        err.code === 'template_in_use'
+      ) {
+        toast.error('Cannot delete', {
+          description:
+            'This template has been used to create generations. Switching to Archive instead — confirm to hide it from the catalog without touching user data.',
+        });
+        setDialogMode('archive');
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : 'Action failed');
     }
   };
 
-  const openDeleteDialog = (template: Template) => {
+  const openArchiveDialog = (template: Template) => {
     setSelectedTemplate(template);
-    setIsDeleteDialogOpen(true);
+    setDialogMode('archive');
+    setIsDialogOpen(true);
+  };
+
+  const openPurgeDialog = (template: Template) => {
+    setSelectedTemplate(template);
+    setDialogMode('purge');
+    setIsDialogOpen(true);
+  };
+
+  const handleRestore = async (template: Template) => {
+    try {
+      await restoreTemplate(template.id, tokenGetter);
+      toast.success('Template restored as draft');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to restore template');
+    }
   };
 
   return (
@@ -134,11 +184,13 @@ export default function TemplatesPage() {
         category={filters.category}
         status={filters.status}
         kind={filters.kind}
+        includeArchived={filters.includeArchived}
         categories={categories}
         onSearchChange={(value) => setFilters({ search: value })}
         onCategoryChange={(value) => setFilters({ category: value })}
         onStatusChange={(value) => setFilters({ status: value })}
         onKindChange={(value) => setFilters({ kind: value })}
+        onIncludeArchivedChange={(value) => setFilters({ includeArchived: value })}
       />
 
       {/* Templates Grid */}
@@ -168,7 +220,9 @@ export default function TemplatesPage() {
               key={template.id}
               template={template}
               onEdit={handleEdit}
-              onDelete={openDeleteDialog}
+              onArchive={openArchiveDialog}
+              onRestore={handleRestore}
+              onPurge={openPurgeDialog}
               onDuplicate={handleDuplicate}
               onPublish={handlePublish}
             />
@@ -176,35 +230,61 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
+      {/* Archive / Purge Confirmation Dialog
+       *
+       * Same component, two modes. Archive is the safe default that
+       * preserves user-owned generations; Purge is the rare hard
+       * delete the API gates with a "no jobs reference this row"
+       * check (returns 409 → we fall back to archive copy in the
+       * handler above). */}
       <Dialog
-        open={isDeleteDialogOpen}
+        open={isDialogOpen}
         onOpenChange={(open) => {
-          setIsDeleteDialogOpen(open);
+          setIsDialogOpen(open);
           if (!open) setSelectedTemplate(null);
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Template</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete{' '}
-              <strong>{selectedTemplate?.title}</strong>? This action cannot be
-              undone. All template data and settings will be permanently deleted.
-            </DialogDescription>
+            {dialogMode === 'archive' ? (
+              <>
+                <DialogTitle>Archive Template</DialogTitle>
+                <DialogDescription>
+                  Hide <strong>{selectedTemplate?.title}</strong> from the
+                  catalog? Existing user generations and library entries will
+                  keep working — only new generations against this template are
+                  blocked. You can restore it from the “Include archived”
+                  filter at any time.
+                </DialogDescription>
+              </>
+            ) : (
+              <>
+                <DialogTitle>Permanently Delete Template</DialogTitle>
+                <DialogDescription>
+                  Permanently remove <strong>{selectedTemplate?.title}</strong>?
+                  This is only possible when no user has ever generated from
+                  it. If anyone has, we’ll archive it instead (you’ll see a
+                  message). Use Archive for any template that has been used —
+                  it preserves user data.
+                </DialogDescription>
+              </>
+            )}
           </DialogHeader>
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
-                setIsDeleteDialogOpen(false);
+                setIsDialogOpen(false);
                 setSelectedTemplate(null);
               }}
             >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              Delete Template
+            <Button
+              variant={dialogMode === 'archive' ? 'default' : 'destructive'}
+              onClick={handleConfirmDialog}
+            >
+              {dialogMode === 'archive' ? 'Archive Template' : 'Delete Permanently'}
             </Button>
           </DialogFooter>
         </DialogContent>

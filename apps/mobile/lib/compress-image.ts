@@ -10,8 +10,8 @@
  *   - Saves R2 storage. The Worker stores exactly what we send; if
  *     we send 1 MB instead of 8 MB that's 8× the assets per dollar.
  *   - Normalises format. HEIC/HEIF only work on Apple platforms,
- *     and not all AI providers accept them. JPEG is universally
- *     supported.
+ *     and not all AI providers accept them (Kling video, in
+ *     particular, rejects HEIC). JPEG is universally supported.
  *
  * We don't compress videos here:
  *   - On-device video transcoding is slow (10-60s for short clips)
@@ -25,6 +25,31 @@
  * Output is always JPEG. Width × height is clamped to fit within
  * `maxDimension × maxDimension` while preserving the source aspect
  * ratio — never enlarges, never crops.
+ *
+ * EXIF handling:
+ *   `ImageManipulator.saveAsync({ format: JPEG })` re-encodes the
+ *   pixel buffer through the native graphics pipeline; the EXIF
+ *   container from the source file is *not* carried over because
+ *   we're producing a new file from raw pixels. This is what we
+ *   want — GPS coordinates, capture timestamps, and device serials
+ *   from the source photo are dropped before the upload leaves the
+ *   device. We further harden the pipeline by passing `exif: false`
+ *   into the image picker (see `InputField.tsx`) so the asset
+ *   reaching the manipulator is already EXIF-stripped.
+ *
+ * Two-pass fallback strategy:
+ *   The first pass uses the "quality" preset (2048 px, Q=0.85),
+ *   which is what AI providers want for best output fidelity. On
+ *   failure (typically OOM on huge HEICs or unsupported HEIC
+ *   variants — e.g. multi-frame burst HEICs), we retry once with
+ *   the "compat" preset (1280 px, Q=0.78). The smaller decode
+ *   buffer fits in memory on every device we ship to and the
+ *   visual quality drop is invisible at typical render sizes. If
+ *   *both* passes throw, we surface the error to the caller — the
+ *   wrapper in `InputField.tsx` then blocks the upload and asks the
+ *   user to pick a different photo. We deliberately do NOT fall
+ *   back to uploading the raw HEIC because credit-burning provider
+ *   calls would then fail downstream with a worse error.
  */
 
 import { File } from 'expo-file-system';
@@ -52,15 +77,68 @@ export interface CompressImageOptions {
   quality?: number;
 }
 
+// Compression presets. The first is what we always try; the second
+// kicks in only after a failure. Keeping these as data rather than
+// inline literals makes it trivial to add a third preset later (e.g.
+// for tablet vs phone) without touching the orchestration logic.
+const COMPRESSION_PRESETS = [
+  { label: 'quality', maxDim: 2048, quality: 0.85 },
+  { label: 'compat', maxDim: 1280, quality: 0.78 },
+] as const;
+
 export async function compressImage(
   sourceUri: string,
   sourceWidth: number,
   sourceHeight: number,
   opts: CompressImageOptions = {},
 ): Promise<CompressedImage> {
-  const maxDim = opts.maxDimension ?? 2048;
-  const quality = opts.quality ?? 0.85;
+  // Caller-supplied opts override the first preset's values but the
+  // second preset (compat fallback) is always identical — its job is
+  // to be the "smallest viable" pass, not to honour caller intent.
+  const firstMaxDim = opts.maxDimension ?? COMPRESSION_PRESETS[0].maxDim;
+  const firstQuality = opts.quality ?? COMPRESSION_PRESETS[0].quality;
+  const passes = [
+    { label: 'quality', maxDim: firstMaxDim, quality: firstQuality },
+    COMPRESSION_PRESETS[1],
+  ] as const;
 
+  let lastError: unknown = null;
+  for (const pass of passes) {
+    try {
+      return await runSinglePass(sourceUri, sourceWidth, sourceHeight, pass);
+    } catch (err) {
+      lastError = err;
+      console.warn(
+        `[compressImage] pass "${pass.label}" failed (${pass.maxDim}px Q=${pass.quality}):`,
+        err,
+      );
+      // Fall through to the next pass. The loop's natural exit either
+      // returns a successful CompressedImage or throws after both
+      // passes have failed.
+    }
+  }
+
+  // Both passes failed. Hand the failure up — the caller is expected
+  // to render a "we couldn't process this photo" message rather than
+  // silently uploading the raw source, because the raw source would
+  // burn credits on a provider call that's also going to fail.
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('compressImage: all passes failed');
+}
+
+/**
+ * One compression attempt. Pulled out of `compressImage()` so the
+ * two-pass fallback can call it twice with different presets. Throws
+ * on any step (resize, render, save, file-size read) so the caller's
+ * for-loop can advance to the next pass.
+ */
+async function runSinglePass(
+  sourceUri: string,
+  sourceWidth: number,
+  sourceHeight: number,
+  pass: { maxDim: number; quality: number },
+): Promise<CompressedImage> {
   const context = ImageManipulator.manipulate(sourceUri);
 
   // Resize only if the source is larger than the cap. We compute the
@@ -69,17 +147,20 @@ export async function compressImage(
   // preserves ratio when ONE dimension is supplied — and we want
   // *both* dimensions clamped so a portrait photo doesn't end up
   // taller than `maxDim`.
-  if (sourceWidth > maxDim || sourceHeight > maxDim) {
+  if (sourceWidth > pass.maxDim || sourceHeight > pass.maxDim) {
     const ratio = sourceWidth / sourceHeight;
-    const width = ratio >= 1 ? maxDim : Math.round(maxDim * ratio);
-    const height = ratio >= 1 ? Math.round(maxDim / ratio) : maxDim;
+    const width = ratio >= 1 ? pass.maxDim : Math.round(pass.maxDim * ratio);
+    const height = ratio >= 1 ? Math.round(pass.maxDim / ratio) : pass.maxDim;
     context.resize({ width, height });
   }
 
   const rendered = await context.renderAsync();
   const saved = await rendered.saveAsync({
     format: SaveFormat.JPEG,
-    compress: quality,
+    compress: pass.quality,
+    // `base64: false` is the default, but stating it explicitly makes
+    // it obvious we're not pulling the entire image into JS memory.
+    base64: false,
   });
 
   // Read the file size after the save lands on disk. We ignore errors

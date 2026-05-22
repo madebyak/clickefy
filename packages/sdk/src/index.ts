@@ -9,6 +9,7 @@
 export * from './types';
 export * from './clients/contract';
 export { createHttpClient, type HttpClientOptions } from './clients/http';
-// `AuthError` is exported as a value (it's a class) via `export * from './types'`,
-// but re-exporting explicitly here makes it discoverable in autocomplete.
-export { AuthError } from './types';
+// `AuthError` and `RateLimitedError` are exported as values (they are
+// classes) via `export * from './types'`, but re-exporting explicitly
+// here makes them discoverable in autocomplete.
+export { AuthError, RateLimitedError } from './types';

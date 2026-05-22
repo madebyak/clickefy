@@ -96,6 +96,21 @@ export interface CatalogTemplate {
 export interface JobOutput {
   url: string;
   kind: 'image' | 'video';
+  /**
+   * Native pixel width of the asset, when known. Image outputs always
+   * carry this (sourced from the stored `MediaRef`); video outputs may
+   * leave it undefined until Cloudflare Stream reports dimensions back
+   * through the worker. Consumers should never assume presence.
+   */
+  width?: number;
+  /** Native pixel height, paired with `width`. */
+  height?: number;
+  /**
+   * Convenience: `width / height` when both are present. The API computes
+   * this server-side so mobile doesn't have to and can fall back to a
+   * default (e.g. 9:16 for video) when this field is missing.
+   */
+  aspectRatio?: number;
 }
 
 /**
@@ -206,6 +221,43 @@ export class AuthError extends Error {
     super(message ?? code);
     this.name = 'AuthError';
     this.code = code;
+  }
+}
+
+/**
+ * Thrown by HTTP clients when the API returns `429 Too Many Requests`.
+ *
+ * The `Retry-After` header (seconds) is parsed into `retryAfterSeconds`
+ * so callers can show a countdown instead of the raw response body.
+ * The middleware on our Worker always sets `Retry-After: 60` for the
+ * native CF rate-limit binding, but we parse defensively in case a
+ * different limiter (or a CDN) emits a different value (or omits it).
+ *
+ * The `endpoint` field is a coarse label like `'upload.presign'` or
+ * `'jobs.submit'` — set by the SDK at the call site so UI can give a
+ * domain-appropriate message ("Too many uploads…" vs "Too many job
+ * submissions…").
+ */
+export class RateLimitedError extends Error {
+  readonly code = 'rate_limited' as const;
+  readonly retryAfterSeconds: number;
+  readonly endpoint: string;
+  /** HTTP status — always 429 here, kept so callers can `instanceof`-narrow once. */
+  readonly status = 429 as const;
+  /** Raw server payload, preserved for Sentry / dev tooling. */
+  readonly responseBody: string;
+
+  constructor(args: {
+    endpoint: string;
+    retryAfterSeconds: number;
+    responseBody: string;
+    message?: string;
+  }) {
+    super(args.message ?? `${args.endpoint} 429: rate_limited`);
+    this.name = 'RateLimitedError';
+    this.endpoint = args.endpoint;
+    this.retryAfterSeconds = args.retryAfterSeconds;
+    this.responseBody = args.responseBody;
   }
 }
 

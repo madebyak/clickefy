@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -9,18 +10,26 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Category } from '@clickfy/types';
-import { Search } from 'lucide-react';
+import { Archive, Search } from 'lucide-react';
 
 interface TemplatesFiltersProps {
   search: string;
   category: string;
   status: string;
   kind: string;
+  /**
+   * When true, archived rows are mixed into the listing alongside
+   * drafts/published. Independent of the `Archived` chip in the
+   * status select — picking that chip always shows only archived,
+   * regardless of this toggle.
+   */
+  includeArchived: boolean;
   categories: Category[];
   onSearchChange: (value: string) => void;
   onCategoryChange: (value: string) => void;
   onStatusChange: (value: string) => void;
   onKindChange: (value: string) => void;
+  onIncludeArchivedChange: (value: boolean) => void;
 }
 
 export function TemplatesFilters({
@@ -28,12 +37,18 @@ export function TemplatesFilters({
   category,
   status,
   kind,
+  includeArchived,
   categories,
   onSearchChange,
   onCategoryChange,
   onStatusChange,
   onKindChange,
+  onIncludeArchivedChange,
 }: TemplatesFiltersProps) {
+  // The status select offers `Archived` as a discrete chip too. When
+  // it's active there's no point also showing the include-archived
+  // toggle — disable it so the UI doesn't imply a contradiction.
+  const archivedOnly = status === 'archived';
   return (
     <div className="flex flex-col sm:flex-row gap-3 mb-6">
       <div className="relative flex-1">
@@ -106,6 +121,24 @@ export function TemplatesFilters({
           <SelectItem value="image_set">Image set</SelectItem>
         </SelectContent>
       </Select>
+
+      <Button
+        type="button"
+        variant={includeArchived ? 'default' : 'outline'}
+        onClick={() => onIncludeArchivedChange(!includeArchived)}
+        disabled={archivedOnly}
+        title={
+          archivedOnly
+            ? 'Already showing only archived'
+            : includeArchived
+              ? 'Hide archived from the list'
+              : 'Mix archived templates into the list'
+        }
+        className="w-full sm:w-auto"
+      >
+        <Archive className="h-4 w-4 mr-2" />
+        {includeArchived ? 'Including archived' : 'Include archived'}
+      </Button>
     </div>
   );
 }

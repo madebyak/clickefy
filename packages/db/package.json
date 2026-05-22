@@ -17,6 +17,7 @@
     "db:studio": "drizzle-kit studio",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
+    "db:seed-models": "tsx scripts/seed-provider-models.ts",
     "db:verify": "tsx scripts/verify.ts",
     "db:promote-admin": "tsx scripts/promote-admin.ts",
     "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts"
@@ -28,6 +29,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@clickfy/providers": "workspace:*",
     "@clickfy/tsconfig": "workspace:*",
     "@types/ws": "^8.5.13",
     "drizzle-kit": "^0.30.1",

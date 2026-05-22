@@ -72,16 +72,26 @@ bucket_name = "clickfy-outputs"
 # but not what we want here, so each one gets a fresh number.
 #
 # `simple.period` must be either 10 or 60 seconds. Tuning notes:
-#   - RL_PUBLIC_IP  120/60s  guards anonymous catalog + R2 read.
-#                            IP-keyed, so generous to absorb shared NAT.
-#   - RL_USER_READ  240/60s  authed GETs (jobs list, library, me).
-#                            ~4/sec sustained which no real user hits.
-#   - RL_USER_WRITE  30/60s  authed mutations (profile edit, favourite,
-#                            upload). Bursty UI taps are fine; loops abort.
-#   - RL_USER_JOB    10/60s  job creation specifically. Each call debits
-#                            credits and spawns a Trigger.dev run, so the
-#                            tightest tier. ~1 every 6s — well above the
-#                            human creation pace.
+#   - RL_PUBLIC_IP   120/60s  guards anonymous catalog + R2 read.
+#                             IP-keyed, so generous to absorb shared NAT.
+#   - RL_USER_READ   240/60s  authed GETs (jobs list, library, me).
+#                             ~4/sec sustained which no real user hits.
+#   - RL_USER_WRITE   30/60s  authed mutations OTHER than uploads —
+#                             profile edit, favourite, devices register,
+#                             reports. Bursty taps fine; runaway loops abort.
+#   - RL_USER_UPLOAD  90/60s  presign + finalize + direct-upload
+#                             specifically. Uploads are inherently
+#                             bursty (one template can attach 4–8 media
+#                             inputs → each = presign+finalize = 2
+#                             tokens). Lives in its own bucket so a
+#                             multi-image attach can't starve favourites
+#                             / profile edits, and vice versa. Equates
+#                             to ~45 successful image uploads per minute
+#                             per user — well above any plausible UI rate.
+#   - RL_USER_JOB     10/60s  job creation specifically. Each call debits
+#                             credits and spawns a Trigger.dev run, so the
+#                             tightest tier. ~1 every 6s — well above the
+#                             human creation pace.
 #
 # These are dialled CONSERVATIVELY on purpose. If a real user ever
 # brushes the ceiling, bump the limit, redeploy, done — no migration.
@@ -112,4 +122,11 @@ name = "RL_USER_JOB"
 namespace_id = "1004"
   [ratelimits.simple]
   limit = 10
+  period = 60
+
+[[ratelimits]]
+name = "RL_USER_UPLOAD"
+namespace_id = "1005"
+  [ratelimits.simple]
+  limit = 90
   period = 60

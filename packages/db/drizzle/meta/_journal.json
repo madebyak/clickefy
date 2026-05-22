@@ -92,6 +92,13 @@
       "when": 1779912000000,
       "tag": "0012_cover_media_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779998400000,
+      "tag": "0013_template_archived_at",
+      "breakpoints": true
     }
   ]
 }

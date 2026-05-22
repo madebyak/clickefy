@@ -97,6 +97,12 @@ export interface Template {
   updatedAt: string;
   publishedAt: string | null;
   lastTestedAt: string | null;
+  /**
+   * Set when the admin archives the template (soft delete). `null`
+   * for live drafts and published rows. The `status` enum is the
+   * authoritative state — this is purely metadata for sort/auto-purge.
+   */
+  archivedAt: string | null;
 }
 
 // Legacy alias — older admin code imports `TemplateInput`. New code

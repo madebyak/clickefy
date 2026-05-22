@@ -131,6 +131,12 @@ export const templates = pgTable(
       .notNull(),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     lastTestedAt: timestamp('last_tested_at', { withTimezone: true }),
+    /** When the row was archived. Set by the soft-archive endpoint and
+     *  cleared on restore. The `status` enum is the authoritative state
+     *  flag; this column is purely "when did it happen?" — useful for
+     *  a future "auto-purge archived rows older than N days" tool, and
+     *  for sorting the admin "Archived" view by recency. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
   },
   (t) => [
     index('templates_status_sort_idx').on(t.status, t.sortOrder),

@@ -48,7 +48,7 @@ export default function HomeScreen() {
         credits={plan?.credits ?? 0}
         plan={plan?.tier ?? 'Free'}
         onMenu={() => router.push('/drawer')}
-        onProfile={() => router.push('/(tabs)/profile')}
+        onCreditsPress={() => router.push('/paywall')}
       />
 
       <Box px="base" pb="md">
@@ -88,7 +88,10 @@ export default function HomeScreen() {
         ) : (
           (sectionsQuery.data ?? []).map((section) => (
             <Box key={section.key} pb="xxl">
-              <SectionHeader title={section.title} subtitle={section.subtitle} onAction={() => {}} />
+              {/* `onAction` deliberately omitted — section-landing pages
+                  don't exist yet. SectionHeader hides the chevron when
+                  there's no destination, so no dead tap. */}
+              <SectionHeader title={section.title} subtitle={section.subtitle} />
               {section.layout === 'bento' ? (
                 <Bento templates={section.templates} />
               ) : (

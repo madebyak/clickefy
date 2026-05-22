@@ -93,10 +93,18 @@ export interface Bindings {
   RL_PUBLIC_IP?: RateLimit;
   /** Authenticated GETs. Keyed by Clerk user id. */
   RL_USER_READ?: RateLimit;
-  /** Authenticated mutations (PATCH/POST/DELETE, excluding job create). */
+  /** Authenticated mutations (PATCH/POST/DELETE, excluding job create and uploads). */
   RL_USER_WRITE?: RateLimit;
   /** `POST /v1/jobs` — stricter because each call costs credits and spawns a worker run. */
   RL_USER_JOB?: RateLimit;
+  /**
+   * Upload-specific bucket — `/v1/uploads/user/{presign,finalize}` and
+   * the multipart fallback. Lives separately from `RL_USER_WRITE` because
+   * a single template attach can fire 8+ upload-related writes (presign +
+   * finalize per asset) and would otherwise drain the bucket shared with
+   * favourites/profile/devices.
+   */
+  RL_USER_UPLOAD?: RateLimit;
 }
 
 /** Row shape from the `users` table — `users.$inferSelect`. */

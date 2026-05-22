@@ -1,9 +1,10 @@
 import { Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
+import { RateLimitedError } from '@clickfy/sdk';
 import type { TemplateInput } from '@clickfy/types';
 import * as Sentry from '@sentry/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, TextInput, View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
@@ -85,7 +86,15 @@ type UploadState =
   | { phase: 'idle' }
   | { phase: 'uploading'; progress: number }
   | { phase: 'done'; key: string }
-  | { phase: 'error'; message: string };
+  | { phase: 'error'; message: string }
+  /**
+   * Dedicated 429 state — rendered as a countdown rather than a generic
+   * error pill so the user knows it's a "try again in a moment" case,
+   * not a permanent failure. `availableAt` is an absolute ms timestamp
+   * (instead of seconds-left) so the countdown ticks correctly even if
+   * React re-renders during the interval.
+   */
+  | { phase: 'rate_limited'; availableAt: number };
 
 // ─── Media (image / video) input ─────────────────────────────────────
 
@@ -171,6 +180,34 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
       });
     } catch (err) {
       if (myToken !== uploadToken.current) return;
+
+      // Rate-limited responses get their own state so the UI can show
+      // a countdown ("Try again in 42s") instead of dumping the raw JSON
+      // envelope. The SDK throws `RateLimitedError` for 429s on every
+      // upload-related endpoint (presign / finalize / direct upload).
+      if (err instanceof RateLimitedError) {
+        const availableAt = Date.now() + err.retryAfterSeconds * 1000;
+        Sentry.captureMessage('[upload] rate limited', {
+          level: 'warning',
+          tags: {
+            feature: 'use-template',
+            op: 'upload',
+            endpoint: err.endpoint,
+          },
+          contexts: {
+            upload: {
+              fieldKey: input.fieldKey,
+              inputType: input.type,
+              retryAfterSeconds: err.retryAfterSeconds,
+            },
+          },
+          fingerprint: ['use-template-upload-rate-limited'],
+        });
+        setUploadState({ phase: 'rate_limited', availableAt });
+        onUploadComplete?.(null);
+        return;
+      }
+
       const message = err instanceof Error ? err.message : 'Upload failed.';
       // Surface to Sentry with the upload context so we can diagnose
       // future failures without having to add log statements ad-hoc.
@@ -214,9 +251,10 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
       return;
     }
 
-    // Images run through the compressor: HEIC → JPEG conversion and a
-    // 2048px-longest-side cap, in one pass. Source dimensions come from
-    // the picker so we don't need a separate read.
+    // Images run through the compressor: HEIC → JPEG conversion + a
+    // size cap, in up to two passes (see `lib/compress-image.ts`).
+    // Source dimensions come from the picker so we don't need a
+    // separate read.
     const w = asset.width ?? 0;
     const h = asset.height ?? 0;
     try {
@@ -230,17 +268,57 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
         // check against the cap.
         compressed.sizeBytes > 0 ? compressed.sizeBytes : undefined,
       );
+      return;
     } catch (err) {
-      // Compression failed (corrupt file, unsupported format). Fall back
-      // to the original — the Worker may still accept it, and a failed
-      // upload surfaces a retry button anyway.
-      console.warn('[InputField] compress failed, uploading original:', err);
-      void startUpload(
-        asset.uri,
-        asset.mimeType ?? undefined,
-        asset.fileName ?? undefined,
-        asset.fileSize ?? undefined,
-      );
+      // Compression failed in BOTH passes (quality + compat). Possible
+      // causes: corrupt source, unsupported HEIC variant (multi-frame
+      // burst), or genuine OOM on a very small device. Capture to
+      // Sentry so we learn which variants fail in the wild.
+      Sentry.captureException(err, {
+        tags: { feature: 'use-template', op: 'compress' },
+        contexts: {
+          compress: {
+            sourceMime: asset.mimeType ?? null,
+            sourceWidth: w,
+            sourceHeight: h,
+            sourceSizeBytes: asset.fileSize ?? null,
+          },
+        },
+        fingerprint: ['use-template-compress-failed'],
+      });
+
+      // For JPEG/PNG/WebP sources we can still attempt a raw upload —
+      // the manipulator failed but the bytes are already in a format
+      // every provider accepts. For HEIC/HEIF we deliberately block:
+      // raw HEIC would reach Kling (video) and downstream image
+      // providers' edge cases, burning credits on a job that fails
+      // late with a worse error. Better to ask the user for a
+      // different photo upfront.
+      const rawMime = (asset.mimeType ?? '').toLowerCase();
+      const canSafelyUploadRaw =
+        rawMime === 'image/jpeg' ||
+        rawMime === 'image/png' ||
+        rawMime === 'image/webp';
+
+      if (canSafelyUploadRaw) {
+        console.warn('[InputField] compress failed, raw mime safe — uploading source:', err);
+        void startUpload(
+          asset.uri,
+          asset.mimeType ?? undefined,
+          asset.fileName ?? undefined,
+          asset.fileSize ?? undefined,
+        );
+        return;
+      }
+
+      // No safe fallback. Surface a clear, actionable message.
+      onChange('');
+      setUploadState({
+        phase: 'error',
+        message:
+          "We couldn't process this photo. It may be in a format we can't read — please choose a different image.",
+      });
+      onUploadComplete?.(null);
     }
   };
 
@@ -251,6 +329,13 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
       mediaTypes: isVideo ? ['videos'] : ['images'],
       allowsEditing: false,
       quality: 0.9,
+      // Strip EXIF at the picker layer so GPS coordinates, capture
+      // timestamps, and device-serial metadata never leave the
+      // device. The compressor re-encodes pixels anyway (which also
+      // drops EXIF for JPEG→JPEG), but defence-in-depth: setting
+      // `exif: false` ensures the in-memory `asset` object the rest
+      // of this component reads from is already clean.
+      exif: false,
     });
     if (!result.canceled && result.assets[0]) {
       void handlePickedAsset(result.assets[0]);
@@ -263,6 +348,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: isVideo ? ['videos'] : ['images'],
       quality: 0.9,
+      exif: false,
     });
     if (!result.canceled && result.assets[0]) {
       void handlePickedAsset(result.assets[0]);
@@ -387,6 +473,17 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
                   Ready
                 </Text>
               </View>
+            ) : uploadState.phase === 'rate_limited' ? (
+              <RateLimitedPill
+                availableAt={uploadState.availableAt}
+                onRetry={() => {
+                  // Reset to idle before retrying so the upload effect
+                  // re-renders cleanly. Retry kicks off a fresh attempt
+                  // with the last attempted asset.
+                  setUploadState({ phase: 'idle' });
+                  retryUpload();
+                }}
+              />
             ) : uploadState.phase === 'error' ? (
               <Pressable
                 onPress={retryUpload}
@@ -523,7 +620,78 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
           {truncateForUi(uploadState.message)}
         </Text>
       ) : null}
+      {uploadState.phase === 'rate_limited' ? (
+        <Text variant="caption" color="inkMuted" style={{ paddingHorizontal: 4 }}>
+          You&apos;re uploading a little too fast. We&apos;ll let you retry in a moment.
+        </Text>
+      ) : null}
     </Stack>
+  );
+}
+
+/**
+ * Countdown pill rendered over the preview when the server replies 429.
+ *
+ * Why a child component (not inline): the countdown needs its own 1Hz
+ * `useEffect` interval, and inlining it would force `MediaInput` to
+ * re-render every second across the entire form. Encapsulating it here
+ * keeps the parent stable and lets us own the timer's lifecycle.
+ *
+ * The pill remains tappable throughout — tapping anywhere on it after
+ * the countdown reaches zero fires `onRetry`. Before that, taps are
+ * accepted but no-op (haptic still confirms) so users aren't punished
+ * for an early tap with a silent control.
+ */
+function RateLimitedPill({
+  availableAt,
+  onRetry,
+}: {
+  availableAt: number;
+  onRetry: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  // Tick once per second while the countdown is active. Stops as soon
+  // as we cross zero so the unmounted interval doesn't keep firing.
+  useEffect(() => {
+    if (now >= availableAt) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [now, availableAt]);
+
+  const remainingSeconds = Math.max(0, Math.ceil((availableAt - now) / 1000));
+  const ready = remainingSeconds === 0;
+
+  return (
+    <Pressable
+      onPress={ready ? onRetry : () => {}}
+      haptic={ready ? 'light' : 'warning'}
+      accessibilityLabel={
+        ready ? 'Retry upload' : `Retry available in ${remainingSeconds} seconds`
+      }
+      style={{
+        position: 'absolute',
+        left: 10,
+        bottom: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 12,
+        backgroundColor: ready ? 'rgba(239,68,68,0.92)' : 'rgba(0,0,0,0.72)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+      }}
+    >
+      <Icon
+        name={ready ? 'refresh' : 'clock'}
+        size={12}
+        color="#FFFFFF"
+        weight="bold"
+      />
+      <Text color="#FFFFFF" weight="600" style={{ fontSize: 12 }}>
+        {ready ? 'Retry upload' : `Try again in ${remainingSeconds}s`}
+      </Text>
+    </Pressable>
   );
 }
 

@@ -12,17 +12,36 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ImageIcon, MoreVertical, Pencil, Copy, Globe, Trash2, Star } from 'lucide-react';
+import { Archive, ArchiveRestore, ImageIcon, MoreVertical, Pencil, Copy, Globe, Trash2, Star } from 'lucide-react';
 
 interface TemplateCardProps {
   template: Template;
   onEdit: (template: Template) => void;
-  onDelete: (template: Template) => void;
+  /** Soft-archive — preserves all user-owned data. */
+  onArchive: (template: Template) => void;
+  /** Bring an archived template back as a draft. */
+  onRestore: (template: Template) => void;
+  /**
+   * Hard-delete. The API only allows this for templates that have
+   * never been used. The card always exposes the action; the API
+   * decides whether it's allowed and the page-level handler swaps to
+   * "Archive" copy on `template_in_use`.
+   */
+  onPurge: (template: Template) => void;
   onDuplicate: (template: Template) => void;
   onPublish: (template: Template) => void;
 }
 
-export function TemplateCard({ template, onEdit, onDelete, onDuplicate, onPublish }: TemplateCardProps) {
+export function TemplateCard({
+  template,
+  onEdit,
+  onArchive,
+  onRestore,
+  onPurge,
+  onDuplicate,
+  onPublish,
+}: TemplateCardProps) {
+  const isArchived = template.status === 'archived';
   const statusVariant = {
     draft: 'secondary' as const,
     published: 'default' as const,
@@ -154,18 +173,43 @@ export function TemplateCard({ template, onEdit, onDelete, onDuplicate, onPublis
                   <Copy className="h-4 w-4 mr-2" />
                   Duplicate
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onPublish(template)}>
-                  <Globe className="h-4 w-4 mr-2" />
-                  {template.status === 'published' ? 'Unpublish' : 'Publish'}
-                </DropdownMenuItem>
+                {/* Publish / Unpublish only makes sense on live rows.
+                 *  Archived templates must be Restored first (which
+                 *  lands them in `draft` so the publish-readiness
+                 *  gate gets a fresh look at them). */}
+                {!isArchived && (
+                  <DropdownMenuItem onClick={() => onPublish(template)}>
+                    <Globe className="h-4 w-4 mr-2" />
+                    {template.status === 'published' ? 'Unpublish' : 'Publish'}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => onDelete(template)}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
+                {isArchived ? (
+                  <>
+                    <DropdownMenuItem onClick={() => onRestore(template)}>
+                      <ArchiveRestore className="h-4 w-4 mr-2" />
+                      Restore
+                    </DropdownMenuItem>
+                    {/* Permanent delete is only ever offered from the
+                     *  archived state — and the API still gates it on
+                     *  "no jobs reference this row". */}
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => onPurge(template)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Permanently
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => onArchive(template)}
+                  >
+                    <Archive className="h-4 w-4 mr-2" />
+                    Archive
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

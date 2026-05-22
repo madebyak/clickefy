@@ -20,10 +20,10 @@
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, ilike, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { templateVersions, templates, type Template } from '@clickfy/db';
+import { jobs, templateVersions, templates, type Template } from '@clickfy/db';
 import { findCapabilities } from '@clickfy/providers';
 
 import type { AppEnv } from '../types';
@@ -291,25 +291,42 @@ async function uniqueSlug(
  * GET /v1/admin/templates
  *
  * Filters (all optional, all combinable):
- *   - search    — substring match on `title` (case-insensitive)
- *   - status    — draft | published | archived
- *   - kind      — image | video | image_set
+ *   - search          — substring match on `title` (case-insensitive)
+ *   - status          — draft | published | archived
+ *   - kind            — image | video | image_set
  *   - categoryId
- *   - cursor    — opaque cursor returned by the previous page
- *   - limit     — 1..100, default 50
+ *   - includeArchived — `true` to include archived rows when no
+ *                       explicit `status` is set. Default `false`.
+ *   - cursor          — opaque cursor returned by the previous page
+ *   - limit           — 1..100, default 50
  *
  * Pagination is cursor-based on `(sortOrder, id)` for stable ordering
  * even when an admin reorders mid-pagination.
  *
- * Auth: admin-only because the listing includes draft + archived rows.
- * The mobile-facing equivalent is `/v1/catalog/templates`, which is
- * unauthenticated and only returns published rows.
+ * Archived visibility — archived templates are hidden from the
+ * default response so the admin's primary working view stays clean.
+ * To see them you either:
+ *   - pass `status=archived` (returns ONLY archived rows), or
+ *   - pass `includeArchived=true` (mixes archived in with everything
+ *     else, useful for "show all, including archived" mode).
+ * The two flags are independent; passing both is fine and `status`
+ * always wins.
+ *
+ * Auth: admin-only because the listing includes drafts. The mobile-
+ * facing equivalent is `/v1/catalog/templates`, which is unauth-
+ * enticated and only returns published rows.
  */
 const listQuerySchema = z.object({
   search: z.string().max(120).optional(),
   status: templateStatusSchema.optional(),
   kind: templateKindSchema.optional(),
   categoryId: z.string().uuid().optional(),
+  // Coerce common truthy strings — Zod's `boolean()` only accepts a
+  // literal boolean, but query strings are always strings.
+  includeArchived: z
+    .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -325,7 +342,16 @@ templatesRoute.get(
   const whereParts: SQL[] = [];
 
   if (q.search) whereParts.push(ilike(templates.title, `%${q.search}%`));
-  if (q.status) whereParts.push(eq(templates.status, q.status));
+  if (q.status) {
+    // Explicit status wins — the admin asked for exactly these rows
+    // (including the case `status=archived`, which is how the
+    // "Archived" filter chip surfaces archived templates).
+    whereParts.push(eq(templates.status, q.status));
+  } else if (!q.includeArchived) {
+    // Default working view: hide archived. Admins see drafts +
+    // published only unless they explicitly opt in.
+    whereParts.push(ne(templates.status, 'archived'));
+  }
   if (q.kind) whereParts.push(eq(templates.kind, q.kind));
   // Match the primary OR any extra category — same predicate the
   // public catalog uses, so admin filters mirror what the user sees.
@@ -820,6 +846,31 @@ templatesRoute.patch(
   },
 );
 
+// ─── Archive / Restore / Purge ──────────────────────────────────────
+//
+// `DELETE /v1/admin/templates/:id` is a SOFT-archive: it flips
+// `status` to `archived` and stamps `archived_at`. The row stays in
+// the database so every job, library entry, and audit-log entry that
+// references it keeps working — users' generations are theirs, and
+// hard-deleting the template would either orphan or destroy them.
+//
+// `jobs.template_id` and `jobs.template_version_id` are both
+// `ON DELETE RESTRICT` for exactly that reason; the archive flow
+// respects the schema's intent (see `reports.ts` schema header:
+// "we never DELETE rows we'd want to FK to — jobs and templates are
+// soft-deleted in place").
+//
+// To permanently remove a template that has truly never been used,
+// use `DELETE /v1/admin/templates/:id/purge`. It's gated on a
+// "no jobs referencing this template" check and returns
+// `409 template_in_use` otherwise, so a bug here can never destroy a
+// user-owned generation.
+//
+// To bring an archived template back, use
+// `POST /v1/admin/templates/:id/restore` — it flips status to
+// `draft` (NOT directly to `published`; the admin re-publishes
+// explicitly so the publish-readiness checks run again).
+
 templatesRoute.delete(
   '/:id',
   withAuth({ required: true }),
@@ -828,6 +879,110 @@ templatesRoute.delete(
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
+
+    // Read first so we can return a clean 404 distinct from the
+    // already-archived case (idempotent — second archive is a no-op).
+    const existing = await c.var.db.query.templates.findFirst({
+      where: eq(templates.id, id),
+      columns: { id: true, status: true, archivedAt: true },
+    });
+    if (!existing) {
+      return c.json({ error: { code: 'not_found', message: 'Template not found.' } }, 404);
+    }
+
+    if (existing.status === 'archived') {
+      // Idempotent — return the row as-is. We could 204 but the admin
+      // UI prefers a body to update its local state.
+      const cats = await loadTemplateCategories(c.var.db, id);
+      const row = await c.var.db.query.templates.findFirst({ where: eq(templates.id, id) });
+      return c.json({
+        data: {
+          ...attachAdminCategoryFields(row!, cats),
+          archived: true,
+          alreadyArchived: true,
+        },
+      });
+    }
+
+    const archivedAt = new Date();
+    const [row] = await c.var.db
+      .update(templates)
+      .set({ status: 'archived', archivedAt, updatedAt: archivedAt })
+      .where(eq(templates.id, id))
+      .returning();
+    if (!row) {
+      return c.json({ error: { code: 'not_found', message: 'Template not found.' } }, 404);
+    }
+
+    const cats = await loadTemplateCategories(c.var.db, id);
+    return c.json({
+      data: { ...attachAdminCategoryFields(row, cats), archived: true },
+    });
+  },
+);
+
+templatesRoute.post(
+  '/:id/restore',
+  withAuth({ required: true }),
+  withCurrentUser(),
+  withAdmin(),
+  zValidator('param', idParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+
+    // Restore lands in `draft` so the publish-readiness gate runs
+    // again before the row reappears in the public catalog. Avoids
+    // a "restored straight to published with stale config" footgun.
+    const [row] = await c.var.db
+      .update(templates)
+      .set({ status: 'draft', archivedAt: null, updatedAt: new Date() })
+      .where(eq(templates.id, id))
+      .returning();
+    if (!row) {
+      return c.json({ error: { code: 'not_found', message: 'Template not found.' } }, 404);
+    }
+    const cats = await loadTemplateCategories(c.var.db, id);
+    return c.json({ data: attachAdminCategoryFields(row, cats) });
+  },
+);
+
+templatesRoute.delete(
+  '/:id/purge',
+  withAuth({ required: true }),
+  withCurrentUser(),
+  withAdmin(),
+  zValidator('param', idParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+
+    // Refuse if any job has ever referenced this template — the FK
+    // would refuse anyway (RESTRICT), but a clean 409 with an action
+    // hint is far friendlier than a generic Postgres error bubbling
+    // up. We count both the direct FK (`jobs.template_id`) and the
+    // indirect path (`jobs.template_version_id` → `template_versions
+    // .template_id`); either is enough to block the purge.
+    const [{ jobCount }] = await c.var.db
+      .select({ jobCount: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(eq(jobs.templateId, id));
+
+    if (jobCount > 0) {
+      return c.json(
+        {
+          error: {
+            code: 'template_in_use',
+            message:
+              'This template has been used to create generations and cannot be permanently deleted. Archive it instead.',
+            details: { jobCount },
+          },
+        },
+        409,
+      );
+    }
+
+    // Safe to hard-delete. `template_versions`, `template_categories`
+    // and `saved_templates` all `ON DELETE CASCADE`, so they go away
+    // with the parent row in one statement.
     const [row] = await c.var.db
       .delete(templates)
       .where(eq(templates.id, id))
@@ -835,6 +990,6 @@ templatesRoute.delete(
     if (!row) {
       return c.json({ error: { code: 'not_found', message: 'Template not found.' } }, 404);
     }
-    return c.json({ data: { id: row.id, deleted: true } });
+    return c.json({ data: { id: row.id, purged: true } });
   },
 );

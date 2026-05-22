@@ -1,6 +1,5 @@
 import {
   Avatar,
-  Badge,
   Button,
   Card,
   Chip,
@@ -17,6 +16,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Alert, ScrollView, View } from 'react-native';
 
+import { PlanLabel } from '@/components/shared/PlanLabel';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -117,13 +117,13 @@ export default function ProfileScreen() {
                   {session?.user.name ?? 'Sign in to Clickefy'}
                 </Text>
                 <HStack align="center" gap="sm">
-                  <Badge
-                    label={session?.plan?.tier ?? 'Free'}
-                    tone={session?.plan?.isPro ? 'gold' : 'neutral'}
-                  />
-                  <Text variant="caption" color="inkMuted">
-                    {session?.plan?.credits ?? 0} credits
-                  </Text>
+                  <PlanLabel plan={session?.plan?.tier ?? 'Free'} size="md" />
+                  <HStack align="center" gap="xs">
+                    <Icon name="credit" size={13} color={accent.solid} weight="fill" />
+                    <Text variant="caption" color="inkMuted">
+                      {session?.plan?.credits ?? 0}
+                    </Text>
+                  </HStack>
                 </HStack>
               </Stack>
               {session ? (
@@ -151,9 +151,12 @@ export default function ProfileScreen() {
             </HStack>
             <Divider />
             <HStack align="center" justify="space-between">
-              <Text variant="body" color="inkMuted">
-                Credits
-              </Text>
+              <HStack align="center" gap="sm">
+                <Icon name="credit" size={16} color={accent.solid} weight="fill" />
+                <Text variant="body" color="inkMuted">
+                  Credits
+                </Text>
+              </HStack>
               <Text variant="mono" color="ink" weight="700" style={{ fontSize: 18 }}>
                 {session?.plan?.credits ?? 0}
               </Text>
@@ -318,7 +321,11 @@ export default function ProfileScreen() {
           </Card>
         ) : null}
 
-        {/* Quick actions */}
+        {/* Quick actions
+            Kept intentionally short: only rows with real destinations
+            ship here. "Refer a friend" and the placeholder "Settings"
+            row used to live here but were removed — Settings is just
+            this Profile screen, so the row was pointing at itself. */}
         <Card>
           <Stack gap="sm">
             <ProfileRow
@@ -328,11 +335,17 @@ export default function ProfileScreen() {
               disabled={!session}
             />
             <Divider />
-            <ProfileRow icon="bookmark" label="Saved templates" onPress={() => router.push('/saved')} />
+            <ProfileRow
+              icon="bookmark"
+              label="Saved templates"
+              onPress={() => router.push('/saved')}
+            />
             <Divider />
-            <ProfileRow icon="gift" label="Refer a friend" onPress={() => {}} />
-            <Divider />
-            <ProfileRow icon="sliders" label="Settings" onPress={() => {}} />
+            <ProfileRow
+              icon="credit"
+              label="Buy credits"
+              onPress={() => router.push('/paywall')}
+            />
           </Stack>
         </Card>
 

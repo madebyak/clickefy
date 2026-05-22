@@ -24,7 +24,7 @@ import type {
   TemplateKind as SdkTemplateKind,
   UserProject,
 } from '../types';
-import { JobSubmissionError } from '../types';
+import { JobSubmissionError, RateLimitedError } from '../types';
 import type { SDKClient, UploadSource, UploadedAssetRef } from './contract';
 
 // ── /v1/jobs/:id response shape ─────────────────────────────────────
@@ -45,12 +45,47 @@ interface JobStatusWire {
   jobId: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
   progress: JobProgressWire | null;
-  /** New wire format: each output carries its media kind. */
-  outputs?: Array<{ url: string; kind: 'image' | 'video' }>;
+  /**
+   * New wire format: each output carries its media kind and (when the
+   * worker knows them) native pixel dimensions + aspect ratio.
+   */
+  outputs?: Array<{
+    url: string;
+    kind: 'image' | 'video';
+    width?: number;
+    height?: number;
+    aspectRatio?: number;
+  }>;
   error?: JobErrorWire;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
+}
+
+/**
+ * Throw a typed `RateLimitedError` when a response is 429. No-op
+ * otherwise — caller falls through to its usual error handling for
+ * other statuses. Kept tiny on purpose: every authed mutating endpoint
+ * can use this in one line instead of duplicating header parsing.
+ *
+ * The Worker's `withRateLimit` middleware always sets
+ * `Retry-After: 60`; we still parse defensively in case a CDN or a
+ * future limiter chooses a different value (or omits the header). A
+ * sensible floor of 1s keeps countdowns sane when the header is
+ * missing or junk.
+ */
+async function throwIfRateLimited(res: Response, endpoint: string): Promise<void> {
+  if (res.status !== 429) return;
+  const body = await res.text().catch(() => '');
+  const headerRaw = res.headers.get('retry-after');
+  const parsed = headerRaw ? Number(headerRaw) : NaN;
+  const retryAfterSeconds =
+    Number.isFinite(parsed) && parsed > 0 ? Math.ceil(parsed) : 60;
+  throw new RateLimitedError({
+    endpoint,
+    retryAfterSeconds,
+    responseBody: body,
+  });
 }
 
 /**
@@ -651,6 +686,10 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
               sizeBytes: source.sizeBytes,
             }),
           });
+          // Surface 429 as a typed error before falling through to the
+          // generic message path — UI can show a countdown rather than
+          // the raw JSON envelope.
+          await throwIfRateLimited(presignRes, 'upload.presign');
           if (!presignRes.ok) {
             const text = await presignRes.text().catch(() => '');
             throw new Error(`upload.presign ${presignRes.status}: ${text.slice(0, 200)}`);
@@ -707,6 +746,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
             headers: { ...headers, 'Content-Type': 'application/json' },
             body: JSON.stringify({ key: presigned.data.key }),
           });
+          await throwIfRateLimited(finalizeRes, 'upload.finalize');
           if (!finalizeRes.ok) {
             const text = await finalizeRes.text().catch(() => '');
             throw new Error(`upload.finalize ${finalizeRes.status}: ${text.slice(0, 200)}`);
@@ -735,6 +775,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         // `fetch` automatically sets the multipart boundary header.
         if (!opts?.onProgress) {
           const res = await fetch(url, { method: 'POST', headers, body });
+          await throwIfRateLimited(res, 'upload.direct');
           if (!res.ok) {
             const text = await res.text().catch(() => '');
             throw new Error(`upload ${res.status}: ${text.slice(0, 200)}`);
@@ -785,6 +826,21 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
               } catch (err) {
                 reject(new Error(`upload: malformed response: ${(err as Error).message}`));
               }
+            } else if (xhr.status === 429) {
+              // Mirror the fetch path's typed-error behaviour. XHR exposes
+              // `getResponseHeader` for parsing `Retry-After`; missing /
+              // junk values fall back to the middleware's documented 60s.
+              const headerRaw = xhr.getResponseHeader('Retry-After');
+              const parsed = headerRaw ? Number(headerRaw) : NaN;
+              const retryAfterSeconds =
+                Number.isFinite(parsed) && parsed > 0 ? Math.ceil(parsed) : 60;
+              reject(
+                new RateLimitedError({
+                  endpoint: 'upload.direct',
+                  retryAfterSeconds,
+                  responseBody: xhr.responseText ?? '',
+                }),
+              );
             } else {
               reject(new Error(`upload ${xhr.status}: ${xhr.responseText.slice(0, 200)}`));
             }

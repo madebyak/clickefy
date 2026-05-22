@@ -169,7 +169,14 @@ export default function UseTemplateScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: 20, paddingBottom: 180 }}
+        // No reserved bottom space — the sticky CTA is now a flex
+        // sibling below this ScrollView (not absolutely positioned),
+        // so the keyboard can lift it cleanly via KeyboardAvoidingView.
+        // Without this change the absolute CTA was hidden behind the
+        // keyboard on iOS because absolute children skip the parent's
+        // padding box.
+        contentContainerStyle={{ padding: 20, paddingBottom: 24 }}
+        style={{ flex: 1 }}
       >
         {!t ? (
           <FormSkeleton />
@@ -209,9 +216,7 @@ export default function UseTemplateScreen() {
                     marginTop: 4,
                   }}
                 >
-                  <View
-                    style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: accent.solid }}
-                  />
+                  <Icon name="credit" size={11} color={accent.solid} weight="fill" />
                   <Text color={accent.deep} weight="700" style={{ fontSize: 12 }}>
                     {t.credits} credits
                   </Text>
@@ -247,14 +252,17 @@ export default function UseTemplateScreen() {
         )}
       </ScrollView>
 
-      {/* Sticky generate */}
+      {/* Sticky generate.
+          Rendered as a *flex sibling* of the ScrollView (not absolutely
+          positioned) so it participates in the parent
+          KeyboardAvoidingView's layout. On iOS the soft keyboard now
+          pushes the button up cleanly; on Android the
+          `softwareKeyboardLayoutMode: "pan"` setting in app.json does
+          the same. Matches the Human Interface Guidelines for "sticky
+          confirmation toolbars" and Material's bottom action bars. */}
       {t ? (
         <View
           style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
             paddingHorizontal: 16,
             paddingTop: 14,
             paddingBottom: insets.bottom + 16,

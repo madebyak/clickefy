@@ -19,7 +19,15 @@
 import { useAuth } from '@clerk/expo';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Box,
@@ -32,6 +40,8 @@ import {
   useTheme,
 } from '@clickfy/ui';
 
+import { ScreenHeader } from '@/components/shared/ScreenHeader';
+import { useToast } from '@/components/shared/Toast';
 import { Icon } from '@/components/ui/Icon';
 import { config } from '@/lib/config';
 
@@ -63,6 +73,7 @@ export default function ReportScreen() {
   const insets = useSafeAreaInsets();
   const { colors, accent } = useTheme();
   const { getToken } = useAuth();
+  const toast = useToast();
   const { targetType, targetId } = useLocalSearchParams<{
     targetType: 'job_output' | 'template' | 'user';
     targetId: string;
@@ -103,16 +114,18 @@ export default function ReportScreen() {
       }
       // Deliberately don't echo "report received" beyond a generic
       // confirmation — protects the anonymity of the moderation flow.
-      Alert.alert(
+      // Toast is non-blocking; the screen dismisses immediately so the
+      // user isn't trapped in a modal-on-modal flow.
+      toast.success(
         'Thanks for the report',
-        "Our team will review it and take action if it violates our policies. We can't share the outcome of individual reports.",
-        [{ text: 'OK', onPress: () => router.back() }],
+        "We'll review it and take action if it breaks our policies.",
       );
+      router.back();
     } catch (err) {
       console.error('[report] submit failed', err);
-      Alert.alert(
+      toast.error(
         "Couldn't submit",
-        'Check your connection and try again. If the problem keeps happening, email us from the Profile tab.',
+        'Check your connection and try again.',
       );
     } finally {
       setSubmitting(false);
@@ -120,31 +133,24 @@ export default function ReportScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <KeyboardAvoidingView
+      // iOS pushes via `padding` so the bottom CTA + textarea stay above
+      // the keyboard. Android relies on `android:softInputMode` set in
+      // app.json (`softwareKeyboardLayoutMode: "pan"`) — passing
+      // `undefined` here avoids fighting that native behaviour.
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}
+    >
+      {/* Modal-style header: X (close) on the left, no title — the title
+          block below carries the page identity. Matches the rest of the
+          stack screens migrated to ScreenHeader. */}
+      <ScreenHeader variant="close" />
       <ScrollView
-        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
         <Box px="lg" pb="lg">
-          <HStack align="center" justify="space-between" mb="md">
-            <Pressable
-              onPress={() => router.back()}
-              haptic="light"
-              accessibilityLabel="Cancel"
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: colors.surfaceMuted,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Icon name="close" size={18} color={colors.ink} weight="bold" />
-            </Pressable>
-          </HStack>
-
           <VStack gap="sm">
             <Text variant="overline" color="inkMuted" transform="uppercase">
               Report content
@@ -283,6 +289,6 @@ export default function ReportScreen() {
           </VStack>
         </Box>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }

@@ -34,6 +34,7 @@ import { ScrollView, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
+import { useToast } from '@/components/shared/Toast';
 import { Icon } from '@/components/ui/Icon';
 import { downloadOutput, downloadOutputs } from '@/lib/download';
 import { getGenerationOutputs } from '@/lib/generation-cache';
@@ -49,6 +50,7 @@ export default function ResultScreen() {
   const insets = useSafeAreaInsets();
   const { colors, accent } = useTheme();
   const sdk = getSDK();
+  const toast = useToast();
 
   const outputs = useMemo<JobOutput[]>(
     () => (jobId ? getGenerationOutputs(jobId) ?? [] : []),
@@ -123,7 +125,7 @@ export default function ResultScreen() {
             <HeroSlot
               output={hero}
               onShare={handleShare}
-              onDownload={() => void downloadOutput(hero)}
+              onDownload={() => void downloadOutput(hero, toast)}
               onReport={() =>
                 router.push({
                   pathname: '/report',
@@ -150,7 +152,7 @@ export default function ResultScreen() {
                 <VariantCard
                   key={`${out.url}-${i}`}
                   output={out}
-                  onDownload={() => void downloadOutput(out)}
+                  onDownload={() => void downloadOutput(out, toast)}
                 />
               ))}
             </Stack>
@@ -167,7 +169,7 @@ export default function ResultScreen() {
                 full
                 haptic="medium"
                 leading={<Icon name="download" size={18} color={accent.ink} weight="bold" />}
-                onPress={() => void downloadOutputs(outputs)}
+                onPress={() => void downloadOutputs(outputs, toast)}
               >
                 Download all ({outputs.length})
               </Button>
@@ -223,12 +225,13 @@ function HeroSlot({
     <View
       style={{
         position: 'relative',
-        // Aspect ratio comes from the kind: images go 4:5 (portrait
-        // hero), videos go 16:9 by default until we surface the real
-        // aspect on the wire. Aspect-ratio is intentionally tied to
-        // the slot, not measured from the media itself, so the layout
-        // is stable while the file downloads.
-        aspectRatio: output.kind === 'video' ? 9 / 16 : 4 / 5,
+        // Aspect ratio is sourced from the wire (`output.aspectRatio`),
+        // which the API derives from the stored `MediaRef` width/height —
+        // so the hero matches exactly what the pipeline produced (1:1,
+        // 4:5, 16:9, 9:16, etc.) instead of guessing per `kind`. We only
+        // fall back to defaults for legacy jobs that predate dimension
+        // tracking, or for videos (Stream doesn't yet report dims back).
+        aspectRatio: resolveAspectRatio(output),
         borderRadius: 24,
         overflow: 'hidden',
         backgroundColor: colors.surfaceMuted,
@@ -302,9 +305,12 @@ function VariantCard({
     <View
       style={{
         position: 'relative',
-        // Variants get the same aspect as the hero so the page reads
-        // as one coherent grid rather than a scrapbook of shapes.
-        aspectRatio: output.kind === 'video' ? 9 / 16 : 4 / 5,
+        // Variations honour each output's true aspect — when a pipeline
+        // emits e.g. a 16:9 hero alongside two 1:1 crops, the page now
+        // mirrors that mix rather than forcing them all into the same
+        // shape. Same `resolveAspectRatio` helper as the hero so the
+        // fallback story stays identical.
+        aspectRatio: resolveAspectRatio(output),
         borderRadius: 20,
         overflow: 'hidden',
         backgroundColor: colors.surfaceMuted,
@@ -335,6 +341,29 @@ function VariantCard({
       </Pressable>
     </View>
   );
+}
+
+// ─── Aspect ratio helper ────────────────────────────────────────────
+
+/**
+ * The pipeline is the source of truth for each output's shape. Prefer
+ * the wire-provided `aspectRatio`; fall back to a kind-based default
+ * only when the field is missing (legacy jobs and videos until Stream
+ * reports dimensions back).
+ *
+ * Defaults match historic UX: video stays in vertical 9:16 hero mode,
+ * images get a slightly-tall 4:5 social-feed shape. Both are
+ * intentionally not 1:1 so a missing field still produces a usable
+ * hero, just less precise than the real ratio.
+ */
+function resolveAspectRatio(output: JobOutput): number {
+  if (output.aspectRatio && Number.isFinite(output.aspectRatio) && output.aspectRatio > 0) {
+    return output.aspectRatio;
+  }
+  if (output.width && output.height && output.height > 0) {
+    return output.width / output.height;
+  }
+  return output.kind === 'video' ? 9 / 16 : 4 / 5;
 }
 
 // ─── Renderer (picks Image vs Video by output.kind) ────────────────

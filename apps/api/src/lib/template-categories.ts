@@ -21,7 +21,7 @@
 
 import type { Db } from '@clickfy/db';
 import { templateCategories } from '@clickfy/db';
-import { and, eq, exists, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 
 /**
  * SQL fragment: "this template belongs to `categoryId`".
@@ -30,16 +30,25 @@ import { and, eq, exists, inArray, sql, type SQL } from 'drizzle-orm';
  *   const whereParts: SQL[] = [eq(templates.status, 'published')];
  *   if (q.categoryId) whereParts.push(templateInCategory(q.categoryId));
  *
- * The fragment is parameter-safe (Drizzle binds the UUID) and uses
- * an `EXISTS` subquery so the planner can short-circuit on the first
- * matching row.
+ * Implementation note: we deliberately write the `EXISTS (...)` shape
+ * by hand instead of using Drizzle's `exists()` helper. The helper
+ * emits `exists ${subquery}` *without parentheses*, so wrapping a raw
+ * `sql\`SELECT 1 ...\`` fragment produces invalid SQL ("syntax error
+ * at or near SELECT") at runtime. Drizzle's helper is designed for the
+ * query-builder Subquery type, which adds its own parens — but we
+ * don't have a query-builder handle on `templates.id` from inside this
+ * helper, so we go straight to raw SQL. The `${categoryId}` binding
+ * is still parameterised by Drizzle, so the fragment is injection-safe.
+ *
+ * The companion `primaryCategoryMatch()` helper in `section-builder.ts`
+ * uses the same pattern for the same reason.
  */
 export function templateInCategory(categoryId: string): SQL {
-  return exists(
-    sql`SELECT 1 FROM ${templateCategories}
-        WHERE ${templateCategories.templateId} = templates.id
-          AND ${templateCategories.categoryId} = ${categoryId}`,
-  );
+  return sql`EXISTS (
+    SELECT 1 FROM ${templateCategories}
+    WHERE ${templateCategories.templateId} = templates.id
+      AND ${templateCategories.categoryId} = ${categoryId}::uuid
+  )`;
 }
 
 /**

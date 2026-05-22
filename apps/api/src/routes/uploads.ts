@@ -103,6 +103,124 @@ const EXT_BY_MIME: Record<string, string> = {
 };
 
 /**
+ * Detect a file's actual media type from its leading bytes — the
+ * "magic number" signature defined by each format spec. Returns
+ * `null` for anything we don't recognise (the caller should reject).
+ *
+ * Why this exists, given we already validate `Content-Type` at
+ * presign and store it in R2:
+ *   - With `aws4fetch` + `signQuery: true`, the presigned URL only
+ *     signs `host`. The client controls what `Content-Type` header
+ *     it sends with the PUT, and R2 stores that verbatim. A
+ *     malicious or buggy client can claim `image/jpeg` and send
+ *     arbitrary bytes.
+ *   - Downstream AI providers receive `mimeType` + bytes; if the
+ *     mime says JPEG but the bytes are something else, the provider
+ *     errors out after we've already debited credits.
+ *
+ * This function is the authoritative check: trust the bytes, not
+ * the header. 12 bytes is enough for every format we accept.
+ *
+ * Format signatures (from each spec):
+ *   - JPEG       : FF D8 FF                                (3 bytes, any JFIF/Exif variant)
+ *   - PNG        : 89 50 4E 47 0D 0A 1A 0A                 (8 bytes, full PNG signature)
+ *   - WebP       : "RIFF"....   "WEBP"                     (4+4+4, ASCII RIFF container w/ WEBP type)
+ *   - HEIC/HEIF  : ?? ?? ?? ?? "ftyp" + brand              (ISOBMFF; brand at offset 8)
+ *   - MP4 / MOV  : ?? ?? ?? ?? "ftyp" + brand              (same ISOBMFF; brand distinguishes them)
+ *
+ * ISOBMFF brands we accept (offset 8..12 ASCII):
+ *   - `heic`, `heix`, `mif1`, `msf1`, `heim`, `heis`       → image/heic
+ *   - `mp42`, `mp41`, `isom`, `iso2`, `dash`               → video/mp4
+ *   - `qt  `                                                → video/quicktime
+ *
+ * References:
+ *   - https://en.wikipedia.org/wiki/List_of_file_signatures
+ *   - ISO/IEC 14496-12 (ISOBMFF), section 4.3 ftyp box
+ */
+function detectMimeFromBytes(bytes: Uint8Array): string | null {
+  if (bytes.length < 12) return null;
+
+  // JPEG — FF D8 FF
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg';
+  }
+
+  // PNG — 89 50 4E 47 0D 0A 1A 0A
+  if (
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+
+  // WebP — "RIFF" + 4 size bytes + "WEBP"
+  const ascii4 = (offset: number) =>
+    String.fromCharCode(bytes[offset]!, bytes[offset + 1]!, bytes[offset + 2]!, bytes[offset + 3]!);
+  if (ascii4(0) === 'RIFF' && ascii4(8) === 'WEBP') {
+    return 'image/webp';
+  }
+
+  // ISOBMFF (HEIC/HEIF/MP4/MOV) — "ftyp" at offset 4, brand at offset 8
+  if (ascii4(4) === 'ftyp') {
+    const brand = ascii4(8);
+    if (
+      brand === 'heic' ||
+      brand === 'heix' ||
+      brand === 'mif1' ||
+      brand === 'msf1' ||
+      brand === 'heim' ||
+      brand === 'heis'
+    ) {
+      return 'image/heic';
+    }
+    if (brand === 'qt  ') {
+      return 'video/quicktime';
+    }
+    // MP4-family brands. There are many in the wild; this list covers
+    // every brand we've seen come out of an iPhone camera, Android
+    // camera, or recent video editor. Adding to it is safe — false
+    // positives just mean we accept the file.
+    if (
+      brand === 'mp42' ||
+      brand === 'mp41' ||
+      brand === 'isom' ||
+      brand === 'iso2' ||
+      brand === 'iso5' ||
+      brand === 'iso6' ||
+      brand === 'dash' ||
+      brand === 'avc1' ||
+      brand === 'M4V '
+    ) {
+      return 'video/mp4';
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Two mimes "agree" for finalize-time validation purposes:
+ *   - HEIC and HEIF are functionally interchangeable (same ISOBMFF
+ *     container, identical decoder pipeline). The picker on iOS
+ *     reports both; treating them as a single class avoids spurious
+ *     rejections when the client claims one and the bytes match
+ *     the other.
+ *   - Everything else must match exactly.
+ */
+function mimesAgree(a: string, b: string): boolean {
+  if (a === b) return true;
+  const heicSet = new Set(['image/heic', 'image/heif']);
+  if (heicSet.has(a) && heicSet.has(b)) return true;
+  return false;
+}
+
+/**
  * Parse a single-range `Range` header (`bytes=START-END`, `bytes=START-`,
  * `bytes=-N`) into resolved `{ start, end }` offsets within `totalSize`.
  * Returns `null` if the syntax is unrecognised (the caller falls back
@@ -368,7 +486,9 @@ export const uploadsUserRoute = new Hono<AppEnv>();
 uploadsUserRoute.post(
   '/',
   withAuth({ required: true }),
-  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  // Upload-specific bucket — see wrangler.toml notes. Lives apart from
+  // RL_USER_WRITE so multi-asset attaches can't starve other writes.
+  withRateLimit((env) => env.RL_USER_UPLOAD, byClerkUserId),
   withCurrentUser(),
   async (c) => {
     const bucket = c.env.UPLOADS;
@@ -507,7 +627,7 @@ const PUT_URL_TTL_SECONDS = 15 * 60;
 uploadsUserRoute.post(
   '/presign',
   withAuth({ required: true }),
-  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withRateLimit((env) => env.RL_USER_UPLOAD, byClerkUserId),
   withCurrentUser(),
   zValidator('json', PresignSchema),
   async (c) => {
@@ -609,7 +729,7 @@ uploadsUserRoute.post(
 uploadsUserRoute.post(
   '/finalize',
   withAuth({ required: true }),
-  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withRateLimit((env) => env.RL_USER_UPLOAD, byClerkUserId),
   withCurrentUser(),
   zValidator('json', FinalizeSchema),
   async (c) => {
@@ -654,12 +774,93 @@ uploadsUserRoute.post(
       );
     }
 
+    // ── Authoritative mime validation ────────────────────────────────
+    //
+    // The R2 PUT was made with a client-controlled `Content-Type`
+    // header (the presigned URL only signs `host`, see the presign
+    // route's note on aws4fetch + signQuery). So `head.httpMetadata
+    // .contentType` reflects what the client *claimed* the file is,
+    // not what the bytes actually are.
+    //
+    // Two checks below:
+    //   (1) the stored content-type must be in our allow-list — no
+    //       arbitrary mimes get through, even if R2 stored them;
+    //   (2) the first 12 bytes (file signature) must match the
+    //       stored content-type, so a malicious or buggy client can't
+    //       upload arbitrary binary content claiming `image/jpeg` and
+    //       have us pass it to an AI provider.
+    //
+    // On failure we delete the object — leaving rejected uploads in
+    // the bucket would be a slow disk-fill vector.
+    const storedMime = head.httpMetadata?.contentType?.toLowerCase() ?? null;
+    const isAllowedImage = storedMime ? USER_ALLOWED_IMAGE_MIME.has(storedMime) : false;
+    const isAllowedVideo = storedMime ? USER_ALLOWED_VIDEO_MIME.has(storedMime) : false;
+    if (!isAllowedImage && !isAllowedVideo) {
+      await bucket.delete(key).catch((err) => {
+        console.warn('[uploads.finalize] cleanup of rejected key failed', { key, err });
+      });
+      const allowed = [...USER_ALLOWED_IMAGE_MIME, ...USER_ALLOWED_VIDEO_MIME].join(', ');
+      return c.json(
+        {
+          error: {
+            code: 'invalid_mime',
+            message: `Uploaded object has an unsupported content-type (${storedMime ?? 'missing'}). Allowed: ${allowed}.`,
+          },
+        },
+        400,
+      );
+    }
+
+    // Range-GET the first 12 bytes for the signature check. We use a
+    // ranged read rather than `bucket.get(key)` to avoid pulling the
+    // full object — for a 10 MB upload that would cost ~50 ms and
+    // ~10 MB of CPU-bound buffer allocation, while 12 bytes costs
+    // ~5–10 ms total and zero meaningful memory.
+    const sig = await bucket.get(key, { range: { offset: 0, length: 12 } });
+    if (!sig) {
+      // Race: the object was deleted between the HEAD above and this
+      // GET. Either a duplicate finalize from the same client or a
+      // bucket-lifecycle policy we don't know about. Either way the
+      // object is no longer there.
+      return c.json(
+        {
+          error: {
+            code: 'object_disappeared',
+            message: 'The uploaded object is no longer available. Re-upload and try again.',
+          },
+        },
+        409,
+      );
+    }
+    const signatureBytes = new Uint8Array(await sig.arrayBuffer());
+    const detectedMime = detectMimeFromBytes(signatureBytes);
+
+    if (!detectedMime || !mimesAgree(detectedMime, storedMime!)) {
+      await bucket.delete(key).catch((err) => {
+        console.warn('[uploads.finalize] cleanup of mime-mismatched key failed', { key, err });
+      });
+      return c.json(
+        {
+          error: {
+            code: 'mime_mismatch',
+            message: detectedMime
+              ? `File contents (${detectedMime}) don't match the declared type (${storedMime}). Pick a different file.`
+              : `File contents are not a recognised image or video. Pick a different file.`,
+          },
+        },
+        400,
+      );
+    }
+
     const origin = new URL(c.req.url).origin;
     return c.json({
       data: {
         key,
         url: `${origin}/v1/uploads/${key}`,
-        contentType: head.httpMetadata?.contentType ?? 'application/octet-stream',
+        // Return the *detected* mime, not the stored one — they
+        // agree by this point, but the detected value is the
+        // ground truth and the one we want propagated downstream.
+        contentType: detectedMime,
         sizeBytes: head.size,
       },
     });

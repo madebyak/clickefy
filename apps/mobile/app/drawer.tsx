@@ -1,6 +1,5 @@
 import {
   Avatar,
-  Badge,
   Card,
   Divider,
   HStack,
@@ -22,6 +21,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Logo } from '@/components/brand/Logo';
+import { PlanLabel } from '@/components/shared/PlanLabel';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { useAppearance } from '@/lib/use-appearance';
 import { useAuthGate } from '@/lib/auth-gate';
@@ -37,19 +37,23 @@ interface NavItem {
     | '/(tabs)/library'
     | '/(tabs)/projects'
     | '/(tabs)/profile'
+    | '/saved'
     | '/paywall';
   active?: boolean;
 }
 
+// Drawer destinations are limited to routes that actually exist. Anything
+// that doesn't have a screen yet (notifications inbox, dedicated settings
+// page) lives on the Profile tab instead — we route through it rather than
+// rendering dead rows. "Refer a friend" was removed entirely.
 const NAV_ITEMS: NavItem[] = [
   { icon: 'home', label: 'Explore', href: '/(tabs)', active: true },
   { icon: 'categories', label: 'Library', href: '/(tabs)/library' },
   { icon: 'projects', label: 'Projects', href: '/(tabs)/projects' },
-  { icon: 'bookmark', label: 'Saved templates' },
-  { icon: 'bolt', label: 'Buy credits', href: '/paywall' },
-  { icon: 'gift', label: 'Refer a friend' },
-  { icon: 'bell', label: 'Notifications' },
-  { icon: 'sliders', label: 'Settings' },
+  { icon: 'bookmark', label: 'Saved templates', href: '/saved' },
+  { icon: 'credit', label: 'Buy credits', href: '/paywall' },
+  { icon: 'bell', label: 'Notifications', href: '/(tabs)/profile' },
+  { icon: 'sliders', label: 'Settings', href: '/(tabs)/profile' },
 ];
 
 export default function DrawerScreen() {
@@ -194,10 +198,13 @@ export default function DrawerScreen() {
                     {session.user.name}
                   </Text>
                   <HStack align="center" gap="sm">
-                    <Badge label={session.plan?.tier ?? 'Free'} tone={session.plan?.isPro ? 'gold' : 'neutral'} size="sm" />
-                    <Text variant="caption" color="inkMuted">
-                      {session.plan?.credits ?? 0} credits
-                    </Text>
+                    <PlanLabel plan={session.plan?.tier ?? 'Free'} />
+                    <HStack align="center" gap="xs">
+                      <Icon name="credit" size={12} color={accent.solid} weight="fill" />
+                      <Text variant="caption" color="inkMuted">
+                        {session.plan?.credits ?? 0}
+                      </Text>
+                    </HStack>
                   </HStack>
                 </Stack>
                 <Icon name="chevronRight" size={14} color={colors.inkSubtle} weight="bold" />

@@ -29,11 +29,6 @@ import {
 } from '@clickfy/types';
 import { useCallback, useEffect } from 'react';
 
-import {
-  registerForPushNotificationsAsync,
-  subscribeToTokenRotation,
-} from './push-notifications';
-
 import { config } from './config';
 
 export interface SessionUser {
@@ -84,32 +79,17 @@ export function useSession() {
     }
   }, [clerkLoaded, isSignedIn, clerkUser?.id]);
 
-  // Register this device for push notifications once we have an
-  // authenticated session. Idempotent — the backend upserts by token
-  // so calling on every cold start is safe. We deliberately do NOT
-  // block the sign-in flow on the result; a denied permission, an
-  // emulator, or a network blip should never prevent the user from
-  // continuing into the app.
-  useEffect(() => {
-    if (!isSignedIn || !clerkUser?.id) return;
-    void registerForPushNotificationsAsync(async () => getToken()).then((result) => {
-      if (result.token) {
-        console.log('[push] registered', result.token.slice(0, 24) + '...');
-      } else if (result.reason && result.reason !== 'simulator') {
-        // 'simulator' is the expected outcome on iOS Sim / Android
-        // Emulator and not worth surfacing as a warning.
-        console.log('[push] register skipped:', result.reason);
-      }
-    });
-
-    // Listen for token rotation. Stable for the lifetime of the
-    // signed-in session; cleaned up below so a sign-out → sign-in
-    // hand-off doesn't double-subscribe.
-    const rotationSub = subscribeToTokenRotation(async () => getToken());
-    return () => {
-      rotationSub.remove();
-    };
-  }, [isSignedIn, clerkUser?.id, getToken]);
+  // NOTE: Push registration used to live here, but `useSession` is
+  // called from many screens (TopBar, drawer, profile, edit-profile,
+  // appearance, the home screen…). Each mount re-ran the effect, and
+  // because Clerk's `getToken` reference is unstable across renders
+  // (see clerk/javascript#201) the cleanup → re-subscribe cycle ran
+  // several times per second on busy screens — flooding the backend
+  // and tripping the rate limiter.
+  //
+  // The registration now lives in `usePushRegistration` which is
+  // mounted exactly once at the root of the app. See
+  // `apps/mobile/lib/use-push-registration.ts`.
 
   const meQuery = useQuery({
     queryKey: ME_QUERY_KEY,

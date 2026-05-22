@@ -8,6 +8,7 @@ import type {
   AuthSession,
   CatalogCategory,
   CatalogTemplate,
+  CatalogTemplateListOptions,
   GenerationProgress,
   JobSubmission,
   JobSubmissionResponse,
@@ -18,7 +19,13 @@ import type {
 
 export interface CatalogClient {
   listCategories(): Promise<CatalogCategory[]>;
-  listTemplates(opts?: { categoryId?: string; cursor?: string | null }): Promise<Paginated<CatalogTemplate>>;
+  /**
+   * Paginated list of published templates. Accepts the full filter
+   * surface of `GET /v1/catalog/templates` — used both by:
+   *   • home rails (categoryId only), and
+   *   • the search screen (search + kind + featured + withCount).
+   */
+  listTemplates(opts?: CatalogTemplateListOptions): Promise<Paginated<CatalogTemplate>>;
   getTemplate(id: string): Promise<CatalogTemplate>;
   /** Featured rails for home: returns map keyed by section id */
   getHomeSections(opts?: { categoryId?: string }): Promise<Array<{

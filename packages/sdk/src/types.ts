@@ -371,6 +371,32 @@ export interface GenerationProgress {
 export interface Paginated<T> {
   data: T[];
   nextCursor: string | null;
+  /**
+   * Total count of rows matching the request's filters (independent of
+   * `cursor` / `limit`). Only populated when the caller opted in via
+   * `withCount: true`. Surfaces in the mobile filter sheet's
+   * "Show X results" button.
+   */
+  total?: number;
+}
+
+/**
+ * Filters accepted by `catalog.listTemplates`. Mirrors the public
+ * `GET /v1/catalog/templates` query schema. All fields optional.
+ */
+export interface CatalogTemplateListOptions {
+  /** Title substring match, case-insensitive. Trim before passing. */
+  search?: string;
+  kind?: 'image' | 'video' | 'image_set';
+  categoryId?: string;
+  featured?: boolean;
+  /** Default = curated order; "recent" = newest published first. */
+  sort?: 'default' | 'recent';
+  cursor?: string | null;
+  /** 1–50, server default = 20. */
+  limit?: number;
+  /** When true the response carries a `total` count of all matches. */
+  withCount?: boolean;
 }
 
 export interface ApiClientOptions {

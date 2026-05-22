@@ -78,11 +78,27 @@ const listQuerySchema = z.object({
   /**
    * Ordering knob:
    *   - `default` (omitted)        — featured first, then sortOrder ASC.
+   *                                   When a `search` term is set we
+   *                                   first sort by match quality
+   *                                   (exact > starts-with > contains),
+   *                                   then fall back to the same chain.
    *                                   Best for human-curated rails.
    *   - `recent`                   — most recently published first.
    *                                   Used by mobile "New Arrivals" etc.
    */
   sort: z.enum(['default', 'recent']).optional(),
+  /**
+   * When `true`, the response carries a `meta.total` count of the rows
+   * matching the WHERE clause (ignoring cursor/limit). Used by the
+   * mobile filter sheet's sticky "Show X results" button. We make this
+   * opt-in because the extra `COUNT(*)` doubles the per-request DB
+   * round-trips — fine for the filter sheet but wasted work on rail
+   * fetches that don't need it.
+   */
+  withCount: z
+    .union([z.boolean(), z.literal('true'), z.literal('false')])
+    .optional()
+    .transform((v) => v === true || v === 'true'),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
@@ -94,18 +110,23 @@ catalog.get(
   async (c) => {
   const q = c.req.valid('query');
 
-  const whereParts: SQL[] = [eq(templates.status, 'published')];
-  if (q.search) whereParts.push(ilike(templates.title, `%${q.search}%`));
-  if (q.kind) whereParts.push(eq(templates.kind, q.kind));
+  // Filter predicates — what `withCount` should count against. We
+  // deliberately keep this list disjoint from the cursor predicate so
+  // the count reflects the *whole* result set, not just the rows past
+  // the current page's cursor.
+  const filterParts: SQL[] = [eq(templates.status, 'published')];
+  if (q.search) filterParts.push(ilike(templates.title, `%${q.search}%`));
+  if (q.kind) filterParts.push(eq(templates.kind, q.kind));
   // Many-to-many membership check; matches the primary OR any extra.
   // Single source of truth for "this template is in category X".
-  if (q.categoryId) whereParts.push(templateInCategory(q.categoryId));
-  if (q.featured !== undefined) whereParts.push(eq(templates.featured, q.featured));
+  if (q.categoryId) filterParts.push(templateInCategory(q.categoryId));
+  if (q.featured !== undefined) filterParts.push(eq(templates.featured, q.featured));
 
   // Cursor format depends on the active sort. We keep them disjoint so
   // a cursor minted under one ordering can't accidentally page through
   // the other. The cursor always carries a stable tiebreaker (`id`).
   const useRecent = q.sort === 'recent';
+  const whereParts: SQL[] = [...filterParts];
 
   if (q.cursor) {
     if (useRecent) {
@@ -129,19 +150,52 @@ catalog.get(
     }
   }
 
+  // When a search term is set we fold a small relevance score into the
+  // default ordering: exact title match first (rank 0), then prefix
+  // match (rank 1), then everything else (rank 2). The remaining
+  // `featured / sortOrder` chain breaks ties so curated rails still
+  // surface their hand-picked top entry. We only apply this on the
+  // default sort — `recent` is explicitly recency-ordered and people
+  // expect that even when a query is set.
+  const searchTerm = q.search?.trim() ?? '';
+  const useSearchRank = !useRecent && searchTerm.length > 0;
+  const searchRank = useSearchRank
+    ? sql<number>`CASE
+        WHEN LOWER(${templates.title}) = LOWER(${searchTerm}) THEN 0
+        WHEN LOWER(${templates.title}) LIKE LOWER(${searchTerm + '%'}) THEN 1
+        ELSE 2
+      END`
+    : null;
+
   const orderBy = useRecent
     ? [
         desc(sql`COALESCE(${templates.publishedAt}, ${templates.createdAt})`),
         desc(templates.id),
       ]
-    : [desc(templates.featured), asc(templates.sortOrder), asc(templates.id)];
+    : useSearchRank
+      ? [asc(searchRank!), desc(templates.featured), asc(templates.sortOrder), asc(templates.id)]
+      : [desc(templates.featured), asc(templates.sortOrder), asc(templates.id)];
 
-  const rows = await c.var.db
-    .select()
-    .from(templates)
-    .where(and(...whereParts))
-    .orderBy(...orderBy)
-    .limit(q.limit + 1);
+  // Run the count in parallel with the page fetch when requested.
+  // `filterParts` excludes the cursor predicate so we count the
+  // *full* result set, not just rows past the current page.
+  const countPromise = q.withCount
+    ? c.var.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(templates)
+        .where(and(...filterParts))
+        .then((r) => r[0]?.count ?? 0)
+    : Promise.resolve(undefined);
+
+  const [rows, total] = await Promise.all([
+    c.var.db
+      .select()
+      .from(templates)
+      .where(and(...whereParts))
+      .orderBy(...orderBy)
+      .limit(q.limit + 1),
+    countPromise,
+  ]);
 
   const hasMore = rows.length > q.limit;
   const page = hasMore ? rows.slice(0, q.limit) : rows;
@@ -168,7 +222,11 @@ catalog.get(
   );
 
   c.header('Cache-Control', PUBLIC_CACHE_HEADERS['Cache-Control']);
-  return c.json({ data, nextCursor });
+  return c.json({
+    data,
+    nextCursor,
+    ...(total !== undefined ? { meta: { total } } : {}),
+  });
 });
 
 /**

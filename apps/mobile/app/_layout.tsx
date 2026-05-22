@@ -23,6 +23,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorFallback } from '@/components/ErrorFallback';
 import { ToastProvider } from '@/components/shared/Toast';
 import { Splash } from '@/components/Splash';
+import { usePushRegistration } from '@/lib/use-push-registration';
 import { attachTokenGetter } from '@/lib/sdk';
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
@@ -164,6 +165,7 @@ function RootLayout() {
   return (
     <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
       <SdkBridge />
+      <PushRegistration />
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <QueryClientProvider client={queryClient}>
@@ -232,6 +234,24 @@ function RootLayout() {
                   animation: 'slide_from_bottom',
                 }}
               />
+              {/* Full-screen search — slides in from the right like a
+                  push so the home → search transition reads as a
+                  natural depth change. The search input auto-focuses
+                  on mount; back gesture pops to home. */}
+              <Stack.Screen
+                name="search"
+                options={{ presentation: 'card', animation: 'slide_from_right' }}
+              />
+              {/* Filter sheet over the search screen — native iOS
+                  pageSheet (`presentation: 'modal'`) for HIG-correct
+                  drag-to-dismiss behavior. Same pattern as /report. */}
+              <Stack.Screen
+                name="search-filters"
+                options={{
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom',
+                }}
+              />
               <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
             </Stack>
               </ErrorBoundary>
@@ -266,6 +286,16 @@ function SdkBridge() {
     // just hand them our adapter so the SDK reads it lazily.
     attachTokenGetter(async () => (await getToken()) ?? null);
   }, [getToken]);
+  return null;
+}
+
+/**
+ * Mounts the single app-wide push notification subscription. UI-less,
+ * no-op when signed out. See `lib/use-push-registration.ts` for why
+ * this lives at the root rather than inside `useSession`.
+ */
+function PushRegistration() {
+  usePushRegistration();
   return null;
 }
 

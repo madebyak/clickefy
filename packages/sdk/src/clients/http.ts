@@ -167,6 +167,11 @@ interface ApiSectionsEnvelope {
 interface ApiTemplatesEnvelope {
   data: MobileTemplate[];
   nextCursor: string | null;
+  /**
+   * Optional total count, returned only when the request opted-in via
+   * `withCount=true`. Forwarded to callers as `Paginated.total`.
+   */
+  meta?: { total?: number };
 }
 
 // ─── Mappers ──────────────────────────────────────────────────────
@@ -274,13 +279,21 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         return json.data.map(mapCategory);
       },
 
-      async listTemplates(opts?: { categoryId?: string; cursor?: string | null }) {
-        // The mock surface only exposes `categoryId` and `cursor` —
-        // the underlying endpoint accepts more, but we keep the SDK
-        // method tight so screens don't grow a dependency on the
-        // Worker's full filter set.
+      async listTemplates(opts) {
+        // Full filter surface, matching `GET /v1/catalog/templates`.
+        // Empty / blank `search` is dropped on the wire so the server
+        // doesn't run the rank CASE for nothing.
         const params = new URLSearchParams();
+        const search = opts?.search?.trim();
+        if (search) params.set('search', search);
+        if (opts?.kind) params.set('kind', opts.kind);
         if (opts?.categoryId) params.set('categoryId', opts.categoryId);
+        if (opts?.featured !== undefined) {
+          params.set('featured', String(opts.featured));
+        }
+        if (opts?.sort) params.set('sort', opts.sort);
+        if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
+        if (opts?.withCount) params.set('withCount', 'true');
         if (opts?.cursor) params.set('cursor', opts.cursor);
         const qs = params.toString();
         const json = await get<ApiTemplatesEnvelope>(
@@ -289,6 +302,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         return {
           data: json.data.map(mapTemplate),
           nextCursor: json.nextCursor,
+          ...(json.meta?.total !== undefined ? { total: json.meta.total } : {}),
         };
       },
 

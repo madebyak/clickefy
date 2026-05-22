@@ -37,3 +37,19 @@ export const USER_ME_QUERY = {
   staleTime: 30_000,
   retry: 1,
 } as const;
+
+/**
+ * Search results.
+ *
+ * Tuned for the iOS-style "search-as-you-type" pattern where each
+ * keystroke (post-debounce) becomes its own cache entry keyed by the
+ * exact query + filter combo. We keep results fresh for 30s — long
+ * enough that bouncing back to a recently-typed query feels instant,
+ * short enough that a freshly-published template appears within a
+ * realistic window. `gcTime` is deliberately small (60s) so the
+ * cache doesn't grow unbounded as the user types.
+ */
+export const SEARCH_QUERY = {
+  staleTime: 30_000,
+  gcTime: 60_000,
+} as const;

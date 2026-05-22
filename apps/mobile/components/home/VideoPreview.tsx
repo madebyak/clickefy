@@ -99,7 +99,10 @@ export function VideoPreview({
         nativeControls={false}
         // iOS-only — disables the play/pause overlay that appears when
         // the user taps. We want the card itself to be the tap target.
-        allowsFullscreen={false}
+        // `allowsFullscreen` was deprecated in SDK 54 and removed in
+        // SDK 55 (expo/expo#41606); the replacement is the
+        // `fullscreenOptions.enable` field.
+        fullscreenOptions={{ enable: false }}
         allowsPictureInPicture={false}
         onFirstFrameRender={() => {
           if (firstFrameRendered.current) return;

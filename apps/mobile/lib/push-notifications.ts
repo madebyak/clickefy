@@ -31,6 +31,34 @@ import { Platform } from 'react-native';
 
 import { config } from './config';
 
+/**
+ * Canonical Expo push token shape: `ExponentPushToken[<base64-ish>]`.
+ * The server validates against this same regex and 400s on a miss
+ * (see `apps/api/src/routes/devices.ts`). Expo's `addPushTokenListener`
+ * can transiently fire with an empty string or a raw native token in
+ * certain Expo Go race conditions — we mirror the server check on the
+ * client so we never POST a known-bad value.
+ *
+ * Sourced from `Expo.isExpoPushToken` in the official server SDK:
+ * https://github.com/expo/exponent-server-sdk-node/blob/master/src/ExpoClient.ts
+ */
+const EXPO_PUSH_TOKEN_REGEX = /^ExponentPushToken\[[^\]]+\]$/;
+function isExpoPushToken(value: unknown): value is string {
+  return typeof value === 'string' && EXPO_PUSH_TOKEN_REGEX.test(value);
+}
+
+/**
+ * Module-level memo of the last token successfully posted to the API.
+ * Lets us short-circuit duplicate POSTs that come from:
+ *   • two screens calling `useSession()` and racing on first mount, or
+ *   • a token-rotation event that resolves to the same token we just
+ *     registered.
+ *
+ * Cleared explicitly in `unregisterPushAsync` so a sign-out → sign-in
+ * cycle re-registers cleanly under a different bearer.
+ */
+let lastRegisteredToken: string | null = null;
+
 // Tell the OS how to render foreground notifications. Without this,
 // receiving a push while the app is open shows… nothing — iOS in
 // particular hides it entirely by default. We surface a banner + a
@@ -114,6 +142,24 @@ export async function registerForPushNotificationsAsync(
   }
   const expoPushToken = tokenResult.data;
 
+  if (!isExpoPushToken(expoPushToken)) {
+    // Defensive: the API would reject this with a 400 "Not an Expo
+    // push token". Fail closed on the client so we never spam the
+    // endpoint. This shouldn't normally happen — `getExpoPushTokenAsync`
+    // is supposed to always return the canonical shape — but Expo Go
+    // edge cases have produced empty strings in the past.
+    console.warn('[push] received non-Expo token shape, skipping register');
+    return { token: null, reason: 'token_fetch_failed' };
+  }
+
+  // Skip the round-trip if we've already registered this exact token
+  // for the current session. Idempotent on the server too — the
+  // backend upserts by token — but skipping here keeps logs quiet
+  // and avoids burning rate-limit budget.
+  if (lastRegisteredToken === expoPushToken) {
+    return { token: expoPushToken };
+  }
+
   try {
     const bearer = await getToken();
     const res = await fetch(`${config.apiUrl}/v1/devices/register`, {
@@ -134,6 +180,7 @@ export async function registerForPushNotificationsAsync(
       console.warn('[push] backend register failed', res.status, text.slice(0, 200));
       return { token: expoPushToken, reason: 'backend_register_failed' };
     }
+    lastRegisteredToken = expoPushToken;
   } catch (err) {
     console.warn('[push] backend register threw:', err);
     return { token: expoPushToken, reason: 'backend_register_failed' };
@@ -151,6 +198,12 @@ export async function unregisterPushAsync(
   expoPushToken: string,
   getToken: () => Promise<string | null>,
 ): Promise<void> {
+  // Allow the next registration to actually fire — without this the
+  // dedupe in `registerForPushNotificationsAsync` would silently swallow
+  // the post-sign-in registration of the same physical device's token.
+  if (lastRegisteredToken === expoPushToken) {
+    lastRegisteredToken = null;
+  }
   try {
     const bearer = await getToken();
     await fetch(`${config.apiUrl}/v1/devices/unregister`, {
@@ -182,7 +235,15 @@ export function subscribeToTokenRotation(
   getToken: () => Promise<string | null>,
 ): { remove: () => void } {
   const sub = Notifications.addPushTokenListener(async (newToken) => {
-    if (!newToken?.data) return;
+    // Drop transient malformed events. `addPushTokenListener` is
+    // documented to fire on rotation but Expo Go has historically
+    // emitted empty / native-shaped tokens here as well — we filter
+    // to the canonical `ExponentPushToken[…]` shape and otherwise
+    // bail silently rather than spamming the backend.
+    const token = newToken?.data;
+    if (!isExpoPushToken(token)) return;
+    if (lastRegisteredToken === token) return;
+
     console.log('[push] token rotated, re-registering…');
     try {
       const bearer = await getToken();
@@ -193,7 +254,7 @@ export function subscribeToTokenRotation(
           ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
         },
         body: JSON.stringify({
-          expoPushToken: newToken.data,
+          expoPushToken: token,
           platform:
             Platform.OS === 'ios'
               ? 'ios'
@@ -206,7 +267,9 @@ export function subscribeToTokenRotation(
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         console.warn('[push] rotation register failed', res.status, text.slice(0, 200));
+        return;
       }
+      lastRegisteredToken = token;
     } catch (err) {
       console.warn('[push] rotation register threw:', err);
     }

@@ -52,7 +52,7 @@ export default function HomeScreen() {
       />
 
       <Box px="base" pb="md">
-        <SearchBar />
+        <SearchBar onPress={() => router.push('/search')} />
       </Box>
 
       <ScrollView

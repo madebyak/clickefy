@@ -825,9 +825,15 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
               tabIndex={-1}
               aria-hidden="true"
               onChange={(e) => {
-                const files = e.target.files;
+                // `e.target.files` is a *live* FileList — resetting
+                // `value` below empties it, which would leave
+                // handleGalleryUpload with zero files and silently
+                // bail. Snapshot into a fresh FileList first.
+                const picked = e.target.files
+                  ? filesToList(Array.from(e.target.files))
+                  : null;
                 e.target.value = '';
-                void handleGalleryUpload(files);
+                void handleGalleryUpload(picked);
               }}
             />
           </div>

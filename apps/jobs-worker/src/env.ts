@@ -27,6 +27,13 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().min(1).optional(),
   KLING_ACCESS_KEY: z.string().min(1).optional(),
   KLING_SECRET_KEY: z.string().min(1).optional(),
+  /**
+   * Bearer token minted in the BytePlus ModelArk console under
+   * "API Key Management". Optional so the worker boots in
+   * environments where Seedance isn't enabled; missing key only
+   * fails when a Seedance stage actually runs.
+   */
+  SEEDANCE_API_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

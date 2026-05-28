@@ -46,6 +46,7 @@ import type {
   ImagePart,
   KlingCompiledRequest,
   RuntimeInputValue,
+  SeedanceCompiledRequest,
   StageOutputRef,
 } from './compile-types';
 
@@ -507,6 +508,9 @@ export function compile(ctx: CompileContext): CompileResult {
   if (capabilities.provider === 'kling') {
     return compileKling(ctx, tokens, warnings);
   }
+  if (capabilities.provider === 'seedance') {
+    return compileSeedance(ctx, tokens, warnings);
+  }
   throw new Error(`No compiler implementation for provider "${capabilities.provider}".`);
 }
 
@@ -807,6 +811,196 @@ function extractNumberOfOutputs(
   return capabilities.outputs.default;
 }
 
+// ─── Seedance compiler ──────────────────────────────────────────────
+
+/**
+ * Compile a Seedance 2.0 stage.
+ *
+ * Layout decisions:
+ *   - Subjects (stage outputs first, then user inputs) populate
+ *     `startImage` and `endImage` when the model accepts a bookend.
+ *     Even if only one subject is present, it goes to `startImage`
+ *     (Seedance treats a single image as first_frame i.e. I2V).
+ *   - Admin references all land in `referenceImages[]` regardless of
+ *     their `role` tag (style / scene / lighting). On the wire they
+ *     become `{ type: 'image_url', role: 'reference_image' }` entries.
+ *   - Token substitution uses ordinal addressing ("the first image")
+ *     identical to Gemini; the role tags on the content[] array carry
+ *     structural meaning so the prompt doesn't have to.
+ *
+ * Multimodal note: `assetKind === 'video' | 'audio'` references are
+ * passed through to `referenceImages[]` (poorly named, but the
+ * structure is identical — the adapter inspects `mimeType` to decide
+ * which `type` to emit on the wire: `image_url`, `video_url`, or
+ * `audio_url`).
+ */
+function compileSeedance(
+  ctx: CompileContext,
+  tokens: ParsedToken[],
+  warnings: CompileWarning[],
+): CompileResult {
+  const { stage, capabilities } = ctx;
+
+  // Subjects (stage outputs → user inputs) up to maxSubjects.
+  const subjects: ImagePart[] = [];
+  let idx = 0;
+
+  for (const so of ctx.previousOutputs) {
+    if (so.kind !== 'image' && so.kind !== 'video') continue;
+    if (subjects.length >= capabilities.maxSubjects) break;
+    idx += 1;
+    subjects.push({
+      index: idx,
+      role: 'stage-output',
+      roleTag: 'STAGE_OUTPUT',
+      displayLabel: `Stage ${so.stageIndex} output`,
+      mimeType: so.mimeType,
+      bytes: so.bytes,
+      r2Key: so.r2Key,
+      url: so.url,
+    });
+  }
+  for (const field of ctx.templateInputs) {
+    const v = ctx.inputValues[field.fieldKey];
+    if (!v || (v.kind !== 'image' && v.kind !== 'video')) continue;
+    if (subjects.length >= capabilities.maxSubjects) {
+      warnings.push({
+        code: 'config_clamped',
+        message: `Seedance accepts ${capabilities.maxSubjects} subject image(s); "${field.fieldKey}" dropped.`,
+      });
+      break;
+    }
+    idx += 1;
+    subjects.push({
+      index: idx,
+      role: 'subject',
+      roleTag: 'USER_INPUT',
+      displayLabel: field.label || field.fieldKey,
+      mimeType: v.mimeType,
+      bytes: v.bytes,
+      r2Key: v.r2Key,
+      url: v.url,
+    });
+  }
+
+  // References — every admin-uploaded ref becomes a reference_image
+  // on the wire, regardless of `role` (which we keep for prompt text).
+  const refs: ImagePart[] = [];
+  for (const ref of stage.references) {
+    if (refs.length + subjects.length >= capabilities.maxImagesTotal) {
+      warnings.push({
+        code: 'config_clamped',
+        message: `Seedance accepts ${capabilities.maxImagesTotal} images total; "${ref.key}" dropped.`,
+      });
+      break;
+    }
+    if (!ref.r2Key && !ref.base64) {
+      warnings.push({
+        code: 'reference_dropped',
+        message: `Reference "${ref.key}" has no r2Key or base64; skipped.`,
+      });
+      continue;
+    }
+    idx += 1;
+    refs.push({
+      index: idx,
+      role: 'reference',
+      roleTag: ref.role.toUpperCase(),
+      displayLabel: ref.label ?? '',
+      mimeType: ref.mimeType ?? 'image/png',
+      bytes: ref.base64 ? base64ToBytes(ref.base64) : undefined,
+      r2Key: ref.r2Key,
+    });
+  }
+
+  const imageParts: ImagePart[] = [...subjects, ...refs];
+
+  const prompt = substituteTokens({
+    prompt: stage.prompt,
+    tokens,
+    templateInputs: ctx.templateInputs,
+    inputValues: ctx.inputValues,
+    references: stage.references,
+    previousOutputs: ctx.previousOutputs,
+    imageParts,
+    // Seedance prompts use natural ordinal language; role tags on
+    // the content array do the structural work.
+    style: 'ordinal',
+    warnings,
+  });
+
+  // Aspect / resolution / duration extraction with capability clamps.
+  const aspectSizing =
+    capabilities.sizing.mode === 'aspect' ? capabilities.sizing : undefined;
+  const cfgRatio =
+    typeof stage.config.aspectRatio === 'string' ? stage.config.aspectRatio : undefined;
+  let ratio: string | undefined;
+  if (cfgRatio && aspectSizing && !aspectSizing.values.includes(cfgRatio)) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `Aspect ratio "${cfgRatio}" is not supported by ${stage.model}; falling back to model default. Allowed: ${aspectSizing.values.join(', ')}.`,
+    });
+  } else {
+    ratio = cfgRatio;
+  }
+
+  const cfgResolution =
+    typeof stage.config.resolution === 'string' ? stage.config.resolution : undefined;
+  const allowedResolutions = aspectSizing?.resolutions ?? [];
+  let resolution: SeedanceCompiledRequest['resolution'];
+  if (
+    cfgResolution &&
+    allowedResolutions.length > 0 &&
+    !allowedResolutions.includes(cfgResolution)
+  ) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `Resolution "${cfgResolution}" is not supported by ${stage.model}; falling back to default. Allowed: ${allowedResolutions.join(', ')}.`,
+    });
+  } else if (cfgResolution) {
+    resolution = cfgResolution as SeedanceCompiledRequest['resolution'];
+  }
+
+  let duration: number | undefined;
+  if (typeof stage.config.duration === 'number') {
+    duration = stage.config.duration;
+  } else {
+    duration = capabilities.duration?.default;
+  }
+
+  const generateAudio =
+    typeof stage.config.generateAudio === 'boolean' ? stage.config.generateAudio : undefined;
+  const returnLastFrame =
+    typeof stage.config.returnLastFrame === 'boolean'
+      ? stage.config.returnLastFrame
+      : undefined;
+  const cameraFixed =
+    typeof stage.config.cameraFixed === 'boolean' ? stage.config.cameraFixed : undefined;
+  const seed = typeof stage.config.seed === 'number' ? stage.config.seed : undefined;
+  const negativePrompt =
+    typeof stage.config.negativePrompt === 'string' && stage.config.negativePrompt.length > 0
+      ? stage.config.negativePrompt
+      : undefined;
+
+  const request: SeedanceCompiledRequest = {
+    provider: 'seedance',
+    model: stage.model,
+    prompt,
+    ratio,
+    duration,
+    resolution,
+    generateAudio,
+    returnLastFrame,
+    cameraFixed,
+    seed,
+    negativePrompt,
+    startImage: subjects[0],
+    endImage: capabilities.acceptsStartEndImage ? subjects[1] : undefined,
+    referenceImages: refs.length > 0 ? refs : undefined,
+  };
+  return { request, warnings };
+}
+
 // Re-export for ergonomic single-import callers.
 export type {
   CompiledRequest,
@@ -817,5 +1011,6 @@ export type {
   GptImageCompiledRequest,
   KlingCompiledRequest,
   RuntimeInputValue,
+  SeedanceCompiledRequest,
   StageOutputRef,
 } from './compile-types';

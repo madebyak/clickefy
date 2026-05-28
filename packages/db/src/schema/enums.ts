@@ -85,13 +85,17 @@ export type CreditBucket = 'promo' | 'subscription' | 'topup';
  *
  * The DB enum intentionally includes `veo` as a forward-compatible slot
  * even though the TS `Provider` union in `@clickfy/types` and the API
- * Zod schemas only accept `gemini | kling` today. Postgres only allows
- * appending enum values (no in-place removal without a destructive
- * migration), so we keep the wider set in the DB and let the API layer
- * be the gatekeeper. Add a `Provider` arm before turning on the column
- * for that value at the application layer.
+ * Zod schemas only accept the actually-wired providers today. Postgres
+ * only allows appending enum values (no in-place removal without a
+ * destructive migration), so we keep the wider set in the DB and let
+ * the API layer be the gatekeeper. Add a `Provider` arm before turning
+ * on the column for that value at the application layer.
+ *
+ * Wiring history:
+ *   - 0000  gemini, kling, veo  (veo never wired)
+ *   - 0014  + seedance          (BytePlus Seedance 2.0 integration)
  */
-export const providerEnum = pgEnum('provider', ['gemini', 'kling', 'veo']);
+export const providerEnum = pgEnum('provider', ['gemini', 'kling', 'veo', 'seedance']);
 
 export const modelStatusEnum = pgEnum('model_status', [
   'active',

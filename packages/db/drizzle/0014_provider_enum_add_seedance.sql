@@ -1,0 +1,23 @@
+-- 0014_provider_enum_add_seedance.sql
+--
+-- Append 'seedance' to the `provider` Postgres enum so we can insert
+-- Seedance entries into `provider_models` (and through it, drive the
+-- admin pricing UI + auto-cost computation in `computeTemplateCost`).
+--
+-- Safety analysis (mirrored in docs/SEEDANCE-INTEGRATION.md §3.0):
+--   • Fully ADDITIVE — `ALTER TYPE … ADD VALUE` only widens what's
+--     permitted; existing rows continue to use 'gemini' / 'kling'.
+--   • Zero rows touched. Zero columns touched. Zero indexes touched.
+--   • Atomic in Postgres 12+. Takes <100ms on Neon. No table lock.
+--   • `IF NOT EXISTS` makes re-runs no-ops.
+--   • Same pattern as 0010_credit_system.sql lines 21–23 which ran
+--     cleanly in production.
+--   • Reconcile-migrations script's destructive-pattern guard
+--     (TRUNCATE/DELETE/DROP TABLE) does not match this statement.
+--
+-- After this lands, run `pnpm --filter @clickfy/db db:seed-models`
+-- to insert the two Seedance entries into `provider_models`. The
+-- seed script is idempotent and never clobbers admin-set
+-- `cost_credits`.
+
+ALTER TYPE "provider" ADD VALUE IF NOT EXISTS 'seedance';--> statement-breakpoint

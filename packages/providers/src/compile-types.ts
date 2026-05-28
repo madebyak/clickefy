@@ -169,6 +169,53 @@ export interface KlingCompiledRequest {
   referenceImages?: ImagePart[];
 }
 
+/**
+ * Compiled request for BytePlus Seedance 2.0.
+ *
+ * The wire format on the adapter side is the BytePlus ModelArk shape:
+ * a single `content[]` array where every element is either a text part
+ * (`{ type: 'text', text }`) or a media part
+ * (`{ type: 'image_url', image_url: { url }, role? }`). The compiler
+ * keeps the prompt and media parts on separate fields here so the
+ * adapter retains the flexibility to build either flavour (it picks
+ * `role` per part based on `role` + position) without re-parsing.
+ *
+ * `seedance` always returns ONE video per task (BytePlus enforces this
+ * — multi-output requires submitting N separate tasks). The runtime
+ * type therefore omits a `numberOfOutputs` field.
+ */
+export interface SeedanceCompiledRequest {
+  provider: 'seedance';
+  model: string;
+  /** Final prompt — Seedance natural-language image addressing is fine. */
+  prompt: string;
+  /**
+   * Aspect ratio. Pass `'adaptive'` to let Seedance match the first
+   * image's aspect (useful for I2V flows where the input drives shape).
+   */
+  ratio?: string;
+  /** Video length in seconds. 5 or 10 today; the API accepts 4–15. */
+  duration?: number;
+  /** Output resolution. */
+  resolution?: '480p' | '720p' | '1080p' | '2K';
+  /** Generate native audio (sfx, ambient, lip-sync if a face is present). */
+  generateAudio?: boolean;
+  /** Return the final video frame as a still in the result payload. */
+  returnLastFrame?: boolean;
+  /** Hold the camera fixed (no automatic pan/zoom). */
+  cameraFixed?: boolean;
+  /** Reproducibility seed. */
+  seed?: number;
+  /** Negative prompt to discourage certain content. */
+  negativePrompt?: string;
+  /** First frame of the resulting video (I2V / bookend). */
+  startImage?: ImagePart;
+  /** Last frame (bookend control). */
+  endImage?: ImagePart;
+  /** Admin-uploaded references (style / composition / scene cues). */
+  referenceImages?: ImagePart[];
+}
+
 /** Stub for the forthcoming OpenAI provider. */
 export interface GptImageCompiledRequest {
   provider: 'openai';
@@ -185,6 +232,7 @@ export interface GptImageCompiledRequest {
 export type CompiledRequest =
   | GeminiCompiledRequest
   | KlingCompiledRequest
+  | SeedanceCompiledRequest
   | GptImageCompiledRequest;
 
 // ─── Compile-time warnings ──────────────────────────────────────────

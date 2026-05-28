@@ -217,6 +217,9 @@ export async function POST(req: Request) {
               secretKey: process.env.KLING_SECRET_KEY,
             }
           : undefined,
+      seedance: process.env.SEEDANCE_API_KEY
+        ? { apiKey: process.env.SEEDANCE_API_KEY }
+        : undefined,
     });
 
     return NextResponse.json({ ...result, warnings });

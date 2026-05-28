@@ -22,6 +22,19 @@ export interface Bindings {
   /** Neon Postgres connection string (sslmode=require). */
   DATABASE_URL: string;
 
+  // ─── Provider credentials (read by admin Playground routes) ───
+  /**
+   * Bearer ARK_API_KEY for BytePlus Seedance 2.0. The production
+   * job pipeline reads it from the Trigger.dev jobs-worker env, not
+   * here; this binding is only consumed by the admin Playground
+   * (`/api/generate` + `/api/generate/status`) so the Next.js admin
+   * can dry-run Seedance stages from the editor.
+   *
+   * Set as a Wrangler secret in production:
+   *   pnpm wrangler secret put SEEDANCE_API_KEY --config apps/api/wrangler.toml
+   */
+  SEEDANCE_API_KEY?: string;
+
   // ─── Payments ─────────────────────────────────────────────────
   REVENUECAT_WEBHOOK_SECRET?: string;
 

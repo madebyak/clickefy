@@ -171,7 +171,7 @@ export type TemplateInputField =
  * shape inside that SDK. The list is intentionally narrow — we add a
  * value here only when a provider adapter actually exists.
  */
-export type Provider = 'gemini' | 'kling';
+export type Provider = 'gemini' | 'kling' | 'seedance';
 
 /**
  * Role tags admins attach to reference images so the prompt-compiler
@@ -210,6 +210,19 @@ export interface GenerationReference {
   role: ReferenceImageRole;
   /** Persisted R2 object key. */
   r2Key?: string;
+  /**
+   * What kind of asset this reference is.
+   *
+   * Defaults to `'image'` when omitted (backwards-compatible with rows
+   * authored before Seedance landed — every existing row was an image
+   * reference). Set to `'video'` or `'audio'` for Seedance-style
+   * multimodal references where the file is not an image.
+   *
+   * The compiler keys MIME-type allowlists and adapter routing off
+   * this field; the admin uploader uses it to pick the right `accept`
+   * filter on the file input.
+   */
+  assetKind?: 'image' | 'video' | 'audio';
 
   /** @deprecated Admin working state before the R2 upload completes. */
   base64?: string;

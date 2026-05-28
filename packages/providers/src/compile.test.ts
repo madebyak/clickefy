@@ -21,6 +21,7 @@ import type {
   GeminiCompiledRequest,
   KlingCompiledRequest,
   RuntimeInputValue,
+  SeedanceCompiledRequest,
   StageOutputRef,
 } from './compile-types';
 
@@ -365,6 +366,130 @@ describe('compile() — legacy bare-key syntax', () => {
     const stage = makeStage({ prompt: 'Use {{ghost}} somehow.' });
     const { warnings } = compile(makeCtx({ stage }));
     expect(warnings.some((w) => w.code === 'unknown_variable')).toBe(true);
+  });
+});
+
+// ─── Seedance 2.0: BytePlus multimodal video ────────────────────────
+
+describe('compile() — Seedance 2.0', () => {
+  it('compiles a T2V stage with prompt + config flow-through', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-fast-260128',
+      prompt: 'Cinematic dolly shot of a koi pond at sunset.',
+      config: {
+        aspectRatio: '16:9',
+        resolution: '720p',
+        duration: 5,
+        generateAudio: true,
+        cameraFixed: false,
+      },
+    });
+    const { request, warnings } = compile(makeCtx({ stage }));
+    expect(request.provider).toBe('seedance');
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.prompt).toBe('Cinematic dolly shot of a koi pond at sunset.');
+    expect(sd.ratio).toBe('16:9');
+    expect(sd.resolution).toBe('720p');
+    expect(sd.duration).toBe(5);
+    expect(sd.generateAudio).toBe(true);
+    expect(sd.cameraFixed).toBe(false);
+    expect(sd.startImage).toBeUndefined();
+    expect(sd.endImage).toBeUndefined();
+    expect(sd.referenceImages).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
+
+  it('compiles an I2V stage with a user image input as first_frame', () => {
+    const product = imageField('product', 'Product');
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Animate {{input:product}} with a slow zoom in.',
+      config: { aspectRatio: 'adaptive', resolution: '1080p', duration: 5 },
+    });
+    const { request } = compile(
+      makeCtx({
+        stage,
+        templateInputs: [product],
+        inputValues: { product: imageValue('uploads/p.png') },
+      }),
+    );
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage).toBeDefined();
+    expect(sd.startImage?.role).toBe('subject');
+    expect(sd.startImage?.r2Key).toBe('uploads/p.png');
+    expect(sd.endImage).toBeUndefined();
+    expect(sd.ratio).toBe('adaptive');
+    expect(sd.resolution).toBe('1080p');
+    // Ordinal substitution: {{input:product}} → "the first image".
+    expect(sd.prompt).toBe('Animate the first image with a slow zoom in.');
+  });
+
+  it('places two subject images as first_frame + last_frame (bookend control)', () => {
+    const start = imageField('start', 'Start');
+    const end = imageField('end', 'End');
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Morph between the two reference frames smoothly.',
+    });
+    const { request } = compile(
+      makeCtx({
+        stage,
+        templateInputs: [start, end],
+        inputValues: {
+          start: imageValue('uploads/start.png'),
+          end: imageValue('uploads/end.png'),
+        },
+      }),
+    );
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage?.r2Key).toBe('uploads/start.png');
+    expect(sd.endImage?.r2Key).toBe('uploads/end.png');
+  });
+
+  it('routes admin references to referenceImages[]', () => {
+    const product = imageField('product');
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Animate {{input:product}} matching the look of {{ref:mood}}.',
+      references: [
+        { id: 'r1', key: 'mood', role: 'lighting', r2Key: 'refs/m.png', mimeType: 'image/png' },
+        { id: 'r2', key: 'style', role: 'style', r2Key: 'refs/s.png', mimeType: 'image/png' },
+      ],
+    });
+    const { request } = compile(
+      makeCtx({
+        stage,
+        templateInputs: [product],
+        inputValues: { product: imageValue() },
+      }),
+    );
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.referenceImages).toHaveLength(2);
+    expect(sd.referenceImages?.[0]!.role).toBe('reference');
+    expect(sd.referenceImages?.[0]!.roleTag).toBe('LIGHTING');
+    // Ordinal addressing means the first ref slot is index 2 (after
+    // the subject at index 1), so {{ref:mood}} → "the second image".
+    expect(sd.prompt).toBe(
+      'Animate the first image matching the look of the second image.',
+    );
+  });
+
+  it('clamps aspect ratio and resolution to capability allowlists with a warning', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-fast-260128',
+      prompt: 'A test scene.',
+      config: { aspectRatio: '7:3', resolution: '8K' },
+    });
+    const { request, warnings } = compile(makeCtx({ stage }));
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.ratio).toBeUndefined();
+    expect(sd.resolution).toBeUndefined();
+    expect(warnings.filter((w) => w.code === 'config_clamped').length).toBeGreaterThanOrEqual(2);
   });
 });
 

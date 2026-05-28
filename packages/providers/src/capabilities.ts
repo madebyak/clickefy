@@ -125,6 +125,34 @@ const KLING_FIXED_ASPECT = ['16:9'] as const;
 const KLING_DURATIONS = [5, 10] as const;
 const KLING_OMNI_DURATIONS = [3, 5, 8, 10, 15] as const;
 
+/**
+ * Seedance 2.0 (BytePlus ModelArk) constants.
+ *
+ * Aspect ratios: the API accepts six ratios + `'adaptive'`. We expose
+ * the named ratios in the admin UI; templates that want "match the
+ * input image's aspect" use `'adaptive'`.
+ *
+ * Resolutions: 480p / 720p / 1080p / 2K. 720p is the documented
+ * default and the cheapest above 480p — admin form will default here.
+ *
+ * Durations: 5 / 10s are the canonical menu values (the API technically
+ * accepts any integer 4–15, but 5 and 10 cover virtually every template
+ * pattern and keep the picker tidy).
+ *
+ * Reference limits per BytePlus docs:
+ *   - up to 9 image references per request
+ *   - up to 3 video references per request
+ *   - up to 3 audio references per request
+ *   We expose 9 in `maxReferences` (the dominant case — the admin form
+ *   widens to videos/audio in a follow-up PR; the compiler already
+ *   handles all three).
+ */
+const SEEDANCE_ASPECT_RATIOS = [
+  '16:9', '9:16', '4:3', '3:4', '21:9', '1:1', 'adaptive',
+] as const;
+const SEEDANCE_RESOLUTIONS = ['480p', '720p', '1080p', '2K'] as const;
+const SEEDANCE_DURATIONS = [5, 10] as const;
+
 export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   // ── Gemini (Nano Banana family) ─────────────────────────────────────
   'gemini-2.5-flash-image': {
@@ -288,6 +316,63 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     notes:
       'Unified text-to-video + image-to-video + multi-reference. Prompt addresses references as <<<image_1>>>, <<<image_2>>>, …',
+  },
+
+  // ── Seedance 2.0 (BytePlus ModelArk, dreamina-seedance family) ──────
+  // Video model with optional native audio generation (sfx, ambient,
+  // dialogue with lip-sync). Supports T2V, I2V, first/last frame
+  // bookends, and multimodal references (images / videos / audio).
+  // All inputs are sent via the `content[]` array on
+  // POST /api/v3/contents/generations/tasks; ordering inside the array
+  // determines first_frame vs last_frame vs reference_image when
+  // combined with the per-item `role` field.
+  //
+  // `refAddressing: 'ordinal'` because Seedance prompts naturally
+  // address images as "the first image" / "[image 1]" rather than
+  // requiring a positional `@Image1` literal. Role tags on the
+  // content array carry the structural meaning; the prompt language
+  // describes intent.
+  'dreamina-seedance-2-0-260128': {
+    provider: 'seedance',
+    modelKey: 'dreamina-seedance-2-0-260128',
+    displayName: 'Seedance 2.0 (Standard)',
+    status: 'preview',
+    kind: 'video',
+    sizing: {
+      mode: 'aspect',
+      values: SEEDANCE_ASPECT_RATIOS,
+      resolutions: SEEDANCE_RESOLUTIONS,
+    },
+    outputs: { min: 1, max: 1, default: 1 },
+    duration: { values: SEEDANCE_DURATIONS, default: 5 },
+    refAddressing: 'ordinal',
+    maxReferences: 9,
+    maxSubjects: 2, // first_frame + optional last_frame
+    maxImagesTotal: 9,
+    acceptsStartEndImage: true,
+    notes:
+      'BytePlus Seedance 2.0. Supports T2V, I2V, first/last frame, multi-reference, native audio (lip-sync). Up to 1080p / 10s. ~$0.93 per 5s at 1080p.',
+  },
+  'dreamina-seedance-2-0-fast-260128': {
+    provider: 'seedance',
+    modelKey: 'dreamina-seedance-2-0-fast-260128',
+    displayName: 'Seedance 2.0 Fast',
+    status: 'preview',
+    kind: 'video',
+    sizing: {
+      mode: 'aspect',
+      values: SEEDANCE_ASPECT_RATIOS,
+      resolutions: SEEDANCE_RESOLUTIONS,
+    },
+    outputs: { min: 1, max: 1, default: 1 },
+    duration: { values: SEEDANCE_DURATIONS, default: 5 },
+    refAddressing: 'ordinal',
+    maxReferences: 9,
+    maxSubjects: 2,
+    maxImagesTotal: 9,
+    acceptsStartEndImage: true,
+    notes:
+      'Fast tier of Seedance 2.0 — ~20% cheaper, slightly lower fidelity. Same parameter surface as Standard.',
   },
 
   // ── GPT Image 2 (forward-looking — not wired to an adapter yet) ─────

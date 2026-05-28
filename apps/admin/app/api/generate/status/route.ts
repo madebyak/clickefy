@@ -28,31 +28,56 @@ export async function GET(req: Request) {
       { status: 400 },
     );
   }
-  if (provider !== 'kling') {
+  if (provider !== 'kling' && provider !== 'seedance') {
     return NextResponse.json(
       { error: { code: 'unsupported_provider', message: `Polling is not supported for "${provider}".` } },
       { status: 400 },
     );
   }
 
-  if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
-    return NextResponse.json(
-      {
-        error: {
-          code: 'missing_credentials',
-          message: 'KLING_ACCESS_KEY / KLING_SECRET_KEY are not set in the admin environment.',
+  // Per-provider credential gating. We surface a 500 with a clear
+  // `missing_credentials` code so the admin form can render a sensible
+  // toast ("add SEEDANCE_API_KEY to .env.local") instead of a
+  // generic "poll failed".
+  if (provider === 'kling') {
+    if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'missing_credentials',
+            message: 'KLING_ACCESS_KEY / KLING_SECRET_KEY are not set in the admin environment.',
+          },
         },
-      },
-      { status: 500 },
-    );
+        { status: 500 },
+      );
+    }
+  } else {
+    // seedance
+    if (!process.env.SEEDANCE_API_KEY) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'missing_credentials',
+            message: 'SEEDANCE_API_KEY is not set in the admin environment.',
+          },
+        },
+        { status: 500 },
+      );
+    }
   }
 
   try {
-    const result = await pollAsyncTask(taskId, 'kling', variant, {
-      kling: {
-        accessKey: process.env.KLING_ACCESS_KEY,
-        secretKey: process.env.KLING_SECRET_KEY,
-      },
+    const result = await pollAsyncTask(taskId, provider, variant, {
+      kling:
+        process.env.KLING_ACCESS_KEY && process.env.KLING_SECRET_KEY
+          ? {
+              accessKey: process.env.KLING_ACCESS_KEY,
+              secretKey: process.env.KLING_SECRET_KEY,
+            }
+          : undefined,
+      seedance: process.env.SEEDANCE_API_KEY
+        ? { apiKey: process.env.SEEDANCE_API_KEY }
+        : undefined,
     });
     return NextResponse.json(result);
   } catch (err) {

@@ -37,6 +37,7 @@ export type {
   ImagePart,
   KlingCompiledRequest,
   RuntimeInputValue,
+  SeedanceCompiledRequest,
   StageOutputRef,
 } from './compile-types';
 
@@ -55,3 +56,8 @@ export {
   type KlingEnv,
   type KlingPollVariant,
 } from './adapters/kling';
+export {
+  executeSeedance,
+  pollSeedance,
+  type SeedanceEnv,
+} from './adapters/seedance';

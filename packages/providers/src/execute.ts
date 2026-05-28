@@ -19,10 +19,16 @@ import {
   type KlingEnv,
   type KlingPollVariant,
 } from './adapters/kling';
+import {
+  executeSeedance,
+  pollSeedance,
+  type SeedanceEnv,
+} from './adapters/seedance';
 
 export interface ProviderEnv {
   gemini?: GeminiEnv;
   kling?: KlingEnv;
+  seedance?: SeedanceEnv;
 }
 
 /** A single output piece returned by an adapter. */
@@ -31,7 +37,7 @@ export interface ExecuteOutput {
   /** Inline base64 image data (Gemini path). */
   base64?: string;
   mimeType?: string;
-  /** Hosted asset URL (Kling video, Cloudflare Stream once wired). */
+  /** Hosted asset URL (Kling / Seedance video, Cloudflare Stream once wired). */
   url?: string;
   durationSec?: number;
 }
@@ -49,13 +55,18 @@ export type ExecuteResult =
        * forward; the playground passes it back as a query param.
        */
       variant: 'image2video' | 'omni';
+    }
+  | {
+      status: 'pending';
+      taskId: string;
+      provider: 'seedance';
     };
 
 /**
  * Run a single compiled stage. Synchronous-completing providers
  * (Gemini, Imagen) return `{ status: 'completed', outputs }`
- * directly; async providers (Kling) return a `taskId` the caller
- * polls via {@link pollAsyncTask}.
+ * directly; async providers (Kling, Seedance) return a `taskId` the
+ * caller polls via {@link pollAsyncTask}.
  */
 export async function executeStage(
   request: CompiledRequest,
@@ -73,6 +84,12 @@ export async function executeStage(
     }
     return executeKling(request, env.kling);
   }
+  if (request.provider === 'seedance') {
+    if (!env.seedance) {
+      throw new Error('executeStage(): missing `env.seedance` for a Seedance request.');
+    }
+    return executeSeedance(request, env.seedance);
+  }
   throw new Error(
     `executeStage(): no adapter for provider "${request.provider}". Add one in packages/providers/src/adapters/.`,
   );
@@ -80,12 +97,14 @@ export async function executeStage(
 
 /**
  * Poll an async task previously started by {@link executeStage}.
- * Currently only Kling produces async results; the variant tells the
- * adapter which Kling endpoint to hit (image2video vs omni-video).
+ *
+ * For Kling, the `variant` arg picks between the image2video and
+ * omni-video poll endpoints. For Seedance, `variant` is ignored
+ * (there's only one polling endpoint).
  */
 export async function pollAsyncTask(
   taskId: string,
-  provider: 'kling',
+  provider: 'kling' | 'seedance',
   variant: KlingPollVariant,
   env: ProviderEnv,
 ): Promise<ExecuteResult> {
@@ -94,6 +113,12 @@ export async function pollAsyncTask(
       throw new Error('pollAsyncTask(): missing `env.kling`.');
     }
     return pollKling(taskId, variant, env.kling);
+  }
+  if (provider === 'seedance') {
+    if (!env.seedance) {
+      throw new Error('pollAsyncTask(): missing `env.seedance`.');
+    }
+    return pollSeedance(taskId, env.seedance);
   }
   throw new Error(`pollAsyncTask(): unsupported provider "${provider}".`);
 }

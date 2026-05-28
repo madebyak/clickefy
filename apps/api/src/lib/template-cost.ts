@@ -19,7 +19,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { providerModels, type Db } from '@clickfy/db';
 
 interface StageRef {
-  provider: 'gemini' | 'kling' | 'veo' | string;
+  provider: 'gemini' | 'kling' | 'veo' | 'seedance' | string;
   model: string;
 }
 
@@ -61,7 +61,10 @@ export async function computeTemplateCost(
     .from(providerModels)
     .where(
       and(
-        inArray(providerModels.provider, providers as ('gemini' | 'kling' | 'veo')[]),
+        inArray(
+          providerModels.provider,
+          providers as ('gemini' | 'kling' | 'veo' | 'seedance')[],
+        ),
       ),
     );
 

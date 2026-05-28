@@ -31,6 +31,11 @@ custom_domain = true
 #   - CLERK_SECRET_KEY          (Clerk sk_live_…, server-only)
 #   - CLERK_JWT_KEY             (PEM public key for offline JWT verification)
 #   - REVENUECAT_WEBHOOK_SECRET (filled when subscriptions go live)
+#   - SEEDANCE_API_KEY          (BytePlus Bearer ARK_API_KEY; powers
+#                                the admin Playground's Seedance
+#                                stages. Production job pipeline reads
+#                                this from the Trigger.dev jobs-worker
+#                                env, not the Worker.)
 #
 # Plain (non-secret) vars below.
 [vars]

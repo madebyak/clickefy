@@ -96,10 +96,17 @@ const COST_PER_CALL_USD: Record<string, string> = {
   'kling/kling-v2-6': '0.4900',
   'kling/kling-v2-master': '1.4000',
   'kling/kling-v3-omni': '0.4900',
+
+  // Seedance 2.0 (BytePlus ModelArk) — published reference prices
+  // for 5s clips at 720p. 1080p is ~2x; 2K higher still. These are
+  // operator-facing reference values only — what the user pays in
+  // credits is set via the admin "Model pricing" page.
+  'seedance/dreamina-seedance-2-0-260128': '0.4700',
+  'seedance/dreamina-seedance-2-0-fast-260128': '0.3700',
 };
 
 interface ModelRow {
-  provider: 'gemini' | 'kling' | 'veo';
+  provider: 'gemini' | 'kling' | 'veo' | 'seedance';
   modelKey: string;
   displayName: string;
   status: 'active' | 'preview' | 'deprecated';
@@ -123,7 +130,7 @@ function buildRows(): ModelRow[] {
     const capabilitiesJson = JSON.parse(JSON.stringify(cap)) as Record<string, unknown>;
 
     rows.push({
-      provider: cap.provider as 'gemini' | 'kling' | 'veo',
+      provider: cap.provider as 'gemini' | 'kling' | 'veo' | 'seedance',
       modelKey: cap.modelKey,
       displayName: cap.displayName,
       status: cap.status,

@@ -219,7 +219,13 @@ export const generateJob = task({
       }
 
       if (result.status === 'pending') {
-        result = await waitForAsync(result.taskId, result.variant, providerEnv, {
+        // Both Kling and Seedance are async; the variant only matters
+        // for Kling's two endpoint shapes. Seedance has a single
+        // poll endpoint, so we pass a sentinel value the dispatcher
+        // ignores.
+        const pendingProvider = result.provider;
+        const variant = pendingProvider === 'kling' ? result.variant : 'image2video';
+        result = await waitForAsync(result.taskId, pendingProvider, variant, providerEnv, {
           jobId,
           stageNumber,
           totalStages,
@@ -381,17 +387,18 @@ function emptyProgress() {
  * (no "Calling Gemini 2.5 Flash Image API" — just "Generating image").
  */
 function stageMessage(
-  provider: 'gemini' | 'kling',
+  provider: 'gemini' | 'kling' | 'seedance',
   _model: string,
   stage: number,
   total: number,
 ): string {
+  const isVideo = provider === 'kling' || provider === 'seedance';
   if (total > 1) {
-    return provider === 'kling'
+    return isVideo
       ? `Animating (step ${stage} of ${total})`
       : `Generating image (step ${stage} of ${total})`;
   }
-  return provider === 'kling' ? 'Generating video' : 'Generating image';
+  return isVideo ? 'Generating video' : 'Generating image';
 }
 
 function buildProviderEnv(): ProviderEnv {
@@ -401,6 +408,7 @@ function buildProviderEnv(): ProviderEnv {
       env.KLING_ACCESS_KEY && env.KLING_SECRET_KEY
         ? { accessKey: env.KLING_ACCESS_KEY, secretKey: env.KLING_SECRET_KEY }
         : undefined,
+    seedance: env.SEEDANCE_API_KEY ? { apiKey: env.SEEDANCE_API_KEY } : undefined,
   };
 }
 
@@ -414,6 +422,7 @@ function buildProviderEnv(): ProviderEnv {
  */
 async function waitForAsync(
   taskId: string,
+  provider: 'kling' | 'seedance',
   variant: 'image2video' | 'omni',
   providerEnv: ProviderEnv,
   ctx: { jobId: string; stageNumber: number; totalStages: number },
@@ -434,14 +443,20 @@ async function waitForAsync(
     const delayMs = elapsed < 30 ? 2_000 : 5_000;
     await new Promise((r) => setTimeout(r, delayMs));
 
-    const result = await pollAsyncTask(taskId, 'kling', variant, providerEnv);
+    const result = await pollAsyncTask(taskId, provider, variant, providerEnv);
     if (result.status === 'completed') {
-      logger.info('generate-job:async-completed', { taskId, attempts: attempt });
+      logger.info('generate-job:async-completed', { taskId, provider, attempts: attempt });
       return result;
     }
   }
 
-  logger.error('generate-job:async-timeout', { taskId });
+  logger.error('generate-job:async-timeout', { taskId, provider });
+  // Return a synthetic pending result so the caller's `if (result.status !==
+  // 'completed')` branch trips and converts this to a `provider_timeout`
+  // failure. The variant only matters for Kling; for Seedance it's ignored.
+  if (provider === 'seedance') {
+    return { status: 'pending', taskId, provider: 'seedance' };
+  }
   return { status: 'pending', taskId, provider: 'kling', variant };
 }
 

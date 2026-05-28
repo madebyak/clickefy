@@ -68,13 +68,35 @@ const klingModels = [
   { value: 'kling-v2-master', label: 'Kling V2 Master' },
 ];
 
-/** Admin only exposes gemini & kling for now; Phase 4 may add veo. */
-type AdminProvider = 'gemini' | 'kling';
+const seedanceModels = [
+  { value: 'dreamina-seedance-2-0-260128', label: 'Seedance 2.0 (Standard)' },
+  { value: 'dreamina-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast' },
+];
+
+type AdminProvider = 'gemini' | 'kling' | 'seedance';
 
 const providerConfig: Record<AdminProvider, { label: string; icon: typeof Sparkles; color: string; bgColor: string; borderColor: string }> = {
   gemini: { label: 'Google Gemini', icon: Sparkles, color: 'text-blue-400', bgColor: 'bg-blue-400/10', borderColor: 'border-blue-400/20' },
   kling: { label: 'Kling AI', icon: Film, color: 'text-purple-400', bgColor: 'bg-purple-400/10', borderColor: 'border-purple-400/20' },
+  seedance: { label: 'Seedance 2.0', icon: Film, color: 'text-orange-400', bgColor: 'bg-orange-400/10', borderColor: 'border-orange-400/20' },
 };
+
+/**
+ * Default model picked when an admin switches a stage to a given provider.
+ * Mirrors `geminiModels[0]` / `klingModels[0]` / `seedanceModels[0]` so the
+ * onValueChange handler doesn't have to inline the literal strings.
+ */
+function defaultModelFor(provider: AdminProvider): string {
+  if (provider === 'gemini') return 'gemini-2.5-flash-image';
+  if (provider === 'kling') return 'kling-v2-6';
+  return 'dreamina-seedance-2-0-fast-260128';
+}
+
+function modelsFor(provider: AdminProvider) {
+  if (provider === 'gemini') return geminiModels;
+  if (provider === 'kling') return klingModels;
+  return seedanceModels;
+}
 
 const referenceRoles: { value: ReferenceImageRole; label: string; icon: typeof Palette }[] = [
   { value: 'style', label: 'Style', icon: Palette },
@@ -389,12 +411,13 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                             <Label>Provider</Label>
                             <Select
                               value={stage.provider}
-                              onValueChange={(value) =>
+                              onValueChange={(value) => {
+                                const nextProvider = (value || 'gemini') as AdminProvider;
                                 handleUpdateStage(stage.id, {
-                                  provider: (value || 'gemini') as 'gemini' | 'kling',
-                                  model: value === 'gemini' ? 'gemini-2.5-flash-image' : 'kling-v2-6',
-                                })
-                              }
+                                  provider: nextProvider,
+                                  model: defaultModelFor(nextProvider),
+                                });
+                              }}
                             >
                               <SelectTrigger className="w-full">
                                 <SelectValue />
@@ -412,6 +435,12 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                     Kling AI
                                   </div>
                                 </SelectItem>
+                                <SelectItem value="seedance">
+                                  <div className="flex items-center gap-2">
+                                    <Film className="h-3.5 w-3.5 text-orange-400" />
+                                    Seedance 2.0
+                                  </div>
+                                </SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -425,7 +454,7 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {(stage.provider === 'gemini' ? geminiModels : klingModels).map((m) => (
+                                {modelsFor(stage.provider as AdminProvider).map((m) => (
                                   <SelectItem key={m.value} value={m.value}>
                                     {m.label}
                                   </SelectItem>
@@ -447,8 +476,11 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                           stages={stages}
                         />
 
-                        {/* Reference Images */}
-                        {stage.provider === 'gemini' && (
+                        {/* Reference Images — exposed for any model that accepts them.
+                             Drives the visibility off the capability registry so adding
+                             a new image-aware provider (Seedance, future Kling Omni,
+                             etc.) automatically gets the uploader. */}
+                        {(findCapabilities(stage.model)?.maxReferences ?? 0) > 0 && (
                           <>
                             <Separator />
                             <div className="space-y-3">
@@ -456,10 +488,10 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                 <div>
                                   <Label className="text-sm font-medium">Reference Images</Label>
                                   <p className="text-xs text-muted-foreground mt-0.5">
-                                    Upload style, composition, or scene references. These are labeled separately from user inputs so Gemini knows which is which.
+                                    Upload style, composition, or scene references. These are labeled separately from user inputs so the model knows which is which.
                                   </p>
                                 </div>
-                                {stage.references.length < 5 && (
+                                {stage.references.length < (findCapabilities(stage.model)?.maxReferences ?? 5) && (
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -711,7 +743,7 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                               </div>
                             )}
 
-                            {stage.provider === 'kling' && (
+                            {(stage.provider === 'kling' || stage.provider === 'seedance') && (
                               <div className="space-y-2">
                                 <Label className="text-xs text-muted-foreground">Duration (sec)</Label>
                                 <Select
@@ -729,6 +761,92 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                   </SelectContent>
                                 </Select>
                               </div>
+                            )}
+
+                            {/* Seedance: resolution picker. Defaults to 720p per
+                                spec — the cheapest tier above 480p, and the
+                                sweet spot for cost/quality. Higher tiers escalate
+                                billing meaningfully (1080p ≈ 2× 720p; 2K higher). */}
+                            {stage.provider === 'seedance' && (() => {
+                              const caps = findCapabilities(stage.model);
+                              const allowed =
+                                caps?.sizing.mode === 'aspect' ? caps.sizing.resolutions ?? [] : [];
+                              if (allowed.length === 0) return null;
+                              const cfgRes = (stage.config.resolution as string | undefined);
+                              const selected = cfgRes && allowed.includes(cfgRes) ? cfgRes : '720p';
+                              return (
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Resolution</Label>
+                                  <Select
+                                    value={selected}
+                                    onValueChange={(value) =>
+                                      handleUpdateStage(stage.id, {
+                                        config: { ...stage.config, resolution: value || '720p' },
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {allowed.map((r) => (
+                                        <SelectItem key={r} value={r}>{r}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              );
+                            })()}
+
+                            {stage.provider === 'seedance' && (
+                              <>
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Generate Audio</Label>
+                                  <Select
+                                    value={
+                                      (stage.config.generateAudio as boolean | undefined) === true
+                                        ? 'on'
+                                        : 'off'
+                                    }
+                                    onValueChange={(value) =>
+                                      handleUpdateStage(stage.id, {
+                                        config: { ...stage.config, generateAudio: value === 'on' },
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="off">Off</SelectItem>
+                                      <SelectItem value="on">On (sfx + lip-sync)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Camera Movement</Label>
+                                  <Select
+                                    value={
+                                      (stage.config.cameraFixed as boolean | undefined) === true
+                                        ? 'fixed'
+                                        : 'free'
+                                    }
+                                    onValueChange={(value) =>
+                                      handleUpdateStage(stage.id, {
+                                        config: { ...stage.config, cameraFixed: value === 'fixed' },
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="free">Free (model decides)</SelectItem>
+                                      <SelectItem value="fixed">Fixed (no pan/zoom)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </>
                             )}
 
                             <div className="space-y-2">

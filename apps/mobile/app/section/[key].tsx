@@ -10,22 +10,22 @@
  *               render the header without a network round-trip. Not
  *               trusted (user-controlled URL) — only used for display.
  *
- * Visual pattern matches `/search` results: 2-column FlashList grid
- * with infinite scroll. We deliberately reuse the same card / spacing
- * primitives so a user crossing between search and section pages
- * doesn't perceive layout drift.
+ * Visual pattern: 2-column FlashList grid using the same `<TemplateCard />`
+ * as the home rails so kind chips, credit badges, and video autoplay
+ * all match — users crossing between the home and the See All page
+ * shouldn't perceive a card-style change.
  */
 
-import { Box, Pressable, Skeleton, Stack, Text, useTheme } from '@clickfy/ui';
+import { Box, Pressable, Skeleton, Text, useTheme } from '@clickfy/ui';
 import type { CatalogTemplate } from '@clickfy/sdk';
 import { FlashList } from '@shopify/flash-list';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { TemplateCard } from '@/components/home/TemplateCard';
 import { Icon } from '@/components/ui/Icon';
 import { SEARCH_QUERY } from '@/lib/query-config';
 import { resolveSectionSpec } from '@/lib/section-config';
@@ -80,7 +80,7 @@ export default function SectionScreen() {
           numColumns={2}
           renderItem={({ item }) => (
             <View style={{ paddingHorizontal: 7 }}>
-              <ResultCard
+              <TemplateCard
                 template={item}
                 onPress={() => router.push(`/template/${item.id}`)}
               />
@@ -147,48 +147,7 @@ function Header({ title, onBack }: { title: string; onBack: () => void }) {
   );
 }
 
-// ─── Cards / skeletons / empty states ──────────────────────────────
-//
-// Lifted from /search.tsx so the two list surfaces stay visually
-// identical. Promote to `components/templates/` if a third screen
-// needs them.
-
-function ResultCard({
-  template,
-  onPress,
-}: {
-  template: CatalogTemplate;
-  onPress: () => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Pressable onPress={onPress} haptic="light" pressedOpacity={0.92}>
-      <Stack gap="sm">
-        <View
-          style={{
-            aspectRatio: 4 / 5,
-            borderRadius: 18,
-            overflow: 'hidden',
-            backgroundColor: colors.surfaceMuted,
-          }}
-        >
-          <Image
-            source={template.coverImage}
-            style={{ width: '100%', height: '100%' }}
-            contentFit="cover"
-            transition={150}
-          />
-        </View>
-        <Text variant="bodySemi" color="ink" numberOfLines={1}>
-          {template.title}
-        </Text>
-        <Text variant="caption" color="inkMuted">
-          {template.credits} credits
-        </Text>
-      </Stack>
-    </Pressable>
-  );
-}
+// ─── Skeletons / empty states ──────────────────────────────────────
 
 function RowGap() {
   return <View style={{ height: 14 }} />;
@@ -201,7 +160,6 @@ function RowSkeleton() {
         <View key={i} style={{ flex: 1, gap: 8 }}>
           <Skeleton height={200} radius={18} />
           <Skeleton height={14} width="80%" />
-          <Skeleton height={12} width="55%" />
         </View>
       ))}
     </View>
@@ -219,18 +177,12 @@ function ResultsSkeleton() {
 }
 
 function EmptyState() {
-  const { colors } = useTheme();
   return (
-    <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 }}>
+    <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 6 }}>
       <Text variant="bodySemi" color="ink" align="center">
         Nothing here yet
       </Text>
-      <Text
-        variant="caption"
-        color="inkMuted"
-        align="center"
-        style={{ marginTop: 6, color: colors.inkMuted }}
-      >
+      <Text variant="caption" color="inkMuted" align="center">
         Check back soon — new templates land here as they go live.
       </Text>
     </View>
@@ -239,11 +191,11 @@ function EmptyState() {
 
 function UnknownSection() {
   return (
-    <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 }}>
+    <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 6 }}>
       <Text variant="bodySemi" color="ink" align="center">
         Section not found
       </Text>
-      <Text variant="caption" color="inkMuted" align="center" style={{ marginTop: 6 }}>
+      <Text variant="caption" color="inkMuted" align="center">
         That link is no longer valid. Pull down or go back to refresh.
       </Text>
     </View>

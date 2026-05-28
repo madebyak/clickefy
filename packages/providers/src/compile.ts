@@ -816,41 +816,74 @@ function extractNumberOfOutputs(
 /**
  * Compile a Seedance 2.0 stage.
  *
- * Layout decisions:
- *   - Subjects (stage outputs first, then user inputs) populate
- *     `startImage` and `endImage` when the model accepts a bookend.
- *     Even if only one subject is present, it goes to `startImage`
- *     (Seedance treats a single image as first_frame i.e. I2V).
- *   - Admin references all land in `referenceImages[]` regardless of
- *     their `role` tag (style / scene / lighting). On the wire they
- *     become `{ type: 'image_url', role: 'reference_image' }` entries.
- *   - Token substitution uses ordinal addressing ("the first image")
- *     identical to Gemini; the role tags on the content[] array carry
- *     structural meaning so the prompt doesn't have to.
+ * BytePlus Seedance 2.0 exposes four mutually-exclusive generation
+ * modes; the wire shape (`content[]` array roles) is the contract:
  *
- * Multimodal note: `assetKind === 'video' | 'audio'` references are
- * passed through to `referenceImages[]` (poorly named, but the
- * structure is identical — the adapter inspects `mimeType` to decide
- * which `type` to emit on the wire: `image_url`, `video_url`, or
- * `audio_url`).
+ *   • text-only         — no media parts
+ *   • first-frame I2V   — one `image_url` with role `first_frame`
+ *   • first+last frame  — two `image_url`s, roles `first_frame` +
+ *                         `last_frame`
+ *   • multimodal ref    — N `image_url`s with role `reference_image`,
+ *                         + reference_video + reference_audio
+ *
+ * BytePlus's own docs explicitly forbid mixing modes in one task. We
+ * disambiguate via `stage.config.seedanceMode` (admin-picked), with
+ * `inferLegacyMode()` as the fallback for templates written before the
+ * mode picker landed. Each branch resolves its own slot bindings and
+ * deliberately ignores data belonging to the other mode (with a warning).
+ *
+ * Text-only is reachable from either mode by leaving every slot empty —
+ * we don't need (and don't expose) a third 'text' option.
  */
-function compileSeedance(
+
+/**
+ * Resolve a single `SeedanceSlotBinding` to the `ImagePart` shape the
+ * adapter understands. Returns `undefined` (with a warning) when the
+ * binding cannot be satisfied at compile time — e.g. the bound user
+ * input wasn't supplied for this run, or the referenced stage hasn't
+ * produced an output yet. The caller decides whether a missing slot
+ * is fatal (typically: no, drop it and continue).
+ */
+function resolveSeedanceSlot(
+  binding: import('@clickfy/types').SeedanceSlotBinding,
   ctx: CompileContext,
-  tokens: ParsedToken[],
+  index: number,
+  assetKind: 'image' | 'video' | 'audio',
   warnings: CompileWarning[],
-): CompileResult {
-  const { stage, capabilities } = ctx;
-
-  // Subjects (stage outputs → user inputs) up to maxSubjects.
-  const subjects: ImagePart[] = [];
-  let idx = 0;
-
-  for (const so of ctx.previousOutputs) {
-    if (so.kind !== 'image' && so.kind !== 'video') continue;
-    if (subjects.length >= capabilities.maxSubjects) break;
-    idx += 1;
-    subjects.push({
-      index: idx,
+): ImagePart | undefined {
+  if (binding.kind === 'user_input') {
+    const field = ctx.templateInputs.find((f) => f.fieldKey === binding.fieldKey);
+    const value = ctx.inputValues[binding.fieldKey];
+    if (!value || (value.kind !== 'image' && value.kind !== 'video')) {
+      warnings.push({
+        code: 'unknown_variable',
+        message: `Seedance slot bound to user input "${binding.fieldKey}" — no usable value provided.`,
+        token: binding.fieldKey,
+      });
+      return undefined;
+    }
+    return {
+      index,
+      role: 'subject',
+      roleTag: 'USER_INPUT',
+      displayLabel: field?.label || binding.fieldKey,
+      mimeType: value.mimeType,
+      bytes: value.bytes,
+      r2Key: value.r2Key,
+      url: value.url,
+    };
+  }
+  if (binding.kind === 'stage_output') {
+    const so = ctx.previousOutputs.find((o) => o.stageIndex === binding.stageIndex);
+    if (!so) {
+      warnings.push({
+        code: 'stage_output_missing',
+        message: `Seedance slot bound to stage ${binding.stageIndex} output — that stage has not produced an output yet.`,
+      });
+      return undefined;
+    }
+    return {
+      index,
       role: 'stage-output',
       roleTag: 'STAGE_OUTPUT',
       displayLabel: `Stage ${so.stageIndex} output`,
@@ -858,62 +891,257 @@ function compileSeedance(
       bytes: so.bytes,
       r2Key: so.r2Key,
       url: so.url,
-    });
+    };
   }
-  for (const field of ctx.templateInputs) {
-    const v = ctx.inputValues[field.fieldKey];
-    if (!v || (v.kind !== 'image' && v.kind !== 'video')) continue;
-    if (subjects.length >= capabilities.maxSubjects) {
-      warnings.push({
-        code: 'config_clamped',
-        message: `Seedance accepts ${capabilities.maxSubjects} subject image(s); "${field.fieldKey}" dropped.`,
-      });
-      break;
-    }
-    idx += 1;
-    subjects.push({
-      index: idx,
-      role: 'subject',
-      roleTag: 'USER_INPUT',
-      displayLabel: field.label || field.fieldKey,
-      mimeType: v.mimeType,
-      bytes: v.bytes,
-      r2Key: v.r2Key,
-      url: v.url,
-    });
+  // admin_asset — only path for audio refs in v1
+  const mimeFallback =
+    assetKind === 'video'
+      ? 'video/mp4'
+      : assetKind === 'audio'
+        ? 'audio/mpeg'
+        : 'image/png';
+  return {
+    index,
+    role: 'reference',
+    roleTag: 'ADMIN_ASSET',
+    displayLabel: '',
+    mimeType: mimeFallback,
+    r2Key: binding.r2Key,
+  };
+}
+
+/**
+ * Pick the right mode for templates that pre-date the explicit
+ * `seedanceMode` config key:
+ *
+ *   • admin references present, no usable user-image subjects → reference
+ *   • admin references present AND user-image subjects present → reference
+ *     (mixed mode is the historical latent-bug case; reference wins
+ *     because that's what most pre-PR templates were trying to do)
+ *   • otherwise → first_last_frame
+ *
+ * Returns the inferred mode plus an optional deprecation warning when
+ * the legacy state was ambiguous, so the admin sees a hint to migrate.
+ */
+function inferLegacySeedanceMode(
+  stage: GenerationStage,
+  ctx: CompileContext,
+): { mode: 'first_last_frame' | 'reference'; warning?: CompileWarning } {
+  const hasAdminRefs = stage.references.length > 0;
+  const hasSubjectInputs =
+    ctx.templateInputs.some((f) => f.type === 'image' || f.type === 'video') ||
+    ctx.previousOutputs.some((o) => o.kind === 'image' || o.kind === 'video');
+
+  if (hasAdminRefs && hasSubjectInputs) {
+    return {
+      mode: 'reference',
+      warning: {
+        code: 'deprecated_syntax',
+        message:
+          'Seedance stage has both admin references and image/video inputs; defaulting to "reference" mode. Pick an explicit mode in the editor to silence this.',
+      },
+    };
+  }
+  if (hasAdminRefs) return { mode: 'reference' };
+  return { mode: 'first_last_frame' };
+}
+
+function compileSeedance(
+  ctx: CompileContext,
+  tokens: ParsedToken[],
+  warnings: CompileWarning[],
+): CompileResult {
+  const { stage, capabilities } = ctx;
+  const cfg = stage.config as import('@clickfy/types').SeedanceStageConfig;
+
+  // ── Pick generation mode ─────────────────────────────────────────
+  let mode: 'first_last_frame' | 'reference';
+  if (cfg.seedanceMode === 'first_last_frame' || cfg.seedanceMode === 'reference') {
+    mode = cfg.seedanceMode;
+  } else {
+    const inferred = inferLegacySeedanceMode(stage, ctx);
+    mode = inferred.mode;
+    if (inferred.warning) warnings.push(inferred.warning);
   }
 
-  // References — every admin-uploaded ref becomes a reference_image
-  // on the wire, regardless of `role` (which we keep for prompt text).
+  // ── Resolve slots per mode ───────────────────────────────────────
+  let startImage: ImagePart | undefined;
+  let endImage: ImagePart | undefined;
   const refs: ImagePart[] = [];
-  for (const ref of stage.references) {
-    if (refs.length + subjects.length >= capabilities.maxImagesTotal) {
-      warnings.push({
-        code: 'config_clamped',
-        message: `Seedance accepts ${capabilities.maxImagesTotal} images total; "${ref.key}" dropped.`,
-      });
-      break;
-    }
-    if (!ref.r2Key && !ref.base64) {
+
+  if (mode === 'first_last_frame') {
+    // Mode-conflict guard: warn (but don't crash) if legacy admin refs
+    // are present in a first/last stage — they'd violate BytePlus's
+    // mode-exclusivity rule. We drop them on the wire and ask the
+    // admin to migrate (either move to reference mode, or remove the
+    // refs).
+    if (stage.references.length > 0) {
       warnings.push({
         code: 'reference_dropped',
-        message: `Reference "${ref.key}" has no r2Key or base64; skipped.`,
+        message: `Seedance stage is in First & Last Frame mode; ${stage.references.length} admin reference(s) ignored to keep the request valid.`,
       });
-      continue;
     }
-    idx += 1;
-    refs.push({
-      index: idx,
-      role: 'reference',
-      roleTag: ref.role.toUpperCase(),
-      displayLabel: ref.label ?? '',
-      mimeType: ref.mimeType ?? 'image/png',
-      bytes: ref.base64 ? base64ToBytes(ref.base64) : undefined,
-      r2Key: ref.r2Key,
-    });
+
+    const explicitSlots = cfg.frameSlots;
+    if (explicitSlots) {
+      let idx = 0;
+      if (explicitSlots.firstFrame) {
+        idx += 1;
+        startImage = resolveSeedanceSlot(explicitSlots.firstFrame, ctx, idx, 'image', warnings);
+      }
+      if (explicitSlots.lastFrame) {
+        if (!capabilities.acceptsStartEndImage) {
+          warnings.push({
+            code: 'config_clamped',
+            message: `${stage.model} does not accept a last frame; lastFrame slot dropped.`,
+          });
+        } else {
+          idx += 1;
+          endImage = resolveSeedanceSlot(explicitSlots.lastFrame, ctx, idx, 'image', warnings);
+        }
+      }
+    } else {
+      // Legacy auto-bind: when the admin hasn't picked a mode yet
+      // (no `seedanceMode` config), preserve the pre-PR behavior of
+      // auto-populating firstFrame (and optional lastFrame) from the
+      // first available subjects — stage outputs win over user inputs,
+      // matching the orchestrator's input-resolver ordering.
+      const subjects: ImagePart[] = [];
+      let idx = 0;
+      for (const so of ctx.previousOutputs) {
+        if (so.kind !== 'image' && so.kind !== 'video') continue;
+        if (subjects.length >= capabilities.maxSubjects) break;
+        idx += 1;
+        subjects.push({
+          index: idx,
+          role: 'stage-output',
+          roleTag: 'STAGE_OUTPUT',
+          displayLabel: `Stage ${so.stageIndex} output`,
+          mimeType: so.mimeType,
+          bytes: so.bytes,
+          r2Key: so.r2Key,
+          url: so.url,
+        });
+      }
+      for (const field of ctx.templateInputs) {
+        const v = ctx.inputValues[field.fieldKey];
+        if (!v || (v.kind !== 'image' && v.kind !== 'video')) continue;
+        if (subjects.length >= capabilities.maxSubjects) break;
+        idx += 1;
+        subjects.push({
+          index: idx,
+          role: 'subject',
+          roleTag: 'USER_INPUT',
+          displayLabel: field.label || field.fieldKey,
+          mimeType: v.mimeType,
+          bytes: v.bytes,
+          r2Key: v.r2Key,
+          url: v.url,
+        });
+      }
+      startImage = subjects[0];
+      endImage = capabilities.acceptsStartEndImage ? subjects[1] : undefined;
+    }
+  } else {
+    // reference mode — also guard against legacy mixed shape
+    if (cfg.frameSlots?.firstFrame || cfg.frameSlots?.lastFrame) {
+      warnings.push({
+        code: 'reference_dropped',
+        message:
+          'Seedance stage is in Reference mode; frame slots ignored to keep the request valid.',
+      });
+    }
+
+    const slots = cfg.referenceSlots ?? [];
+
+    // Per-asset-kind limits enforced by BytePlus.
+    const limits: Record<'image' | 'video' | 'audio', number> = {
+      image: capabilities.maxReferences ?? 9,
+      video: 3,
+      audio: 3,
+    };
+    const counts: Record<'image' | 'video' | 'audio', number> = {
+      image: 0,
+      video: 0,
+      audio: 0,
+    };
+
+    let idx = 0;
+    for (const slot of slots) {
+      if (counts[slot.assetKind] >= limits[slot.assetKind]) {
+        warnings.push({
+          code: 'config_clamped',
+          message: `Seedance accepts at most ${limits[slot.assetKind]} ${slot.assetKind} reference(s); "${slot.id}" dropped.`,
+        });
+        continue;
+      }
+      idx += 1;
+      const part = resolveSeedanceSlot(slot.source, ctx, idx, slot.assetKind, warnings);
+      if (!part) continue; // resolver already pushed a warning
+      // Stamp the assetKind onto the mimeType when missing/wrong so the
+      // adapter routes correctly. admin_asset bindings carry only an
+      // r2Key — we infer mime from assetKind here.
+      if (slot.source.kind === 'admin_asset') {
+        part.mimeType =
+          slot.assetKind === 'video'
+            ? part.mimeType.startsWith('video/')
+              ? part.mimeType
+              : 'video/mp4'
+            : slot.assetKind === 'audio'
+              ? part.mimeType.startsWith('audio/')
+                ? part.mimeType
+                : 'audio/mpeg'
+              : part.mimeType.startsWith('image/')
+                ? part.mimeType
+                : 'image/png';
+      }
+      refs.push(part);
+      counts[slot.assetKind] += 1;
+    }
+
+    // Legacy admin references (stage.references[]) — when the admin
+    // hasn't migrated to referenceSlots yet, treat each as an image
+    // reference. Same per-kind limits apply.
+    if (slots.length === 0) {
+      let legacyIdx = idx;
+      for (const ref of stage.references) {
+        if (!ref.r2Key && !ref.base64) {
+          warnings.push({
+            code: 'reference_dropped',
+            message: `Reference "${ref.key}" has no r2Key or base64; skipped.`,
+          });
+          continue;
+        }
+        const assetKind = (ref.assetKind ?? 'image') as 'image' | 'video' | 'audio';
+        if (counts[assetKind] >= limits[assetKind]) {
+          warnings.push({
+            code: 'config_clamped',
+            message: `Seedance accepts at most ${limits[assetKind]} ${assetKind} reference(s); "${ref.key}" dropped.`,
+          });
+          continue;
+        }
+        legacyIdx += 1;
+        refs.push({
+          index: legacyIdx,
+          role: 'reference',
+          roleTag: ref.role.toUpperCase(),
+          displayLabel: ref.label ?? '',
+          mimeType: ref.mimeType ?? (assetKind === 'video' ? 'video/mp4' : assetKind === 'audio' ? 'audio/mpeg' : 'image/png'),
+          bytes: ref.base64 ? base64ToBytes(ref.base64) : undefined,
+          r2Key: ref.r2Key,
+        });
+        counts[assetKind] += 1;
+      }
+    }
   }
 
-  const imageParts: ImagePart[] = [...subjects, ...refs];
+  // Token substitution — prompts are addressed ordinally for Seedance
+  // regardless of mode (role tags on the wire carry structural meaning).
+  const imageParts: ImagePart[] = [
+    ...(startImage ? [startImage] : []),
+    ...(endImage ? [endImage] : []),
+    ...refs,
+  ];
 
   const prompt = substituteTokens({
     prompt: stage.prompt,
@@ -923,8 +1151,6 @@ function compileSeedance(
     references: stage.references,
     previousOutputs: ctx.previousOutputs,
     imageParts,
-    // Seedance prompts use natural ordinal language; role tags on
-    // the content array do the structural work.
     style: 'ordinal',
     warnings,
   });
@@ -994,8 +1220,8 @@ function compileSeedance(
     cameraFixed,
     seed,
     negativePrompt,
-    startImage: subjects[0],
-    endImage: capabilities.acceptsStartEndImage ? subjects[1] : undefined,
+    startImage,
+    endImage,
     referenceImages: refs.length > 0 ? refs : undefined,
   };
   return { request, warnings };

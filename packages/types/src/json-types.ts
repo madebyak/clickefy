@@ -268,6 +268,68 @@ export interface TemplateGeneration {
   stages: GenerationStage[];
 }
 
+// ── Seedance-specific stage.config shape ────────────────────────────
+//
+// `stage.config` is generic `Record<string, unknown>` because every
+// provider's parameter surface is different. These interfaces document
+// the Seedance subset and are imported by the admin form, the compiler,
+// and the docs — they're NOT enforced by Zod at the route layer so old
+// templates without these keys keep working under the legacy inferrer.
+
+/**
+ * Where a Seedance image / video / audio slot pulls its bytes from.
+ *
+ *   - `user_input`   — bound to a `TemplateInputField.fieldKey`; the
+ *                      mobile picker collects the file at run time.
+ *   - `stage_output` — bound to a prior stage's output (1-indexed),
+ *                      enabling Nano Banana → Seedance chaining.
+ *   - `admin_asset`  — baked into the template at edit time. The only
+ *                      kind allowed for audio refs in v1 (mobile has
+ *                      no audio picker yet).
+ */
+export type SeedanceSlotBinding =
+  | { kind: 'user_input'; fieldKey: string }
+  | { kind: 'stage_output'; stageIndex: number }
+  | { kind: 'admin_asset'; r2Key: string };
+
+/** First / last frame bindings for the `first_last_frame` mode. */
+export interface SeedanceFrameSlots {
+  /** Optional — when absent the request is text-only. */
+  firstFrame?: SeedanceSlotBinding;
+  /** Optional + gated by `capabilities.acceptsStartEndImage`. */
+  lastFrame?: SeedanceSlotBinding;
+}
+
+/** One slot in the `reference` mode. */
+export interface SeedanceReferenceSlot {
+  id: string;
+  assetKind: 'image' | 'video' | 'audio';
+  source: SeedanceSlotBinding;
+}
+
+/**
+ * Optional Seedance-specific fields the admin form writes into
+ * `stage.config`. None of these are required — the compiler's
+ * `inferLegacyMode()` shim handles templates that pre-date this PR.
+ */
+export interface SeedanceStageConfig {
+  /**
+   * Explicit generation-mode pick. BytePlus forbids mixing
+   * first/last-frame and reference modes in one request, so we
+   * disambiguate here instead of letting the compiler guess.
+   *
+   * When omitted, the compiler infers a mode from the stage's
+   * existing shape (admin refs vs. user-image subjects).
+   */
+  seedanceMode?: 'first_last_frame' | 'reference';
+  /** Used when `seedanceMode === 'first_last_frame'`. */
+  frameSlots?: SeedanceFrameSlots;
+  /** Used when `seedanceMode === 'reference'`. */
+  referenceSlots?: SeedanceReferenceSlot[];
+  /** Other Seedance config keys (resolution, audio, etc.) live alongside. */
+  [otherConfigKey: string]: unknown;
+}
+
 // ── Output settings ─────────────────────────────────────────────────
 
 export interface TemplateOutput {

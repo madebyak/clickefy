@@ -449,18 +449,23 @@ describe('compile() — Seedance 2.0', () => {
     expect(sd.endImage?.r2Key).toBe('uploads/end.png');
   });
 
-  it('routes admin references to referenceImages[]', () => {
+  it('routes admin references to referenceImages[] (legacy mixed shape → reference mode wins)', () => {
+    // Pre-mode-picker template: both user image input AND admin refs.
+    // BytePlus forbids mixing first/last-frame and reference modes in
+    // one task, so the legacy inferrer picks `reference` and drops the
+    // user image with a deprecation warning telling the admin to pick
+    // an explicit mode.
     const product = imageField('product');
     const stage = makeStage({
       provider: 'seedance',
       model: 'dreamina-seedance-2-0-260128',
-      prompt: 'Animate {{input:product}} matching the look of {{ref:mood}}.',
+      prompt: 'Match the look of {{ref:mood}}.',
       references: [
         { id: 'r1', key: 'mood', role: 'lighting', r2Key: 'refs/m.png', mimeType: 'image/png' },
         { id: 'r2', key: 'style', role: 'style', r2Key: 'refs/s.png', mimeType: 'image/png' },
       ],
     });
-    const { request } = compile(
+    const { request, warnings } = compile(
       makeCtx({
         stage,
         templateInputs: [product],
@@ -468,14 +473,15 @@ describe('compile() — Seedance 2.0', () => {
       }),
     );
     const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage).toBeUndefined();
+    expect(sd.endImage).toBeUndefined();
     expect(sd.referenceImages).toHaveLength(2);
     expect(sd.referenceImages?.[0]!.role).toBe('reference');
     expect(sd.referenceImages?.[0]!.roleTag).toBe('LIGHTING');
-    // Ordinal addressing means the first ref slot is index 2 (after
-    // the subject at index 1), so {{ref:mood}} → "the second image".
-    expect(sd.prompt).toBe(
-      'Animate the first image matching the look of the second image.',
-    );
+    // {{ref:mood}} resolves to the first image (no subject occupying
+    // index 1 anymore in reference mode).
+    expect(sd.prompt).toBe('Match the look of the first image.');
+    expect(warnings.some((w) => w.code === 'deprecated_syntax')).toBe(true);
   });
 
   it('clamps aspect ratio and resolution to capability allowlists with a warning', () => {
@@ -490,6 +496,185 @@ describe('compile() — Seedance 2.0', () => {
     expect(sd.ratio).toBeUndefined();
     expect(sd.resolution).toBeUndefined();
     expect(warnings.filter((w) => w.code === 'config_clamped').length).toBeGreaterThanOrEqual(2);
+  });
+
+  // ── Explicit mode dispatch (PR1 of the generation-modes work) ────
+
+  it('explicit first_last_frame mode binds firstFrame from a user input', () => {
+    const product = imageField('product', 'Product');
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Pan slowly across {{input:product}}.',
+      config: {
+        seedanceMode: 'first_last_frame',
+        frameSlots: {
+          firstFrame: { kind: 'user_input', fieldKey: 'product' },
+        },
+      },
+    });
+    const { request, warnings } = compile(
+      makeCtx({
+        stage,
+        templateInputs: [product],
+        inputValues: { product: imageValue('uploads/p.png') },
+      }),
+    );
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage?.r2Key).toBe('uploads/p.png');
+    expect(sd.endImage).toBeUndefined();
+    expect(sd.referenceImages).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
+
+  it('explicit first_last_frame mode binds both frames and ignores admin refs with a warning', () => {
+    const start = imageField('start');
+    const end = imageField('end');
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Bookend animation.',
+      // Admin left a stray ref on the stage before switching modes.
+      references: [{ id: 'r1', key: 'mood', role: 'lighting', r2Key: 'refs/m.png' }],
+      config: {
+        seedanceMode: 'first_last_frame',
+        frameSlots: {
+          firstFrame: { kind: 'user_input', fieldKey: 'start' },
+          lastFrame: { kind: 'user_input', fieldKey: 'end' },
+        },
+      },
+    });
+    const { request, warnings } = compile(
+      makeCtx({
+        stage,
+        templateInputs: [start, end],
+        inputValues: {
+          start: imageValue('uploads/s.png'),
+          end: imageValue('uploads/e.png'),
+        },
+      }),
+    );
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage?.r2Key).toBe('uploads/s.png');
+    expect(sd.endImage?.r2Key).toBe('uploads/e.png');
+    expect(sd.referenceImages).toBeUndefined();
+    expect(warnings.some((w) => w.code === 'reference_dropped')).toBe(true);
+  });
+
+  it('first_last_frame mode can chain off a previous stage output', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Animate the upstream still.',
+      config: {
+        seedanceMode: 'first_last_frame',
+        frameSlots: {
+          firstFrame: { kind: 'stage_output', stageIndex: 1 },
+        },
+      },
+    });
+    const previousOutputs: StageOutputRef[] = [
+      { stageIndex: 1, kind: 'image', r2Key: 'jobs/abc/s1.png', mimeType: 'image/png' },
+    ];
+    const { request } = compile(makeCtx({ stage, previousOutputs }));
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage?.r2Key).toBe('jobs/abc/s1.png');
+    expect(sd.startImage?.role).toBe('stage-output');
+  });
+
+  it('first_last_frame mode warns when a bound user input is missing at runtime', () => {
+    const product = imageField('product');
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Animate.',
+      config: {
+        seedanceMode: 'first_last_frame',
+        frameSlots: {
+          firstFrame: { kind: 'user_input', fieldKey: 'product' },
+        },
+      },
+    });
+    const { request, warnings } = compile(
+      makeCtx({ stage, templateInputs: [product], inputValues: {} }),
+    );
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage).toBeUndefined();
+    expect(warnings.some((w) => w.code === 'unknown_variable')).toBe(true);
+  });
+
+  it('explicit reference mode binds heterogeneous referenceSlots and ignores frame slots with a warning', () => {
+    const product = imageField('product');
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Stylize the product.',
+      config: {
+        seedanceMode: 'reference',
+        // Stray frameSlots left over from a mode switch.
+        frameSlots: { firstFrame: { kind: 'user_input', fieldKey: 'product' } },
+        referenceSlots: [
+          {
+            id: 'slot-a',
+            assetKind: 'image',
+            source: { kind: 'user_input', fieldKey: 'product' },
+          },
+          {
+            id: 'slot-b',
+            assetKind: 'image',
+            source: { kind: 'admin_asset', r2Key: 'refs/style.png' },
+          },
+        ],
+      },
+    });
+    const { request, warnings } = compile(
+      makeCtx({
+        stage,
+        templateInputs: [product],
+        inputValues: { product: imageValue('uploads/p.png') },
+      }),
+    );
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage).toBeUndefined();
+    expect(sd.referenceImages).toHaveLength(2);
+    expect(sd.referenceImages?.[0]!.r2Key).toBe('uploads/p.png');
+    expect(sd.referenceImages?.[1]!.r2Key).toBe('refs/style.png');
+    expect(warnings.some((w) => w.code === 'reference_dropped')).toBe(true);
+  });
+
+  it('reference mode enforces BytePlus per-asset-kind limits (video ≤ 3)', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Multi-video reference.',
+      config: {
+        seedanceMode: 'reference',
+        referenceSlots: Array.from({ length: 4 }, (_, i) => ({
+          id: `v${i}`,
+          assetKind: 'video' as const,
+          source: { kind: 'admin_asset' as const, r2Key: `refs/v${i}.mp4` },
+        })),
+      },
+    });
+    const { request, warnings } = compile(makeCtx({ stage }));
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.referenceImages).toHaveLength(3);
+    expect(sd.referenceImages?.every((r) => r.mimeType.startsWith('video/'))).toBe(true);
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+
+  it('legacy template (no seedanceMode) with only refs infers reference mode without warning', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Animate.',
+      references: [{ id: 'r1', key: 'mood', role: 'lighting', r2Key: 'refs/m.png' }],
+    });
+    const { request, warnings } = compile(makeCtx({ stage }));
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.referenceImages).toHaveLength(1);
+    expect(sd.startImage).toBeUndefined();
+    expect(warnings.some((w) => w.code === 'deprecated_syntax')).toBe(false);
   });
 });
 

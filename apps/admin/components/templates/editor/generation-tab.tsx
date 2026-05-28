@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { uploadImageAsset, ApiError } from '@/lib/api/uploads';
 import type { TokenGetter } from '@/lib/api';
 import { toast } from 'sonner';
+import { SeedanceModeEditor } from './seedance-mode-editor';
 import {
   Plus,
   Trash2,
@@ -476,11 +477,26 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                           stages={stages}
                         />
 
-                        {/* Reference Images — exposed for any model that accepts them.
-                             Drives the visibility off the capability registry so adding
-                             a new image-aware provider (Seedance, future Kling Omni,
-                             etc.) automatically gets the uploader. */}
-                        {(findCapabilities(stage.model)?.maxReferences ?? 0) > 0 && (
+                        {/* Seedance gets its own mode editor (first/last
+                            frame vs reference) because BytePlus rejects
+                            mixed-mode requests. See `seedance-mode-editor.tsx`. */}
+                        {stage.provider === 'seedance' && (
+                          <>
+                            <Separator />
+                            <SeedanceModeEditor
+                              stage={stage}
+                              userInputs={userInputs}
+                              stageIndex={index}
+                              onChange={(updates) => handleUpdateStage(stage.id, updates)}
+                              getToken={getToken}
+                            />
+                          </>
+                        )}
+
+                        {/* Reference Images — Gemini / Kling Omni only. Seedance
+                             routes through its own editor above. */}
+                        {stage.provider !== 'seedance' &&
+                          (findCapabilities(stage.model)?.maxReferences ?? 0) > 0 && (
                           <>
                             <Separator />
                             <div className="space-y-3">

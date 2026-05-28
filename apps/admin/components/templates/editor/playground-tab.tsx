@@ -178,14 +178,33 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
   // `useCallback` body has a stable binding from the first render —
   // hoisting also satisfies `react-hooks/immutability` which (rightly)
   // complains about a `let`/`const` accessed before its declaration.
+  /**
+   * Poll the async-task status route until the provider finishes,
+   * fails, or we hit the per-provider time budget.
+   *
+   * Per-provider budgets (mirror `waitForAsync()` in jobs-worker so the
+   * playground and the production mobile pipeline agree on what counts
+   * as a timeout):
+   *   - kling    →  5 min  @ 5s poll  (60 attempts)
+   *   - seedance → 15 min  @ 5s poll for the first minute, then 10s
+   *                        (12 + 84 = 96 attempts, ~15 min)
+   *
+   * Seedance routinely takes 6–10 min for 1080p / 10s renders and can
+   * push past 10 min for 2K — the previous flat 5-min cap was too tight
+   * for anything beyond 720p / 5s. Backoff after the first minute keeps
+   * us from hammering the status route 180 times on a single video.
+   */
   const pollForCompletion = async (
     taskId: string,
     provider: string,
     variant: string,
   ): Promise<StageOutput[]> => {
-    const maxAttempts = 60;
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+    const maxMs = provider === 'seedance' ? 15 * 60 * 1000 : 5 * 60 * 1000;
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      const elapsedMs = Date.now() - start;
+      const delayMs = provider === 'seedance' && elapsedMs > 60_000 ? 10_000 : 5_000;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
 
       const response = await fetch(
         `/api/generate/status?taskId=${encodeURIComponent(taskId)}&provider=${encodeURIComponent(provider)}&variant=${encodeURIComponent(variant)}`,
@@ -207,7 +226,11 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
       }
     }
 
-    throw new Error('Video generation timed out');
+    throw new Error(
+      provider === 'seedance'
+        ? 'Seedance generation timed out after 15 minutes. The task may still complete on BytePlus — check the ModelArk console.'
+        : 'Video generation timed out',
+    );
   };
 
   const runStage = useCallback(

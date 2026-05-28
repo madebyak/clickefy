@@ -13,7 +13,7 @@
  * works pre-sign-in.
  */
 
-import type { MobileTemplate } from '@clickfy/types';
+import type { MobileHomeBanner, MobileTemplate } from '@clickfy/types';
 
 import type {
   CatalogCategory,
@@ -372,6 +372,15 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           layout: s.layout,
           templates: s.templates.map(mapTemplate),
         }));
+      },
+
+      async listBanners() {
+        // Public endpoint — no auth header required. Server already
+        // filtered by `is_active` + schedule window, so the mobile
+        // renderer can iterate the response directly without
+        // re-checking timestamps.
+        const json = await get<ApiEnvelope<MobileHomeBanner[]>>('/v1/catalog/banners');
+        return json.data;
       },
     },
 

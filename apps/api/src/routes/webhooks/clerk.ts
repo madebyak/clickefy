@@ -195,11 +195,39 @@ clerkWebhookRoute.post('/', async (c) => {
 
   if (event.type === 'user.deleted') {
     // Soft-delete: keep the row for ledger integrity, mark for purge.
+    //
+    // Mirror the PII scrub the in-app delete handler does
+    // (`DELETE /v1/users/me` in `routes/users.ts`). Two reasons:
+    //   1. Email: even with the partial unique index from migration
+    //      0016, scrubbing on delete keeps PII out of the row sooner
+    //      and matches GDPR "minimisation" expectations.
+    //   2. Name + avatar: identity fields shouldn't outlive the
+    //      account on either delete path.
+    //
+    // Idempotent — Clerk retries this webhook on a backoff schedule;
+    // a row that's already deleted just gets the same scrambled
+    // values written back.
+    //
+    // We look up the row by clerk_user_id first to get our internal
+    // UUID for the anonymised email — this matches the format the
+    // in-app handler uses (`deleted-<userId>@anonymized.invalid`).
     const purgeAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-    await c.var.db
-      .update(users)
-      .set({ isDeleted: true, purgeAssetsAt: purgeAt })
-      .where(eq(users.clerkUserId, data.id));
+    const existingRow = await c.var.db.query.users.findFirst({
+      where: eq(users.clerkUserId, data.id),
+      columns: { id: true },
+    });
+    if (existingRow) {
+      await c.var.db
+        .update(users)
+        .set({
+          isDeleted: true,
+          purgeAssetsAt: purgeAt,
+          email: `deleted-${existingRow.id}@anonymized.invalid`,
+          name: null,
+          avatarUrl: null,
+        })
+        .where(eq(users.id, existingRow.id));
+    }
     return c.json({ ok: true });
   }
 

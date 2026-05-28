@@ -18,12 +18,60 @@
 
 import * as Sentry from '@sentry/cloudflare';
 import { createMiddleware } from 'hono/factory';
-import { verifyToken } from '@clerk/backend';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 import { eq } from 'drizzle-orm';
 
 import { adminAuditLog, users } from '@clickfy/db';
 
-import type { AppEnv } from '../types';
+import type { AppEnv, Bindings } from '../types';
+
+/**
+ * Real-identity placeholder prefix. Rows whose email starts with this
+ * literal were created by `withCurrentUser`'s stub fallback before the
+ * Clerk webhook arrived (or before `CLERK_SECRET_KEY` was configured).
+ * The heal step below upgrades them on the user's next authenticated
+ * request, so the admin dashboard never has to live with a fake email.
+ */
+const STUB_EMAIL_PREFIX = 'pending+';
+
+interface ClerkProfile {
+  email: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+/**
+ * Fetch a user's profile directly from Clerk. Returns null on any
+ * failure (network, missing secret, deleted-on-Clerk, etc.) so the
+ * caller can fall back to a placeholder without branching on every
+ * possible failure mode.
+ *
+ * Called from the stub-creation path so a fresh signup gets the real
+ * email/name immediately, and from the heal step that upgrades any
+ * row still carrying the legacy placeholder email.
+ */
+async function fetchClerkProfile(
+  clerkUserId: string,
+  secretKey: Bindings['CLERK_SECRET_KEY'],
+): Promise<ClerkProfile | null> {
+  if (!secretKey) return null;
+  try {
+    const clerk = createClerkClient({ secretKey });
+    const user = await clerk.users.getUser(clerkUserId);
+    const primary =
+      user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId) ??
+      user.emailAddresses[0];
+    const composed = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+    return {
+      email: primary?.emailAddress ?? null,
+      name: composed || user.username || null,
+      avatarUrl: user.imageUrl ?? null,
+    };
+  } catch (err) {
+    console.error('[withCurrentUser] Clerk profile fetch failed:', err);
+    return null;
+  }
+}
 
 interface WithAuthOptions {
   /** When true, reject unauthenticated requests with 401. Defaults to true. */
@@ -144,20 +192,59 @@ export function withCurrentUser() {
         .where(eq(users.id, existing.id))
         .catch((err) => console.error('users.lastSeenAt update failed', err));
 
+      // Heal stub rows opportunistically. If this row was created by
+      // an earlier visit before Clerk's webhook fired (or before
+      // CLERK_SECRET_KEY was configured), the email is still the
+      // synthetic `pending+...@clickefy.local` placeholder. Pull the
+      // real profile from Clerk and patch the row in the background
+      // so the admin dashboard never has to live with a fake email.
+      // Fire-and-forget — never block the user's request on this.
+      if (existing.email.startsWith(STUB_EMAIL_PREFIX)) {
+        void (async () => {
+          const profile = await fetchClerkProfile(clerkUserId, c.env.CLERK_SECRET_KEY);
+          if (!profile?.email) return;
+          try {
+            await c.var.db
+              .update(users)
+              .set({
+                email: profile.email,
+                ...(profile.name !== null && { name: profile.name }),
+                ...(profile.avatarUrl !== null && { avatarUrl: profile.avatarUrl }),
+              })
+              .where(eq(users.id, existing.id));
+          } catch (err) {
+            // Could collide with another live row's email if Clerk's
+            // primary changed under us — log and move on. Partial
+            // unique index from migration 0016 is what would surface
+            // this; the row stays as-is until the next attempt.
+            console.error('[withCurrentUser] stub heal failed:', err);
+          }
+        })();
+      }
+
       c.set('user', existing);
       tagSentryUser(existing.id, clerkUserId);
       return next();
     }
 
-    // Stub row — the Clerk webhook (or a follow-up sync) will fill in
-    // email, name, avatar. We only need a foreign-key target right now.
-    const placeholderEmail = `pending+${clerkUserId}@clickefy.local`;
+    // No row yet. Try to pull the real profile from Clerk synchronously
+    // so the very first row we create already has the correct email +
+    // name + avatar. This eliminates the legacy "pending+...@clickefy.local"
+    // window — the admin dashboard sees real users from request #1.
+    //
+    // If Clerk is unreachable or CLERK_SECRET_KEY isn't configured
+    // (dev env), we fall back to the placeholder email so the request
+    // can still proceed. The webhook (or the heal step above on the
+    // next request) will reconcile.
+    const profile = await fetchClerkProfile(clerkUserId, c.env.CLERK_SECRET_KEY);
+    const placeholderEmail = `${STUB_EMAIL_PREFIX}${clerkUserId}@clickefy.local`;
     const [created] = await c.var.db
       .insert(users)
       .values({
         clerkUserId,
-        email: placeholderEmail,
-        name: null,
+        email: profile?.email ?? placeholderEmail,
+        name: profile?.name ?? null,
+        avatarUrl: profile?.avatarUrl ?? null,
         creditsBalance: 0,
       })
       .returning();

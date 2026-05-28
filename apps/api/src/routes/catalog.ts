@@ -18,10 +18,12 @@ import { zValidator } from '@hono/zod-validator';
 import { and, asc, desc, eq, ilike, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { savedTemplates, templates, users } from '@clickfy/db';
+import { homeBanners, savedTemplates, templates, users } from '@clickfy/db';
+import type { MediaRef } from '@clickfy/types';
+import type { MobileHomeBanner } from '@clickfy/types';
 
 import type { AppEnv } from '../types';
-import { templateToMobileDTO } from '../lib/template-dto';
+import { resolveOwnMediaUrl, templateToMobileDTO } from '../lib/template-dto';
 import {
   loadTemplateCategories,
   loadTemplateCategoriesMap,
@@ -261,6 +263,109 @@ catalog.get(
   c.header('Cache-Control', PUBLIC_CACHE_HEADERS['Cache-Control']);
   return c.json({ sections });
 });
+
+/**
+ * GET /v1/catalog/banners
+ *
+ * Returns the banner strip rendered above the "Trending Now" rail on
+ * the mobile home screen. Filtering rules:
+ *
+ *   - `is_active = true`
+ *   - `starts_at IS NULL OR starts_at <= now()`
+ *   - `ends_at   IS NULL OR ends_at   >= now()`
+ *
+ * Ordered by `sort_order ASC, created_at DESC` so admin's manual
+ * order wins, with newest as a tiebreaker for equal sort_order.
+ *
+ * Cached `s-maxage=60` like the other public catalog endpoints — a
+ * one-minute lag on a freshly-published banner is acceptable, and
+ * banners change far less often than templates.
+ */
+catalog.get('/banners', withRateLimit((env) => env.RL_PUBLIC_IP, byIp), async (c) => {
+  const publicBaseUrl = new URL(c.req.url).origin;
+
+  const rows = await c.var.db
+    .select()
+    .from(homeBanners)
+    .where(
+      and(
+        eq(homeBanners.isActive, true),
+        sql`(${homeBanners.startsAt} IS NULL OR ${homeBanners.startsAt} <= now())`,
+        sql`(${homeBanners.endsAt}   IS NULL OR ${homeBanners.endsAt}   >= now())`,
+      ),
+    )
+    .orderBy(asc(homeBanners.sortOrder), desc(homeBanners.createdAt));
+
+  // Map to mobile DTO. Drop banners whose media list is empty (admin
+  // misconfiguration); never ship a banner with nothing to render.
+  const data = rows
+    .map((row) => bannerToMobileDTO(row, publicBaseUrl))
+    .filter((b): b is MobileHomeBanner => b !== null);
+
+  c.header('Cache-Control', PUBLIC_CACHE_HEADERS['Cache-Control']);
+  return c.json({ data });
+});
+
+/**
+ * Resolve a stored banner row to the mobile DTO. Returns null when
+ * the row's `media` array is empty (image/slider/video all require
+ * at least one MediaRef) — the public list endpoint filters those
+ * out so a misconfigured banner never reaches the phone.
+ *
+ * Why a function (not a method on the row): same reason as
+ * `templateToMobileDTO` — single source of truth for the wire
+ * shape, easy to test in isolation.
+ */
+function bannerToMobileDTO(
+  row: typeof homeBanners.$inferSelect,
+  publicBaseUrl: string,
+): MobileHomeBanner | null {
+  const media = (row.media ?? []) as MediaRef[];
+  if (media.length === 0) return null;
+
+  const cta = {
+    kind: row.ctaKind,
+    target: row.ctaTarget ?? null,
+    label: row.ctaLabel ?? null,
+  };
+  const base = {
+    id: row.id,
+    title: row.title,
+    subtitle: row.subtitle,
+    cta,
+  };
+
+  if (row.kind === 'video') {
+    const v = media[0]!;
+    return {
+      ...base,
+      kind: 'video',
+      video: {
+        hlsUrl: resolveOwnMediaUrl(v, publicBaseUrl),
+        // Banners don't carry a separate poster — the cover frame is
+        // baked into the media itself. Use the same URL so the
+        // player has something to draw before the first decoded frame.
+        posterUrl: resolveOwnMediaUrl(v, publicBaseUrl),
+        durationSec: 0,
+      },
+    };
+  }
+
+  const images = media.map((m) => ({
+    url: resolveOwnMediaUrl(m, publicBaseUrl),
+    width: m.width,
+    height: m.height,
+    blurhash: m.blurhash,
+  }));
+
+  if (row.kind === 'image_slider') {
+    return { ...base, kind: 'image_slider', images };
+  }
+  // Default: 'image' — render the first MediaRef even if admin
+  // somehow stored more than one (shouldn't happen given the form
+  // constraint, but cheap to be tolerant).
+  return { ...base, kind: 'image', image: images[0]! };
+}
 
 // Validate the param up-front so an obviously-malformed id surfaces as
 // a 400 rather than a Postgres `invalid input syntax for uuid` 500.

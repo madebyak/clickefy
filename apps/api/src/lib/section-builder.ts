@@ -85,6 +85,15 @@ export async function buildHomeSections(
   opts: BuildHomeSectionsOptions,
 ): Promise<HomeSection[]> {
   const limit = opts.perSectionLimit ?? 8;
+  // Cross-rail dedup oversample factor. The four "discovery" rails
+  // (trending / new / video / sets) share a `seen` set applied in
+  // priority order — so an item that lands in Trending is filtered
+  // out of New Arrivals, etc. To make sure the lower-priority rails
+  // still have candidates after dedup, we fetch `limit * OVERFETCH`
+  // rows from each query and trim to `limit` after dedup. 3× covers
+  // the realistic worst case (every featured item is also recent).
+  const OVERFETCH = 3;
+  const fetchLimit = limit * OVERFETCH;
   const scopeCategoryId =
     opts.categoryId && opts.categoryId !== 'all' && opts.categoryId.length > 0
       ? opts.categoryId
@@ -110,25 +119,25 @@ export async function buildHomeSections(
         .from(templates)
         .where(scoped(eq(templates.featured, true)))
         .orderBy(desc(templates.publishedAt), desc(templates.createdAt))
-        .limit(limit),
+        .limit(fetchLimit),
       db
         .select()
         .from(templates)
         .where(scoped())
         .orderBy(desc(templates.publishedAt), desc(templates.createdAt))
-        .limit(limit),
+        .limit(fetchLimit),
       db
         .select()
         .from(templates)
         .where(scoped(eq(templates.kind, 'video')))
         .orderBy(desc(templates.publishedAt), desc(templates.createdAt))
-        .limit(limit),
+        .limit(fetchLimit),
       db
         .select()
         .from(templates)
         .where(scoped(eq(templates.kind, 'image_set')))
         .orderBy(desc(templates.publishedAt), desc(templates.createdAt))
-        .limit(limit),
+        .limit(fetchLimit),
       scopeCategoryId
         ? Promise.resolve([])
         : db.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.name)),
@@ -155,13 +164,49 @@ export async function buildHomeSections(
         ),
       );
 
+  // ── Cross-rail dedup (option C from the design discussion) ──────
+  //
+  // The four discovery rails share one `seen` set applied in priority
+  // order: Trending wins, then New Arrivals, then Video, then Sets.
+  // A template that lands in Trending will not appear in any of the
+  // three rails below it, even if it qualifies — so the top of the
+  // home feed never repeats itself.
+  //
+  // Per-category rails (built further down) operate independently:
+  // a template can re-appear under its category even if it already
+  // showed in a discovery rail. That's intentional — category rails
+  // are a different mental model ("everything in Skincare") and
+  // hiding items there would feel broken.
+  //
+  // Each rail is sliced to `limit` AFTER dedup, so the visible card
+  // count is identical to the pre-dedup behaviour for the top rail
+  // (Trending) and may be smaller for lower-priority rails — the
+  // section thresholds below (`>= 3` for New Arrivals etc.) still
+  // apply against the post-dedup count, so a near-empty rail simply
+  // doesn't render.
+  const seenInDiscoveryRails = new Set<string>();
+  const dedupAndSlice = (rows: DbTemplate[]): DbTemplate[] => {
+    const out: DbTemplate[] = [];
+    for (const r of rows) {
+      if (seenInDiscoveryRails.has(r.id)) continue;
+      seenInDiscoveryRails.add(r.id);
+      out.push(r);
+      if (out.length >= limit) break;
+    }
+    return out;
+  };
+  const trendingFinal = dedupAndSlice(featuredRows);
+  const recentFinal = dedupAndSlice(recentRows);
+  const videoFinal = dedupAndSlice(videoRows);
+  const setsFinal = dedupAndSlice(setRows);
+
   // We need each row's categoryIds for the DTO. Collect every
   // template id that lands in any rail and bulk-load.
   const allRows = [
-    ...featuredRows,
-    ...recentRows,
-    ...videoRows,
-    ...setRows,
+    ...trendingFinal,
+    ...recentFinal,
+    ...videoFinal,
+    ...setsFinal,
     ...categoryTemplateRows.flat(),
   ];
   const ids = Array.from(new Set(allRows.map((r) => r.id)));
@@ -175,45 +220,48 @@ export async function buildHomeSections(
 
   const sections: HomeSection[] = [];
 
-  if (featuredRows.length > 0) {
+  if (trendingFinal.length > 0) {
     sections.push({
       key: 'trending',
       title: 'Trending Now',
       subtitle: 'Hand-picked highlights',
-      layout: 'bento',
-      templates: featuredRows.map(toDto),
+      // Carousel — bento was retired when we introduced the dedicated
+      // banner surface above this rail. Portrait covers now flow as a
+      // horizontal strip like the other rails.
+      layout: 'carousel',
+      templates: trendingFinal.map(toDto),
     });
   }
 
   // "New Arrivals" needs enough cards to actually feel like a rail.
   // A single card is just a teaser and looks broken.
-  if (recentRows.length >= 3) {
+  if (recentFinal.length >= 3) {
     sections.push({
       key: 'new-arrivals',
       title: 'New Arrivals',
       subtitle: 'Fresh templates added recently',
       layout: 'carousel',
-      templates: recentRows.map(toDto),
+      templates: recentFinal.map(toDto),
     });
   }
 
-  if (videoRows.length > 0) {
+  if (videoFinal.length > 0) {
     sections.push({
       key: 'video-magic',
       title: 'Video Magic',
       subtitle: 'Bring your shots to life',
       layout: 'carousel',
-      templates: videoRows.map(toDto),
+      templates: videoFinal.map(toDto),
     });
   }
 
-  if (setRows.length > 0) {
+  if (setsFinal.length > 0) {
     sections.push({
       key: 'photo-sets',
       title: 'Photo Sets',
       subtitle: 'Coordinated lookbooks',
       layout: 'carousel',
-      templates: setRows.map(toDto),
+      templates: setsFinal.map(toDto),
     });
   }
 

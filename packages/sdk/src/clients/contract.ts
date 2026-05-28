@@ -3,6 +3,8 @@
  * must satisfy. Screens depend on this, never on a concrete client.
  */
 
+import type { MobileHomeBanner } from '@clickfy/types';
+
 import type {
   AuthProvider,
   AuthSession,
@@ -41,6 +43,13 @@ export interface CatalogClient {
    * Auth required.
    */
   setFavorite(templateId: string, favorited: boolean): Promise<{ isFavorited: boolean }>;
+  /**
+   * Active home-screen banners — schedule + activation already
+   * applied server-side, ordered for direct render. The mobile
+   * `<HomeBanner />` component narrows on the discriminated `kind`
+   * to pick the right renderer (image / image_slider / video).
+   */
+  listBanners(): Promise<MobileHomeBanner[]>;
 }
 
 export interface AuthClient {

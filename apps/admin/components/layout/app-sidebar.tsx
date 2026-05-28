@@ -7,6 +7,7 @@ import {
   FileText,
   Flag,
   FolderTree,
+  Home,
   Users,
   Briefcase,
   BarChart3,
@@ -40,6 +41,11 @@ const navItems = [
     title: 'Templates',
     href: '/admin/templates',
     icon: FileText,
+  },
+  {
+    title: 'Home',
+    href: '/admin/home',
+    icon: Home,
   },
   {
     title: 'Categories',

@@ -15,12 +15,14 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -33,7 +35,11 @@ export const users = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     clerkUserId: text('clerk_user_id').notNull().unique(),
-    email: text('email').notNull().unique(),
+    // Email uniqueness is enforced via a PARTIAL unique index (see the
+    // table-options block below) so that soft-deleted rows don't block
+    // re-signup with the same address. Migration 0016 swaps the
+    // unconditional UNIQUE for the partial form.
+    email: text('email').notNull(),
     name: text('name'),
     avatarUrl: text('avatar_url'),
     locale: localeEnum('locale').default('en').notNull(),
@@ -78,6 +84,25 @@ export const users = pgTable(
   (t) => [
     index('users_purge_idx').on(t.purgeAssetsAt),
     index('users_entitlement_idx').on(t.entitlement),
+    // Email is unique among LIVE users only — soft-deleted rows are
+    // excluded so a deleted user can re-sign-up with the same address
+    // (App Store guideline 5.1.1(v) requires this flow to work). The
+    // `DELETE /v1/users/me` handler still scrambles the email as
+    // defense-in-depth; this index is the schema-level guarantee.
+    uniqueIndex('users_email_active_unique_idx')
+      .on(t.email)
+      .where(sql`${t.isDeleted} = false`),
+    // Database-level invariant: the denormalised total must always
+    // equal the sum of its three buckets. Added by migration 0015
+    // after a class of "credits visible but unspendable" bugs caused
+    // by paths that wrote `credits_balance` without distributing
+    // into the buckets (e.g. the legacy admin credit-adjust handler,
+    // and any manual DB edits). Postgres rejects future drift at
+    // write time — matching the post-2026-05-14 "fail loud" policy.
+    check(
+      'users_balance_matches_buckets',
+      sql`${t.creditsBalance} = ${t.promoCredits} + ${t.subscriptionCredits} + ${t.topupCredits}`,
+    ),
   ],
 );
 

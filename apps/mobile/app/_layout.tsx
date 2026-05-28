@@ -242,6 +242,13 @@ function RootLayout() {
                 name="search"
                 options={{ presentation: 'card', animation: 'slide_from_right' }}
               />
+              {/* Section landing — full paginated list for one home rail.
+                  Same slide-in card pattern as /search so navigation
+                  feels consistent across discovery surfaces. */}
+              <Stack.Screen
+                name="section/[key]"
+                options={{ presentation: 'card', animation: 'slide_from_right' }}
+              />
               {/* Filter sheet over the search screen — native iOS
                   pageSheet (`presentation: 'modal'`) for HIG-correct
                   drag-to-dismiss behavior. Same pattern as /report. */}

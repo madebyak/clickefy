@@ -8,6 +8,15 @@
 
 export * from './types';
 export * from './clients/contract';
+// Re-export the banner DTO so mobile screens can import it from
+// `@clickfy/sdk` alongside `CatalogTemplate` etc. — same single-import
+// ergonomic the rest of the public DTOs follow.
+export type {
+  HomeBannerCta,
+  HomeBannerCtaKind,
+  HomeBannerKind,
+  MobileHomeBanner,
+} from '@clickfy/types';
 export { createHttpClient, type HttpClientOptions } from './clients/http';
 // `AuthError` and `RateLimitedError` are exported as values (they are
 // classes) via `export * from './types'`, but re-exporting explicitly

@@ -382,18 +382,132 @@ adminUsersRoute.post(
       );
     }
 
-    // Ledger row first, then cached balance — see file-header note.
-    await c.var.db.insert(creditLedger).values({
-      userId: id,
-      delta,
-      reason: 'admin_adjust',
-      balanceAfter: newBalance,
-      note: note?.length ? note : null,
-    });
+    // ── Bucket allocation ─────────────────────────────────────────────
+    // The denormalised `credits_balance` is gated by a CHECK constraint
+    // (migration 0015) requiring it to equal the sum of the three
+    // bucket columns. So every credit movement MUST also adjust at
+    // least one bucket — bumping `credits_balance` alone will be
+    // physically rejected by Postgres.
+    //
+    // Positive delta (grant): land everything in `promo_credits` —
+    //   most permissive bucket, always spendable, never expires. Same
+    //   choice migration 0010 made for the original backfill, and the
+    //   only sensible bucket for an out-of-band admin adjustment.
+    //
+    // Negative delta (deduction): drain in spend priority promo → sub →
+    //   topup, mirroring the order used by `createJobAtomically()` so an
+    //   admin clawback feels equivalent to "force-spending" the credits.
+    //   We pre-checked `newBalance >= 0`, so the buckets must cover the
+    //   absolute delta — otherwise the buckets-vs-balance invariant was
+    //   already violated upstream and we'd want the CHECK to surface it.
+    let fromPromo = 0;
+    let fromSubscription = 0;
+    let fromTopup = 0;
+    if (delta >= 0) {
+      fromPromo = delta;
+    } else {
+      let remaining = -delta;
+      fromPromo = Math.min(row.promoCredits, remaining);
+      remaining -= fromPromo;
+      fromSubscription = Math.min(row.subscriptionCredits, remaining);
+      remaining -= fromSubscription;
+      fromTopup = Math.min(row.topupCredits, remaining);
+      remaining -= fromTopup;
+      if (remaining > 0) {
+        // Bucket sum < |delta| despite balance check passing — means
+        // the row already violated the invariant before this request.
+        // Refuse rather than create a row that breaks CHECK.
+        return c.json(
+          {
+            error: {
+              code: 'bucket_mismatch',
+              message:
+                'User credit buckets do not match credits_balance. Run the bucket reconciliation backfill (migration 0015) before adjusting.',
+            },
+          },
+          409,
+        );
+      }
+    }
 
+    // ── Ledger rows first, then cached balance — see file-header note ─
+    // One row per non-zero bucket touched, tagged with the bucket
+    // attribution + a JSON breakdown matching the format
+    // `createJobAtomically()` writes for `job_charge` rows. Keeps the
+    // audit shape consistent across reasons.
+    const ledgerRows: Array<typeof creditLedger.$inferInsert> = [];
+    if (delta >= 0 && fromPromo > 0) {
+      ledgerRows.push({
+        userId: id,
+        delta: fromPromo,
+        reason: 'admin_adjust',
+        balanceAfter: newBalance,
+        bucket: 'promo',
+        metadata: {
+          fromPromo,
+          fromSubscription: 0,
+          fromTopup: 0,
+          delta,
+        },
+        note: note?.length ? note : null,
+      });
+    }
+    if (delta < 0) {
+      // Each non-zero spend goes on its own row so SUM-by-bucket
+      // queries stay accurate. `balanceAfter` is the same final
+      // balance on every row — matches the job_charge convention.
+      const meta = { fromPromo, fromSubscription, fromTopup, delta };
+      if (fromPromo > 0) {
+        ledgerRows.push({
+          userId: id,
+          delta: -fromPromo,
+          reason: 'admin_adjust',
+          balanceAfter: newBalance,
+          bucket: 'promo',
+          metadata: meta,
+          note: note?.length ? note : null,
+        });
+      }
+      if (fromSubscription > 0) {
+        ledgerRows.push({
+          userId: id,
+          delta: -fromSubscription,
+          reason: 'admin_adjust',
+          balanceAfter: newBalance,
+          bucket: 'subscription',
+          metadata: meta,
+          note: note?.length ? note : null,
+        });
+      }
+      if (fromTopup > 0) {
+        ledgerRows.push({
+          userId: id,
+          delta: -fromTopup,
+          reason: 'admin_adjust',
+          balanceAfter: newBalance,
+          bucket: 'topup',
+          metadata: meta,
+          note: note?.length ? note : null,
+        });
+      }
+    }
+    if (ledgerRows.length > 0) {
+      await c.var.db.insert(creditLedger).values(ledgerRows);
+    }
+
+    // Single UPDATE touching all four columns so the CHECK invariant
+    // is never observed in a half-applied state. `delta` may be
+    // positive (only promo moves) or negative (any combination of
+    // buckets moves) — the math expressions above add up to exactly
+    // `delta`, so `credits_balance + delta` matches the new sum.
     const [updated] = await c.var.db
       .update(users)
-      .set({ creditsBalance: newBalance })
+      .set({
+        creditsBalance: newBalance,
+        promoCredits: row.promoCredits + (delta >= 0 ? fromPromo : -fromPromo),
+        subscriptionCredits: row.subscriptionCredits - fromSubscription,
+        topupCredits: row.topupCredits - fromTopup,
+      })
       .where(eq(users.id, id))
       .returning();
 
@@ -413,6 +527,11 @@ adminUsersRoute.post(
       data: {
         creditsBalance: updated.creditsBalance,
         delta,
+        breakdown: {
+          fromPromo,
+          fromSubscription,
+          fromTopup,
+        },
       },
     });
   },

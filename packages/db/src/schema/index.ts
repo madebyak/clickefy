@@ -20,6 +20,7 @@ export * from './credit-ledger';
 export * from './credit-packs';
 export * from './device-tokens';
 export * from './grant-policies';
+export * from './home-banners';
 export * from './jobs';
 export * from './provider-models';
 export * from './reports';

@@ -26,7 +26,7 @@ import type { AppEnv } from '../types';
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
 
-const ALLOWED_FOLDERS = new Set(['categories', 'templates']);
+const ALLOWED_FOLDERS = new Set(['categories', 'templates', 'banners']);
 
 // ─── Admin upload limits, per folder ────────────────────────────────
 // Templates support an optional preview video (cover poster + short
@@ -69,6 +69,13 @@ function adminUploadRulesFor(folder: string): {
   if (folder === 'templates') {
     // Caller picks via MIME; we return the union and let the route
     // pick the matching bucket below.
+    return { mime: new Set([...ADMIN_IMAGE_MIME, ...ADMIN_VIDEO_MIME]), maxBytes: ADMIN_MAX_VIDEO_BYTES, mediaClass: 'image' };
+  }
+  if (folder === 'banners') {
+    // Banners accept the same image + video MIME set as templates so
+    // an admin can compose image / image_slider / video banners with
+    // the existing upload UI. Same 25 MB ceiling — banners are
+    // typically larger 16:9 hero assets.
     return { mime: new Set([...ADMIN_IMAGE_MIME, ...ADMIN_VIDEO_MIME]), maxBytes: ADMIN_MAX_VIDEO_BYTES, mediaClass: 'image' };
   }
   return null;

@@ -55,6 +55,8 @@ interface UploadFolders {
   templates: 'templates';
   /** Category icons. Mirrored from the categories form. */
   categories: 'categories';
+  /** Home banner images / videos (16:9). Same MIME + size rules as templates. */
+  banners: 'banners';
 }
 
 /**

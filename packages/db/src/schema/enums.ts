@@ -140,3 +140,34 @@ export const reportTargetTypeEnum = pgEnum('report_target_type', [
   'template',
   'user',
 ]);
+
+/**
+ * `home_banner_kind` — visual layout of a home-screen banner.
+ *
+ *   - `image`         — single static image
+ *   - `image_slider`  — multiple images, manual horizontal swipe
+ *   - `video`         — auto-playing, looping, muted video
+ *
+ * Set in stone for now; new kinds are forward-compatible via
+ * `ALTER TYPE ... ADD VALUE` migrations.
+ */
+export const homeBannerKindEnum = pgEnum('home_banner_kind', [
+  'image',
+  'image_slider',
+  'video',
+]);
+
+/**
+ * `home_banner_cta_kind` — what tapping a banner does.
+ *
+ *   - `none`           — no tap action (decorative banner)
+ *   - `template`       — open the template detail screen for `cta_target`
+ *   - `category`       — open the home filtered to category `cta_target`
+ *   - `external_url`   — open `cta_target` in the system browser
+ */
+export const homeBannerCtaKindEnum = pgEnum('home_banner_cta_kind', [
+  'none',
+  'template',
+  'category',
+  'external_url',
+]);

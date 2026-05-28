@@ -350,8 +350,15 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
     }
   };
 
-  const getStageLabel = (stage: GenerationStage) =>
-    `${stage.provider === 'gemini' ? 'Gemini' : 'Kling'} — ${stage.model}`;
+  const getStageLabel = (stage: GenerationStage) => {
+    const providerName =
+      stage.provider === 'gemini'
+        ? 'Gemini'
+        : stage.provider === 'seedance'
+          ? 'Seedance'
+          : 'Kling';
+    return `${providerName} — ${stage.model}`;
+  };
 
   const getDuration = () => {
     if (!testRun?.startTime || !testRun?.endTime) return null;

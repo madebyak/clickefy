@@ -4,8 +4,11 @@
  * Banner editor form — used for both create and edit dialogs.
  *
  * Field layout:
- *   - Kind (image / image_slider / video)
- *   - Media uploader: single drop zone for image+video, multi for slider
+ *   - Kind (image / video) — exactly one media file per banner row.
+ *     Slider behavior on mobile comes from creating multiple banner
+ *     rows (the home screen pages between them automatically), not
+ *     from a multi-image kind.
+ *   - Media uploader: single file
  *   - Title, Subtitle (optional)
  *   - Active toggle, schedule pickers (datetime-local; both optional)
  *
@@ -75,7 +78,12 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
   const { getToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [kind, setKind] = useState<HomeBannerKind>(banner?.kind ?? 'image');
+  // Coerce any legacy `image_slider` rows back to `image` in the
+  // editor — the slider concept now lives at the row-list level, not
+  // inside a single banner row.
+  const initialKind: HomeBannerKind =
+    banner?.kind === 'image_slider' ? 'image' : (banner?.kind ?? 'image');
+  const [kind, setKind] = useState<HomeBannerKind>(initialKind);
   // Existing banner: media is already MediaRef[] from the API. Convert
   // to the local UploadResult shape (which is just MediaRef + fileName)
   // so the uploader's append/remove logic doesn't have to branch.
@@ -95,8 +103,6 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
   const [endsAt, setEndsAt] = useState(toIsoLocal(banner?.endsAt));
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  const allowMultiple = kind === 'image_slider';
 
   const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -121,7 +127,7 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
           results.push(await uploadImageAsset(file, 'banners', getToken));
         }
       }
-      setMedia((prev) => (allowMultiple ? [...prev, ...results] : results));
+      setMedia(results);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       toast.error(message);
@@ -136,14 +142,13 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
     setMedia((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  // Keep media count consistent when kind changes — image / video are
-  // exactly one, slider is N. Trim to the lead item rather than wipe
-  // the upload queue so a kind toggle doesn't surprise the admin.
+  // Switching kind clears media so an image upload doesn't sit under
+  // a "video" kind label (and vice versa). Both kinds accept exactly
+  // one file.
   const handleKindChange = (next: HomeBannerKind) => {
+    if (next === kind) return;
     setKind(next);
-    if (next !== 'image_slider' && media.length > 1) {
-      setMedia(media.slice(0, 1));
-    }
+    setMedia([]);
   };
 
   const acceptForKind: string =
@@ -158,8 +163,8 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
       toast.error('Please upload at least one media file.');
       return;
     }
-    if ((kind === 'image' || kind === 'video') && media.length !== 1) {
-      toast.error(`A "${kind}" banner needs exactly one media file.`);
+    if (media.length !== 1) {
+      toast.error('A banner needs exactly one media file.');
       return;
     }
     if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
@@ -192,8 +197,7 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="image">Image (single)</SelectItem>
-            <SelectItem value="image_slider">Image slider (multiple, manual swipe)</SelectItem>
+            <SelectItem value="image">Image</SelectItem>
             <SelectItem value="video">Video (auto-play, muted, looping)</SelectItem>
           </SelectContent>
         </Select>
@@ -237,7 +241,6 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
               ref={fileInputRef}
               type="file"
               accept={acceptForKind}
-              multiple={allowMultiple}
               onChange={handleFiles}
               className="hidden"
             />
@@ -245,7 +248,7 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
               type="button"
               variant="outline"
               size="sm"
-              disabled={uploading || (!allowMultiple && media.length >= 1)}
+              disabled={uploading || media.length >= 1}
               onClick={() => fileInputRef.current?.click()}
             >
               {uploading ? (
@@ -253,13 +256,11 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
               ) : (
                 <Upload className="h-4 w-4 mr-2" />
               )}
-              {allowMultiple ? 'Add media' : media.length === 0 ? 'Upload media' : 'Replace media'}
+              {media.length === 0 ? 'Upload media' : 'Replace media'}
             </Button>
-            {allowMultiple ? (
-              <p className="text-xs text-muted-foreground mt-2">
-                Drop order = display order. Swipe order on mobile follows this list.
-              </p>
-            ) : null}
+            <p className="text-xs text-muted-foreground mt-2">
+              Want a slider on the home screen? Create multiple banners — they pager-swipe in sort order.
+            </p>
           </div>
         </div>
       </div>

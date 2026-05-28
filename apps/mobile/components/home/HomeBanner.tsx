@@ -1,36 +1,21 @@
 /**
- * Home banner strip — rendered above the "Trending Now" rail.
+ * Home banner strip — one 16:9 slot rendered above the "Trending Now"
+ * rail. If the admin curates multiple active banner rows, the slot
+ * becomes a horizontal pager (manual swipe, pagination dots). The slot
+ * itself never stacks: there is always exactly one banner visible.
  *
- * One row from `GET /v1/catalog/banners`. Renders one of three layouts
- * driven by the discriminated `kind` on the DTO:
+ * Per-slide kinds:
+ *   - `image` → single static image, blurhash placeholder
+ *   - `video` → muted, looping, auto-playing clip via `<VideoPreview />`
  *
- *   - `image`         → single static image
- *   - `image_slider`  → multi-image horizontal pager, dot indicator
- *                       below, **manual swipe only** (no auto-advance —
- *                       admin sorts so the lead image is always #1)
- *   - `video`         → muted, looping, auto-playing clip via the
- *                       existing `<VideoPreview />` primitive
+ * (`image_slider` is preserved as a defensive fallback for any
+ * legacy rows; new banners can no longer pick that kind.)
  *
- * Layout:
- *   - 16:9 aspect, full-width inside the home `px="lg"` rhythm.
- *   - Optional title/subtitle overlay on the bottom-left, drawn over a
- *     subtle linear gradient so light banners don't drown the text.
- *
- * Tap behaviour: dispatched on the `cta` envelope.
- *   - `none`         → no-op (decorative banner; no pressed state)
- *   - `template`     → router push to `/template/<id>`
- *   - `category`     → router push to home with that category active
- *                      (deep-link not yet wired; falls back to no-op)
- *   - `external_url` → `Linking.openURL(target)` so the system browser
- *                      handles it. Keeps users out of an in-app webview
- *                      where session storage / cookies wouldn't survive
- *                      a sign-in roundtrip.
- *
- * Why the renderer is colocated (not split per kind):
- *   - All three share the overlay, gradient, padding, aspect math and
- *     CTA logic. Splitting would 3x the boilerplate.
- *   - The local component count stays low; tap-target wrapping happens
- *     in one place; Layout shifts are impossible.
+ * CTA dispatch (per slide):
+ *   - 'none'         → decorative; no pressed state
+ *   - 'template'     → router push to /template/<id>
+ *   - 'category'     → no-op until home accepts a category route param
+ *   - 'external_url' → `Linking.openURL(target)` (system browser)
  */
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -51,11 +36,6 @@ import {
 
 import { VideoPreview } from './VideoPreview';
 
-interface SliderImage {
-  url: string;
-  blurhash: string;
-}
-
 /**
  * Side gutter — must match the `px="lg"` token used elsewhere on
  * the home screen so the banner aligns with the rails below it.
@@ -65,11 +45,92 @@ const SIDE_GUTTER = 20;
 const ASPECT = 16 / 9;
 const RADIUS = 22;
 
-export interface HomeBannerProps {
+// ─── Public: HomeBannerSlider ──────────────────────────────────────
+//
+// The home screen mounts exactly one of these. It owns the 16:9
+// frame and the page indicator. Each slide is a `<BannerSlide />`.
+
+export interface HomeBannerSliderProps {
+  banners: MobileHomeBanner[];
+}
+
+export function HomeBannerSlider({ banners }: HomeBannerSliderProps) {
+  const { colors } = useTheme();
+  const [pageIdx, setPageIdx] = useState(0);
+  const [width, setWidth] = useState(0);
+
+  if (banners.length === 0) return null;
+
+  // Single banner — no pager overhead, just render the slide directly
+  // inside the same gutter the slider would have used.
+  if (banners.length === 1) {
+    return (
+      <View style={{ paddingHorizontal: SIDE_GUTTER }}>
+        <View style={styles.frame}>
+          <BannerSlide banner={banners[0]!} />
+        </View>
+      </View>
+    );
+  }
+
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (width <= 0) return;
+    const next = Math.round(e.nativeEvent.contentOffset.x / width);
+    if (next !== pageIdx) setPageIdx(next);
+  };
+
+  return (
+    <View style={{ paddingHorizontal: SIDE_GUTTER }}>
+      <View
+        style={styles.frame}
+        onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      >
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          style={StyleSheet.absoluteFill}
+        >
+          {banners.map((banner) => (
+            <View key={banner.id} style={{ width, height: '100%' }}>
+              <BannerSlide banner={banner} />
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={styles.dotsRow} pointerEvents="none">
+          {banners.map((b, i) => (
+            <View
+              key={b.id}
+              style={[
+                styles.dot,
+                {
+                  backgroundColor: i === pageIdx ? '#FFFFFF' : 'rgba(255,255,255,0.45)',
+                  // Subtle border so dots stay legible on very-bright
+                  // banner imagery (e.g. white-on-white photoshoots).
+                  borderColor: colors.bg,
+                },
+              ]}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Internal: BannerSlide ─────────────────────────────────────────
+//
+// Single banner content — image or video, with optional copy overlay
+// and tap-through CTA. Designed to fill its parent (the 16:9 frame).
+
+interface BannerSlideProps {
   banner: MobileHomeBanner;
 }
 
-export function HomeBanner({ banner }: HomeBannerProps) {
+function BannerSlide({ banner }: BannerSlideProps) {
   const router = useRouter();
 
   const onCtaTap = () => {
@@ -81,7 +142,7 @@ export function HomeBanner({ banner }: HomeBannerProps) {
     }
     if (kind === 'external_url') {
       void Linking.openURL(target).catch(() => {
-        // Swallow URL-open failures — the banner is best-effort
+        // Swallow URL-open failures — banner taps are best-effort
         // navigation and we don't want to crash the home tab.
       });
       return;
@@ -94,7 +155,7 @@ export function HomeBanner({ banner }: HomeBannerProps) {
   const tappable = banner.cta.kind !== 'none' && Boolean(banner.cta.target);
 
   const inner = (
-    <View style={styles.frame}>
+    <View style={StyleSheet.absoluteFill as ViewStyle}>
       {banner.kind === 'video' ? (
         <VideoPreview
           source={banner.video.hlsUrl}
@@ -103,7 +164,16 @@ export function HomeBanner({ banner }: HomeBannerProps) {
           style={StyleSheet.absoluteFill as ViewStyle}
         />
       ) : banner.kind === 'image_slider' ? (
-        <SliderBody images={banner.images} />
+        // Legacy fallback — new banners can't pick this kind, but if
+        // the API ever returns one we still render the lead frame
+        // gracefully instead of an empty slot.
+        <Image
+          source={{ uri: banner.images[0]?.url }}
+          placeholder={{ blurhash: banner.images[0]?.blurhash }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={180}
+        />
       ) : (
         <Image
           source={{ uri: banner.image.url }}
@@ -114,14 +184,9 @@ export function HomeBanner({ banner }: HomeBannerProps) {
         />
       )}
 
-      {/* Text overlay only renders when the admin gave us copy.
-          The gradient under it is conditional too — clean banners
-          shouldn't get a tint they don't need. */}
       {(banner.title || banner.subtitle) ? (
         <>
           <LinearGradient
-            // Bottom-shaded gradient — black 0% → 65% over the lower
-            // half. Same darken pattern as TemplateCard's title rail.
             colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.65)']}
             locations={[0.45, 1]}
             style={StyleSheet.absoluteFill}
@@ -149,78 +214,17 @@ export function HomeBanner({ banner }: HomeBannerProps) {
     </View>
   );
 
-  return (
-    <View style={{ paddingHorizontal: SIDE_GUTTER }}>
-      {tappable ? (
-        <Pressable onPress={onCtaTap} haptic="light" pressedOpacity={0.94}>
-          {inner}
-        </Pressable>
-      ) : (
-        inner
-      )}
-    </View>
-  );
-}
-
-// ─── Slider body ────────────────────────────────────────────────────
-
-function SliderBody({ images }: { images: SliderImage[] }) {
-  const { colors } = useTheme();
-  const [pageIdx, setPageIdx] = useState(0);
-  const [width, setWidth] = useState(0);
-
-  // Each page is exactly the slider's measured width — guarantees
-  // crisp paging regardless of device width or font-scaling-driven
-  // layout shifts. We snap on the visible width via `pagingEnabled`.
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (width <= 0) return;
-    const next = Math.round(e.nativeEvent.contentOffset.x / width);
-    if (next !== pageIdx) setPageIdx(next);
-  };
+  if (!tappable) return inner;
 
   return (
-    <>
-      <ScrollView
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-        style={StyleSheet.absoluteFill}
-      >
-        {images.map((img, i) => (
-          <View key={`${img.url}-${i}`} style={{ width, height: '100%' }}>
-            <Image
-              source={{ uri: img.url }}
-              placeholder={{ blurhash: img.blurhash }}
-              style={{ width: '100%', height: '100%' }}
-              contentFit="cover"
-              transition={180}
-            />
-          </View>
-        ))}
-      </ScrollView>
-
-      {images.length > 1 ? (
-        <View style={styles.dotsRow} pointerEvents="none">
-          {images.map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                {
-                  backgroundColor: i === pageIdx ? '#FFFFFF' : 'rgba(255,255,255,0.45)',
-                  // Fallback border so dots stay legible on very-bright
-                  // banner imagery (e.g. white-on-white photoshoots).
-                  borderColor: colors.bg,
-                },
-              ]}
-            />
-          ))}
-        </View>
-      ) : null}
-    </>
+    <Pressable
+      onPress={onCtaTap}
+      haptic="light"
+      pressedOpacity={0.94}
+      style={StyleSheet.absoluteFill as ViewStyle}
+    >
+      {inner}
+    </Pressable>
   );
 }
 

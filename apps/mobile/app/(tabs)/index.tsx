@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Bento } from '@/components/home/Bento';
 import { CategoryRail } from '@/components/home/CategoryRail';
-import { HomeBanner } from '@/components/home/HomeBanner';
+import { HomeBannerSlider } from '@/components/home/HomeBanner';
 import { SearchBar } from '@/components/home/SearchBar';
 import { SectionHeader } from '@/components/home/SectionHeader';
 import { TemplateCard } from '@/components/home/TemplateCard';
@@ -91,18 +91,12 @@ export default function HomeScreen() {
         </Box>
 
         {/* Banner strip — admin-curated, sits between the category rail
-            and the section list. We render each active banner in
-            sort_order. A `gap` between consecutive banners keeps the
-            visual rhythm matching the rails below; a single banner
-            (the common case) just sits on its own with the same
-            bottom margin as a normal section. */}
+            and the section list. Always exactly one 16:9 slot; if the
+            admin has multiple active banner rows, the slot becomes a
+            horizontal pager (manual swipe + dots) ordered by sortOrder. */}
         {(bannersQuery.data ?? []).length > 0 ? (
           <Box pb="xxl">
-            {(bannersQuery.data ?? []).map((banner, i) => (
-              <Box key={banner.id} pt={i === 0 ? undefined : 'md'}>
-                <HomeBanner banner={banner} />
-              </Box>
-            ))}
+            <HomeBannerSlider banners={bannersQuery.data ?? []} />
           </Box>
         ) : null}
 

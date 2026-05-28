@@ -13,14 +13,11 @@
  *
  * Validation rules worth calling out:
  *
- *   - `media.length >= 1` — every kind requires at least one media
- *     entry. The mobile DTO mapper drops zero-media banners, but we
- *     refuse them at write time so admin sees the failure now.
- *
- *   - `kind = 'image'` / `'video'`     → `media.length === 1` enforced.
- *   - `kind = 'image_slider'`          → `media.length >= 1` (no upper
- *                                        cap; admin picks how many to
- *                                        show, mobile handles paging).
+ *   - Every banner row holds exactly one media file (`media.length
+ *     === 1`). Slider behavior on the home screen comes from creating
+ *     multiple banner rows; the mobile pager swipes between them in
+ *     `sortOrder`. The legacy `image_slider` kind is preserved in the
+ *     DB enum for back-compat but is no longer accepted on writes.
  *
  *   - `cta.kind = 'none'` ↔ `cta.target = null`. Other CTA kinds
  *     require a non-empty `target`, and `external_url` requires a
@@ -110,8 +107,8 @@ const ctaSchema = z
 
 const bannerCreateSchema = z
   .object({
-    kind: z.enum(['image', 'image_slider', 'video']),
-    media: z.array(mediaRefSchema).min(1).max(10),
+    kind: z.enum(['image', 'video']),
+    media: z.array(mediaRefSchema).length(1),
     title: z.string().max(80).nullable().optional(),
     subtitle: z.string().max(160).nullable().optional(),
     cta: ctaSchema.optional(),
@@ -121,14 +118,6 @@ const bannerCreateSchema = z
     endsAt: z.string().datetime().nullable().optional(),
   })
   .superRefine((v, ctx) => {
-    // Per-kind media-length contract.
-    if ((v.kind === 'image' || v.kind === 'video') && v.media.length !== 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `kind "${v.kind}" requires exactly one media entry.`,
-        path: ['media'],
-      });
-    }
     // Schedule sanity.
     if (v.startsAt && v.endsAt && new Date(v.endsAt) <= new Date(v.startsAt)) {
       ctx.addIssue({
@@ -144,8 +133,8 @@ const bannerCreateSchema = z
 // rules.
 const bannerUpdateSchema = z
   .object({
-    kind: z.enum(['image', 'image_slider', 'video']).optional(),
-    media: z.array(mediaRefSchema).min(1).max(10).optional(),
+    kind: z.enum(['image', 'video']).optional(),
+    media: z.array(mediaRefSchema).length(1).optional(),
     title: z.string().max(80).nullable().optional(),
     subtitle: z.string().max(160).nullable().optional(),
     cta: ctaSchema.optional(),
@@ -270,18 +259,17 @@ adminBannersRoute.patch(
       return c.json({ error: { code: 'not_found', message: 'Banner not found.' } }, 404);
     }
 
-    // Validate the merged row against the create-time per-kind
-    // media-length rule. We check against the post-merge values so
-    // a PATCH that flips kind from 'image' → 'image_slider' is OK
-    // even if media stays at length 1.
-    const nextKind = body.kind ?? existing.kind;
+    // Each banner row holds exactly one media file. (Slider behavior
+    // on mobile is achieved by creating multiple banner rows.) We
+    // re-check against the post-merge values so a PATCH that only
+    // touches kind without resending media still validates.
     const nextMedia = (body.media ?? (existing.media as MediaRef[])) as MediaRef[];
-    if ((nextKind === 'image' || nextKind === 'video') && nextMedia.length !== 1) {
+    if (nextMedia.length !== 1) {
       return c.json(
         {
           error: {
             code: 'invalid_media_count',
-            message: `kind "${nextKind}" requires exactly one media entry.`,
+            message: 'A banner requires exactly one media entry.',
           },
         },
         400,

@@ -190,11 +190,15 @@ export function CategoryForm({ category, categories, onSubmit, onCancel }: Categ
             Square thumbnail shown across the app. JPG, PNG, or WebP &middot; up to 4 MB.
           </p>
         </div>
+        {/* sr-only (not hidden) so Safari opens the picker when the
+            choose-file button triggers `.click()` on this input. */}
         <input
           ref={fileInputRef}
           type="file"
           accept="image/jpeg,image/png,image/webp"
-          className="hidden"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
           onChange={handleFileSelect}
         />
 

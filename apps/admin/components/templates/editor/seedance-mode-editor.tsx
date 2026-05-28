@@ -261,10 +261,14 @@ function SlotSourcePicker({
                 {uploading ? 'Uploading…' : 'Upload'}
               </Button>
             )}
+            {/* sr-only (not hidden) so Safari opens the picker when
+                the Upload button triggers `.click()` on it. */}
             <input
               ref={fileInputRef}
               type="file"
-              className="hidden"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
               accept={
                 assetKind === 'video'
                   ? 'video/mp4,video/quicktime,video/webm'

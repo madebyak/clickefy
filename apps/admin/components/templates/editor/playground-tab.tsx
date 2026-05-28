@@ -442,10 +442,15 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
                           </button>
                         )}
 
+                        {/* sr-only (not hidden) so Safari opens the
+                            picker when the upload button triggers
+                            `.click()` on this input. */}
                         <input
                           ref={(el) => { fileInputRefs.current[input.fieldKey] = el; }}
                           type="file"
-                          className="hidden"
+                          className="sr-only"
+                          tabIndex={-1}
+                          aria-hidden="true"
                           accept={
                             ('acceptedFormats' in input && input.acceptedFormats?.length
                               ? input.acceptedFormats.join(',')

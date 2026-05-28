@@ -608,10 +608,15 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                 </div>
                               )}
 
+                              {/* sr-only (not hidden) so Safari opens
+                                  the picker when the Add Reference
+                                  button triggers `.click()` on it. */}
                               <input
                                 ref={refFileInputRef}
                                 type="file"
-                                className="hidden"
+                                className="sr-only"
+                                tabIndex={-1}
+                                aria-hidden="true"
                                 accept="image/png,image/jpeg,image/webp"
                                 onChange={async (e) => {
                                   const file = e.target.files?.[0];

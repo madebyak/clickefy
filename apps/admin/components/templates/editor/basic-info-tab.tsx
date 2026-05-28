@@ -709,11 +709,20 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
                 </Button>
               </div>
             )}
+            {/*
+              `sr-only` (not `hidden` aka `display: none`) so Safari
+              honours the programmatic `.click()` triggered from the
+              dropzone's onClick handler. Safari rejects click()s on
+              fully-removed-from-layout file inputs — the symptom in
+              the field was "drag-drop works, click does nothing".
+            */}
             <input
               ref={coverInputRef}
               type="file"
               accept={COVER_ACCEPT_ATTR}
-              className="hidden"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;
                 e.target.value = '';
@@ -805,12 +814,16 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
                 </div>
               );
             })()}
+            {/* See note on the cover input — `sr-only` not `hidden`
+                so Safari opens the picker when the dropzone is clicked. */}
             <input
               ref={galleryInputRef}
               type="file"
               accept={GALLERY_ACCEPT_ATTR}
               multiple
-              className="hidden"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
               onChange={(e) => {
                 const files = e.target.files;
                 e.target.value = '';

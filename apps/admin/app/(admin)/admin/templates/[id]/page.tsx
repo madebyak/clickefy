@@ -220,9 +220,14 @@ export default function TemplateEditorPage() {
     if (!payload) return;
     setSaving(true);
     try {
+      const wasPublished = templateData.status === 'published';
       await updateTemplate(templateId, payload, tokenGetter);
       await publishTemplate(templateId, tokenGetter);
-      toast.success('Template published');
+      toast.success(
+        wasPublished
+          ? 'Republished — mobile users will now see the latest version'
+          : 'Template published',
+      );
       router.push('/admin/templates');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to publish');
@@ -285,14 +290,14 @@ export default function TemplateEditorPage() {
             )}
             {isNew ? 'Create Draft' : 'Save'}
           </Button>
-          {!isNew && templateData.status === 'draft' && (
+          {!isNew && templateData.status !== 'archived' && (
             <Button onClick={handlePublish} disabled={saving}>
               {saving ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <Globe className="h-4 w-4 mr-2" />
               )}
-              Publish
+              {templateData.status === 'published' ? 'Republish' : 'Publish'}
             </Button>
           )}
         </div>

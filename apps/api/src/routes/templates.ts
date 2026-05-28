@@ -110,7 +110,7 @@ type GenerationLike = {
   stages: Array<{
     id: string;
     order: number;
-    provider: 'gemini' | 'kling';
+    provider: 'gemini' | 'kling' | 'seedance';
     model: string;
     prompt: string;
     references: Array<{
@@ -177,7 +177,7 @@ function deriveGenerationAndOutput(
   const kinds: Array<'image' | 'video'> = stages.map((stage) => {
     const cap = findCapabilities(stage.model);
     if (cap) return cap.kind;
-    if (stage.provider === 'kling') return 'video';
+    if (stage.provider === 'kling' || stage.provider === 'seedance') return 'video';
     return 'image';
   });
   const hasImage = kinds.includes('image');

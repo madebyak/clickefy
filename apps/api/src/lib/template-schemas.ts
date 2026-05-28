@@ -166,7 +166,7 @@ const generationReferenceSchema = z.object({
 const generationStageSchema = z.object({
   id: z.string().min(1).max(80),
   order: z.number().int().min(0).max(99),
-  provider: z.enum(['gemini', 'kling']),
+  provider: z.enum(['gemini', 'kling', 'seedance']),
   model: z.string().min(1).max(128),
   prompt: z.string().max(8000),
   references: z.array(generationReferenceSchema).max(20),

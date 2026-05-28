@@ -50,7 +50,7 @@ export function fetchCreditsOverview(getToken: TokenGetter) {
 
 export interface ProviderModelRow {
   id: string;
-  provider: 'gemini' | 'kling' | 'veo';
+  provider: 'gemini' | 'kling' | 'veo' | 'seedance';
   modelKey: string;
   displayName: string;
   status: 'active' | 'preview' | 'deprecated';

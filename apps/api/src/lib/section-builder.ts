@@ -38,7 +38,8 @@ import type { MobileTemplate } from '@clickfy/types';
 import { templateToMobileDTO } from './template-dto';
 import {
   loadTemplateCategoriesMap,
-  templateInCategory,
+  primaryCategoryTreeMatch,
+  templateInCategoryTree,
 } from './template-categories';
 
 export type HomeSectionLayout = 'bento' | 'carousel';
@@ -101,11 +102,15 @@ export async function buildHomeSections(
 
   // Helper closure: tack on the category-scope WHERE clause when set.
   // Kept inline rather than passed through every call site below.
-  // Category membership is now an EXISTS join against
-  // `template_categories` (primary OR extra match).
+  //
+  // We always use the tree-aggregating variant here so tapping a root
+  // chip on mobile pulls in templates assigned to its sub-categories
+  // too. For a leaf categoryId the tree predicate collapses to the
+  // strict shape (the `parent_id = $1` branch matches nothing under
+  // the 2-level hierarchy cap), so there's no root-vs-leaf dispatch.
   const scoped = (...extra: SQL[]): SQL =>
     scopeCategoryId
-      ? publishedAnd(templateInCategory(scopeCategoryId), ...extra)
+      ? publishedAnd(templateInCategoryTree(scopeCategoryId), ...extra)
       : publishedAnd(...extra);
 
   // Fan-out: featured, recently-published, kind=video, kind=image_set,
@@ -140,17 +145,29 @@ export async function buildHomeSections(
         .limit(fetchLimit),
       scopeCategoryId
         ? Promise.resolve([])
-        : db.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.name)),
+        : db
+            .select()
+            .from(categories)
+            // Root-only: a per-category rail represents a root in the
+            // home feed (decision 4 of the design doc — sub-categories
+            // only appear via their parent's drill-down on mobile,
+            // never as their own home rail). The tree-aggregating
+            // primary match below makes the root rail still include
+            // templates whose primary is one of its sub-categories.
+            .where(sql`${categories.parentId} IS NULL`)
+            .orderBy(asc(categories.sortOrder), asc(categories.name)),
     ]);
 
-  // Second wave: one query per category, also in parallel. Categories
-  // with zero published templates are pruned below.  Skipped entirely
-  // in scoped mode (the user already chose a category).
+  // Second wave: one query per ROOT category, also in parallel.
+  // Categories with zero published templates are pruned below; skipped
+  // entirely in scoped mode (the user already chose a category).
   //
-  // For per-category rails we use the primary-only predicate so a
-  // multi-category template surfaces only in its primary's rail
-  // (Q3 of the design discussion). The "Trending" / "New Arrivals"
-  // cross-cutting rails are unaffected and continue to feature it.
+  // `primaryCategoryTreeMatch` keeps the "primary only" rule (so a
+  // multi-category template surfaces in its primary's rail only) AND
+  // aggregates children — meaning a root rail naturally contains both
+  // (a) templates primary'd to the root and (b) templates primary'd to
+  // any of its sub-categories. Without this, a parent rail would look
+  // empty once admins move templates down into specific subs.
   const categoryTemplateRows = scopeCategoryId
     ? []
     : await Promise.all(
@@ -158,7 +175,7 @@ export async function buildHomeSections(
           db
             .select()
             .from(templates)
-            .where(publishedAnd(primaryCategoryMatch(cat.id)))
+            .where(publishedAnd(primaryCategoryTreeMatch(cat.id)))
             .orderBy(desc(templates.publishedAt), desc(templates.createdAt))
             .limit(limit),
         ),
@@ -296,20 +313,4 @@ export async function buildHomeSections(
   }
 
   return sections;
-}
-
-/**
- * "Primary category of this template equals X" — used by per-category
- * rails so the home feed shows each multi-cat template under its
- * primary's rail only. EXISTS subquery on the join table with
- * `is_primary = true`. The broader "primary OR extras" match is what
- * `templateInCategory` provides for catalog list + scoped sections.
- */
-function primaryCategoryMatch(categoryId: string): SQL {
-  return sql`EXISTS (
-    SELECT 1 FROM template_categories tc
-    WHERE tc.template_id = templates.id
-      AND tc.is_primary = true
-      AND tc.category_id = ${categoryId}::uuid
-  )`;
 }

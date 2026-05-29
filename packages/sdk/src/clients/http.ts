@@ -147,6 +147,12 @@ interface ApiCategoryRow {
   iconUrl: string | null;
   parentId: string | null;
   sortOrder: number;
+  /**
+   * Direct sub-categories, attached server-side by GET /v1/categories.
+   * Optional because the field landed after sub-categories shipped —
+   * older API deployments won't include it.
+   */
+  children?: ApiCategoryRow[];
 }
 
 interface ApiEnvelope<T> {
@@ -197,6 +203,10 @@ function mapCategory(row: ApiCategoryRow): CatalogCategory {
     label: row.name,
     imageUri: row.iconUrl,
     color: colourForSlug(row.slug),
+    parentId: row.parentId,
+    // Recurse so each child also gets the SDK projection. Depth is
+    // bounded at 2 by the API guard, so this never spirals.
+    children: row.children ? row.children.map(mapCategory) : undefined,
   };
 }
 

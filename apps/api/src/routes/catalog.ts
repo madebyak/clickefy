@@ -27,7 +27,7 @@ import { resolveOwnMediaUrl, templateToMobileDTO } from '../lib/template-dto';
 import {
   loadTemplateCategories,
   loadTemplateCategoriesMap,
-  templateInCategory,
+  templateInCategoryTree,
 } from '../lib/template-categories';
 import { buildHomeSections } from '../lib/section-builder';
 import { withAuth } from '../middleware/with-auth';
@@ -119,9 +119,15 @@ catalog.get(
   const filterParts: SQL[] = [eq(templates.status, 'published')];
   if (q.search) filterParts.push(ilike(templates.title, `%${q.search}%`));
   if (q.kind) filterParts.push(eq(templates.kind, q.kind));
-  // Many-to-many membership check; matches the primary OR any extra.
-  // Single source of truth for "this template is in category X".
-  if (q.categoryId) filterParts.push(templateInCategory(q.categoryId));
+  // Many-to-many membership check; matches the primary OR any extra
+  // on the chosen category OR any direct sub-category of it. Tapping
+  // a root chip on mobile therefore aggregates the root's own
+  // templates with those assigned to its sub-categories (the "parent
+  // aggregation" decision from the sub-categories design doc).
+  //
+  // The tree variant collapses to a strict match when `categoryId` is
+  // itself a leaf, so we don't need to dispatch on root-vs-leaf here.
+  if (q.categoryId) filterParts.push(templateInCategoryTree(q.categoryId));
   if (q.featured !== undefined) filterParts.push(eq(templates.featured, q.featured));
 
   // Cursor format depends on the active sort. We keep them disjoint so

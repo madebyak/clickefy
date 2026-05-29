@@ -24,7 +24,14 @@ import { templateCategories } from '@clickfy/db';
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 
 /**
- * SQL fragment: "this template belongs to `categoryId`".
+ * SQL fragment: "this template belongs to `categoryId`" (strict).
+ *
+ * Strict = exact match on the join row. Does NOT aggregate descendants
+ * — for that, use `templateInCategoryTree`. Strict is the right call
+ * for admin filters where the operator wants the literal category they
+ * picked; the public/mobile path uses the tree variant so a root rail
+ * naturally includes its children's templates (decision 1 of the
+ * sub-categories design doc).
  *
  * Usage:
  *   const whereParts: SQL[] = [eq(templates.status, 'published')];
@@ -40,14 +47,84 @@ import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
  * helper, so we go straight to raw SQL. The `${categoryId}` binding
  * is still parameterised by Drizzle, so the fragment is injection-safe.
  *
- * The companion `primaryCategoryMatch()` helper in `section-builder.ts`
- * uses the same pattern for the same reason.
+ * The three sibling helpers below (`primaryCategoryMatch`,
+ * `templateInCategoryTree`, `primaryCategoryTreeMatch`) follow the same
+ * raw-SQL pattern for the same reason.
  */
 export function templateInCategory(categoryId: string): SQL {
   return sql`EXISTS (
     SELECT 1 FROM ${templateCategories}
     WHERE ${templateCategories.templateId} = templates.id
       AND ${templateCategories.categoryId} = ${categoryId}::uuid
+  )`;
+}
+
+/**
+ * SQL fragment: "this template is primary'd to `categoryId`" (strict).
+ *
+ * Used by per-category home rails so a multi-category template surfaces
+ * in its primary's rail only — extras don't pull it into every rail
+ * they belong to. Same shape as `templateInCategory` plus an
+ * `is_primary = true` predicate.
+ */
+export function primaryCategoryMatch(categoryId: string): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM ${templateCategories}
+    WHERE ${templateCategories.templateId} = templates.id
+      AND ${templateCategories.isPrimary} = true
+      AND ${templateCategories.categoryId} = ${categoryId}::uuid
+  )`;
+}
+
+/**
+ * SQL fragment: "this template belongs to `categoryId` OR any direct
+ * child of `categoryId`" (tree-aggregating).
+ *
+ * Used by the public catalog filter and the scoped-sections branch so
+ * tapping a root category on mobile aggregates the templates assigned
+ * directly to it AND those assigned to its sub-categories — matching
+ * the "parent aggregation" decision from the design discussion.
+ *
+ * Why a single JOIN works (no recursive CTE):
+ * the category hierarchy is capped at two levels (parent → child, no
+ * grandchildren — enforced by the server-side guard in
+ * `routes/categories.ts`). So `(c.id = $1 OR c.parent_id = $1)` covers
+ * every reachable row in O(1) join hops.
+ *
+ * Cost: one extra index lookup on `categories.parent_id` per matching
+ * template row (the table is tiny — dozens of rows — so this is
+ * effectively free even when fan-out is large).
+ *
+ * Note: passing a leaf `categoryId` here is safe. The `c.parent_id =
+ * $1` branch matches nothing (a leaf cannot itself be a parent under
+ * the 2-level cap), so the behaviour collapses to the strict variant.
+ * That property lets callers always reach for the tree variant without
+ * a root-vs-leaf dispatch lookup.
+ */
+export function templateInCategoryTree(categoryId: string): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM ${templateCategories} tc
+    JOIN categories c ON c.id = tc.category_id
+    WHERE tc.template_id = templates.id
+      AND (c.id = ${categoryId}::uuid OR c.parent_id = ${categoryId}::uuid)
+  )`;
+}
+
+/**
+ * SQL fragment: "this template is primary'd to `categoryId` OR any
+ * direct child of `categoryId`" (tree-aggregating, primary-only).
+ *
+ * Used by the per-category home rails so a root rail naturally
+ * includes templates whose primary is one of its sub-categories.
+ * Mirrors `templateInCategoryTree` with an `is_primary = true` filter.
+ */
+export function primaryCategoryTreeMatch(categoryId: string): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM ${templateCategories} tc
+    JOIN categories c ON c.id = tc.category_id
+    WHERE tc.template_id = templates.id
+      AND tc.is_primary = true
+      AND (c.id = ${categoryId}::uuid OR c.parent_id = ${categoryId}::uuid)
   )`;
 }
 

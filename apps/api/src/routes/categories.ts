@@ -44,7 +44,36 @@ categoriesRoute.get(
     const rows = await c.var.db.query.categories.findMany({
       orderBy: [asc(categories.sortOrder), asc(categories.name)],
     });
-    return c.json({ data: rows });
+
+    // Build a `children: Category[]` field for every row.
+    //
+    // Shape contract:
+    //   - The response stays a *flat* list — every category (root and
+    //     child) appears as a top-level entry, in the same order it did
+    //     before this change. Existing consumers that iterate `data`
+    //     and ignore `children` keep working unchanged.
+    //   - Each root gets its direct children attached (already sorted by
+    //     `sortOrder, name` thanks to the SQL order). Children rows get
+    //     an empty `children: []` array, never nested deeper — the
+    //     hierarchy is capped at two levels.
+    //
+    // Cost: O(N) where N = total category count (well under 100). Done
+    // in JS to avoid a separate query; the bytes-on-the-wire overhead
+    // is sub-KB for any realistic category tree.
+    const childrenByParent = new Map<string, typeof rows>();
+    for (const row of rows) {
+      if (row.parentId) {
+        const arr = childrenByParent.get(row.parentId) ?? [];
+        arr.push(row);
+        childrenByParent.set(row.parentId, arr);
+      }
+    }
+    const data = rows.map((row) => ({
+      ...row,
+      children: row.parentId ? [] : (childrenByParent.get(row.id) ?? []),
+    }));
+
+    return c.json({ data });
   },
 );
 
@@ -99,6 +128,50 @@ categoriesRoute.post(
 
 // ─── Write (admin) ──────────────────────────────────────────────────
 
+/**
+ * Enforce the 2-level hierarchy cap (decision 5 of the sub-categories
+ * design doc). Returns null when the parent is acceptable, or a JSON-
+ * ready error tuple when it isn't.
+ *
+ * Three rejections, in order:
+ *   1. parent doesn't exist
+ *   2. parent itself has a parent (would create a grandchild)
+ *   3. parent is the same row we're editing (self-parenting)
+ *
+ * The admin form filters these out client-side already (PR2), but
+ * server-side is the authority — a stale dropdown, a hand-crafted
+ * cURL, or a CLI tool must hit the same wall.
+ */
+async function validateParent(
+  db: import('@clickfy/db').Db,
+  parentId: string,
+  editingId: string | null,
+): Promise<{ code: string; message: string; status: 400 | 404 } | null> {
+  if (editingId && parentId === editingId) {
+    return {
+      code: 'invalid_parent',
+      message: 'A category cannot be its own parent.',
+      status: 400,
+    };
+  }
+  const parent = await db.query.categories.findFirst({
+    where: eq(categories.id, parentId),
+    columns: { id: true, parentId: true },
+  });
+  if (!parent) {
+    return { code: 'parent_not_found', message: 'Parent category not found.', status: 404 };
+  }
+  if (parent.parentId !== null) {
+    return {
+      code: 'invalid_parent_depth',
+      message:
+        'Sub-categories cannot themselves have sub-categories — the hierarchy is capped at two levels. Pick a top-level category as the parent.',
+      status: 400,
+    };
+  }
+  return null;
+}
+
 categoriesRoute.post(
   '/',
   withAuth({ required: true }),
@@ -107,6 +180,14 @@ categoriesRoute.post(
   zValidator('json', createCategorySchema),
   async (c) => {
     const body = c.req.valid('json');
+
+    if (body.parentId) {
+      const bad = await validateParent(c.var.db, body.parentId, null);
+      if (bad) {
+        return c.json({ error: { code: bad.code, message: bad.message } }, bad.status);
+      }
+    }
+
     try {
       const [row] = await c.var.db
         .insert(categories)
@@ -140,6 +221,36 @@ categoriesRoute.patch(
   async (c) => {
     const id = c.req.param('id');
     const body = c.req.valid('json');
+
+    // 2-level guard on the parent reassignment path. Only runs when
+    // parentId is being SET (not when it's being cleared via `null` or
+    // omitted from the patch — clearing a parent is always safe).
+    if (body.parentId) {
+      const bad = await validateParent(c.var.db, body.parentId, id);
+      if (bad) {
+        return c.json({ error: { code: bad.code, message: bad.message } }, bad.status);
+      }
+      // Additional guard: if THIS category already has children, it
+      // can't itself become a child (that would push its children to
+      // grandchild depth and violate the cap retroactively).
+      const ownChildren = await c.var.db.query.categories.findFirst({
+        where: eq(categories.parentId, id),
+        columns: { id: true },
+      });
+      if (ownChildren) {
+        return c.json(
+          {
+            error: {
+              code: 'has_children',
+              message:
+                'This category has sub-categories of its own — move it to the top level first, or move its children elsewhere.',
+            },
+          },
+          400,
+        );
+      }
+    }
+
     const [row] = await c.var.db
       .update(categories)
       .set({

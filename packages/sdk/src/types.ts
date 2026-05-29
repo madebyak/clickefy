@@ -15,6 +15,18 @@ export interface CatalogCategory {
   imageUri: string | null;
   /** Brand swatch behind the circular thumb */
   color: string;
+  /**
+   * `null` for top-level (root) categories; the parent id for
+   * sub-categories. Mobile uses this to filter the chip rail to
+   * roots only and surface sub-categories via the parent's drill-down.
+   */
+  parentId?: string | null;
+  /**
+   * Direct sub-categories, attached server-side. Populated on roots,
+   * `[]` (or omitted) on sub-categories themselves. Optional so
+   * pre-feature callers compiling against this type keep working.
+   */
+  children?: CatalogCategory[];
 }
 
 /**

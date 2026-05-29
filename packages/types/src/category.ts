@@ -18,6 +18,14 @@ export interface Category {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Direct sub-categories of this row, attached server-side by
+   * `GET /v1/categories`. Always present on roots (possibly empty);
+   * always `[]` on child rows (the hierarchy is capped at two levels).
+   * Optional so older consumers compiled before this field landed
+   * still typecheck.
+   */
+  children?: Category[];
 }
 
 /**

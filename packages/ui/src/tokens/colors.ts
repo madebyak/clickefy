@@ -24,6 +24,16 @@ export interface ThemeColors {
   chipInk: string;
   pill: string;
 
+  /**
+   * Filled chip / card surface used for the category rail (and any
+   * other future "chip card" UI). Sits subtly *off* the app bg —
+   * slightly darker on light theme, slightly lighter on dark theme
+   * — so the chip reads as a contained surface without needing a
+   * border. Designed to flip to `accent.solid` when the chip is
+   * selected.
+   */
+  chipSurface: string;
+
   // Semantic
   success: string;
   warning: string;
@@ -51,6 +61,7 @@ export const lightColors: ThemeColors = {
   chipBg: '#0B0B12',
   chipInk: '#FFFFFF',
   pill: '#0B0B12',
+  chipSurface: '#EDEAE3',
   success: '#10B981',
   warning: '#F59022',
   danger: '#FF4D6F',
@@ -73,6 +84,7 @@ export const darkColors: ThemeColors = {
   chipBg: '#FFFFFF',
   chipInk: '#0B0B12',
   pill: '#FFFFFF',
+  chipSurface: '#1B1B25',
   success: '#10B981',
   warning: '#F59022',
   danger: '#FF4D6F',

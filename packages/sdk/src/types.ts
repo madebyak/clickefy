@@ -402,8 +402,13 @@ export interface CatalogTemplateListOptions {
   kind?: 'image' | 'video' | 'image_set';
   categoryId?: string;
   featured?: boolean;
-  /** Default = curated order; "recent" = newest published first. */
-  sort?: 'default' | 'recent';
+  /**
+   * `default` = curated order (featured first, then sortOrder).
+   * `recent`  = newest published first.
+   * `popular` = most-used first (stats.runs DESC, falls back to
+   *             curated order when usage data is missing).
+   */
+  sort?: 'default' | 'recent' | 'popular';
   cursor?: string | null;
   /** 1–50, server default = 20. */
   limit?: number;

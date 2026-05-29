@@ -49,6 +49,7 @@ const KIND_OPTIONS: { value: TemplateKindFilter; label: string; icon: 'image' | 
 const SORT_OPTIONS: { value: TemplateSortFilter; label: string; description: string }[] = [
   { value: 'default', label: 'Recommended', description: 'Curated picks first' },
   { value: 'recent', label: 'Newest', description: 'Most recently added' },
+  { value: 'popular', label: 'Most popular', description: 'Most-used templates first' },
 ];
 
 export default function SearchFiltersScreen() {
@@ -80,6 +81,10 @@ export default function SearchFiltersScreen() {
       sdk.catalog.listTemplates({
         search: queryString || undefined,
         kind: countKey.kind,
+        // Honor the active category scope in the live count preview —
+        // otherwise "Show 12 results" would lie when the user has a
+        // category-scoped search open and only toggles a kind/sort.
+        categoryId: countKey.categoryId,
         featured: countKey.featured,
         sort: countKey.sort,
         limit: 1,
@@ -98,7 +103,16 @@ export default function SearchFiltersScreen() {
   const reset = () => {
     // Reset the pending state only; the user still has to tap Apply
     // to commit. Two-step confirmation matches both HIG and Material.
-    setPending({ sort: 'default' });
+    //
+    // We deliberately preserve the active category scope — the
+    // "Reset" button clears *toggled* filters, not the user's current
+    // surface. Clearing the scope is a separate gesture (the leading
+    // "In <Label> ✕" chip on `/search`).
+    setPending((p) => ({
+      sort: 'default',
+      categoryId: p.categoryId,
+      categoryLabel: p.categoryLabel,
+    }));
   };
 
   const pendingActive = countActiveFilters(pending);

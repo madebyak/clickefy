@@ -23,7 +23,7 @@
 import { useSyncExternalStore } from 'react';
 
 export type TemplateKindFilter = 'image' | 'video' | 'image_set';
-export type TemplateSortFilter = 'default' | 'recent';
+export type TemplateSortFilter = 'default' | 'recent' | 'popular';
 
 export interface SearchFilters {
   /**

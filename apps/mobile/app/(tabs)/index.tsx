@@ -16,6 +16,11 @@ import { TemplateCard } from '@/components/home/TemplateCard';
 import { TopBar } from '@/components/home/TopBar';
 import { CATEGORIES_QUERY, HOME_SECTIONS_QUERY } from '@/lib/query-config';
 import { getSDK } from '@/lib/sdk';
+import {
+  countActiveFilters,
+  setSearchFilters,
+  useSearchFilters,
+} from '@/lib/search-state';
 import { useSession } from '@/lib/use-session';
 
 export default function HomeScreen() {
@@ -56,11 +61,28 @@ export default function HomeScreen() {
 
   // Reset the sub selection whenever the root changes so picking
   // Beauty → Perfumes → Lifestyle doesn't keep "Perfumes" highlighted
-  // under the wrong parent.
+  // under the wrong parent. We also clear the toggled filter state
+  // (`kind`, `featured`, `sort`) when the user switches roots — those
+  // filters are scoped to a category surface, and carrying them over
+  // surprises the user ("why is this category empty? oh, I had
+  // 'Featured only' on from before"). The search query string (the
+  // user's typed text) is *not* in this store, so we only nuke the
+  // structured filter toggles.
   const handleSelectRoot = (id: string) => {
     setActiveCat(id);
     setActiveSubcategoryId(null);
+    setSearchFilters({
+      kind: undefined,
+      featured: undefined,
+      sort: 'default',
+    });
   };
+
+  // Active filter count drives the dot on the sliders icon. We read
+  // the live store directly so any change inside `/search-filters`
+  // reflects on the home bar the moment the user dismisses the sheet.
+  const filters = useSearchFilters();
+  const activeFilterCount = countActiveFilters(filters);
 
   // ── Deep-link from banner CTAs ───────────────────────────────────
   // `router.push({ pathname: '/', params: { categoryId } })` from
@@ -135,11 +157,21 @@ export default function HomeScreen() {
         onCreditsPress={() => router.push('/paywall')}
       />
 
-      {/* Scope-aware search entry. When the user has chosen a category
-          (or a sub-category) we forward both the id and a human label
-          to `/search` so it pre-seeds the filter store and renders an
-          "In <label> ✕" chip. Tapping ✕ inside `/search` clears the
-          scope back to a global search — Etsy / App Store pattern. */}
+      {/* Scope-aware search entry. Two affordances on one row:
+            1. Tap the input → opens `/search` (typed query). When the
+               user has a category selected we forward the id + label so
+               `/search` pre-seeds the scope and renders an "In <Label> ✕"
+               chip. Etsy / App Store pattern.
+            2. Tap the sliders icon → opens `/search-filters` directly.
+               Hidden entirely on the "All" feed since the curated rails
+               aren't filterable; visible on the category-grid view so
+               the user can re-sort / narrow by kind in place. The
+               sheet's Apply commits to the shared filter store; the
+               grid below re-fetches automatically.
+
+          Honoring the rule that the home rails ("All") have no filter
+          chrome at all keeps that surface calm and matches Pinterest /
+          App Store / TikTok feed conventions. */}
       {(() => {
         const activeChild = activeSubcategoryId
           ? activeRootChildren.find((c) => c.id === activeSubcategoryId)
@@ -158,6 +190,21 @@ export default function HomeScreen() {
                     : {},
                 })
               }
+              // Only attach the filter affordance on filterable
+              // surfaces. `undefined` = hide the icon completely.
+              onPressFilters={
+                isAllCategory
+                  ? undefined
+                  : () =>
+                      router.push({
+                        pathname: '/search-filters',
+                        // No `q` param here — the sheet's count
+                        // preview falls back to "filters only" when
+                        // there's no query, which is exactly what we
+                        // want from the home category-grid surface.
+                      })
+              }
+              activeFilterCount={isAllCategory ? 0 : activeFilterCount}
             />
           </Box>
         );

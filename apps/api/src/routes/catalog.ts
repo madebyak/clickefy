@@ -87,8 +87,15 @@ const listQuerySchema = z.object({
    *                                   Best for human-curated rails.
    *   - `recent`                   — most recently published first.
    *                                   Used by mobile "New Arrivals" etc.
+   *   - `popular`                  — most-used first. Reads
+   *                                   `stats->>'runs'` (cast to int)
+   *                                   and falls back to the curated
+   *                                   chain (featured/sortOrder/id) so
+   *                                   the option still produces a sane
+   *                                   ordering before any engagement
+   *                                   data is logged.
    */
-  sort: z.enum(['default', 'recent']).optional(),
+  sort: z.enum(['default', 'recent', 'popular']).optional(),
   /**
    * When `true`, the response carries a `meta.total` count of the rows
    * matching the WHERE clause (ignoring cursor/limit). Used by the
@@ -134,6 +141,7 @@ catalog.get(
   // a cursor minted under one ordering can't accidentally page through
   // the other. The cursor always carries a stable tiebreaker (`id`).
   const useRecent = q.sort === 'recent';
+  const usePopular = q.sort === 'popular';
   const whereParts: SQL[] = [...filterParts];
 
   if (q.cursor) {
@@ -145,6 +153,17 @@ catalog.get(
         // side in the comparison.
         whereParts.push(
           sql`(COALESCE(${templates.publishedAt}, ${templates.createdAt}), ${templates.id}::text) < (${iso}::timestamptz, ${idCursor})`,
+        );
+      }
+    } else if (usePopular) {
+      // Cursor: `runs:sortOrder:id`. We page by descending runs first,
+      // then ascending sortOrder, then id — same chain as orderBy below.
+      const [runsRaw, sortOrderRaw, idCursor] = q.cursor.split(':');
+      const runsCursor = Number.parseInt(runsRaw, 10);
+      const sortOrderCursor = Number.parseInt(sortOrderRaw, 10);
+      if (Number.isFinite(runsCursor) && Number.isFinite(sortOrderCursor) && idCursor) {
+        whereParts.push(
+          sql`(COALESCE((${templates.stats}->>'runs')::int, 0), -${templates.sortOrder}, ${templates.id}::text) < (${runsCursor}, -${sortOrderCursor}, ${idCursor})`,
         );
       }
     } else {
@@ -180,9 +199,22 @@ catalog.get(
         desc(sql`COALESCE(${templates.publishedAt}, ${templates.createdAt})`),
         desc(templates.id),
       ]
-    : useSearchRank
-      ? [asc(searchRank!), desc(templates.featured), asc(templates.sortOrder), asc(templates.id)]
-      : [desc(templates.featured), asc(templates.sortOrder), asc(templates.id)];
+    : usePopular
+      ? [
+          // Most-used first. Coerce the JSONB value through `text` ->
+          // `int` so a missing key (or null) sorts as 0 rather than
+          // breaking the comparison.
+          desc(sql`COALESCE((${templates.stats}->>'runs')::int, 0)`),
+          // Tiebreakers — same chain the curated default uses, so a
+          // brand-new catalog (all runs == 0) still produces an
+          // editorially sensible order instead of an arbitrary one.
+          desc(templates.featured),
+          asc(templates.sortOrder),
+          asc(templates.id),
+        ]
+      : useSearchRank
+        ? [asc(searchRank!), desc(templates.featured), asc(templates.sortOrder), asc(templates.id)]
+        : [desc(templates.featured), asc(templates.sortOrder), asc(templates.id)];
 
   // Run the count in parallel with the page fetch when requested.
   // `filterParts` excludes the cursor predicate so we count the
@@ -212,7 +244,9 @@ catalog.get(
     hasMore && last
       ? useRecent
         ? `${(last.publishedAt ?? last.createdAt).toISOString()}::${last.id}`
-        : `${last.sortOrder}:${last.id}`
+        : usePopular
+          ? `${last.stats?.runs ?? 0}:${last.sortOrder}:${last.id}`
+          : `${last.sortOrder}:${last.id}`
       : null;
 
   const publicBaseUrl = new URL(c.req.url).origin;

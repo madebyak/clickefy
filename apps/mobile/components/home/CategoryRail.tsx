@@ -12,9 +12,19 @@ export interface CategoryRailProps {
   onSelect: (id: string) => void;
 }
 
-const CHIP_SIZE = 64;
-/** Match TemplateCard radius (18) so the visual language is consistent. */
-const CHIP_RADIUS = 18;
+// ─── Sizing ─────────────────────────────────────────────────────────
+// The chip is a vertical card: padded surface that holds the
+// square category artwork on top and the label underneath. Sizes
+// are tuned so 4–4.5 cards are visible on a 390pt iPhone.
+
+const CARD_WIDTH = 80;
+const CARD_RADIUS = 18;
+const CARD_PAD_TOP = 8;
+const CARD_PAD_X = 8;
+const CARD_PAD_BOTTOM = 10;
+const IMAGE_SIZE = CARD_WIDTH - CARD_PAD_X * 2; // 64
+const IMAGE_RADIUS = 14;
+const IMAGE_LABEL_GAP = 6;
 
 /** Synthetic "All" pseudo-category — never returned by the API. */
 const ALL_CHIP: CatalogCategory = {
@@ -25,24 +35,29 @@ const ALL_CHIP: CatalogCategory = {
 };
 
 /**
- * Horizontal rail of rounded-square category chips. Same border-radius
- * as template cards = consistent visual rhythm.
+ * Horizontal rail of vertical chip cards. Each chip is a small
+ * surface (slightly darker on light theme, slightly lighter on
+ * dark theme) holding the category artwork and label.
  *
- * Resilience notes:
- *   - Always prepends an "All" chip so the rail isn't empty during the
- *     initial fetch / on API failure (caller can still pass an empty
- *     `categories` array and get a usable rail).
- *   - Falls back to a coloured letter tile when `imageUri` is null or
- *     the image fails to load (e.g. CDN hiccup).
+ * Selection state flips the whole card surface to `accent.solid`
+ * and the label to `accent.ink` (auto-contrast per accent palette
+ * — white on Violet/Coral/Ocean, dark on Citrus). The image itself
+ * keeps its native colors at all times so the artwork stays
+ * recognisable across both states.
+ *
+ * Resilience:
+ *   - Always pre-pends an "All" chip so the rail isn't empty during
+ *     the initial fetch / on API failure.
+ *   - Falls back to a coloured letter tile when `imageUri` is null
+ *     or the image fails to load.
+ *   - Filtered to root categories upstream; this component does
+ *     not need to know about sub-categories.
  */
 export function CategoryRail({ categories, activeId, onSelect }: CategoryRailProps) {
   const { colors, accent } = useTheme();
 
-  // Rail shows ROOT categories only. Sub-categories surface in
-  // the SubcategoryRail once a parent root is selected. The API
-  // ships both roots and children in a single flat list (with
-  // `children` arrays nested on roots), so the filter below is a
-  // simple `parentId == null` check.
+  // Root-only filter (defensive — caller already filters, but a
+  // double-check keeps stray children out if upstream regresses).
   const items = useMemo(
     () => [ALL_CHIP, ...categories.filter((c) => !c.parentId)],
     [categories],
@@ -52,44 +67,67 @@ export function CategoryRail({ categories, activeId, onSelect }: CategoryRailPro
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+      contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
     >
       {items.map((cat) => {
         const isActive = cat.id === activeId;
         const isAllChip = cat.id === 'all';
         const initial = cat.label?.[0]?.toUpperCase() ?? '?';
+
+        // Card surface flips to accent.solid when active; label
+        // flips to accent.ink so contrast holds across every
+        // accent palette (white for Violet/Coral/Ocean, dark for
+        // Citrus). Inactive label stays on the standard ink token.
+        const cardBg = isActive ? accent.solid : colors.chipSurface;
+        const labelColor = isActive ? accent.ink : colors.ink;
+
         return (
           <Pressable
             key={cat.id}
             onPress={() => onSelect(cat.id)}
             haptic="selection"
-            pressedOpacity={0.7}
+            pressedOpacity={0.85}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
-            style={{ alignItems: 'center', gap: 8, width: CHIP_SIZE }}
+            style={{
+              width: CARD_WIDTH,
+              paddingTop: CARD_PAD_TOP,
+              paddingHorizontal: CARD_PAD_X,
+              paddingBottom: CARD_PAD_BOTTOM,
+              borderRadius: CARD_RADIUS,
+              backgroundColor: cardBg,
+              alignItems: 'center',
+            }}
           >
             <View
               style={{
-                width: CHIP_SIZE,
-                height: CHIP_SIZE,
-                borderRadius: CHIP_RADIUS,
+                width: IMAGE_SIZE,
+                height: IMAGE_SIZE,
+                borderRadius: IMAGE_RADIUS,
+                // Artwork keeps a stable interior surface so the
+                // image edge reads cleanly against the card BG in
+                // both states. For the "All" chip we use the ink
+                // token directly so the categories icon sits on a
+                // dark plate per the original design rhythm.
                 backgroundColor: isAllChip ? colors.ink : cat.color,
                 overflow: 'hidden',
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderWidth: isActive ? 2 : 1,
-                borderColor: isActive ? accent.solid : colors.border,
               }}
             >
               {isAllChip ? (
-                <Icon name="categories" size={26} color={colors.surface} weight="fill" />
+                <Icon
+                  name="categories"
+                  size={26}
+                  color={colors.surface}
+                  weight="fill"
+                />
               ) : cat.imageUri ? (
                 <Image
                   source={cat.imageUri}
                   contentFit="cover"
                   style={{ width: '100%', height: '100%' }}
                   transition={120}
-                  // Falls back to the coloured tile below when load fails.
                   recyclingKey={cat.id}
                 />
               ) : (
@@ -102,12 +140,18 @@ export function CategoryRail({ categories, activeId, onSelect }: CategoryRailPro
                 </Text>
               )}
             </View>
+
             <Text
               variant="caption"
-              color={isActive ? 'ink' : 'inkMuted'}
-              weight={isActive ? '600' : '500'}
+              weight={isActive ? '700' : '600'}
               numberOfLines={1}
-              style={{ fontSize: 12.5, letterSpacing: -0.1 }}
+              style={{
+                marginTop: IMAGE_LABEL_GAP,
+                fontSize: 12,
+                letterSpacing: -0.1,
+                color: labelColor,
+                maxWidth: IMAGE_SIZE,
+              }}
             >
               {cat.label}
             </Text>

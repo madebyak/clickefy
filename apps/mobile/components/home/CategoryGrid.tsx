@@ -26,8 +26,10 @@ import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { View } from 'react-native';
 
+import { ActiveFiltersBar } from '@/components/search/ActiveFiltersBar';
 import { TemplateCard } from '@/components/home/TemplateCard';
 import { SEARCH_QUERY } from '@/lib/query-config';
+import { setSearchFilters, useSearchFilters } from '@/lib/search-state';
 import { getSDK } from '@/lib/sdk';
 
 const PAGE_SIZE = 24;
@@ -42,12 +44,31 @@ export function CategoryGrid({ categoryId, bottomInset = 120 }: CategoryGridProp
   const router = useRouter();
   const sdk = getSDK();
 
+  // The home category surface shares the same filter store as
+  // `/search`. Whatever the user toggled in `/search-filters` flows
+  // straight into the listTemplates request below. Tapping a chip ✕
+  // in `ActiveFiltersBar` clears that single filter and the grid
+  // refetches in place — no navigation required. The category scope
+  // itself comes from the `categoryId` prop (driven by the chip rail
+  // above), not the store, so a "Beauty grid" can't accidentally
+  // un-scope itself just because the user cleared filters.
+  const filters = useSearchFilters();
+
   const listQuery = useInfiniteQuery({
-    queryKey: ['category-grid', categoryId] as const,
+    queryKey: [
+      'category-grid',
+      categoryId,
+      filters.kind,
+      filters.featured,
+      filters.sort,
+    ] as const,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       sdk.catalog.listTemplates({
         categoryId,
+        kind: filters.kind,
+        featured: filters.featured,
+        sort: filters.sort,
         limit: PAGE_SIZE,
         cursor: pageParam,
       }),
@@ -60,37 +81,70 @@ export function CategoryGrid({ categoryId, bottomInset = 120 }: CategoryGridProp
     [listQuery.data],
   );
 
-  if (listQuery.isLoading) return <ResultsSkeleton />;
-  if (items.length === 0) return <EmptyState />;
+  // Filter chip strip — only renders when toggled filters are active.
+  // We intentionally hide the *category* chip here (the chip rail
+  // above the bar is already the category-scope UI on this surface;
+  // showing a second chip would be redundant and confusing).
+  const chipFilters = useMemo(
+    () => ({
+      kind: filters.kind,
+      featured: filters.featured,
+      sort: filters.sort,
+    }),
+    [filters.kind, filters.featured, filters.sort],
+  );
 
   return (
-    <FlashList
-      data={items}
-      keyExtractor={(t) => t.id}
-      numColumns={2}
-      renderItem={({ item }) => (
-        <View style={{ paddingHorizontal: 7 }}>
-          <TemplateCard
-            template={item}
-            onPress={() => router.push(`/template/${item.id}`)}
-          />
-        </View>
-      )}
-      ItemSeparatorComponent={RowGap}
-      contentContainerStyle={{
-        paddingTop: 6,
-        paddingHorizontal: 13,
-        paddingBottom: bottomInset,
-      }}
-      showsVerticalScrollIndicator={false}
-      onEndReachedThreshold={0.5}
-      onEndReached={() => {
-        if (listQuery.hasNextPage && !listQuery.isFetchingNextPage) {
-          void listQuery.fetchNextPage();
+    <View style={{ flex: 1 }}>
+      <ActiveFiltersBar
+        filters={chipFilters}
+        onClearKind={() => setSearchFilters({ kind: undefined })}
+        onClearFeatured={() => setSearchFilters({ featured: undefined })}
+        onClearSort={() => setSearchFilters({ sort: 'default' })}
+        onClearAll={() =>
+          setSearchFilters({
+            kind: undefined,
+            featured: undefined,
+            sort: 'default',
+          })
         }
-      }}
-      ListFooterComponent={listQuery.isFetchingNextPage ? <RowSkeleton /> : null}
-    />
+      />
+      {listQuery.isLoading ? (
+        <ResultsSkeleton />
+      ) : items.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <FlashList
+          data={items}
+          keyExtractor={(t) => t.id}
+          numColumns={2}
+          renderItem={({ item }) => (
+            <View style={{ paddingHorizontal: 7 }}>
+              <TemplateCard
+                template={item}
+                onPress={() => router.push(`/template/${item.id}`)}
+              />
+            </View>
+          )}
+          ItemSeparatorComponent={RowGap}
+          contentContainerStyle={{
+            paddingTop: 6,
+            paddingHorizontal: 13,
+            paddingBottom: bottomInset,
+          }}
+          showsVerticalScrollIndicator={false}
+          onEndReachedThreshold={0.5}
+          onEndReached={() => {
+            if (listQuery.hasNextPage && !listQuery.isFetchingNextPage) {
+              void listQuery.fetchNextPage();
+            }
+          }}
+          ListFooterComponent={
+            listQuery.isFetchingNextPage ? <RowSkeleton /> : null
+          }
+        />
+      )}
+    </View>
   );
 }
 

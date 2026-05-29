@@ -44,6 +44,7 @@ const KIND_LABEL: Record<TemplateKindFilter, string> = {
 const SORT_LABEL: Record<TemplateSortFilter, string> = {
   default: 'Recommended',
   recent: 'Newest',
+  popular: 'Popular',
 };
 
 export function ActiveFiltersBar({

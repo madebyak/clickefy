@@ -135,9 +135,33 @@ export default function HomeScreen() {
         onCreditsPress={() => router.push('/paywall')}
       />
 
-      <Box px="base" pb="md">
-        <SearchBar onPress={() => router.push('/search')} />
-      </Box>
+      {/* Scope-aware search entry. When the user has chosen a category
+          (or a sub-category) we forward both the id and a human label
+          to `/search` so it pre-seeds the filter store and renders an
+          "In <label> ✕" chip. Tapping ✕ inside `/search` clears the
+          scope back to a global search — Etsy / App Store pattern. */}
+      {(() => {
+        const activeChild = activeSubcategoryId
+          ? activeRootChildren.find((c) => c.id === activeSubcategoryId)
+          : undefined;
+        const scopeId = !isAllCategory ? gridCategoryId : undefined;
+        const scopeLabel = activeChild?.label ?? activeRoot?.label;
+        return (
+          <Box px="base" pb="md">
+            <SearchBar
+              scopeLabel={scopeLabel}
+              onPress={() =>
+                router.push({
+                  pathname: '/search',
+                  params: scopeId
+                    ? { categoryId: scopeId, scopeLabel: scopeLabel ?? '' }
+                    : {},
+                })
+              }
+            />
+          </Box>
+        );
+      })()}
 
       {/* Category rail is always pinned below the search bar so the
           user can switch between "All" (sections feed) and a single

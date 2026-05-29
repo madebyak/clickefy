@@ -35,7 +35,7 @@ import type { CatalogTemplate } from '@clickfy/sdk';
 import { FlashList } from '@shopify/flash-list';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Keyboard, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -66,6 +66,25 @@ export default function SearchScreen() {
   const { colors } = useTheme();
   const sdk = getSDK();
   const filters = useSearchFilters();
+
+  // Optional scope handed in by the home tab when the user opens
+  // search from a non-"all" category. We seed the filter store on
+  // first arrival and then strip the params off the URL so a manual
+  // chip-clear inside `/search` isn't immediately re-seeded by the
+  // stale params on a remount. Same self-cleaning pattern as the
+  // home banner deep-link.
+  const { categoryId: scopeCategoryId, scopeLabel } = useLocalSearchParams<{
+    categoryId?: string;
+    scopeLabel?: string;
+  }>();
+  useEffect(() => {
+    if (!scopeCategoryId) return;
+    setSearchFilters({
+      categoryId: scopeCategoryId,
+      categoryLabel: scopeLabel ?? undefined,
+    });
+    router.setParams({ categoryId: undefined, scopeLabel: undefined });
+  }, [scopeCategoryId, scopeLabel, router]);
 
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
@@ -114,6 +133,7 @@ export default function SearchScreen() {
       sdk.catalog.listTemplates({
         search: trimmedQuery || undefined,
         kind: filters.kind,
+        categoryId: filters.categoryId,
         featured: filters.featured,
         sort: filters.sort,
         limit: PAGE_SIZE,
@@ -138,6 +158,11 @@ export default function SearchScreen() {
         <SearchInput
           value={query}
           onChangeText={setQuery}
+          placeholder={
+            filters.categoryLabel
+              ? `Search in ${filters.categoryLabel}`
+              : 'Search templates'
+          }
           onSubmit={(v) => {
             // Submitting persists the query immediately rather than
             // waiting for the debounce. Useful when the user types
@@ -155,8 +180,17 @@ export default function SearchScreen() {
         onClearKind={() => setSearchFilters({ kind: undefined })}
         onClearFeatured={() => setSearchFilters({ featured: undefined })}
         onClearSort={() => setSearchFilters({ sort: 'default' })}
+        onClearCategory={() =>
+          setSearchFilters({ categoryId: undefined, categoryLabel: undefined })
+        }
         onClearAll={() =>
-          setSearchFilters({ kind: undefined, featured: undefined, sort: 'default' })
+          setSearchFilters({
+            kind: undefined,
+            featured: undefined,
+            sort: 'default',
+            categoryId: undefined,
+            categoryLabel: undefined,
+          })
         }
       />
 
@@ -224,7 +258,13 @@ export default function SearchScreen() {
         <ResultsSkeleton />
       ) : items.length === 0 ? (
         <NoResults query={trimmedQuery} onClearFilters={() =>
-          setSearchFilters({ kind: undefined, featured: undefined, sort: 'default' })
+          setSearchFilters({
+            kind: undefined,
+            featured: undefined,
+            sort: 'default',
+            categoryId: undefined,
+            categoryLabel: undefined,
+          })
         } />
       ) : (
         <FlashList

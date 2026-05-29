@@ -24,6 +24,13 @@ export interface ActiveFiltersBarProps {
   onClearKind?: () => void;
   onClearFeatured?: () => void;
   onClearSort?: () => void;
+  /**
+   * Clears the category scope back to a global search. Rendered as a
+   * leading "In <label> ✕" chip — the visual cue that the current
+   * results are narrowed to a single category, mirroring Etsy's
+   * "Searching in <category>" pattern.
+   */
+  onClearCategory?: () => void;
   /** "Clear all" — visible only when 2+ filters are active. */
   onClearAll?: () => void;
 }
@@ -44,6 +51,7 @@ export function ActiveFiltersBar({
   onClearKind,
   onClearFeatured,
   onClearSort,
+  onClearCategory,
   onClearAll,
 }: ActiveFiltersBarProps) {
   const active = countActiveFilters(filters);
@@ -56,6 +64,14 @@ export function ActiveFiltersBar({
       style={{ flexGrow: 0 }}
       contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingVertical: 4 }}
     >
+      {/* Category scope leads — it's the strongest narrowing of the
+          result set and the user's "where am I" anchor. */}
+      {filters.categoryId && filters.categoryLabel ? (
+        <DismissibleChip
+          label={`In ${filters.categoryLabel}`}
+          onDismiss={onClearCategory}
+        />
+      ) : null}
       {filters.kind ? (
         <DismissibleChip
           label={KIND_LABEL[filters.kind]}

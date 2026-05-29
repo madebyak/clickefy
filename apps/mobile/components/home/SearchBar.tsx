@@ -5,10 +5,26 @@ import { Icon } from '@/components/ui/Icon';
 export interface SearchBarProps {
   value?: string;
   placeholder?: string;
+  /**
+   * When set, the bar advertises a *scoped* search. We swap the
+   * placeholder to `Search in ${scopeLabel}` and the consuming page is
+   * expected to pre-seed the matching category filter on the search
+   * route. Mirrors the Etsy / App Store pattern: search defaults to the
+   * surface you're already in, with a clear escape hatch ("✕") on the
+   * chip inside `/search`.
+   */
+  scopeLabel?: string;
   onPress?: () => void;
 }
 
-export function SearchBar({ value, placeholder = 'Search 12,400+ templates', onPress }: SearchBarProps) {
+export function SearchBar({
+  value,
+  placeholder,
+  scopeLabel,
+  onPress,
+}: SearchBarProps) {
+  const resolvedPlaceholder =
+    placeholder ?? (scopeLabel ? `Search in ${scopeLabel}` : 'Search templates');
   const { colors } = useTheme();
   return (
     <Pressable
@@ -16,7 +32,7 @@ export function SearchBar({ value, placeholder = 'Search 12,400+ templates', onP
       haptic="light"
       pressedOpacity={0.8}
       accessibilityRole="search"
-      accessibilityLabel={placeholder}
+      accessibilityLabel={resolvedPlaceholder}
       style={{
         height: 52,
         paddingHorizontal: 16,
@@ -36,7 +52,7 @@ export function SearchBar({ value, placeholder = 'Search 12,400+ templates', onP
         style={{ flex: 1 }}
         numberOfLines={1}
       >
-        {value || placeholder}
+        {value || resolvedPlaceholder}
       </Text>
       <Box
         bg="surfaceMuted"

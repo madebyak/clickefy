@@ -36,6 +36,16 @@ export interface SearchFilters {
   featured?: boolean;
   /** Newest published first vs. curated default. */
   sort: TemplateSortFilter;
+  /**
+   * Active category scope. Set by the home tab's category chip when
+   * the user opens search from a non-"all" surface (Etsy / App Store
+   * pattern). The `/search` route shows a removable "In <label> ✕"
+   * chip that clears this back to a global search. The label is held
+   * separately because `categoryId` alone is opaque — we don't want
+   * `/search` to do an extra fetch just to render the chip text.
+   */
+  categoryId?: string;
+  categoryLabel?: string;
 }
 
 const DEFAULT_FILTERS: SearchFilters = {
@@ -98,5 +108,6 @@ export function countActiveFilters(f: SearchFilters): number {
   if (f.kind) n += 1;
   if (f.featured) n += 1;
   if (f.sort !== DEFAULT_FILTERS.sort) n += 1;
+  if (f.categoryId) n += 1;
   return n;
 }

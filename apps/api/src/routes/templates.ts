@@ -772,6 +772,37 @@ templatesRoute.patch(
       }
     }
 
+    // ── Video-template cover guard ──────────────────────────────────
+    // Video templates depend on `cover_media` for the still poster
+    // rendered under the looping clip on mobile. With a NULL cover
+    // the catalog DTO emits an empty url and `<Image source="" />`
+    // shows a broken glyph (see the "Video Magic" rail screenshots
+    // we triaged). Reject any patch that would clear cover_media on
+    // a video template — admins must upload a replacement first.
+    //
+    // We only fetch the existing row when we actually need to check,
+    // to avoid an extra DB round-trip on the common patch flow that
+    // doesn't touch the cover.
+    if (body.coverMedia === null) {
+      const existing = await c.var.db.query.templates.findFirst({
+        where: eq(templates.id, id),
+        columns: { kind: true },
+      });
+      const nextKind = body.kind ?? existing?.kind;
+      if (nextKind === 'video') {
+        return c.json(
+          {
+            error: {
+              code: 'cover_required_for_video',
+              message:
+                'Video templates require a cover image. Upload a new cover before clearing the existing one.',
+            },
+          },
+          400,
+        );
+      }
+    }
+
     // Build a `set` object that only includes fields the admin actually
     // sent. Using spread + conditional avoids overwriting columns with
     // `undefined` (Drizzle would happily NULL them otherwise).

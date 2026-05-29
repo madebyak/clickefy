@@ -361,6 +361,87 @@ uploadsPublicRoute.on('HEAD', '/:key{.+}', withRateLimit((env) => env.RL_PUBLIC_
   return new Response(null, { status: 200, headers });
 });
 
+// ─── Internal write (jobs-worker) ───────────────────────────────────
+//
+// `PUT /v1/uploads/internal/:key` — secret-protected write into the
+// UPLOADS bucket from the Trigger.dev jobs-worker.
+//
+// Use case: server-side asset generation (e.g. `backfill-template-posters`
+// extracting a JPEG poster from a video on R2, then writing it back as
+// `templates/<uuid>.jpg`). The orchestrator can't use `c.env.UPLOADS`
+// directly because it runs in a separate Node process, and we don't
+// want S3 credentials living there. Same posture as the existing
+// `/v1/outputs/internal/:key` endpoint — see routes/outputs.ts for the
+// design rationale.
+//
+// Auth: shared `INTERNAL_API_SECRET` header, constant-time compared.
+// Never user-facing. Mobile / admin clients use the existing
+// `POST /v1/admin/uploads` flow which is Clerk-gated.
+
+export const uploadsInternalRoute = new Hono<AppEnv>();
+
+/** Allow only known prefixes so a leaked secret can't write anywhere. */
+const INTERNAL_WRITE_PREFIXES = ['templates/', 'categories/', 'banners/'];
+
+uploadsInternalRoute.put('/:key{.+}', async (c) => {
+  const secret = c.env.INTERNAL_API_SECRET;
+  if (!secret) {
+    return c.json(
+      { error: { code: 'not_configured', message: 'INTERNAL_API_SECRET missing on Worker.' } },
+      503,
+    );
+  }
+  const provided = c.req.header('x-internal-secret');
+  if (!provided || !timingSafeEq(provided, secret)) {
+    return c.json({ error: { code: 'unauthorized', message: 'Invalid internal secret.' } }, 401);
+  }
+
+  const bucket = c.env.UPLOADS;
+  if (!bucket) {
+    return c.json(
+      { error: { code: 'r2_not_configured', message: 'Uploads bucket binding missing.' } },
+      503,
+    );
+  }
+
+  const key = c.req.param('key');
+  // Reject obvious key abuse (path traversal, nonsense prefixes).
+  if (key.includes('..') || !INTERNAL_WRITE_PREFIXES.some((p) => key.startsWith(p))) {
+    return c.json(
+      { error: { code: 'invalid_key', message: `Key must start with one of: ${INTERNAL_WRITE_PREFIXES.join(', ')}.` } },
+      400,
+    );
+  }
+
+  const contentType = c.req.header('content-type') ?? 'application/octet-stream';
+  const body = c.req.raw.body;
+  if (!body) {
+    return c.json({ error: { code: 'empty_body', message: 'No body provided.' } }, 400);
+  }
+
+  await bucket.put(key, body, {
+    httpMetadata: {
+      contentType,
+      cacheControl: 'public, max-age=31536000, immutable',
+    },
+    customMetadata: {
+      source: 'jobs-worker-internal',
+    },
+  });
+
+  return c.json({ data: { key } }, 201);
+});
+
+/** Constant-time string compare. Only safe for equal-length inputs. */
+function timingSafeEq(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 // ─── Admin write ────────────────────────────────────────────────────
 
 export const uploadsAdminRoute = new Hono<AppEnv>();

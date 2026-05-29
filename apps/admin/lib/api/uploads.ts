@@ -204,7 +204,14 @@ export async function captureFirstFrame(file: File): Promise<{
       video.src = url;
     });
 
-    // Seek to a sliver past 0 to avoid the rare black first-frame.
+    // Seek to ~50% of duration. Industry research (HyperServe 2026,
+    // ClipSpeedAI, the YouTube ffmpeg-CI write-up) all converge on
+    // 40–50% as the empirically-best default frame: the first 20%
+    // of most clips is title/build-up and the last 10% is fade-out,
+    // so the middle is almost always content-rich. The old `0.1s`
+    // seek was the cause of most "black/empty cover" bugs we saw on
+    // existing templates. Falls back to 0.1s only when duration is
+    // unknown (some codecs report `Infinity` until a full decode).
     await new Promise<void>((resolve, reject) => {
       const handler = () => {
         video.removeEventListener('seeked', handler);
@@ -213,7 +220,8 @@ export async function captureFirstFrame(file: File): Promise<{
       video.addEventListener('seeked', handler);
       video.onerror = () => reject(new Error('Could not seek to first frame.'));
       try {
-        video.currentTime = Math.min(0.1, (video.duration || 0) / 2);
+        const dur = Number.isFinite(video.duration) ? video.duration : 0;
+        video.currentTime = dur > 0 ? dur * 0.5 : 0.1;
       } catch (err) {
         reject(err);
       }

@@ -24,7 +24,12 @@ import { reportsRoute } from './routes/reports';
 import { storeRoute } from './routes/store';
 import { usersRoute } from './routes/users';
 import { outputsRoute } from './routes/outputs';
-import { uploadsAdminRoute, uploadsPublicRoute, uploadsUserRoute } from './routes/uploads';
+import {
+  uploadsAdminRoute,
+  uploadsInternalRoute,
+  uploadsPublicRoute,
+  uploadsUserRoute,
+} from './routes/uploads';
 import { clerkWebhookRoute } from './routes/webhooks/clerk';
 import { revenuecatWebhookRoute } from './routes/webhooks/revenuecat';
 import type { AppEnv, Bindings } from './types';
@@ -84,6 +89,7 @@ app.route('/v1/users', usersRoute);
 // below, because Hono matches in registration order and the public
 // route's `/:key{.+}` would otherwise swallow the literal `/user` path.
 app.route('/v1/uploads/user', uploadsUserRoute);
+app.route('/v1/uploads/internal', uploadsInternalRoute);
 app.route('/v1/uploads', uploadsPublicRoute);
 app.route('/v1/admin/uploads', uploadsAdminRoute);
 app.route('/v1/outputs', outputsRoute);

@@ -289,7 +289,7 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
         onChange(update);
         toast.success(
           poster && !template.coverMedia
-            ? 'Preview video uploaded — first frame captured as cover'
+            ? 'Preview video uploaded — middle frame captured as cover'
             : 'Preview video uploaded',
         );
       } else {

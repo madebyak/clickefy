@@ -17,19 +17,19 @@ export interface CategoryRailProps {
 // square category artwork on top and the label underneath. Sizes
 // are tuned so 4–4.5 cards are visible on a 390pt iPhone.
 
-const CARD_WIDTH = 80;
-const CARD_RADIUS = 18;
+const CARD_WIDTH = 72;
+const CARD_RADIUS = 16;
 // Image hugs the card edges on top + sides — no inner padding.
 // Bottom padding stays so the label has breathing room.
 const CARD_PAD_TOP = 0;
 const CARD_PAD_X = 0;
-const CARD_PAD_BOTTOM = 10;
-const IMAGE_SIZE = CARD_WIDTH; // 80
-// Match the card's outer radius exactly so the artwork's corners
-// align with the card silhouette at the top, and its bottom
-// corners read as a clean rounded "tile" above the label.
+const CARD_PAD_BOTTOM = 8;
+const IMAGE_SIZE = CARD_WIDTH; // 72
+// Match the card's outer top radius exactly so the artwork's
+// corners align with the card silhouette at the top, and its
+// bottom corners stay sharp above the label area.
 const IMAGE_RADIUS = CARD_RADIUS;
-const IMAGE_LABEL_GAP = 6;
+const IMAGE_LABEL_GAP = 5;
 
 /** Synthetic "All" pseudo-category — never returned by the API. */
 const ALL_CHIP: CatalogCategory = {
@@ -159,11 +159,11 @@ export function CategoryRail({ categories, activeId, onSelect }: CategoryRailPro
               numberOfLines={1}
               style={{
                 marginTop: IMAGE_LABEL_GAP,
-                marginHorizontal: 6,
-                fontSize: 12,
+                marginHorizontal: 5,
+                fontSize: 11.5,
                 letterSpacing: -0.1,
                 color: labelColor,
-                maxWidth: IMAGE_SIZE - 12,
+                maxWidth: IMAGE_SIZE - 10,
               }}
             >
               {cat.label}

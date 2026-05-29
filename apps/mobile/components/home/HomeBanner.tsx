@@ -147,9 +147,15 @@ function BannerSlide({ banner }: BannerSlideProps) {
       });
       return;
     }
-    // 'category' deep-link not wired yet; treated as no-op so taps
-    // don't visually fail. Wire when the home accepts a category
-    // route param (planned alongside the home overhaul).
+    if (kind === 'category') {
+      // Push back to the home tab with a categoryId param. The
+      // tabs/index screen reads the param, finds the matching
+      // root/child, and seeds activeCat + activeSubcategoryId
+      // before clearing the param to avoid re-seeding on every
+      // remount.
+      router.push({ pathname: '/', params: { categoryId: target } });
+      return;
+    }
   };
 
   const tappable = banner.cta.kind !== 'none' && Boolean(banner.cta.target);

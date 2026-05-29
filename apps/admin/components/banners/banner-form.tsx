@@ -19,7 +19,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { Loader2, Upload, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,10 @@ import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -38,7 +41,13 @@ import {
   uploadVideoAsset,
   type UploadResult,
 } from '@/lib/api/uploads';
-import type { HomeBanner, HomeBannerKind } from '@/lib/api/banners';
+import type {
+  HomeBanner,
+  HomeBannerCta,
+  HomeBannerKind,
+} from '@/lib/api/banners';
+import { useCategoriesStore } from '@/lib/stores/categories-store';
+import type { Category } from '@clickfy/types';
 
 export interface BannerFormValues {
   kind: HomeBannerKind;
@@ -48,6 +57,30 @@ export interface BannerFormValues {
   isActive: boolean;
   startsAt: string | null;
   endsAt: string | null;
+  cta: HomeBannerCta;
+}
+
+/**
+ * Local mirror of basic-info-tab's grouping helper — copied
+ * inline so the banner form doesn't pull in the entire template
+ * editor module just for a 25-line utility. Returns roots first
+ * with their children attached for two-level Select rendering.
+ */
+function groupCategoriesByParent(
+  categories: Category[],
+): { root: Category; children: Category[] }[] {
+  const roots = categories.filter((c) => !c.parentId);
+  const byParent = new Map<string, Category[]>();
+  for (const c of categories) {
+    if (!c.parentId) continue;
+    const arr = byParent.get(c.parentId) ?? [];
+    arr.push(c);
+    byParent.set(c.parentId, arr);
+  }
+  return roots.map((root) => ({
+    root,
+    children: byParent.get(root.id) ?? [],
+  }));
 }
 
 interface BannerFormProps {
@@ -103,6 +136,38 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
   const [endsAt, setEndsAt] = useState(toIsoLocal(banner?.endsAt));
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // ── CTA state ──────────────────────────────────────────────────
+  // v1 supports `none` and `category` from the UI. The server-side
+  // schema also accepts `template` / `external_url`, but the
+  // corresponding pickers are deferred to keep this form scoped.
+  // Existing rows with those kinds load read-only with a hint.
+  const initialCta: HomeBannerCta = banner?.cta ?? {
+    kind: 'none',
+    target: null,
+    label: null,
+  };
+  const [ctaKind, setCtaKind] = useState<HomeBannerCta['kind']>(initialCta.kind);
+  const [ctaTarget, setCtaTarget] = useState<string | null>(initialCta.target);
+  const [ctaLabel, setCtaLabel] = useState<string>(initialCta.label ?? '');
+
+  // Categories are needed for the 'category' CTA picker. We lean on
+  // the existing zustand store so banners + categories pages share
+  // the same cached list across navigations.
+  const { categories: categoryList, fetchCategories } = useCategoriesStore();
+  useEffect(() => {
+    if (ctaKind === 'category' && categoryList.length === 0) {
+      void fetchCategories();
+    }
+  }, [ctaKind, categoryList.length, fetchCategories]);
+
+  const categoryGroups = useMemo(
+    () => groupCategoriesByParent(categoryList),
+    [categoryList],
+  );
+
+  const isLegacyCtaKind =
+    ctaKind === 'template' || ctaKind === 'external_url';
 
   const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -172,6 +237,29 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
       return;
     }
 
+    // Resolve the final CTA payload. We zero-out `target` for
+    // `none` so partially-edited rows don't ship a stale id, and
+    // require `target` on `category` (the only kind editable here).
+    let ctaPayload: HomeBannerCta;
+    if (ctaKind === 'none') {
+      ctaPayload = { kind: 'none', target: null, label: null };
+    } else if (ctaKind === 'category') {
+      if (!ctaTarget) {
+        toast.error('Pick a category for the banner CTA, or switch the CTA to "None".');
+        return;
+      }
+      ctaPayload = {
+        kind: 'category',
+        target: ctaTarget,
+        label: ctaLabel.trim() || null,
+      };
+    } else {
+      // Untouched legacy kind (template / external_url) — preserve
+      // the row verbatim so the admin can't accidentally invalidate
+      // it just by opening the editor.
+      ctaPayload = initialCta;
+    }
+
     setSubmitting(true);
     try {
       await onSubmit({
@@ -182,6 +270,7 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
         isActive,
         startsAt: fromIsoLocal(startsAt),
         endsAt: fromIsoLocal(endsAt),
+        cta: ctaPayload,
       });
     } finally {
       setSubmitting(false);
@@ -327,6 +416,134 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
         >
           {isActive ? 'Active' : 'Inactive'}
         </Button>
+      </div>
+
+      {/* ── CTA section ──────────────────────────────────────────── */}
+      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+        <div>
+          <Label className="text-sm font-medium">Tap action</Label>
+          <p className="text-xs text-muted-foreground">
+            What happens when a user taps the banner. Choose
+            &quot;None&quot; for purely decorative slides.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="banner-cta-kind">CTA type</Label>
+          <Select
+            value={ctaKind}
+            onValueChange={(v) => {
+              const next = v as HomeBannerCta['kind'];
+              setCtaKind(next);
+              if (next === 'none') setCtaTarget(null);
+              if (next === 'category' && initialCta.kind !== 'category') {
+                setCtaTarget(null);
+              }
+            }}
+          >
+            <SelectTrigger id="banner-cta-kind">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None (decorative)</SelectItem>
+              <SelectItem value="category">Open a category</SelectItem>
+              {/* Legacy kinds — read-only in this v1 UI. Shown so
+                  admins can see what an existing row resolves to. */}
+              {isLegacyCtaKind ? (
+                <SelectItem value={ctaKind} disabled>
+                  {ctaKind === 'template'
+                    ? 'Template (legacy)'
+                    : 'External URL (legacy)'}
+                </SelectItem>
+              ) : null}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {ctaKind === 'category' ? (
+          <div className="space-y-2">
+            <Label htmlFor="banner-cta-category">Category</Label>
+            <Select
+              value={ctaTarget ?? ''}
+              onValueChange={(v) => setCtaTarget(v || null)}
+            >
+              <SelectTrigger id="banner-cta-category" className="w-full">
+                <SelectValue placeholder="Pick a category">
+                  {(value) => {
+                    if (!value || typeof value !== 'string') return null;
+                    return (
+                      categoryList.find((cat) => cat.id === value)?.name ?? value
+                    );
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {/* Two-level grouping shared with the template editor. */}
+                {categoryGroups.map((group, idx) => {
+                  if (group.children.length === 0) {
+                    return (
+                      <SelectItem key={group.root.id} value={group.root.id}>
+                        {group.root.name}
+                      </SelectItem>
+                    );
+                  }
+                  return (
+                    <div key={group.root.id}>
+                      {idx > 0 ? <SelectSeparator /> : null}
+                      <SelectGroup>
+                        <SelectLabel className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {group.root.name}
+                        </SelectLabel>
+                        <SelectItem value={group.root.id}>
+                          {group.root.name}{' '}
+                          <span className="text-muted-foreground">(all)</span>
+                        </SelectItem>
+                        {group.children.map((child) => (
+                          <SelectItem key={child.id} value={child.id}>
+                            <span className="text-muted-foreground">↳</span>{' '}
+                            {child.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </div>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Tapping the banner opens the home tab pre-selected on
+              this category. Roots show the aggregated feed; sub-
+              categories open their own filtered view.
+            </p>
+          </div>
+        ) : null}
+
+        {ctaKind !== 'none' && !isLegacyCtaKind ? (
+          <div className="space-y-2">
+            <Label htmlFor="banner-cta-label">Button label (optional)</Label>
+            <Input
+              id="banner-cta-label"
+              value={ctaLabel}
+              maxLength={32}
+              onChange={(e) => setCtaLabel(e.target.value)}
+              placeholder="Explore"
+            />
+            <p className="text-xs text-muted-foreground">
+              Currently used for accessibility only — visible button
+              chrome will land in a future banner overlay pass.
+            </p>
+          </div>
+        ) : null}
+
+        {isLegacyCtaKind ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+            This banner uses a legacy{' '}
+            {ctaKind === 'template' ? 'template' : 'external URL'} CTA.
+            The pickers for those targets aren&apos;t in this editor yet,
+            so the row is preserved as-is on save. Switch to
+            &quot;None&quot; or &quot;Category&quot; if you want to retarget it.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex justify-end gap-2 pt-2">

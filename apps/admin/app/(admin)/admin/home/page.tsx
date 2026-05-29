@@ -128,6 +128,7 @@ export default function HomeBannersPage() {
     isActive: v.isActive,
     startsAt: v.startsAt,
     endsAt: v.endsAt,
+    cta: v.cta,
   });
 
   const handleCreate = async (values: BannerFormValues) => {

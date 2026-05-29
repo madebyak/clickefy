@@ -1,7 +1,7 @@
 import { Box, Skeleton, Stack, Text, useTheme } from '@clickfy/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -61,6 +61,42 @@ export default function HomeScreen() {
     setActiveCat(id);
     setActiveSubcategoryId(null);
   };
+
+  // ── Deep-link from banner CTAs ───────────────────────────────────
+  // `router.push({ pathname: '/', params: { categoryId } })` from
+  // <HomeBanner /> lands here. We resolve the id against the cached
+  // categories list and seed activeCat (+ activeSubcategoryId for
+  // child ids). The param is cleared after consumption so back-stack
+  // navigation doesn't keep re-seeding the same selection on each
+  // remount.
+  const { categoryId: deepLinkCategoryId } = useLocalSearchParams<{
+    categoryId?: string;
+  }>();
+  useEffect(() => {
+    if (!deepLinkCategoryId) return;
+    const cats = categoriesQuery.data;
+    if (!cats || cats.length === 0) return; // wait for the list
+
+    const target = cats.find((c) => c.id === deepLinkCategoryId);
+    if (!target) {
+      // Unknown id (e.g. category got deleted after the banner was
+      // authored). Reset to "All" so the user sees something useful
+      // instead of an empty grid.
+      setActiveCat('all');
+      setActiveSubcategoryId(null);
+    } else if (target.parentId) {
+      // Sub-category → select its parent root and highlight the sub.
+      setActiveCat(target.parentId);
+      setActiveSubcategoryId(target.id);
+    } else {
+      // Root → select it and clear any sub selection.
+      setActiveCat(target.id);
+      setActiveSubcategoryId(null);
+    }
+    // Strip the param so a subsequent root tap in the rail isn't
+    // overridden by the stale deep-link on a re-render.
+    router.setParams({ categoryId: undefined });
+  }, [deepLinkCategoryId, categoriesQuery.data, router]);
 
   // Sections + banners only matter on the "All" feed. When the user
   // taps a specific category we render a flat 2-column grid (see

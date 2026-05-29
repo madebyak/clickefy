@@ -38,7 +38,15 @@ const ALL_CHIP: CatalogCategory = {
 export function CategoryRail({ categories, activeId, onSelect }: CategoryRailProps) {
   const { colors, accent } = useTheme();
 
-  const items = useMemo(() => [ALL_CHIP, ...categories], [categories]);
+  // Rail shows ROOT categories only. Sub-categories surface in
+  // the SubcategoryRail once a parent root is selected. The API
+  // ships both roots and children in a single flat list (with
+  // `children` arrays nested on roots), so the filter below is a
+  // simple `parentId == null` check.
+  const items = useMemo(
+    () => [ALL_CHIP, ...categories.filter((c) => !c.parentId)],
+    [categories],
+  );
 
   return (
     <ScrollView

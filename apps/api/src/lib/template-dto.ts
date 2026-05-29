@@ -20,9 +20,10 @@ import type {
   MediaRef,
   MobileImageRef,
   MobileTemplate,
-  MobileTemplateOutputSummary,
   MobileVideoRef,
 } from '@clickfy/types';
+
+import { deriveDeliverables } from './template-deliverables';
 
 /**
  * Hosts that point at *our own* Worker (past + present). `cdnUrl`
@@ -114,39 +115,6 @@ function mediaRefToVideo(
   };
 }
 
-/**
- * Project the admin's `output` settings into the per-class summary
- * the mobile UI renders. We never leak the prompt/provider — just
- * the *shape* of what the user receives.
- *
- * `output.type === 'both'` is the `image_then_video` pipeline: one
- * intermediate image plus the final animated video. The user only
- * sees the final video on the result screen, but knowing both will
- * be produced is useful expectation-setting on the template page.
- *
- * If a future template emits N images + M videos in one run, we'd
- * extend the schema with separate `imageCount`/`videoCount` fields
- * — for now this single-count model covers the catalog.
- */
-function deriveOutputs(row: DbTemplate): MobileTemplateOutputSummary[] {
-  const count = Math.max(1, row.output?.count ?? 1);
-  switch (row.output?.type) {
-    case 'image':
-      return [{ kind: 'image', count }];
-    case 'video':
-      return [{ kind: 'video', count }];
-    case 'both':
-      return [
-        { kind: 'image', count: 1 },
-        { kind: 'video', count: 1 },
-      ];
-    default:
-      // Defensive — `kind` alone tells us the user-facing shape if
-      // `output` was somehow missing. Image-set templates map to image.
-      return [{ kind: row.kind === 'video' ? 'video' : 'image', count }];
-  }
-}
-
 export interface MobileDtoOptions {
   /** Origin of the API the mobile app talks to (no trailing slash). */
   publicBaseUrl: string;
@@ -204,7 +172,10 @@ export function templateToMobileDTO(
     userCanChooseAspectRatio: row.userCanChooseAspectRatio,
     defaultAspectRatio: row.defaultAspectRatio,
 
-    outputs: deriveOutputs(row),
+    // Auto-derived from the pipeline (terminal stages only). The
+    // legacy `templates.output` JSONB column is no longer the source
+    // of truth for what mobile shows under "What you'll get".
+    outputs: deriveDeliverables(row),
 
     costCredits: row.costCredits,
     successRate: row.stats.successRate,

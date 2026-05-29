@@ -8,7 +8,10 @@ import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -80,6 +83,46 @@ function mediaPreviewUrl(media: MediaRef | null | undefined): string {
 }
 
 const MAX_GALLERY_IMAGES = 12;
+
+/**
+ * Build a parent-first grouping of the categories list:
+ *   [{ root, children: [...] }, ...]
+ *
+ * `categories` already arrives sorted by sortOrder + name from the
+ * API, so the natural order of roots and their children is preserved
+ * here. Children orphaned from a deleted parent (shouldn't happen in
+ * practice — DELETE blocks parents with kids) fall back to their own
+ * top-level entry to stay visible.
+ */
+function groupCategoriesByParent(
+  categories: Category[],
+): { root: Category; children: Category[] }[] {
+  const roots = categories.filter((c) => !c.parentId);
+  const byParent = new Map<string, Category[]>();
+  for (const c of categories) {
+    if (!c.parentId) continue;
+    const arr = byParent.get(c.parentId) ?? [];
+    arr.push(c);
+    byParent.set(c.parentId, arr);
+  }
+  const groups = roots.map((root) => ({
+    root,
+    children: byParent.get(root.id) ?? [],
+  }));
+  // Surface any orphans (children whose parent is missing from the
+  // list — defensive only; deletes are blocked server-side when kids
+  // exist) so the admin can still pick them rather than silently
+  // hiding rows.
+  const seenIds = new Set<string>();
+  for (const g of groups) {
+    seenIds.add(g.root.id);
+    for (const c of g.children) seenIds.add(c.id);
+  }
+  for (const c of categories) {
+    if (!seenIds.has(c.id)) groups.push({ root: c, children: [] });
+  }
+  return groups;
+}
 
 const COVER_ACCEPT_ATTR = [...ACCEPTED_IMAGE_MIME, ...ACCEPTED_VIDEO_MIME].join(',');
 const COVER_ACCEPTED_MIME = new Set<string>([
@@ -169,38 +212,65 @@ function ExtraCategoriesPicker({
           {selected.length}/{MAX_EXTRAS} extras
         </span>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {categories.map((cat) => {
-          const isPrimary = cat.id === primaryId;
-          const isSelected = selected.includes(cat.id);
-          const disabled = isPrimary || (atCap && !isSelected);
+      {/* Chips are grouped two-level (root + its children) so admins
+          can scan available extras quickly. Roots with no sub-
+          categories render as a single chip without a header row. */}
+      <div className="space-y-2">
+        {groupCategoriesByParent(categories).map((group) => {
+          const renderChip = (cat: Category, isChild: boolean) => {
+            const isPrimary = cat.id === primaryId;
+            const isSelected = selected.includes(cat.id);
+            const disabled = isPrimary || (atCap && !isSelected);
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => toggle(cat.id)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors border',
+                  isSelected
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-transparent text-muted-foreground hover:border-primary/40',
+                  isPrimary && 'opacity-60 cursor-not-allowed',
+                  disabled && !isPrimary && 'opacity-50 cursor-not-allowed',
+                )}
+                title={
+                  isPrimary
+                    ? 'This is the primary category'
+                    : atCap && !isSelected
+                      ? `Max ${MAX_EXTRAS} extra categories`
+                      : isSelected
+                        ? 'Click to remove'
+                        : 'Click to add'
+                }
+              >
+                {isChild ? (
+                  <span className="text-muted-foreground">↳</span>
+                ) : null}
+                {cat.name}
+                {isPrimary ? <span className="text-[10px] opacity-70">primary</span> : null}
+              </button>
+            );
+          };
+
+          if (group.children.length === 0) {
+            return (
+              <div key={group.root.id} className="flex flex-wrap gap-2">
+                {renderChip(group.root, false)}
+              </div>
+            );
+          }
           return (
-            <button
-              key={cat.id}
-              type="button"
-              disabled={disabled}
-              onClick={() => toggle(cat.id)}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors border',
-                isSelected
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-transparent text-muted-foreground hover:border-primary/40',
-                isPrimary && 'opacity-60 cursor-not-allowed',
-                disabled && !isPrimary && 'opacity-50 cursor-not-allowed',
-              )}
-              title={
-                isPrimary
-                  ? 'This is the primary category'
-                  : atCap && !isSelected
-                    ? `Max ${MAX_EXTRAS} extra categories`
-                    : isSelected
-                      ? 'Click to remove'
-                      : 'Click to add'
-              }
-            >
-              {cat.name}
-              {isPrimary ? <span className="text-[10px] opacity-70">primary</span> : null}
-            </button>
+            <div key={group.root.id} className="space-y-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {group.root.name}
+              </p>
+              <div className="flex flex-wrap gap-2 pl-1">
+                {renderChip(group.root, false)}
+                {group.children.map((child) => renderChip(child, true))}
+              </div>
+            </div>
           );
         })}
       </div>
@@ -440,17 +510,67 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {categories.map((cat) => (
-                <SelectItem key={cat.id} value={cat.id}>
-                  {cat.name}
-                </SelectItem>
-              ))}
+              {/* Two-level grouping: every root is its own SelectGroup
+                  with its children listed underneath as indented
+                  items. Roots with no children render as a plain
+                  SelectItem (no header, less visual noise). */}
+              {groupCategoriesByParent(categories).map((group, idx) => {
+                if (group.children.length === 0) {
+                  return (
+                    <SelectItem key={group.root.id} value={group.root.id}>
+                      {group.root.name}
+                    </SelectItem>
+                  );
+                }
+                return (
+                  <div key={group.root.id}>
+                    {idx > 0 ? <SelectSeparator /> : null}
+                    <SelectGroup>
+                      <SelectLabel className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {group.root.name}
+                      </SelectLabel>
+                      <SelectItem value={group.root.id}>
+                        {group.root.name}{' '}
+                        <span className="text-muted-foreground">(all)</span>
+                      </SelectItem>
+                      {group.children.map((child) => (
+                        <SelectItem key={child.id} value={child.id}>
+                          <span className="text-muted-foreground">↳</span>{' '}
+                          {child.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </div>
+                );
+              })}
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
             The category this template most belongs to. Used for
             breadcrumbs, analytics roll-ups, and home-feed placement.
           </p>
+          {/* Soft hint when the picked primary is a root that has
+              sub-categories — picking a sub helps discovery without
+              changing where the template appears (parents aggregate
+              their children's templates). */}
+          {(() => {
+            const primaryId =
+              template.primaryCategoryId ?? template.categoryId ?? '';
+            if (!primaryId) return null;
+            const picked = categories.find((c) => c.id === primaryId);
+            if (!picked || picked.parentId) return null;
+            const hasChildren = categories.some(
+              (c) => c.parentId === picked.id,
+            );
+            if (!hasChildren) return null;
+            return (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                <strong>{picked.name}</strong> has sub-categories. Picking
+                one (e.g. <em>Perfumes</em>) improves discovery in the app
+                — the template still rolls up into <strong>{picked.name}</strong>.
+              </p>
+            );
+          })()}
         </div>
       </div>
 

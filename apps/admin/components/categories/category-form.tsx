@@ -48,12 +48,25 @@ export function CategoryForm({ category, categories, onSubmit, onCancel }: Categ
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Parent picker filtering:
+  //   - exclude self (a category can't be its own parent)
+  //   - exclude this row's existing children (would create a cycle)
+  //   - the rendering below further filters to ROOTS only — the 2-level
+  //     hierarchy cap means only top-level categories can be parents.
   const availableParents = categories.filter((cat) => {
     if (!category) return true;
     if (cat.id === category.id) return false;
     if (cat.parentId === category.id) return false;
     return true;
   });
+
+  // If THIS category already has children, the server will reject any
+  // attempt to give it a parent (would push its kids to grandchild
+  // depth). Surface that as a disabled control with a hint so the
+  // admin learns the rule from the UI, not the toast.
+  const hasOwnChildren = Boolean(
+    category && categories.some((c) => c.parentId === category.id),
+  );
 
   const handleNameChange = (value: string) => {
     setName(value);
@@ -218,6 +231,7 @@ export function CategoryForm({ category, categories, onSubmit, onCancel }: Categ
         <Select
           value={parentId || '__none__'}
           onValueChange={(value) => setParentId(!value || value === '__none__' ? null : value)}
+          disabled={hasOwnChildren}
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="None (top-level)" />
@@ -233,6 +247,11 @@ export function CategoryForm({ category, categories, onSubmit, onCancel }: Categ
               ))}
           </SelectContent>
         </Select>
+        <p className="text-xs text-muted-foreground">
+          {hasOwnChildren
+            ? 'This category has sub-categories of its own, so it must stay at the top level. Move or delete its children first to relocate it.'
+            : 'Leave as "None" for a top-level category. Pick a parent to make this a sub-category. The hierarchy is capped at two levels.'}
+        </p>
       </div>
 
       <div className="flex justify-end gap-3 pt-2">

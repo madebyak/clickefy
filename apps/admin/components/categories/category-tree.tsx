@@ -35,8 +35,15 @@ interface CategoryTreeProps {
   categories: Category[];
   onEdit: (category: Category) => void;
   onDelete: (category: Category) => void;
-  /** Called with the new top-level order whenever a drag ends. */
+  /** Called with the new top-level order whenever a root row drag ends. */
   onReorder?: (newOrderTopLevel: Category[]) => void;
+  /**
+   * Called when an admin reorders the children of a single parent.
+   * Receives the parent id + the new order of its direct children.
+   * Children DnD is independent per-parent — dropping a Beauty child
+   * doesn't change Lifestyle's children ordering.
+   */
+  onReorderChildren?: (parentId: string, newChildOrder: Category[]) => void;
 }
 
 export function CategoryTree({
@@ -44,6 +51,7 @@ export function CategoryTree({
   onEdit,
   onDelete,
   onReorder,
+  onReorderChildren,
 }: CategoryTreeProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -82,15 +90,34 @@ export function CategoryTree({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    // Only root categories are draggable in this iteration, so the
-    // sortable list is `rootCategories`. Children stay nested under
-    // their parent and are reordered alphabetically when expanded.
-    const oldIndex = rootCategories.findIndex((c) => c.id === active.id);
-    const newIndex = rootCategories.findIndex((c) => c.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
+    // Resolve whether the dragged item is a root or a child by looking
+    // it up in the full categories list. Roots reorder among
+    // themselves; children reorder among siblings under the same
+    // parent. We never cross-reparent via DnD — moving a category
+    // between parents is a Pencil-then-edit flow (less error-prone).
+    const dragged = categories.find((c) => c.id === active.id);
+    if (!dragged) return;
 
-    const next = arrayMove(rootCategories, oldIndex, newIndex);
-    onReorder?.(next);
+    if (!dragged.parentId) {
+      // Root reorder.
+      const oldIndex = rootCategories.findIndex((c) => c.id === active.id);
+      const newIndex = rootCategories.findIndex((c) => c.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const next = arrayMove(rootCategories, oldIndex, newIndex);
+      onReorder?.(next);
+      return;
+    }
+
+    // Child reorder within a single parent. Reject drops that try to
+    // cross parents (over.id sits under a different parent) — the
+    // SortableContext scoping below already makes this practically
+    // impossible, but defensive checks are cheap.
+    const siblings = getChildren(dragged.parentId);
+    const oldIndex = siblings.findIndex((c) => c.id === active.id);
+    const newIndex = siblings.findIndex((c) => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const next = arrayMove(siblings, oldIndex, newIndex);
+    onReorderChildren?.(dragged.parentId, next);
   };
 
   if (rootCategories.length === 0) {
@@ -105,8 +132,10 @@ export function CategoryTree({
     );
   }
 
+  // The active row might be a root OR a child — search the full list
+  // so the DragOverlay can render either.
   const activeCategory = activeId
-    ? rootCategories.find((c) => c.id === activeId)
+    ? categories.find((c) => c.id === activeId)
     : null;
 
   return (
@@ -136,7 +165,10 @@ export function CategoryTree({
         </div>
       </SortableContext>
 
-      {/* DragOverlay renders a floating preview that follows the cursor. */}
+      {/* DragOverlay renders a floating preview that follows the
+          cursor. Works for both root and child drags — the overlay
+          row is a static snapshot, so its nesting depth is purely
+          cosmetic. */}
       <DragOverlay>
         {activeCategory ? (
           <CategoryRow
@@ -145,6 +177,7 @@ export function CategoryTree({
             childCount={getChildren(activeCategory.id).length}
             isExpanded={false}
             dragging
+            nested={Boolean(activeCategory.parentId)}
           />
         ) : null}
       </DragOverlay>
@@ -201,20 +234,71 @@ function SortableRow({
 
       {isExpanded && children.length > 0 && (
         <div className="ml-6 mt-1 border-l border-border pl-2">
-          {children.map((child) => (
-            <CategoryRow
-              key={child.id}
-              category={child}
-              hasChildren={false}
-              childCount={0}
-              isExpanded={false}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              nested
-            />
-          ))}
+          {/* Independent SortableContext per parent — drags in this
+              list resolve against `children` only, so a Beauty child
+              never tries to swap with a Lifestyle child. */}
+          <SortableContext
+            items={children.map((c) => c.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {children.map((child) => (
+              <SortableChildRow
+                key={child.id}
+                category={child}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            ))}
+          </SortableContext>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Sortable child row ───────────────────────────────────────────
+//
+// Children render inside their parent's expanded block and are
+// draggable independently. We expose the drag handle the same way
+// `SortableRow` does for roots so the UX (grip icon on the left)
+// stays consistent between the two levels.
+
+function SortableChildRow({
+  category,
+  onEdit,
+  onDelete,
+}: {
+  category: Category;
+  onEdit: (c: Category) => void;
+  onDelete: (c: Category) => void;
+}) {
+  const {
+    setNodeRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: category.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <CategoryRow
+        category={category}
+        hasChildren={false}
+        childCount={0}
+        isExpanded={false}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        dragHandleProps={{ ...attributes, ...listeners }}
+        nested
+      />
     </div>
   );
 }
@@ -261,8 +345,9 @@ function CategoryRow({
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1">
-        {/* Drag handle — only on draggable (root, non-nested) rows */}
-        {dragHandleProps && !nested ? (
+        {/* Drag handle — rendered whenever the caller passed
+            sortable props (roots AND children both get it now). */}
+        {dragHandleProps ? (
           <button
             type="button"
             {...dragHandleProps}

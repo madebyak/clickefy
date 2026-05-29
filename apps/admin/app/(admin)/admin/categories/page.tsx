@@ -88,6 +88,43 @@ export default function CategoriesPage() {
     setIsDeleteDialogOpen(true);
   };
 
+  /**
+   * Children reorder for a single parent. We re-merge the full tree
+   * (other parents untouched, just the affected parent's children
+   * in their new order) and reuse the `/v1/categories/reorder`
+   * endpoint — the server stamps sortOrder = index for every id in
+   * the array, so other rows simply keep the values we already saw.
+   */
+  const handleReorderChildren = async (
+    parentId: string,
+    newChildOrder: Category[],
+  ) => {
+    const rootCategories = categories.filter((c) => !c.parentId);
+    const childrenByParent = new Map<string, Category[]>();
+    for (const c of categories) {
+      if (!c.parentId) continue;
+      const arr = childrenByParent.get(c.parentId) ?? [];
+      arr.push(c);
+      childrenByParent.set(c.parentId, arr);
+    }
+    childrenByParent.set(parentId, newChildOrder);
+
+    const merged: Category[] = [];
+    for (const root of rootCategories) {
+      merged.push(root);
+      const kids = childrenByParent.get(root.id);
+      if (kids) merged.push(...kids);
+    }
+
+    try {
+      await reorderCategories(merged, getToken);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to reorder sub-categories';
+      toast.error(message);
+    }
+  };
+
   const handleReorder = async (newRootOrder: Category[]) => {
     // The tree only reorders top-level rows; merge them with their
     // children (children stay in their existing relative order) so the
@@ -147,6 +184,7 @@ export default function CategoriesPage() {
             onEdit={openEditDialog}
             onDelete={openDeleteDialog}
             onReorder={handleReorder}
+            onReorderChildren={handleReorderChildren}
           />
         )}
       </div>

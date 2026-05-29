@@ -108,7 +108,14 @@ export function CategoryRail({ categories, activeId, onSelect }: CategoryRailPro
               style={{
                 width: IMAGE_SIZE,
                 height: IMAGE_SIZE,
-                borderRadius: IMAGE_RADIUS,
+                // Top corners match the card's outer radius so the
+                // artwork hugs the card silhouette; bottom corners
+                // stay sharp so the artwork reads as a clean tile
+                // sitting above the label area.
+                borderTopLeftRadius: IMAGE_RADIUS,
+                borderTopRightRadius: IMAGE_RADIUS,
+                borderBottomLeftRadius: 0,
+                borderBottomRightRadius: 0,
                 // Artwork keeps a stable interior surface so the
                 // image edge reads cleanly against the card BG in
                 // both states. For the "All" chip we use the ink

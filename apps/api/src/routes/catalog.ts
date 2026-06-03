@@ -441,23 +441,40 @@ catalog.get(
     // Resolve favorite state when the caller is authenticated.
     // Anonymous reads still hit the edge cache; authed responses
     // bypass the shared cache because the body now varies per user.
-    let isFavorited: boolean | undefined;
+    //
+    // Perf: the category load and the favorite resolution are
+    // independent of each other, so we fire them concurrently instead
+    // of stacking sequential Neon HTTP round-trips. The favorite branch
+    // still resolves the user → saved row in order (the saved lookup
+    // needs the user id), but that whole branch now overlaps the
+    // category fetch — shaving a full round-trip off every authed
+    // detail open.
     const clerkUserId = c.var.clerkUserId;
+
+    const favoritedPromise: Promise<boolean | undefined> = clerkUserId
+      ? (async () => {
+          const userRow = await c.var.db.query.users.findFirst({
+            where: eq(users.clerkUserId, clerkUserId),
+            columns: { id: true },
+          });
+          if (!userRow) return undefined;
+          const saved = await c.var.db.query.savedTemplates.findFirst({
+            where: and(
+              eq(savedTemplates.userId, userRow.id),
+              eq(savedTemplates.templateId, id),
+            ),
+            columns: { templateId: true },
+          });
+          return Boolean(saved);
+        })()
+      : Promise.resolve(undefined);
+
+    const [cats, isFavorited] = await Promise.all([
+      loadTemplateCategories(c.var.db, row.id),
+      favoritedPromise,
+    ]);
+
     if (clerkUserId) {
-      const userRow = await c.var.db.query.users.findFirst({
-        where: eq(users.clerkUserId, clerkUserId),
-        columns: { id: true },
-      });
-      if (userRow) {
-        const saved = await c.var.db.query.savedTemplates.findFirst({
-          where: and(
-            eq(savedTemplates.userId, userRow.id),
-            eq(savedTemplates.templateId, id),
-          ),
-          columns: { templateId: true },
-        });
-        isFavorited = Boolean(saved);
-      }
       // No shared edge cache for personalised bodies; mobile's
       // React-Query layer is the real cache here.
       c.header('Cache-Control', 'private, max-age=10');
@@ -465,7 +482,6 @@ catalog.get(
       c.header('Cache-Control', PUBLIC_CACHE_HEADERS['Cache-Control']);
     }
 
-    const cats = await loadTemplateCategories(c.var.db, row.id);
     return c.json({
       data: {
         ...templateToMobileDTO(row, {

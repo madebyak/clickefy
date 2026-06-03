@@ -100,7 +100,12 @@ export function VideoPreview({
   }));
 
   return (
-    <Animated.View style={[{ overflow: 'hidden' }, style]}>
+    // `pointerEvents="none"` is critical: the live `VideoView` is a native
+    // surface that otherwise SWALLOWS touches on Android, making any card
+    // with a video preview un-tappable. The video is purely decorative in
+    // every usage (card / banner / hero) — the tap target is always the
+    // parent Pressable — so the whole subtree opts out of the touch system.
+    <Animated.View pointerEvents="none" style={[{ overflow: 'hidden' }, style]}>
       {/* Poster base layer — always present underneath the player. */}
       {posterUri ? (
         <Animated.View

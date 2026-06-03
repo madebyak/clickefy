@@ -1,6 +1,7 @@
 import { useTheme } from '@clickfy/ui';
 import { Redirect, Tabs } from 'expo-router';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { Icon, type IconName } from '@/components/ui/Icon';
@@ -27,6 +28,7 @@ import { useAuthGate } from '@/lib/auth-gate';
 export default function TabLayout() {
   const { colors, accent } = useTheme();
   const { isReady, hasOnboarded, isAuthed } = useAuthGate();
+  const insets = useSafeAreaInsets();
 
   if (!isReady) return null;
   // Authed users always belong on tabs — onboarding/welcome are first-run
@@ -59,8 +61,15 @@ export default function TabLayout() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 0.5,
-          height: Platform.OS === 'ios' ? 84 : 64,
+          // Edge-to-edge (Android 15+) and notched iOS draw the tab bar
+          // behind the system navigation bar / home indicator. We size the
+          // bar as a fixed content height PLUS the bottom safe-area inset,
+          // and push the icons up by that inset, so the tappable row is
+          // never hidden behind the gesture pill or 3-button nav on any
+          // device. `insets.bottom` is 0 where there's no system bar.
+          height: (Platform.OS === 'ios' ? 50 : 64) + insets.bottom,
           paddingTop: 6,
+          paddingBottom: insets.bottom,
         },
         tabBarLabelStyle: {
           fontSize: 10.5,

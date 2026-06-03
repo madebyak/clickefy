@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 
 import { VideoPreview } from '@/components/home/VideoPreview';
+import { thumbnailUrl } from '@/lib/image-url';
 import { resolveLocalVideo } from '@/lib/local-videos';
 
 export interface HeroMediaProps {
@@ -85,7 +86,7 @@ export function HeroMedia({ template }: HeroMediaProps) {
           {galleryImages.map((uri, i) => (
             <Image
               key={`${uri}-${i}`}
-              source={uri}
+              source={thumbnailUrl(uri, { width: SCREEN_WIDTH })}
               style={{ width: SCREEN_WIDTH, height: heroHeight }}
               contentFit="cover"
               transition={120}
@@ -132,7 +133,7 @@ export function HeroMedia({ template }: HeroMediaProps) {
       <View style={{ width: SCREEN_WIDTH, height: heroHeight, backgroundColor: colors.surfaceMuted }}>
         <VideoPreview
           source={videoSource}
-          posterUri={template.coverImage}
+          posterUri={thumbnailUrl(template.coverImage, { width: SCREEN_WIDTH })}
           contentFit="cover"
           style={{ flex: 1 }}
         />
@@ -149,7 +150,7 @@ export function HeroMedia({ template }: HeroMediaProps) {
   return (
     <View style={{ width: SCREEN_WIDTH, height: heroHeight, backgroundColor: colors.surfaceMuted }}>
       <Image
-        source={template.coverImage}
+        source={thumbnailUrl(template.coverImage, { width: SCREEN_WIDTH })}
         contentFit="cover"
         style={{ width: '100%', height: '100%' }}
         transition={200}

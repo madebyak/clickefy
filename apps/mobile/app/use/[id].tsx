@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { Icon } from '@/components/ui/Icon';
 import { InputField, type UploadedMedia } from '@/components/use-template/InputField';
+import { thumbnailUrl } from '@/lib/image-url';
 import { TEMPLATE_QUERY } from '@/lib/query-config';
 import { getSDK } from '@/lib/sdk';
 
@@ -194,7 +195,7 @@ export default function UseTemplateScreen() {
                 }}
               >
                 <Image
-                  source={t.coverImage}
+                  source={thumbnailUrl(t.coverImage, { width: 64 })}
                   contentFit="cover"
                   style={{ width: '100%', height: '100%' }}
                 />

@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { z } from 'zod';
 
 import { FormField } from '@/components/auth/FormField';
+import { PasswordField } from '@/components/auth/PasswordField';
 import { Icon } from '@/components/ui/Icon';
 import { tap } from '@/lib/haptics';
 
@@ -44,6 +45,12 @@ const schema = z.object({
     .toLowerCase()
     .min(1, 'Email is required')
     .email('Please enter a valid email address'),
+  // Clerk's default policy requires 8+ characters. We mirror it client-side
+  // so the user gets instant feedback; Clerk still does the authoritative
+  // check (length + breach detection) and we surface any server error below.
+  password: z
+    .string()
+    .min(8, 'Use at least 8 characters'),
   agreedToTos: z.literal(true, {
     errorMap: () => ({ message: 'You must accept the terms to continue' }),
   }),
@@ -67,10 +74,10 @@ export default function SignUpScreen() {
     mode: 'onChange',
     // `agreedToTos: false` is a deliberate type cast — zod's `literal(true)`
     // forbids `false` at runtime, but rhf needs an initial value to render.
-    defaultValues: { name: '', email: '', agreedToTos: false as unknown as true },
+    defaultValues: { name: '', email: '', password: '', agreedToTos: false as unknown as true },
   });
 
-  const onSubmit = async ({ name, email }: SignUpValues) => {
+  const onSubmit = async ({ name, email, password }: SignUpValues) => {
     if (!isLoaded || !signUp) return;
     try {
       // Split the user's full name on the last space — Clerk wants first
@@ -83,6 +90,7 @@ export default function SignUpScreen() {
 
       await signUp.create({
         emailAddress: email,
+        password,
         firstName,
         ...(lastName && { lastName }),
       });
@@ -104,6 +112,10 @@ export default function SignUpScreen() {
           });
         } else if (first?.meta?.paramName === 'first_name') {
           setError('name', { type: 'clerk', message: msg });
+        } else if (first?.meta?.paramName === 'password') {
+          // Clerk rejects weak / breached / too-short passwords with the
+          // param set to `password` — surface it on the right field.
+          setError('password', { type: 'clerk', message: msg });
         } else {
           setError('email', { type: 'clerk', message: msg });
         }
@@ -191,12 +203,30 @@ export default function SignUpScreen() {
                 autoComplete="email"
                 autoCorrect={false}
                 textContentType="emailAddress"
+                returnKeyType="next"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                error={errors.email?.message}
+              />
+            )}
+          />
+
+          <Controller
+            control={control}
+            name="password"
+            render={({ field: { value, onChange, onBlur } }) => (
+              <PasswordField
+                variant="new"
+                label="Password"
+                placeholder="At least 8 characters"
+                helper="At least 8 characters."
                 returnKeyType="send"
                 value={value}
                 onChangeText={onChange}
                 onBlur={onBlur}
                 onSubmitEditing={isValid ? handleSubmit(onSubmit) : undefined}
-                error={errors.email?.message}
+                error={errors.password?.message}
               />
             )}
           />

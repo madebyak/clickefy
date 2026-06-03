@@ -1,38 +1,51 @@
 /**
- * VideoPreview — looping, muted, autoplay clip used inside `TemplateCard`.
+ * VideoPreview — looping, muted, autoplay clip used inside `TemplateCard`,
+ * the home banner, and the template-detail hero.
  *
  * Industry-standard "social feed" video behaviour:
  *   • Always **muted** (mandatory for autoplay across iOS/Android/Web).
  *   • **Loop** forever — these are 3–8s product clips, not full media.
  *   • **No native controls**, no play/pause buttons. The card itself
  *     opens the template detail on tap; the video is purely decorative.
- *   • Static **poster image** rendered underneath; we cross-fade it out
- *     on the first decoded frame via `onFirstFrameRender`. Eliminates
- *     the buffering/black-frame flash on slow networks.
- *   • **Pauses when the screen blurs** (`useIsFocused`) and when the
- *     app is backgrounded (`AppState`). Saves battery + memory while
- *     the user is in another tab or has minimised the app.
+ *   • Static **poster image** rendered underneath; we cross-fade the live
+ *     video in on its first decoded frame. Eliminates the buffering /
+ *     black-frame flash on slow networks.
  *
- * What we deliberately *don't* do (yet):
- *   - Per-card viewport intersection detection. Each `useVideoPlayer`
- *     allocates a native `ExoPlayer`/`AVPlayer`; with 2–5 muted local
- *     clips that's trivial. When we scale to 20+ video templates, the
- *     right answer is to swap the horizontal `ScrollView` carousels in
- *     `(tabs)/index.tsx` for `FlashList` + `onViewableItemsChanged`,
- *     which mounts/unmounts cards (and therefore players) by viewport.
- *     See https://shopify.github.io/flash-list/ for the migration path.
+ * Memory model (this is the important part):
+ *   The native player (`ExoPlayer` / `AVPlayer`) is **only mounted while
+ *   the card actually needs to play**. We never keep a paused decoder
+ *   around. A player exists only when ALL of the following hold:
+ *     1. the card holds a global play slot (`useVideoSlot`) — caps the
+ *        number of simultaneous decoders app-wide so a long feed can't
+ *        exhaust the MediaCodec budget (the OOM / overheating crashes);
+ *     2. the screen is focused (`useIsFocused`);
+ *     3. the app is foregrounded (`AppState`).
+ *   When any of those flip false we **unmount** the player entirely
+ *   (`ActivePlayer` returns null), freeing the decoder + buffers, and the
+ *   poster image takes over. This is what keeps the home feed from
+ *   spinning up dozens of decoders at once.
+ *
+ *   Callers that are guaranteed to be one-of-a-kind on screen (banner,
+ *   detail hero) omit `cardId`, which opts them out of the global cap.
  */
 
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView, type VideoSource } from 'expo-video';
 import { useIsFocused } from '@react-navigation/native';
-import { useEffect, useRef, useState } from 'react';
-import { AppState, type AppStateStatus, type ViewStyle } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  AppState,
+  StyleSheet,
+  type AppStateStatus,
+  type ViewStyle,
+} from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+
+import { useVideoSlot } from '@/lib/video-slots';
 
 export interface VideoPreviewProps {
   source: VideoSource;
@@ -41,6 +54,13 @@ export interface VideoPreviewProps {
   /** Object-fit. Matches `contentFit` from `expo-image` for parity. */
   contentFit?: 'cover' | 'contain';
   style?: ViewStyle;
+  /**
+   * Stable id used by the global play-slot limiter. Pass the template id
+   * for feed cards so we never decode more than `MAX_ACTIVE` videos at
+   * once. Omit for one-off players (banner / detail hero) that should
+   * always play when visible.
+   */
+  cardId?: string;
 }
 
 export function VideoPreview({
@@ -48,36 +68,13 @@ export function VideoPreview({
   posterUri,
   contentFit = 'cover',
   style,
+  cardId,
 }: VideoPreviewProps) {
+  const hasSlot = useVideoSlot(cardId);
   const isFocused = useIsFocused();
   const [appActive, setAppActive] = useState<boolean>(
     AppState.currentState === 'active',
   );
-
-  // ── Crossfade between the poster image and the live video.
-  // We start at 1 (poster fully visible) and animate to 0 once the
-  // first video frame renders. Keeps the layout zero-flash.
-  const posterOpacity = useSharedValue(1);
-  const firstFrameRendered = useRef(false);
-
-  // ── Wire the player. The setup callback runs once on mount; we set
-  // it to loop + mute and immediately call `.play()` so the moment the
-  // video frame is ready we already have decoded buffers.
-  const player = useVideoPlayer(source, (p) => {
-    p.loop = true;
-    p.muted = true;
-    p.play();
-  });
-
-  // ── Pause/resume on screen focus + app background.
-  // We don't recreate the player — just toggle its `play()`/`pause()`.
-  useEffect(() => {
-    if (isFocused && appActive) {
-      player.play();
-    } else {
-      player.pause();
-    }
-  }, [appActive, isFocused, player]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
@@ -86,53 +83,84 @@ export function VideoPreview({
     return () => sub.remove();
   }, []);
 
+  // Only spin up a native decoder when we hold a slot AND are on screen.
+  const shouldPlay = hasSlot && isFocused && appActive;
+
+  // Poster crossfade. Starts fully visible; the live player fades the
+  // poster out once its first frame paints. Whenever we tear the player
+  // down (slot lost / blurred / backgrounded) we snap the poster back so
+  // there's never an empty frame.
+  const posterOpacity = useSharedValue(1);
+  useEffect(() => {
+    if (!shouldPlay) posterOpacity.value = 1;
+  }, [shouldPlay, posterOpacity]);
+
   const posterStyle = useAnimatedStyle(() => ({
     opacity: posterOpacity.value,
   }));
 
   return (
     <Animated.View style={[{ overflow: 'hidden' }, style]}>
-      <VideoView
-        player={player}
-        style={{ width: '100%', height: '100%' }}
-        contentFit={contentFit}
-        nativeControls={false}
-        // iOS-only — disables the play/pause overlay that appears when
-        // the user taps. We want the card itself to be the tap target.
-        // `allowsFullscreen` was deprecated in SDK 54 and removed in
-        // SDK 55 (expo/expo#41606); the replacement is the
-        // `fullscreenOptions.enable` field.
-        fullscreenOptions={{ enable: false }}
-        allowsPictureInPicture={false}
-        onFirstFrameRender={() => {
-          if (firstFrameRendered.current) return;
-          firstFrameRendered.current = true;
-          posterOpacity.value = withTiming(0, { duration: 220 });
-        }}
-      />
-
+      {/* Poster base layer — always present underneath the player. */}
       {posterUri ? (
         <Animated.View
           pointerEvents="none"
-          style={[
-            {
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-            },
-            posterStyle,
-          ]}
+          style={[StyleSheet.absoluteFill, posterStyle]}
         >
           <Image
             source={posterUri}
-            style={{ width: '100%', height: '100%' }}
+            style={StyleSheet.absoluteFill}
             contentFit={contentFit}
             transition={0}
           />
         </Animated.View>
       ) : null}
+
+      {/* Live decoder — mounted only while actually playing. */}
+      {shouldPlay ? (
+        <ActivePlayer
+          source={source}
+          contentFit={contentFit}
+          onFirstFrame={() => {
+            posterOpacity.value = withTiming(0, { duration: 220 });
+          }}
+        />
+      ) : null}
     </Animated.View>
+  );
+}
+
+interface ActivePlayerProps {
+  source: VideoSource;
+  contentFit: 'cover' | 'contain';
+  onFirstFrame: () => void;
+}
+
+/**
+ * Wraps the actual `useVideoPlayer` allocation. Mounting/unmounting this
+ * component is what creates/destroys the native decoder, so it MUST only
+ * ever be rendered while `shouldPlay` is true in the parent.
+ */
+function ActivePlayer({ source, contentFit, onFirstFrame }: ActivePlayerProps) {
+  const player = useVideoPlayer(source, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+
+  return (
+    <VideoView
+      player={player}
+      style={StyleSheet.absoluteFill}
+      contentFit={contentFit}
+      nativeControls={false}
+      // iOS-only — disables the play/pause overlay that appears when the
+      // user taps. We want the card itself to be the tap target.
+      // `allowsFullscreen` was deprecated in SDK 54 and removed in SDK 55
+      // (expo/expo#41606); the replacement is `fullscreenOptions.enable`.
+      fullscreenOptions={{ enable: false }}
+      allowsPictureInPicture={false}
+      onFirstFrameRender={onFirstFrame}
+    />
   );
 }

@@ -125,7 +125,13 @@ function RootLayout() {
             staleTime: 60_000,
             gcTime: 10 * 60_000,
             retry: 1,
-            refetchOnWindowFocus: true,
+            // React Native has no real "window focus" event, and screen
+            // re-focus refresh is handled deliberately (and throttled) by
+            // `useRefreshOnFocus`. Leaving this on caused redundant
+            // refetch storms on app foreground / tab switches — battery
+            // drain and unnecessary API load. `staleTime` already gates
+            // freshness, so explicit refetch-on-focus is opt-in per screen.
+            refetchOnWindowFocus: false,
           },
         },
       }),
@@ -187,6 +193,11 @@ function RootLayout() {
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
+              {/* OAuth deep-link landing. Android standalone builds deliver the
+                  `clickfy://sso-callback?...` redirect here instead of letting
+                  `openAuthSessionAsync` capture it — this screen finalizes the
+                  session so users never hit "Unmatched Route". */}
+              <Stack.Screen name="sso-callback" options={{ headerShown: false, animation: 'fade' }} />
               <Stack.Screen
                 name="template/[id]"
                 options={{ presentation: 'modal', animation: 'slide_from_bottom' }}

@@ -489,6 +489,7 @@ jobsRoute.get(
       where: and(eq(jobs.id, jobId), eq(jobs.userId, userRow.id)),
       columns: {
         id: true,
+        templateId: true,
         status: true,
         progress: true,
         result: true,
@@ -542,6 +543,9 @@ jobsRoute.get(
     return c.json({
       data: {
         jobId: job.id,
+        // Surfaced so a result screen opened cold (push deep-link, no
+        // template id in the route) can still offer Regenerate / Tweak.
+        templateId: job.templateId,
         status: job.status,
         progress: job.progress ?? null,
         outputs: outputs.length > 0 ? outputs : undefined,

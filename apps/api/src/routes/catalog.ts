@@ -31,6 +31,7 @@ import {
 } from '../lib/template-categories';
 import { buildHomeSections } from '../lib/section-builder';
 import { withAuth } from '../middleware/with-auth';
+import { withEdgeCache } from '../middleware/with-edge-cache';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
 
 export const catalog = new Hono<AppEnv>();
@@ -114,6 +115,7 @@ const listQuerySchema = z.object({
 
 catalog.get(
   '/templates',
+  withEdgeCache({ ttlSeconds: 60 }),
   withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
   zValidator('query', listQuerySchema),
   async (c) => {
@@ -291,6 +293,7 @@ const sectionsQuerySchema = z.object({
 
 catalog.get(
   '/sections',
+  withEdgeCache({ ttlSeconds: 60 }),
   withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
   zValidator('query', sectionsQuerySchema),
   async (c) => {
@@ -321,7 +324,11 @@ catalog.get(
  * one-minute lag on a freshly-published banner is acceptable, and
  * banners change far less often than templates.
  */
-catalog.get('/banners', withRateLimit((env) => env.RL_PUBLIC_IP, byIp), async (c) => {
+catalog.get(
+  '/banners',
+  withEdgeCache({ ttlSeconds: 60 }),
+  withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
+  async (c) => {
   const publicBaseUrl = new URL(c.req.url).origin;
 
   const rows = await c.var.db
@@ -413,6 +420,10 @@ const idParamSchema = z.object({ id: z.string().uuid() });
 
 catalog.get(
   '/templates/:id',
+  // Anonymous reads are share-cached at the edge; any request carrying a
+  // bearer token skips the cache (inside withEdgeCache) so the
+  // per-user `isFavorited` body is never cached or cross-served.
+  withEdgeCache({ ttlSeconds: 60 }),
   withAuth({ required: false }),
   withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
   zValidator('param', idParamSchema),

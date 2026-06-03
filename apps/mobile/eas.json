@@ -26,7 +26,8 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_BUILD_VARIANT": "preview"
+        "EXPO_PUBLIC_BUILD_VARIANT": "preview",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "production": {
@@ -36,7 +37,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_BUILD_VARIANT": "production"
+        "EXPO_PUBLIC_BUILD_VARIANT": "production",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },

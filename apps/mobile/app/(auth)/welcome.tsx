@@ -19,6 +19,7 @@
 
 import { useSSO } from '@clerk/expo';
 import { isClerkAPIResponseError } from '@clerk/react/errors';
+import * as Sentry from '@sentry/react-native';
 import { Box, Button, Stack, Text, useTheme } from '@clickfy/ui';
 import * as AuthSession from 'expo-auth-session';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -63,20 +64,50 @@ export default function WelcomeScreen() {
       setPending(provider);
       try {
         const strategy = provider === 'apple' ? 'oauth_apple' : 'oauth_google';
-        // `makeRedirectUri()` builds a scheme-aware URL: `exp://...` in
-        // Expo Go, `clickfy://...` in production builds. Clerk pairs this
-        // with their hosted OAuth handler so we don't need a callback page.
-        const redirectUrl = AuthSession.makeRedirectUri();
+        // `makeRedirectUri({ path })` builds a scheme-aware URL: `exp://...`
+        // in Expo Go, `clickfy://sso-callback` in production builds. The
+        // explicit `sso-callback` path matches Clerk's own internal default
+        // — a bare-scheme redirect (`clickfy://`) is not reliably detected
+        // by Chrome Custom Tabs on Android, which silently dismisses the
+        // browser and returns a non-`success` result (the bug we're chasing).
+        const redirectUrl = AuthSession.makeRedirectUri({ path: 'sso-callback' });
 
-        const { createdSessionId, setActive } = await startSSOFlow({
-          strategy,
-          redirectUrl,
-        });
+        const { createdSessionId, setActive, authSessionResult, signIn, signUp } =
+          await startSSOFlow({
+            strategy,
+            redirectUrl,
+          });
 
         if (createdSessionId && setActive) {
           await setActive({ session: createdSessionId });
           // The auth-layout redirect flips us to /(tabs) as soon as
           // `isSignedIn` updates — no explicit navigation here.
+        } else {
+          // No session came back. This is the silent failure path the user
+          // is hitting: the browser closed without a successful redirect, or
+          // Clerk needs a follow-up step we didn't take. Capture rich
+          // diagnostics to Sentry so we can see WHY in production (the
+          // dismiss/cancel path never throws, so nothing surfaced before).
+          Sentry.captureMessage('[oauth] SSO flow returned no session', {
+            level: 'warning',
+            extra: {
+              provider,
+              redirectUrl,
+              authSessionResultType: authSessionResult?.type ?? 'none',
+              authSessionResultUrl:
+                authSessionResult && 'url' in authSessionResult
+                  ? authSessionResult.url
+                  : null,
+              firstFactorStatus: signIn?.firstFactorVerification?.status ?? null,
+              firstFactorError:
+                signIn?.firstFactorVerification?.error?.message ?? null,
+              externalVerificationRedirectURL:
+                signIn?.firstFactorVerification?.externalVerificationRedirectURL?.toString() ??
+                null,
+              signInStatus: signIn?.status ?? null,
+              signUpStatus: signUp?.status ?? null,
+            },
+          });
         }
       } catch (err) {
         // Cancellation (user dismissed the browser sheet) is not an error.
@@ -86,12 +117,17 @@ export default function WelcomeScreen() {
         }
         if (isClerkAPIResponseError(err)) {
           const first = err.errors?.[0];
+          Sentry.captureException(err, {
+            level: 'warning',
+            extra: { provider, clerkErrorCode: first?.code, clerkErrorMessage: first?.message },
+          });
           Alert.alert(
             'Sign in failed',
             first?.longMessage ?? first?.message ?? 'Please try again.',
           );
         } else {
           console.warn(`[welcome] ${provider} oauth error`, err);
+          Sentry.captureException(err, { extra: { provider, where: 'sso_flow' } });
           Alert.alert(
             'Sign in failed',
             'Something went wrong. Please try again or use email.',

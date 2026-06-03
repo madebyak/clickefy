@@ -19,16 +19,34 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef } from 'react';
 
+/**
+ * Minimum gap between focus-triggered refetches for a given screen.
+ * `refetch()` always hits the network (it ignores `staleTime`), so
+ * without this guard rapid tab-flicking would fire a request every time
+ * the screen regains focus. 30s keeps "tab back in → see fresh data"
+ * feeling live while bounding the request rate.
+ */
+const MIN_REFRESH_INTERVAL_MS = 30_000;
+
 export function useRefreshOnFocus<T>(refetch: () => Promise<T> | T): void {
   const firstTimeRef = useRef(true);
+  const lastRefetchRef = useRef(0);
   useFocusEffect(
     useCallback(() => {
       if (firstTimeRef.current) {
         // React-Query already fetched on mount; calling refetch
         // here would just trigger an immediate redundant request.
         firstTimeRef.current = false;
+        lastRefetchRef.current = Date.now();
         return;
       }
+      const now = Date.now();
+      if (now - lastRefetchRef.current < MIN_REFRESH_INTERVAL_MS) {
+        // Too soon since the last refresh — the data is still fresh
+        // enough; skip to avoid hammering the API on quick tab switches.
+        return;
+      }
+      lastRefetchRef.current = now;
       void refetch();
     }, [refetch]),
   );

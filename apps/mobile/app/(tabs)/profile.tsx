@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppearance } from '@/lib/use-appearance';
 import { LEGAL_DOCS, LEGAL_DOC_ORDER } from '@/lib/legal-content';
 import { registerForPushNotificationsAsync } from '@/lib/push-notifications';
+import { useNotificationPrefs } from '@/lib/use-notification-prefs';
 import { useSession } from '@/lib/use-session';
 import { useAuth } from '@clerk/expo';
 import { useState } from 'react';
@@ -38,10 +39,10 @@ export default function ProfileScreen() {
     plan,
     isAuthed,
     preferences,
-    updateProfile,
     signOut,
     deleteAccount,
   } = useSession();
+  const { setNotification } = useNotificationPrefs();
   const { getToken } = useAuth();
   const [diagBusy, setDiagBusy] = useState(false);
   const { mode, scheme, accentKey, setMode, setAccent, toggleScheme } = useAppearance();
@@ -86,11 +87,9 @@ export default function ProfileScreen() {
   const isDark = scheme === 'dark';
 
   const onToggleNotification = (key: keyof typeof preferences.notifications) => {
-    void updateProfile.mutateAsync({
-      preferences: {
-        notifications: { [key]: !preferences.notifications[key] },
-      },
-    });
+    // Optimistic + debounced server write (see useNotificationPrefs) so
+    // rapid toggling can't spam PATCH /v1/users/me into a 429.
+    setNotification(key, !preferences.notifications[key]);
   };
 
   return (

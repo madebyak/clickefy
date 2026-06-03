@@ -35,6 +35,10 @@ export function useAppearance() {
 
   const serverApplied = useRef(false);
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Accumulate changes across the debounce window so a quick
+  // mode-then-accent (or vice-versa) flushes BOTH in one PATCH instead
+  // of the later call clobbering the earlier one.
+  const pendingPrefs = useRef<{ mode?: ThemeMode; accent?: AccentKey }>({});
 
   // ── Server → Local (one-shot on first authed hydration) ───────────
   useEffect(() => {
@@ -66,10 +70,13 @@ export function useAppearance() {
   const scheduleServerSync = useCallback(
     (next: { mode?: ThemeMode; accent?: AccentKey }) => {
       if (!isAuthed) return;
+      pendingPrefs.current = { ...pendingPrefs.current, ...next };
       if (pendingTimer.current) clearTimeout(pendingTimer.current);
       pendingTimer.current = setTimeout(() => {
+        const changes = pendingPrefs.current;
+        pendingPrefs.current = {};
         void updateProfile.mutateAsync({
-          preferences: { appearance: next },
+          preferences: { appearance: changes },
         });
       }, SERVER_SYNC_DEBOUNCE_MS);
     },

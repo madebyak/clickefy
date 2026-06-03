@@ -28,6 +28,8 @@ export default function AuthLayout() {
       <Stack.Screen name="sign-in" options={{ animation: 'slide_from_right', gestureEnabled: true }} />
       <Stack.Screen name="sign-up" options={{ animation: 'slide_from_right', gestureEnabled: true }} />
       <Stack.Screen name="verify" options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+      <Stack.Screen name="forgot-password" options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+      <Stack.Screen name="reset-password" options={{ animation: 'slide_from_right', gestureEnabled: true }} />
       <Stack.Screen name="paywall" options={{ animation: 'slide_from_bottom' }} />
     </Stack>
   );

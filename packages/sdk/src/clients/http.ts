@@ -13,7 +13,12 @@
  * works pre-sign-in.
  */
 
-import type { MobileHomeBanner, MobileTemplate } from '@clickfy/types';
+import type {
+  MeResponse,
+  MobileHomeBanner,
+  MobileTemplate,
+  UpdateProfileInput,
+} from '@clickfy/types';
 
 import type {
   CatalogCategory,
@@ -43,6 +48,8 @@ interface JobErrorWire {
 }
 interface JobStatusWire {
   jobId: string;
+  /** Template the job was generated from. Optional for legacy rows. */
+  templateId?: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
   progress: JobProgressWire | null;
   /**
@@ -130,6 +137,30 @@ function statusFallbackLabel(status: JobStatusWire['status']): string {
     case 'failed':
       return 'Failed';
   }
+}
+
+/**
+ * Map the Worker's `/v1/jobs/:id` wire shape onto the SDK's
+ * `GenerationProgress`. Shared by `generation.subscribe` (polling) and
+ * `generation.getJob` (one-shot) so the two never drift apart.
+ *
+ * Note `stageProgress` is approximated: Trigger.dev doesn't report an
+ * intra-stage percentage, so the UI relies on `stageIndex`/`stageCount`
+ * and we just emit 0 / 0.5 / 1 to bucket queued / running / done.
+ */
+function mapJobStatusToProgress(data: JobStatusWire): GenerationProgress {
+  return {
+    jobId: data.jobId,
+    templateId: data.templateId,
+    status: data.status,
+    stageProgress:
+      data.status === 'completed' ? 1 : data.status === 'queued' ? 0 : 0.5,
+    stageIndex: data.progress?.stage ?? 0,
+    stageCount: data.progress?.totalStages ?? 0,
+    stageLabel: data.progress?.message ?? statusFallbackLabel(data.status),
+    outputs: data.outputs,
+    error: data.error?.message,
+  };
 }
 
 export interface HttpClientOptions {
@@ -516,25 +547,11 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
             };
             const data = json.data;
 
-            const progress: GenerationProgress = {
-              jobId: data.jobId,
-              status: data.status,
-              // The Worker emits `{ stage, totalStages, message }` —
-              // we map to the legacy SDK shape so mobile screens
-              // don't need to change their consumer interface. The
-              // mock and http clients now produce identical shapes.
-              stageProgress:
-                data.status === 'completed'
-                  ? 1
-                  : data.status === 'queued'
-                    ? 0
-                    : 0.5, // intra-stage % isn't reported by Trigger.dev; the UI uses stage count primarily
-              stageIndex: data.progress?.stage ?? 0,
-              stageCount: data.progress?.totalStages ?? 0,
-              stageLabel: data.progress?.message ?? statusFallbackLabel(data.status),
-              outputs: data.outputs,
-              error: data.error?.message,
-            };
+            // The Worker emits `{ stage, totalStages, message }` — we
+            // map to the SDK's `GenerationProgress` shape so mobile
+            // screens don't need to know the wire format. Shared with
+            // `getJob` via `mapJobStatusToProgress`.
+            const progress: GenerationProgress = mapJobStatusToProgress(data);
 
             const serialized = JSON.stringify(progress);
             if (serialized !== lastSerialized) {
@@ -573,6 +590,27 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           cancelled = true;
           if (timer) clearTimeout(timer);
         };
+      },
+
+      // One-shot read of `GET /v1/jobs/:id`. Same endpoint the
+      // subscription polls, but resolves once instead of looping — the
+      // result screen uses it to recover outputs when it's opened cold
+      // (push-notification deep link, app was killed) and the in-memory
+      // output cache is therefore empty.
+      async getJob(jobId: string): Promise<GenerationProgress> {
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        if (getToken) {
+          const token = await getToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+        const res = await fetch(`${baseUrl}/v1/jobs/${jobId}`, { headers });
+        await throwIfRateLimited(res, 'jobs.get');
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`GET /v1/jobs/${jobId} failed (${res.status}): ${text.slice(0, 200)}`);
+        }
+        const json = (await res.json()) as { data: JobStatusWire };
+        return mapJobStatusToProgress(json.data);
       },
     },
     library: {
@@ -882,6 +920,99 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           xhr.ontimeout = () => reject(new Error('upload: timed out'));
           xhr.send(body);
         });
+      },
+    },
+
+    user: {
+      // All four methods hit `/v1/users/me`. They're user-scoped, so we
+      // attach the Clerk token eagerly and surface 429s as typed
+      // `RateLimitedError`s — the single place this logic now lives,
+      // instead of being re-implemented per screen in `useSession`.
+      async getMe(): Promise<MeResponse> {
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        if (getToken) {
+          const token = await getToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+        const res = await fetch(`${baseUrl}/v1/users/me`, { headers });
+        await throwIfRateLimited(res, 'users.me');
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`GET /v1/users/me ${res.status}: ${text.slice(0, 200)}`);
+        }
+        const json = (await res.json()) as { data: MeResponse };
+        return json.data;
+      },
+
+      async updateProfile(input: UpdateProfileInput): Promise<MeResponse> {
+        const headers: Record<string, string> = {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        };
+        if (getToken) {
+          const token = await getToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+        const res = await fetch(`${baseUrl}/v1/users/me`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(input),
+        });
+        await throwIfRateLimited(res, 'users.update');
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`PATCH /v1/users/me ${res.status}: ${text.slice(0, 200)}`);
+        }
+        const json = (await res.json()) as { data: MeResponse };
+        return json.data;
+      },
+
+      async uploadAvatar(file: UploadSource): Promise<MeResponse> {
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        if (getToken) {
+          const token = await getToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+        // React Native's `FormData` accepts the `{ uri, name, type }`
+        // triple; the bridge streams the file off-disk. Don't set
+        // Content-Type — `fetch` fills in the multipart boundary.
+        const body = new FormData();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (body as any).append('file', {
+          uri: file.uri,
+          name: file.name,
+          type: file.type,
+        } as unknown as Blob);
+        const res = await fetch(`${baseUrl}/v1/users/me/avatar`, {
+          method: 'POST',
+          headers,
+          body,
+        });
+        await throwIfRateLimited(res, 'users.avatar');
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`POST /v1/users/me/avatar ${res.status}: ${text.slice(0, 200)}`);
+        }
+        const json = (await res.json()) as { data: MeResponse };
+        return json.data;
+      },
+
+      async deleteAccount(): Promise<void> {
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        if (getToken) {
+          const token = await getToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+        const res = await fetch(`${baseUrl}/v1/users/me`, {
+          method: 'DELETE',
+          headers,
+        });
+        await throwIfRateLimited(res, 'users.delete');
+        // 204 No Content is the success case; tolerate 200 too.
+        if (!res.ok && res.status !== 204) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`DELETE /v1/users/me ${res.status}: ${text.slice(0, 200)}`);
+        }
       },
     },
   };

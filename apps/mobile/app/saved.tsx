@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { Icon } from '@/components/ui/Icon';
+import { thumbnailUrl } from '@/lib/image-url';
 import { LIBRARY_QUERY } from '@/lib/query-config';
 import { getSDK } from '@/lib/sdk';
 import { useRefreshOnFocus } from '@/lib/use-refresh-on-focus';
@@ -144,7 +145,7 @@ function SavedCard({
           }}
         >
           <Image
-            source={template.coverImage}
+            source={thumbnailUrl(template.coverImage, { width: 200 })}
             style={{ width: '100%', height: '100%' }}
             contentFit="cover"
             transition={150}

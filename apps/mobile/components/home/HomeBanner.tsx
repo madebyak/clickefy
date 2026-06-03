@@ -25,6 +25,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  Dimensions,
   Linking,
   ScrollView,
   StyleSheet,
@@ -34,6 +35,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { thumbnailUrl } from '@/lib/image-url';
 import { VideoPreview } from './VideoPreview';
 
 /**
@@ -44,6 +46,8 @@ import { VideoPreview } from './VideoPreview';
 const SIDE_GUTTER = 20;
 const ASPECT = 16 / 9;
 const RADIUS = 22;
+/** Banner fills the row minus both side gutters — size thumbnails to it. */
+const BANNER_WIDTH = Math.round(Dimensions.get('window').width - SIDE_GUTTER * 2);
 
 // ─── Public: HomeBannerSlider ──────────────────────────────────────
 //
@@ -165,7 +169,7 @@ function BannerSlide({ banner }: BannerSlideProps) {
       {banner.kind === 'video' ? (
         <VideoPreview
           source={banner.video.hlsUrl}
-          posterUri={banner.video.posterUrl}
+          posterUri={thumbnailUrl(banner.video.posterUrl, { width: BANNER_WIDTH })}
           contentFit="cover"
           style={StyleSheet.absoluteFill as ViewStyle}
         />
@@ -174,7 +178,7 @@ function BannerSlide({ banner }: BannerSlideProps) {
         // the API ever returns one we still render the lead frame
         // gracefully instead of an empty slot.
         <Image
-          source={{ uri: banner.images[0]?.url }}
+          source={{ uri: thumbnailUrl(banner.images[0]?.url, { width: BANNER_WIDTH }) }}
           placeholder={{ blurhash: banner.images[0]?.blurhash }}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
@@ -182,7 +186,7 @@ function BannerSlide({ banner }: BannerSlideProps) {
         />
       ) : (
         <Image
-          source={{ uri: banner.image.url }}
+          source={{ uri: thumbnailUrl(banner.image.url, { width: BANNER_WIDTH }) }}
           placeholder={{ blurhash: banner.image.blurhash }}
           style={StyleSheet.absoluteFill}
           contentFit="cover"

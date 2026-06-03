@@ -7,6 +7,7 @@ import { View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { resolveLocalVideo } from '@/lib/local-videos';
+import { thumbnailUrl } from '@/lib/image-url';
 import { VideoPreview } from '@/components/home/VideoPreview';
 
 export interface TemplateCardProps {
@@ -22,6 +23,13 @@ export interface TemplateCardProps {
   aspect?: string;
   /** Hide title + meta — image-only mode */
   hideMeta?: boolean;
+  /**
+   * Approximate rendered width of the card in dp. Used to request a
+   * right-sized cover thumbnail from Cloudflare instead of the full-res
+   * original. Defaults to a rail/grid-sized card; pass the screen width
+   * for full-bleed layouts (e.g. the Bento hero).
+   */
+  coverWidth?: number;
 }
 
 const KIND_ICON: Record<CatalogTemplate['kind'], IconName> = {
@@ -43,7 +51,13 @@ function parseAspect(aspect: string): number {
  * Template card — cover image with kind chip, credit badge, headline.
  * The single most-used surface in the app.
  */
-export function TemplateCard({ template, onPress, aspect, hideMeta }: TemplateCardProps) {
+export function TemplateCard({
+  template,
+  onPress,
+  aspect,
+  hideMeta,
+  coverWidth = 240,
+}: TemplateCardProps) {
   const { colors, accent } = useTheme();
   const router = useRouter();
   // Aspect priority: explicit prop override > uniform default.
@@ -51,6 +65,15 @@ export function TemplateCard({ template, onPress, aspect, hideMeta }: TemplateCa
   // consistent visual rhythm no matter what shape the admin uploads.
   const ratio = useMemo(() => parseAspect(aspect ?? DEFAULT_ASPECT), [aspect]);
   const handlePress = onPress ?? (() => router.push(`/template/${template.id}`));
+
+  // Request a device-sized cover derivative for catalog media. Returns
+  // the original URL untouched for anything outside the browse-media
+  // allow-list (e.g. foreign CDNs) — and never touches generation
+  // outputs, which aren't rendered here anyway.
+  const coverUri = useMemo(
+    () => thumbnailUrl(template.coverImage, { width: coverWidth }),
+    [template.coverImage, coverWidth],
+  );
 
   // Resolve once per card-mount. `previewVideo` may be a local key
   // (`local:spin`) or a remote URL; if it isn't recognised we fall
@@ -84,13 +107,14 @@ export function TemplateCard({ template, onPress, aspect, hideMeta }: TemplateCa
         {videoSource ? (
           <VideoPreview
             source={videoSource}
-            posterUri={template.coverImage}
+            posterUri={coverUri}
             contentFit="cover"
             style={{ width: '100%', height: '100%' }}
+            cardId={template.id}
           />
         ) : (
           <Image
-            source={template.coverImage}
+            source={coverUri}
             style={{ width: '100%', height: '100%' }}
             contentFit="cover"
             transition={180}

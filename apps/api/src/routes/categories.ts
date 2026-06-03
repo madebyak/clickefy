@@ -15,6 +15,7 @@ import { categories } from '@clickfy/db';
 
 import type { AppEnv } from '../types';
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
+import { withEdgeCache } from '../middleware/with-edge-cache';
 import { byIp, withRateLimit } from '../middleware/with-rate-limit';
 
 export const categoriesRoute = new Hono<AppEnv>();
@@ -39,6 +40,7 @@ const updateCategorySchema = createCategorySchema.partial();
 
 categoriesRoute.get(
   '/',
+  withEdgeCache({ ttlSeconds: 60 }),
   withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
   async (c) => {
     const rows = await c.var.db.query.categories.findMany({

@@ -2,14 +2,14 @@
   "expo": {
     "name": "Clickefy",
     "slug": "clickfy",
-    "version": "0.0.1",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "clickfy",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "bundleIdentifier": "ai.clickfy.app",
+      "bundleIdentifier": "ai.clickefy.app",
       "supportsTablet": false,
       "config": {
         "usesNonExemptEncryption": false
@@ -45,7 +45,7 @@
       }
     },
     "android": {
-      "package": "ai.clickfy.app",
+      "package": "ai.clickefy.app",
       "adaptiveIcon": {
         "backgroundColor": "#0A0A10",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -62,6 +62,7 @@
     },
     "plugins": [
       "expo-router",
+      "@clerk/expo",
       [
         "expo-splash-screen",
         {
@@ -101,7 +102,22 @@
           "enableBackgroundRemoteNotifications": false
         }
       ],
-      "@sentry/react-native"
+      [
+        "@sentry/react-native/expo",
+        {
+          "disableAutoUpload": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "packagingOptions": {
+              "pickFirst": ["META-INF/versions/9/OSGI-INF/MANIFEST.MF"]
+            }
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

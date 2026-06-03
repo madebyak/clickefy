@@ -1,8 +1,13 @@
 import type { CatalogTemplate } from '@clickfy/sdk';
 import { Stack } from '@clickfy/ui';
-import { View } from 'react-native';
+import { Dimensions, View } from 'react-native';
 
 import { TemplateCard } from './TemplateCard';
+
+// Hero spans the full row (minus the px="lg" gutters); request a cover
+// roughly that wide so it stays crisp. Paired/trio cards keep the
+// default rail-sized cover.
+const HERO_WIDTH = Math.round(Dimensions.get('window').width - 40);
 
 export interface BentoProps {
   templates: CatalogTemplate[];
@@ -33,7 +38,12 @@ export function Bento({ templates, onTemplatePress }: BentoProps) {
 
   return (
     <Stack px="lg" gap="md">
-      <TemplateCard template={hero} aspect="16/10" onPress={press(hero.id)} />
+      <TemplateCard
+        template={hero}
+        aspect="16/10"
+        coverWidth={HERO_WIDTH}
+        onPress={press(hero.id)}
+      />
       {pair.length > 0 ? (
         <View style={{ flexDirection: 'row', gap: 14 }}>
           {pair.map((tpl) => (

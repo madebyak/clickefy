@@ -24,6 +24,7 @@ import { eq } from 'drizzle-orm';
 import { adminAuditLog, users } from '@clickfy/db';
 
 import type { AppEnv, Bindings } from '../types';
+import { resolveOrLinkUser } from '../lib/provision-user';
 
 /**
  * Real-identity placeholder prefix. Rows whose email starts with this
@@ -227,37 +228,32 @@ export function withCurrentUser() {
       return next();
     }
 
-    // No row yet. Try to pull the real profile from Clerk synchronously
-    // so the very first row we create already has the correct email +
-    // name + avatar. This eliminates the legacy "pending+...@clickefy.local"
-    // window — the admin dashboard sees real users from request #1.
+    // No row matches this Clerk id. Pull the real profile from Clerk so
+    // we have the verified email + name + avatar before deciding what to
+    // do. The email is what lets us recognise a RETURNING user whose row
+    // still carries their old (pre-migration) Clerk id — see
+    // `resolveOrLinkUser` for why matching on it is safe.
     //
-    // If Clerk is unreachable or CLERK_SECRET_KEY isn't configured
-    // (dev env), we fall back to the placeholder email so the request
-    // can still proceed. The webhook (or the heal step above on the
-    // next request) will reconcile.
+    // If Clerk is unreachable or CLERK_SECRET_KEY isn't configured (dev
+    // env), `profile` is null and we fall back to a placeholder row; the
+    // heal step above reconciles it on a later request.
     const profile = await fetchClerkProfile(clerkUserId, c.env.CLERK_SECRET_KEY);
-    const placeholderEmail = `${STUB_EMAIL_PREFIX}${clerkUserId}@clickefy.local`;
-    const [created] = await c.var.db
-      .insert(users)
-      .values({
-        clerkUserId,
-        email: profile?.email ?? placeholderEmail,
-        name: profile?.name ?? null,
-        avatarUrl: profile?.avatarUrl ?? null,
-        creditsBalance: 0,
-      })
-      .returning();
+    const result = await resolveOrLinkUser(c.var.db, {
+      clerkUserId,
+      email: profile?.email ?? null,
+      name: profile?.name ?? null,
+      avatarUrl: profile?.avatarUrl ?? null,
+    });
 
-    if (!created) {
+    if (!result) {
       return c.json(
         { error: { code: 'user_upsert_failed', message: 'Could not create user row.' } },
         500,
       );
     }
 
-    c.set('user', created);
-    tagSentryUser(created.id, clerkUserId);
+    c.set('user', result.user);
+    tagSentryUser(result.user.id, clerkUserId);
     return next();
   });
 }

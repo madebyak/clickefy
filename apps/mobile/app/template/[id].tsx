@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeroMedia, getHeroHeight } from '@/components/template/HeroMedia';
 import { Icon, type IconName } from '@/components/ui/Icon';
+import { config } from '@/lib/config';
 import { TEMPLATE_QUERY } from '@/lib/query-config';
 import { getSDK } from '@/lib/sdk';
 
@@ -108,8 +109,8 @@ export default function TemplateDetailScreen() {
     if (!t) return;
     try {
       await Share.share({
-        message: `Check out "${t.title}" on Clickfy`,
-        url: `https://clickfy.ai/templates/${t.id}`,
+        message: `Check out "${t.title}" on Clickefy`,
+        url: `${config.webUrl}/templates/${t.id}`,
       });
     } catch {
       // user dismissed

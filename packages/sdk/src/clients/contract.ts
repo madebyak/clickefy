@@ -3,7 +3,11 @@
  * must satisfy. Screens depend on this, never on a concrete client.
  */
 
-import type { MobileHomeBanner } from '@clickfy/types';
+import type {
+  MeResponse,
+  MobileHomeBanner,
+  UpdateProfileInput,
+} from '@clickfy/types';
 
 import type {
   AuthProvider,
@@ -112,6 +116,23 @@ export interface GenerationClient {
 
   /** Subscribe to job progress. Returns an unsubscribe function. */
   subscribe(jobId: string, onUpdate: (progress: GenerationProgress) => void): () => void;
+
+  /**
+   * One-shot fetch of a single job's current state — same data the
+   * subscription emits, without starting a polling loop.
+   *
+   * Primary use: the result screen when it's opened cold (e.g. tapped
+   * from a push notification after the app was killed). In that case
+   * the in-memory output cache is empty, so the screen fetches the
+   * finished job's outputs directly. Also lets the screen react to a
+   * still-`processing` or `failed` job rather than rendering an empty
+   * result.
+   *
+   * Auth required. Throws `RateLimitedError` on 429; throws a generic
+   * `Error` for other non-2xx responses (including a 404 for an
+   * unknown / not-owned job id).
+   */
+  getJob(jobId: string): Promise<GenerationProgress>;
 }
 
 /**
@@ -185,6 +206,36 @@ export interface UploadsClient {
   uploadUserAsset(source: UploadSource, opts?: UploadOptions): Promise<UploadedAssetRef>;
 }
 
+/**
+ * Current-user / account data. Distinct from the standalone
+ * `AuthClient` above: that one models a hypothetical non-Clerk auth
+ * provider and is not surfaced on the live client. This namespace is
+ * the user's *application* data (profile, plan, credits, preferences)
+ * — things only an authenticated, provisioned Clerk user can read.
+ *
+ * Backed by `/v1/users/me` (+ `/me/avatar`). Centralised here so
+ * every caller attaches the Clerk token, parses rate limits, and maps
+ * errors the same way — instead of hand-rolling `fetch` per screen.
+ */
+export interface UserClient {
+  /** Canonical "who am I + plan + preferences". `GET /v1/users/me`. */
+  getMe(): Promise<MeResponse>;
+  /** Update name / locale / preferences. `PATCH /v1/users/me`. */
+  updateProfile(input: UpdateProfileInput): Promise<MeResponse>;
+  /**
+   * Upload (or replace) the profile photo. Multipart `POST
+   * /v1/users/me/avatar`. Returns the refreshed `MeResponse` with the
+   * new `avatarUrl` already applied.
+   */
+  uploadAvatar(file: UploadSource): Promise<MeResponse>;
+  /**
+   * Permanently delete the current account (App Store 5.1.1(v) /
+   * Google Play). `DELETE /v1/users/me`. Resolves on success; the
+   * caller is responsible for the Clerk `signOut()` + cache clear.
+   */
+  deleteAccount(): Promise<void>;
+}
+
 export interface LibraryClient {
   /**
    * Paginated list of the user's past generations (newest first).
@@ -234,4 +285,5 @@ export interface SDKClient {
   generation: GenerationClient;
   library: LibraryClient;
   uploads: UploadsClient;
+  user: UserClient;
 }

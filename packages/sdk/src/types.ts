@@ -363,6 +363,13 @@ export class JobSubmissionError extends Error {
 
 export interface GenerationProgress {
   jobId: string;
+  /**
+   * The template this job was generated from. Lets a result screen
+   * opened cold (e.g. from a push notification, with no template id in
+   * the route params) still offer "Regenerate" / "Tweak inputs".
+   * Optional because legacy `/v1/jobs/:id` responses predate the field.
+   */
+  templateId?: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
   /** 0–1 within the active stage */
   stageProgress: number;

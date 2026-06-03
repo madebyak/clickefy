@@ -19,6 +19,7 @@
 
 import { useSignIn, useSignUp } from '@clerk/expo/legacy';
 import { isClerkAPIResponseError } from '@clerk/react/errors';
+import * as Sentry from '@sentry/react-native';
 import { Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -92,6 +93,14 @@ export default function VerifyScreen() {
               missingFields: result.missingFields,
               unverifiedFields: result.unverifiedFields,
             });
+            Sentry.captureMessage('[verify] sign-up not complete', {
+              level: 'warning',
+              extra: {
+                status: result.status,
+                missingFields: result.missingFields,
+                unverifiedFields: result.unverifiedFields,
+              },
+            });
             const missing = (result.missingFields ?? []).filter(
               (f) => f !== 'email_address',
             );
@@ -118,6 +127,10 @@ export default function VerifyScreen() {
             console.warn('[verify] sign-in not complete', {
               status: result.status,
             });
+            Sentry.captureMessage('[verify] sign-in not complete', {
+              level: 'warning',
+              extra: { status: result.status },
+            });
             setError(
               `Sign-in not complete (status: ${result.status}). See logs.`,
             );
@@ -135,6 +148,20 @@ export default function VerifyScreen() {
             message,
             meta: first?.meta,
           });
+          // `verification_already_verified` and `too_many_requests` are
+          // expected/handled below — only forward genuinely unexpected
+          // codes to Sentry so we don't create noise from normal retries.
+          if (
+            errCode !== 'too_many_requests' &&
+            errCode !== 'verification_already_verified' &&
+            errCode !== 'verification_expired' &&
+            errCode !== 'form_code_incorrect'
+          ) {
+            Sentry.captureException(err, {
+              level: 'warning',
+              extra: { flow, code: errCode, message },
+            });
+          }
 
           if (errCode === 'too_many_requests') {
             const retryMeta = first?.meta as Record<string, unknown> | undefined;
@@ -174,6 +201,7 @@ export default function VerifyScreen() {
           }
         } else {
           console.warn('[verify] non-clerk error', err);
+          Sentry.captureException(err, { extra: { flow, where: 'verify_submit' } });
           setError('Something went wrong. Please try again.');
         }
         setSubmitting(false);

@@ -1,4 +1,5 @@
 import { Box, Skeleton, Stack, Text, useTheme } from '@clickfy/ui';
+import { FlashList } from '@shopify/flash-list';
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -236,9 +237,75 @@ export default function HomeScreen() {
       ) : null}
 
       {isAllCategory ? (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
+        // Vertical feed is a FlashList (not a ScrollView) so off-screen
+        // sections — and therefore their rails, cards, and any live video
+        // decoders — unmount as the user scrolls. Combined with the global
+        // play-slot cap in <VideoPreview />, this is what keeps the home
+        // feed from exhausting the device's MediaCodec budget (the OOM /
+        // overheating crashes). Banner lives in the header so it scrolls
+        // with the list; loading/error render via ListEmptyComponent so
+        // pull-to-refresh stays available in every state.
+        <FlashList
+          data={sectionsQuery.data ?? []}
+          keyExtractor={(section) => section.key}
+          renderItem={({ item: section }) => (
+            <Box pb="xxl">
+              {/* "See all" → /section/[key]. We forward the title via
+                  query param so the destination header renders without
+                  an extra fetch. The route falls back to a per-key
+                  default title if the param is missing or stale. */}
+              <SectionHeader
+                title={section.title}
+                subtitle={section.subtitle}
+                onAction={() =>
+                  router.push({
+                    pathname: '/section/[key]',
+                    params: { key: section.key, title: section.title },
+                  })
+                }
+              />
+              {section.layout === 'bento' ? (
+                <Bento templates={section.templates} />
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 20, gap: 14 }}
+                >
+                  {section.templates.map((tpl) => (
+                    <View key={tpl.id} style={{ width: 200 }}>
+                      <TemplateCard template={tpl} />
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+            </Box>
+          )}
+          /* Banner strip — admin-curated, sits between the category rail
+             and the section list. One 16:9 slot; if the admin has multiple
+             active banner rows, the slot becomes a horizontal pager
+             (manual swipe + dots) ordered by sortOrder. Banners are global
+             and only render on the "All" feed. */
+          ListHeaderComponent={
+            (bannersQuery.data ?? []).length > 0 ? (
+              <Box pb="xxl">
+                <HomeBannerSlider banners={bannersQuery.data ?? []} />
+              </Box>
+            ) : null
+          }
+          ListEmptyComponent={
+            sectionsQuery.isLoading ? (
+              <SectionLoadingSkeleton />
+            ) : sectionsQuery.isError ? (
+              <Box px="lg">
+                <Text variant="body" color="danger">
+                  Couldn&apos;t load templates. Pull down to try again.
+                </Text>
+              </Box>
+            ) : null
+          }
           contentContainerStyle={{ paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -246,62 +313,7 @@ export default function HomeScreen() {
               tintColor={colors.inkMuted}
             />
           }
-        >
-          {/* Banner strip — admin-curated, sits between the category rail
-              and the section list. One 16:9 slot; if the admin has
-              multiple active banner rows, the slot becomes a horizontal
-              pager (manual swipe + dots) ordered by sortOrder. Banners
-              are global and only render on the "All" feed. */}
-          {(bannersQuery.data ?? []).length > 0 ? (
-            <Box pb="xxl">
-              <HomeBannerSlider banners={bannersQuery.data ?? []} />
-            </Box>
-          ) : null}
-
-          {sectionsQuery.isLoading ? (
-            <SectionLoadingSkeleton />
-          ) : sectionsQuery.isError ? (
-            <Box px="lg">
-              <Text variant="body" color="danger">
-                Couldn&apos;t load templates. Pull down to try again.
-              </Text>
-            </Box>
-          ) : (
-            (sectionsQuery.data ?? []).map((section) => (
-              <Box key={section.key} pb="xxl">
-                {/* "See all" → /section/[key]. We forward the title via
-                    query param so the destination header renders without
-                    an extra fetch. The route falls back to a per-key
-                    default title if the param is missing or stale. */}
-                <SectionHeader
-                  title={section.title}
-                  subtitle={section.subtitle}
-                  onAction={() =>
-                    router.push({
-                      pathname: '/section/[key]',
-                      params: { key: section.key, title: section.title },
-                    })
-                  }
-                />
-                {section.layout === 'bento' ? (
-                  <Bento templates={section.templates} />
-                ) : (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ paddingHorizontal: 20, gap: 14 }}
-                  >
-                    {section.templates.map((tpl) => (
-                      <View key={tpl.id} style={{ width: 200 }}>
-                        <TemplateCard template={tpl} />
-                      </View>
-                    ))}
-                  </ScrollView>
-                )}
-              </Box>
-            ))
-          )}
-        </ScrollView>
+        />
       ) : (
         // Category selected → flat 2-column infinite-scroll grid.
         // No banners, no "See all" chevrons — just templates. When a

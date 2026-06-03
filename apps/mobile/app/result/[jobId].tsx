@@ -29,20 +29,20 @@ import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useMemo } from 'react';
-import { ScrollView, Share, View } from 'react-native';
+import { useEffect, useMemo, type ReactNode } from 'react';
+import { ActivityIndicator, ScrollView, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useToast } from '@/components/shared/Toast';
 import { Icon } from '@/components/ui/Icon';
 import { downloadOutput, downloadOutputs } from '@/lib/download';
-import { getGenerationOutputs } from '@/lib/generation-cache';
+import { getGenerationOutputs, setGenerationOutputs } from '@/lib/generation-cache';
 import { TEMPLATE_QUERY } from '@/lib/query-config';
 import { getSDK } from '@/lib/sdk';
 
 export default function ResultScreen() {
-  const { jobId, templateId } = useLocalSearchParams<{
+  const { jobId, templateId: templateIdParam } = useLocalSearchParams<{
     jobId: string;
     templateId?: string;
   }>();
@@ -52,10 +52,53 @@ export default function ResultScreen() {
   const sdk = getSDK();
   const toast = useToast();
 
-  const outputs = useMemo<JobOutput[]>(
+  // Fast path: the `generating` screen drops the finished outputs into
+  // this module-scoped cache the instant the job completes in-session,
+  // so the normal in-app flow renders with zero network latency.
+  const cachedOutputs = useMemo<JobOutput[]>(
     () => (jobId ? getGenerationOutputs(jobId) ?? [] : []),
     [jobId],
   );
+
+  // Cold path: the screen was opened with nothing in that cache —
+  // overwhelmingly this means a push-notification deep link after iOS
+  // killed the app. Fetch the finished job straight from the server so
+  // we never strand the user on an empty result.
+  const needsFetch = !!jobId && cachedOutputs.length === 0;
+  const jobQuery = useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => sdk.generation.getJob(jobId!),
+    enabled: needsFetch,
+    staleTime: 30_000,
+    retry: 1,
+  });
+
+  // If the job isn't finished yet (user tapped through early, or an
+  // out-of-order notification), send them to the live progress screen
+  // instead of rendering a blank result. On success, backfill the
+  // cache so a back→forward re-entry is instant.
+  useEffect(() => {
+    if (!needsFetch) return;
+    const data = jobQuery.data;
+    if (!data) return;
+    if (data.status === 'queued' || data.status === 'processing') {
+      router.replace({
+        pathname: '/generating',
+        params: { jobId: jobId!, templateId: data.templateId ?? templateIdParam ?? '' },
+      });
+    } else if (data.status === 'completed' && data.outputs && data.outputs.length > 0) {
+      setGenerationOutputs(jobId!, data.outputs);
+    }
+  }, [needsFetch, jobQuery.data, jobId, templateIdParam, router]);
+
+  // Outputs to render: in-memory cache wins; otherwise the fetched job.
+  const outputs: JobOutput[] =
+    cachedOutputs.length > 0 ? cachedOutputs : jobQuery.data?.outputs ?? [];
+
+  // Template id arrives via the route param on the in-app flow, or is
+  // recovered from the fetched job on the cold notification path — so
+  // "Regenerate" / "Tweak inputs" work either way.
+  const templateId = templateIdParam ?? jobQuery.data?.templateId;
 
   const templateQuery = useQuery({
     queryKey: ['template', templateId],
@@ -77,6 +120,64 @@ export default function ResultScreen() {
       // user dismissed
     }
   };
+
+  // ── Cold-start states (only ever hit when there was nothing cached) ──
+  if (needsFetch) {
+    const status = jobQuery.data?.status;
+
+    // Loading, or about to redirect a still-running job to /generating.
+    if (jobQuery.isLoading || status === 'queued' || status === 'processing') {
+      return (
+        <CenteredState insets={insets} colors={colors}>
+          <ActivityIndicator size="large" color={accent.solid} />
+          <Text variant="body" color="inkMuted" align="center">
+            Loading your result…
+          </Text>
+        </CenteredState>
+      );
+    }
+
+    // The generation itself failed. Offer a retry into the template.
+    if (status === 'failed') {
+      return (
+        <CenteredState insets={insets} colors={colors}>
+          <Text variant="title" color="ink" align="center" style={{ fontSize: 22 }}>
+            Generation failed
+          </Text>
+          <Text variant="body" color="inkMuted" align="center">
+            {jobQuery.data?.error || 'Something went wrong while generating.'}
+          </Text>
+          {templateId ? (
+            <Button variant="primary" full onPress={() => router.replace(`/use/${templateId}`)}>
+              Try again
+            </Button>
+          ) : (
+            <Button variant="primary" full onPress={() => router.replace('/(tabs)')}>
+              Back to home
+            </Button>
+          )}
+        </CenteredState>
+      );
+    }
+
+    // Couldn't load it (404 / network / completed-but-no-outputs). Don't
+    // strand the user — give them a way back.
+    if (jobQuery.isError || (status === 'completed' && outputs.length === 0)) {
+      return (
+        <CenteredState insets={insets} colors={colors}>
+          <Text variant="title" color="ink" align="center" style={{ fontSize: 22 }}>
+            Result unavailable
+          </Text>
+          <Text variant="body" color="inkMuted" align="center">
+            We couldn&apos;t load this generation. It may have been removed.
+          </Text>
+          <Button variant="primary" full onPress={() => router.replace('/(tabs)')}>
+            Back to home
+          </Button>
+        </CenteredState>
+      );
+    }
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
@@ -202,6 +303,39 @@ export default function ResultScreen() {
           </Stack>
         </Box>
       </ScrollView>
+    </View>
+  );
+}
+
+// ─── Centered status state (loading / failed / unavailable) ─────────
+//
+// Shared chrome for the cold-start branches above: header + a vertically
+// centered column with comfortable spacing. Kept here so the three
+// states stay visually consistent and the main component reads cleanly.
+function CenteredState({
+  insets,
+  colors,
+  children,
+}: {
+  insets: { top: number; bottom: number };
+  colors: { bg: string };
+  children: ReactNode;
+}) {
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
+      <ScreenHeader />
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 28,
+          paddingBottom: insets.bottom + 40,
+          gap: 16,
+        }}
+      >
+        {children}
+      </View>
     </View>
   );
 }

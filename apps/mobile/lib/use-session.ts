@@ -29,7 +29,7 @@ import {
 } from '@clickfy/types';
 import { useCallback, useEffect } from 'react';
 
-import { config } from './config';
+import { getSDK } from './sdk';
 
 export interface SessionUser {
   id: string;
@@ -61,10 +61,10 @@ function makeInitials(name: string, email: string): string {
   return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
 }
 
-const ME_QUERY_KEY = ['users', 'me'] as const;
+export const ME_QUERY_KEY = ['users', 'me'] as const;
 
 export function useSession() {
-  const { isLoaded: clerkLoaded, isSignedIn, getToken, signOut } = useAuth();
+  const { isLoaded: clerkLoaded, isSignedIn, signOut } = useAuth();
   const { user: clerkUser } = useUser();
   const queryClient = useQueryClient();
 
@@ -94,18 +94,9 @@ export function useSession() {
   const meQuery = useQuery({
     queryKey: ME_QUERY_KEY,
     enabled: !!isSignedIn,
-    queryFn: async (): Promise<MeResponse> => {
-      const token = await getToken();
-      const res = await fetch(`${config.apiUrl}/v1/users/me`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`GET /v1/users/me ${res.status}: ${body.slice(0, 200)}`);
-      }
-      const json = (await res.json()) as { data: MeResponse };
-      return json.data;
-    },
+    // Goes through the SDK so token attachment, rate-limit (429) parsing
+    // and error shaping match every other backend call in the app.
+    queryFn: (): Promise<MeResponse> => getSDK().user.getMe(),
     staleTime: 30_000,
     retry: 1,
   });
@@ -113,23 +104,8 @@ export function useSession() {
   // ── Mutations ──────────────────────────────────────────────────────
 
   const updateProfile = useMutation({
-    mutationFn: async (input: UpdateProfileInput): Promise<MeResponse> => {
-      const token = await getToken();
-      const res = await fetch(`${config.apiUrl}/v1/users/me`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(input),
-      });
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`PATCH /v1/users/me ${res.status}: ${body.slice(0, 200)}`);
-      }
-      const json = (await res.json()) as { data: MeResponse };
-      return json.data;
-    },
+    mutationFn: (input: UpdateProfileInput): Promise<MeResponse> =>
+      getSDK().user.updateProfile(input),
     // Optimistic update: write the patch onto the cached row immediately,
     // then reconcile against the server's response (or roll back on error).
     //
@@ -175,38 +151,11 @@ export function useSession() {
   });
 
   const uploadAvatar = useMutation({
-    mutationFn: async (file: {
+    mutationFn: (file: {
       uri: string;
       name: string;
       type: string;
-    }): Promise<MeResponse> => {
-      const token = await getToken();
-      const formData = new FormData();
-      // React Native FormData accepts an object with `uri/name/type` and
-      // the runtime constructs the multipart payload from it.
-      formData.append('file', {
-        uri: file.uri,
-        name: file.name,
-        type: file.type,
-      } as unknown as Blob);
-      const res = await fetch(`${config.apiUrl}/v1/users/me/avatar`, {
-        method: 'POST',
-        headers: {
-          // Don't set Content-Type — fetch sets it with the multipart
-          // boundary automatically.
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: formData,
-      });
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(
-          `POST /v1/users/me/avatar ${res.status}: ${body.slice(0, 200)}`,
-        );
-      }
-      const json = (await res.json()) as { data: MeResponse };
-      return json.data;
-    },
+    }): Promise<MeResponse> => getSDK().user.uploadAvatar(file),
     onSuccess: (data) => {
       queryClient.setQueryData<MeResponse>(ME_QUERY_KEY, data);
     },
@@ -225,17 +174,7 @@ export function useSession() {
    * have to wrap it in a confirmation modal.
    */
   const deleteAccount = useMutation({
-    mutationFn: async (): Promise<void> => {
-      const token = await getToken();
-      const res = await fetch(`${config.apiUrl}/v1/users/me`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok && res.status !== 204) {
-        const body = await res.text();
-        throw new Error(`DELETE /v1/users/me ${res.status}: ${body.slice(0, 200)}`);
-      }
-    },
+    mutationFn: (): Promise<void> => getSDK().user.deleteAccount(),
     onSuccess: async () => {
       try {
         await signOut();

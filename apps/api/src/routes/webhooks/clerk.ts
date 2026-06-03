@@ -21,6 +21,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { creditLedger, grantPolicies, users } from '@clickfy/db';
 
 import type { AppEnv } from '../../types';
+import { resolveOrLinkUser } from '../../lib/provision-user';
 
 export const clerkWebhookRoute = new Hono<AppEnv>();
 
@@ -106,40 +107,36 @@ clerkWebhookRoute.post('/', async (c) => {
       return c.json({ ok: true, skipped: 'no email' });
     }
 
-    // Upsert; the lazy-create path in `withCurrentUser` may have raced.
-    const [user] = await c.var.db
-      .insert(users)
-      .values({
-        clerkUserId: data.id,
-        email,
-        name: pickName(data),
-        avatarUrl: data.image_url ?? null,
-        creditsBalance: 0,
-      })
-      .onConflictDoUpdate({
-        target: users.clerkUserId,
-        set: {
-          email,
-          name: pickName(data),
-          avatarUrl: data.image_url ?? null,
-        },
-      })
-      .returning();
+    // Resolve the identity: re-link a returning user's existing row (one
+    // who signed up under the old Clerk instance) by verified email, or
+    // create a fresh row. See `resolveOrLinkUser` for the safety rationale.
+    const result = await resolveOrLinkUser(c.var.db, {
+      clerkUserId: data.id,
+      email,
+      name: pickName(data),
+      avatarUrl: data.image_url ?? null,
+    });
 
-    if (!user) {
+    if (!result) {
       return c.json(
         { error: { code: 'upsert_failed', message: 'User upsert returned no row.' } },
         500,
       );
     }
 
-    // Welcome bonus — granted exactly once per user, idempotently (the
-    // ledger lookup is our guard). Amount is read from `grant_policies`
-    // so the operator can change it from `/admin/credits/grants`
-    // without a deploy.
-    const existingBonus = await c.var.db.query.creditLedger.findFirst({
-      where: and(eq(creditLedger.userId, user.id), eq(creditLedger.reason, 'signup_bonus')),
-    });
+    const user = result.user;
+
+    // Welcome bonus — granted only to genuinely NEW users, exactly once,
+    // idempotently (the ledger lookup is a second guard). A re-linked
+    // returning user keeps whatever balance their existing row already
+    // had and must not receive a fresh signup bonus. Amount is read from
+    // `grant_policies` so the operator can change it from
+    // `/admin/credits/grants` without a deploy.
+    const existingBonus = result.created
+      ? await c.var.db.query.creditLedger.findFirst({
+          where: and(eq(creditLedger.userId, user.id), eq(creditLedger.reason, 'signup_bonus')),
+        })
+      : { id: 'skip-relinked' };
 
     if (!existingBonus) {
       const policy = await c.var.db.query.grantPolicies.findFirst({
@@ -168,7 +165,7 @@ clerkWebhookRoute.post('/', async (c) => {
       }
     }
 
-    return c.json({ ok: true, userId: user.id });
+    return c.json({ ok: true, userId: user.id, relinked: result.relinked });
   }
 
   if (event.type === 'user.updated') {

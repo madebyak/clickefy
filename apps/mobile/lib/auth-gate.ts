@@ -17,7 +17,13 @@ import { useCallback, useEffect, useState } from 'react';
 const KEY_ONBOARDED = 'clickefy:onboarded';
 
 export function useAuthGate() {
-  const { isLoaded, isSignedIn } = useAuth();
+  // `treatPendingAsSignedOut: false` — when `@clerk/expo`'s native module is
+  // present (standalone builds, NOT Expo Go), Clerk creates the session in the
+  // native layer first and then syncs it to JS. During that brief window the
+  // session status is `pending`; with Clerk's default the gate would read it as
+  // signed-out and bounce a just-authenticated user back to the login screen
+  // (white flash → welcome). Treating pending as signed-in lets the sync finish.
+  const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {

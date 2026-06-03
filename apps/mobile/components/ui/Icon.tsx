@@ -48,6 +48,7 @@ import {
   Images,
   Lightning,
   List,
+  LockSimple,
   MagicWand,
   MagnifyingGlass,
   Moon,
@@ -111,6 +112,7 @@ export type IconName =
   | 'envelope'
   | 'eye'
   | 'eyeOff'
+  | 'lock'
   // Brand / vibes
   | 'sparkle'
   | 'wand'
@@ -179,6 +181,7 @@ const ICONS: Record<IconName, PhosphorIcon> = {
   envelope: Envelope,
   eye: Eye,
   eyeOff: EyeSlash,
+  lock: LockSimple,
   sparkle: Sparkle,
   wand: MagicWand,
   star: Star,

@@ -43,6 +43,12 @@ export const config = {
    */
   demoMode: extra.demoMode ?? false,
   apiUrl: resolvedApiUrl,
+  /**
+   * Public marketing/web domain. Single source of truth for any
+   * user-facing link the app builds (e.g. shareable template URLs).
+   * Note the spelling: the brand domain is `clickefy.ai` (with the "e").
+   */
+  webUrl: 'https://clickefy.ai',
 } as const;
 
 /** True for `__DEV__` (Metro/Expo Go) OR an explicit demo build. */

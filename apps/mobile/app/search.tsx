@@ -43,6 +43,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActiveFiltersBar } from '@/components/search/ActiveFiltersBar';
 import { SearchInput } from '@/components/search/SearchInput';
 import { Icon } from '@/components/ui/Icon';
+import { thumbnailUrl } from '@/lib/image-url';
 import { CATEGORIES_QUERY, SEARCH_QUERY } from '@/lib/query-config';
 import {
   clearRecentSearches,
@@ -380,7 +381,7 @@ function ResultCard({
           }}
         >
           <Image
-            source={template.coverImage}
+            source={thumbnailUrl(template.coverImage, { width: 200 })}
             style={{ width: '100%', height: '100%' }}
             contentFit="cover"
             transition={150}

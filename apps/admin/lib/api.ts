@@ -34,6 +34,14 @@ export interface ApiFetchInit extends Omit<RequestInit, 'body'> {
   json?: unknown;
   /** Raw FormData for file uploads. Takes precedence over `json`. */
   formData?: FormData;
+  /**
+   * By default we peel one `{ data }` envelope layer off the response
+   * so callers get the payload directly. Set `false` to receive the
+   * full parsed body instead — needed for paginated list endpoints
+   * that return sibling fields like `{ data, meta }`, where unwrapping
+   * would silently discard `meta`.
+   */
+  unwrap?: boolean;
 }
 
 /**
@@ -44,7 +52,7 @@ export async function apiFetch<T>(
   path: string,
   init: ApiFetchInit & { getToken?: TokenGetter } = {},
 ): Promise<T> {
-  const { json, formData, getToken, headers, ...rest } = init;
+  const { json, formData, getToken, headers, unwrap = true, ...rest } = init;
 
   const finalHeaders = new Headers(headers);
   if (getToken) {
@@ -85,6 +93,8 @@ export async function apiFetch<T>(
       err?.message ?? `Request failed with status ${res.status}`,
     );
   }
+
+  if (!unwrap) return payload as T;
 
   const ok = payload as { data?: T } | null;
   return (ok?.data ?? (payload as T));

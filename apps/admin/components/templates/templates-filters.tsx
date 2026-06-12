@@ -10,13 +10,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Category } from '@clickfy/types';
-import { Archive, Search } from 'lucide-react';
+import { Archive, ArrowDownUp, Search } from 'lucide-react';
 
 interface TemplatesFiltersProps {
   search: string;
   category: string;
   status: string;
   kind: string;
+  /** Active server-side ordering. */
+  sort: string;
   /**
    * When true, archived rows are mixed into the listing alongside
    * drafts/published. Independent of the `Archived` chip in the
@@ -29,6 +31,7 @@ interface TemplatesFiltersProps {
   onCategoryChange: (value: string) => void;
   onStatusChange: (value: string) => void;
   onKindChange: (value: string) => void;
+  onSortChange: (value: string) => void;
   onIncludeArchivedChange: (value: boolean) => void;
 }
 
@@ -37,12 +40,14 @@ export function TemplatesFilters({
   category,
   status,
   kind,
+  sort,
   includeArchived,
   categories,
   onSearchChange,
   onCategoryChange,
   onStatusChange,
   onKindChange,
+  onSortChange,
   onIncludeArchivedChange,
 }: TemplatesFiltersProps) {
   // The status select offers `Archived` as a discrete chip too. When
@@ -119,6 +124,30 @@ export function TemplatesFilters({
           <SelectItem value="image">Image</SelectItem>
           <SelectItem value="video">Video</SelectItem>
           <SelectItem value="image_set">Image set</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select value={sort || 'newest'} onValueChange={(val) => onSortChange(!val ? 'newest' : val)}>
+        <SelectTrigger className="w-full sm:w-[170px]">
+          <span className="flex items-center gap-2">
+            <ArrowDownUp className="h-4 w-4 text-muted-foreground" />
+            <SelectValue placeholder="Newest first">
+              {(val) =>
+                ({
+                  newest: 'Newest first',
+                  oldest: 'Oldest first',
+                  title_asc: 'Name (A–Z)',
+                  manual: 'Manual order',
+                } as const)[val as 'newest' | 'oldest' | 'title_asc' | 'manual'] ?? 'Newest first'
+              }
+            </SelectValue>
+          </span>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="newest">Newest first</SelectItem>
+          <SelectItem value="oldest">Oldest first</SelectItem>
+          <SelectItem value="title_asc">Name (A–Z)</SelectItem>
+          <SelectItem value="manual">Manual order</SelectItem>
         </SelectContent>
       </Select>
 

@@ -20,7 +20,7 @@
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, ilike, inArray, ne, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { jobs, templateVersions, templates, type Template } from '@clickfy/db';
@@ -297,11 +297,28 @@ async function uniqueSlug(
  *   - categoryId
  *   - includeArchived — `true` to include archived rows when no
  *                       explicit `status` is set. Default `false`.
- *   - cursor          — opaque cursor returned by the previous page
+ *   - sort            — newest (default) | oldest | title_asc | manual
  *   - limit           — 1..100, default 50
+ *   - offset          — >=0, default 0
  *
- * Pagination is cursor-based on `(sortOrder, id)` for stable ordering
- * even when an admin reorders mid-pagination.
+ * Ordering (`sort`):
+ *   - `newest` (default) — most recent first, keyed on
+ *     `COALESCE(publishedAt, createdAt)`. Published rows sort by when
+ *     they were published; drafts by when they were created. This is
+ *     what "show published newest → oldest" means for the admin grid.
+ *   - `oldest`           — the same key, ascending.
+ *   - `title_asc`        — alphabetical by title (A→Z).
+ *   - `manual`           — the curated `sortOrder` used by the public
+ *     catalog, exposed here so the admin can preview catalog order.
+ * `id` is always the final tiebreaker so paging is deterministic.
+ *
+ * Pagination is offset-based (`limit` / `offset`) and the response
+ * carries `meta.total` (the full count for the active filter set) so
+ * the dashboard can render "X templates" and a Load-more control.
+ * Offset paging — rather than the catalog's keyset cursor — keeps the
+ * handler simple across the four sort orders; the admin is a low-
+ * traffic internal tool where the slight row-drift risk under
+ * concurrent edits is irrelevant.
  *
  * Archived visibility — archived templates are hidden from the
  * default response so the admin's primary working view stays clean.
@@ -327,8 +344,9 @@ const listQuerySchema = z.object({
     .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
     .optional()
     .transform((v) => v === 'true' || v === '1'),
-  cursor: z.string().optional(),
+  sort: z.enum(['newest', 'oldest', 'title_asc', 'manual']).default('newest'),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 templatesRoute.get(
@@ -357,46 +375,57 @@ templatesRoute.get(
   // public catalog uses, so admin filters mirror what the user sees.
   if (q.categoryId) whereParts.push(templateInCategory(q.categoryId));
 
-  // Cursor format: `<sortOrder>:<id>` (sortOrder is the primary axis,
-  // id breaks ties when many rows share a sort order).
-  if (q.cursor) {
-    const [sortOrderRaw, idCursor] = q.cursor.split(':');
-    const sortOrderCursor = Number.parseInt(sortOrderRaw, 10);
-    if (Number.isFinite(sortOrderCursor) && idCursor) {
-      // We want rows with (sortOrder, id) strictly GREATER than the
-      // cursor (ascending sort). Drizzle doesn't ship a tuple
-      // comparator helper; the raw SQL fragment below does the right
-      // thing and stays parameterised.
-      whereParts.push(
-        sql`(${templates.sortOrder}, ${templates.id}::text) > (${sortOrderCursor}, ${idCursor})`,
-      );
-    }
-  }
+  const whereClause = whereParts.length > 0 ? and(...whereParts) : undefined;
 
-  const rows = await c.var.db
-    .select()
-    .from(templates)
-    .where(whereParts.length > 0 ? and(...whereParts) : undefined)
-    .orderBy(asc(templates.sortOrder), asc(templates.id))
-    .limit(q.limit + 1);
+  // Recency axis: a published row's publish time, falling back to
+  // creation time for drafts (which have no `publishedAt`).
+  const recencyKey = sql`COALESCE(${templates.publishedAt}, ${templates.createdAt})`;
+  const orderBy =
+    q.sort === 'oldest'
+      ? [asc(recencyKey), asc(templates.id)]
+      : q.sort === 'title_asc'
+        ? [asc(templates.title), asc(templates.id)]
+        : q.sort === 'manual'
+          ? [asc(templates.sortOrder), asc(templates.id)]
+          : // newest (default)
+            [desc(recencyKey), desc(templates.id)];
 
-  const hasMore = rows.length > q.limit;
-  const page = hasMore ? rows.slice(0, q.limit) : rows;
-  const last = page[page.length - 1];
-  const nextCursor = hasMore && last ? `${last.sortOrder}:${last.id}` : null;
+  // Page + full count run concurrently — the count powers the
+  // "X templates" header and the Load-more affordance, and reflects
+  // the whole filtered set (it shares `whereClause`, which has no
+  // pagination predicate).
+  const [rows, totalRes] = await Promise.all([
+    c.var.db
+      .select()
+      .from(templates)
+      .where(whereClause)
+      .orderBy(...orderBy)
+      .limit(q.limit)
+      .offset(q.offset),
+    c.var.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(templates)
+      .where(whereClause),
+  ]);
+
+  const total = totalRes[0]?.count ?? 0;
+  const hasMore = q.offset + rows.length < total;
 
   // Bulk-load category memberships for this page and decorate each
   // row with the legacy `categoryId` (= primary) plus the new
   // `primaryCategoryId` / `extraCategoryIds` / `categoryIds` fields.
   const catsMap = await loadTemplateCategoriesMap(
     c.var.db,
-    page.map((r) => r.id),
+    rows.map((r) => r.id),
   );
-  const data = page.map((row) =>
+  const data = rows.map((row) =>
     attachAdminCategoryFields(row, catsMap.get(row.id) ?? null),
   );
 
-  return c.json({ data, nextCursor });
+  return c.json({
+    data,
+    meta: { total, limit: q.limit, offset: q.offset, hasMore },
+  });
   },
 );
 

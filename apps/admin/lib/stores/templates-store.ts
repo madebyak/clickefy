@@ -32,10 +32,23 @@ import type {
 
 import { apiFetch, ApiError, type TokenGetter } from '@/lib/api';
 
+/** How many rows we request per page from the admin listing endpoint. */
+const PAGE_SIZE = 30;
+
+/** Server-supported orderings for the admin grid. Mirrors the `sort`
+ *  enum on `GET /v1/admin/templates`. */
+export type TemplateSort = 'newest' | 'oldest' | 'title_asc' | 'manual';
+
 interface TemplatesStore {
   templates: Template[];
   currentTemplate: Template | null;
   loading: boolean;
+  /** True while a Load-more (append) request is in flight. */
+  loadingMore: boolean;
+  /** Total rows matching the active filters (across all pages). */
+  total: number;
+  /** Whether more rows exist past what's currently loaded. */
+  hasMore: boolean;
   error: string | null;
 
   filters: {
@@ -44,6 +57,8 @@ interface TemplatesStore {
     status: string;
     /** User-facing output kind (image / video / image_set), or '' for all. */
     kind: string;
+    /** Server-side ordering for the grid. */
+    sort: TemplateSort;
     /**
      * Mix archived rows into the listing alongside drafts/published.
      * When false (the default), the API filters them out — the admin's
@@ -54,7 +69,10 @@ interface TemplatesStore {
     includeArchived: boolean;
   };
 
+  /** Fetch the first page for the current filters (replaces the list). */
   fetchTemplates: (getToken: TokenGetter) => Promise<void>;
+  /** Append the next page to the current list (Load more). */
+  loadMore: (getToken: TokenGetter) => Promise<void>;
   fetchTemplate: (id: string, getToken: TokenGetter) => Promise<Template | null>;
   createTemplate: (
     data: TemplateFormData,
@@ -89,7 +107,42 @@ interface TemplatesStore {
 
 interface TemplatesListResponse {
   data: Template[];
-  nextCursor: string | null;
+  meta: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
+/**
+ * Translate the store's filter state into the query string the admin
+ * listing endpoint expects. Empty / sentinel values are omitted so the
+ * server applies its defaults. Search and category/status/kind all run
+ * server-side now (the grid renders exactly what the API returns), so
+ * this is the single source of truth for "what is being asked for".
+ */
+function buildListParams(
+  filters: TemplatesStore['filters'],
+  offset: number,
+): URLSearchParams {
+  const params = new URLSearchParams({
+    limit: String(PAGE_SIZE),
+    offset: String(offset),
+    sort: filters.sort,
+  });
+  const search = filters.search.trim();
+  if (search) params.set('search', search);
+  if (filters.status) params.set('status', filters.status);
+  if (filters.kind) params.set('kind', filters.kind);
+  if (filters.category) params.set('categoryId', filters.category);
+  // `includeArchived` only matters when no explicit status is set —
+  // the server treats an explicit `status` (incl. `archived`) as the
+  // override. Sending it anyway is harmless, but we keep the wire tidy.
+  if (filters.includeArchived && !filters.status) {
+    params.set('includeArchived', 'true');
+  }
+  return params;
 }
 
 /**
@@ -175,42 +228,80 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
   templates: [],
   currentTemplate: null,
   loading: false,
+  loadingMore: false,
+  total: 0,
+  hasMore: false,
   error: null,
   filters: {
     search: '',
     category: '',
     status: '',
     kind: '',
+    sort: 'newest',
     includeArchived: false,
   },
 
   fetchTemplates: async (getToken) => {
     set({ loading: true, error: null });
     try {
-      // Push the archived-visibility flag down to the API so we
-      // don't ship archived rows over the wire just to hide them
-      // client-side. When the user explicitly picked the `Archived`
-      // status chip the server returns only archived rows regardless
-      // of `includeArchived`, matching the API's documented behavior.
-      const params = new URLSearchParams({ limit: '100' });
-      const f = get().filters;
-      if (f.includeArchived) params.set('includeArchived', 'true');
+      // All filtering, search and ordering happen server-side — the
+      // grid renders exactly the page the API returns. We pass
+      // `unwrap: false` so we keep the `{ data, meta }` envelope; the
+      // default unwrap would hand back just the array and drop the
+      // pagination metadata we need for Load-more / the count.
+      const params = buildListParams(get().filters, 0);
       const result = await apiFetch<TemplatesListResponse>(
         `/v1/admin/templates?${params.toString()}`,
-        { getToken },
+        { getToken, unwrap: false },
       );
-      // `apiFetch` unwraps a single `data` layer. When the response
-      // shape is `{ data: [...], nextCursor }` the unwrap yields the
-      // array directly; when the server forgets the envelope we get
-      // the object — handle both defensively.
+      // Defensive: tolerate a bare array if the server ever drops the
+      // envelope (older deploy), falling back to sane meta defaults.
       const rows = Array.isArray(result)
         ? (result as unknown as Template[])
-        : result.data;
-      set({ templates: rows ?? [], loading: false });
+        : (result.data ?? []);
+      const meta = Array.isArray(result) ? undefined : result.meta;
+      set({
+        templates: rows,
+        total: meta?.total ?? rows.length,
+        hasMore: meta?.hasMore ?? false,
+        loading: false,
+      });
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : 'Failed to fetch templates';
       set({ error: message, loading: false });
+    }
+  },
+
+  loadMore: async (getToken) => {
+    // Guard against double-fires (rapid clicks / in-flight fetch).
+    if (get().loadingMore || get().loading || !get().hasMore) return;
+    set({ loadingMore: true, error: null });
+    try {
+      const offset = get().templates.length;
+      const params = buildListParams(get().filters, offset);
+      const result = await apiFetch<TemplatesListResponse>(
+        `/v1/admin/templates?${params.toString()}`,
+        { getToken, unwrap: false },
+      );
+      const rows = Array.isArray(result)
+        ? (result as unknown as Template[])
+        : (result.data ?? []);
+      const meta = Array.isArray(result) ? undefined : result.meta;
+      // De-dupe on id — concurrent edits could shift offsets and
+      // re-serve a row we already hold; never render it twice.
+      const seen = new Set(get().templates.map((t) => t.id));
+      const fresh = rows.filter((r) => !seen.has(r.id));
+      set({
+        templates: [...get().templates, ...fresh],
+        total: meta?.total ?? get().total,
+        hasMore: meta?.hasMore ?? false,
+        loadingMore: false,
+      });
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'Failed to load more templates';
+      set({ error: message, loadingMore: false });
     }
   },
 
@@ -240,6 +331,7 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
       });
       set({
         templates: [created, ...get().templates],
+        total: get().total + 1,
         currentTemplate: created,
         loading: false,
       });
@@ -288,10 +380,12 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
       // happened and click Restore if it was a misfire.
       const showArchived =
         get().filters.includeArchived || get().filters.status === 'archived';
+      const dropped = !showArchived;
       set({
-        templates: showArchived
-          ? get().templates.map((t) => (t.id === id ? archived : t))
-          : get().templates.filter((t) => t.id !== id),
+        templates: dropped
+          ? get().templates.filter((t) => t.id !== id)
+          : get().templates.map((t) => (t.id === id ? archived : t)),
+        total: dropped ? Math.max(0, get().total - 1) : get().total,
         currentTemplate:
           get().currentTemplate?.id === id ? archived : get().currentTemplate,
         loading: false,
@@ -320,6 +414,7 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
         templates: archivedOnlyView
           ? get().templates.filter((t) => t.id !== id)
           : get().templates.map((t) => (t.id === id ? restored : t)),
+        total: archivedOnlyView ? Math.max(0, get().total - 1) : get().total,
         currentTemplate:
           get().currentTemplate?.id === id ? restored : get().currentTemplate,
         loading: false,
@@ -342,6 +437,7 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
       });
       set({
         templates: get().templates.filter((t) => t.id !== id),
+        total: Math.max(0, get().total - 1),
         currentTemplate:
           get().currentTemplate?.id === id ? null : get().currentTemplate,
         loading: false,
@@ -366,6 +462,7 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
       );
       set({
         templates: [cloned, ...get().templates],
+        total: get().total + 1,
         loading: false,
       });
       return cloned;
@@ -384,8 +481,15 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
         `/v1/admin/templates/${id}/publish`,
         { method: 'POST', getToken, json: {} },
       );
+      // If the grid is filtered to a status this row no longer matches
+      // (e.g. "Draft" view, row just became "published"), drop it from
+      // view; otherwise update it in place.
+      const dropped = get().filters.status === 'draft';
       set({
-        templates: get().templates.map((t) => (t.id === id ? published : t)),
+        templates: dropped
+          ? get().templates.filter((t) => t.id !== id)
+          : get().templates.map((t) => (t.id === id ? published : t)),
+        total: dropped ? Math.max(0, get().total - 1) : get().total,
         currentTemplate:
           get().currentTemplate?.id === id ? published : get().currentTemplate,
         loading: false,
@@ -406,8 +510,14 @@ export const useTemplatesStore = create<TemplatesStore>((set, get) => ({
         `/v1/admin/templates/${id}/unpublish`,
         { method: 'POST', getToken },
       );
+      // Mirror publish: if the grid is filtered to "Published", the
+      // now-draft row no longer belongs — drop it from view.
+      const dropped = get().filters.status === 'published';
       set({
-        templates: get().templates.map((t) => (t.id === id ? drafted : t)),
+        templates: dropped
+          ? get().templates.filter((t) => t.id !== id)
+          : get().templates.map((t) => (t.id === id ? drafted : t)),
+        total: dropped ? Math.max(0, get().total - 1) : get().total,
         currentTemplate:
           get().currentTemplate?.id === id ? drafted : get().currentTemplate,
         loading: false,

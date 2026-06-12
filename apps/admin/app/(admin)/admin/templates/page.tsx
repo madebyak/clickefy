@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { TemplateCard } from '@/components/templates/template-card';
@@ -29,8 +29,12 @@ export default function TemplatesPage() {
   const {
     templates,
     loading,
+    loadingMore,
+    total,
+    hasMore,
     filters,
     fetchTemplates,
+    loadMore,
     archiveTemplate,
     restoreTemplate,
     purgeTemplate,
@@ -42,6 +46,23 @@ export default function TemplatesPage() {
 
   const { categories, fetchCategories } = useCategoriesStore();
 
+  // The search box updates this local state on every keystroke for a
+  // snappy input, then debounces the value into the store (which is
+  // what actually triggers a server fetch). Keeps us from firing a
+  // request per character.
+  const [searchInput, setSearchInput] = useState(filters.search);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      // Avoid a redundant fetch when the debounced value already
+      // matches what's in the store (e.g. on mount).
+      if (searchInput !== filters.search) {
+        setFilters({ search: searchInput });
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchInput, filters.search, setFilters]);
+
   // The dialog distinguishes archive (soft, default) from purge (hard,
   // gated). Both share the same `selectedTemplate`; `dialogMode`
   // decides which copy + action button we render.
@@ -49,34 +70,55 @@ export default function TemplatesPage() {
   const [dialogMode, setDialogMode] = useState<'archive' | 'purge'>('archive');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  // Refetch when the include-archived toggle or status filter
-  // changes — those translate to different server queries (the rest
-  // of the filters are applied client-side from the same payload).
+  // Categories only need loading once (they back the filter dropdown).
+  useEffect(() => {
+    void fetchCategories();
+  }, [fetchCategories]);
+
+  // Every server-side filter, search term and sort change refetches
+  // page one. Search/category/status/kind/sort all run in the API now
+  // (no client-side filtering), so the grid renders exactly what the
+  // server returns for the current query.
   useEffect(() => {
     void fetchTemplates(tokenGetter);
-    void fetchCategories();
-  }, [fetchTemplates, fetchCategories, tokenGetter, filters.includeArchived, filters.status]);
+  }, [
+    fetchTemplates,
+    tokenGetter,
+    filters.search,
+    filters.category,
+    filters.status,
+    filters.kind,
+    filters.sort,
+    filters.includeArchived,
+  ]);
 
-  const filteredTemplates = useMemo(() => {
-    return templates.filter((template) => {
-      const matchesSearch =
-        template.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-        template.description.toLowerCase().includes(filters.search.toLowerCase());
-      // Match against the full membership set — a template surfaces
-      // under any of its categories. `categoryIds` is set by the API
-      // response; fall back to legacy `categoryId` for safety during
-      // a deploy transition.
-      const matchesCategory =
-        !filters.category ||
-        (template.categoryIds?.length
-          ? template.categoryIds.includes(filters.category)
-          : template.categoryId === filters.category);
-      const matchesStatus = !filters.status || template.status === filters.status;
-      const matchesKind = !filters.kind || template.kind === filters.kind;
+  const hasActiveFilters = Boolean(
+    filters.search || filters.category || filters.status || filters.kind,
+  );
 
-      return matchesSearch && matchesCategory && matchesStatus && matchesKind;
-    });
-  }, [templates, filters]);
+  // Infinite scroll: auto-fetch the next page when this sentinel scrolls
+  // into view. The `rootMargin` pre-fetches ~600px before the sentinel
+  // is actually visible so the next rows are usually ready by the time
+  // the admin reaches them. `loadMore` self-guards against overlapping
+  // requests, so re-observing after each page lands is safe. We keep a
+  // manual "Load more" button below too — a fallback for keyboard users
+  // and the rare case the observer doesn't fire.
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMore(tokenGetter);
+        }
+      },
+      { rootMargin: '600px 0px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore, tokenGetter, templates.length]);
 
   const handleEdit = (template: Template) => {
     router.push(`/admin/templates/${template.id}`);
@@ -180,16 +222,18 @@ export default function TemplatesPage() {
 
       {/* Filters */}
       <TemplatesFilters
-        search={filters.search}
+        search={searchInput}
         category={filters.category}
         status={filters.status}
         kind={filters.kind}
+        sort={filters.sort}
         includeArchived={filters.includeArchived}
         categories={categories}
-        onSearchChange={(value) => setFilters({ search: value })}
+        onSearchChange={setSearchInput}
         onCategoryChange={(value) => setFilters({ category: value })}
         onStatusChange={(value) => setFilters({ status: value })}
         onKindChange={(value) => setFilters({ kind: value })}
+        onSortChange={(value) => setFilters({ sort: value as typeof filters.sort })}
         onIncludeArchivedChange={(value) => setFilters({ includeArchived: value })}
       />
 
@@ -199,35 +243,63 @@ export default function TemplatesPage() {
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-muted-foreground mt-4">Loading templates...</p>
         </div>
-      ) : filteredTemplates.length === 0 ? (
+      ) : templates.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 bg-card rounded-lg border">
           <FileText className="h-16 w-16 text-muted-foreground mb-4" />
           <p className="text-muted-foreground">
-            {filters.search || filters.category || filters.status || filters.kind
-              ? 'No templates match your filters'
-              : 'No templates yet'}
+            {hasActiveFilters ? 'No templates match your filters' : 'No templates yet'}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            {filters.search || filters.category || filters.status || filters.kind
+            {hasActiveFilters
               ? 'Try adjusting your filters'
               : 'Create your first template to get started'}
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTemplates.map((template) => (
-            <TemplateCard
-              key={template.id}
-              template={template}
-              onEdit={handleEdit}
-              onArchive={openArchiveDialog}
-              onRestore={handleRestore}
-              onPurge={openPurgeDialog}
-              onDuplicate={handleDuplicate}
-              onPublish={handlePublish}
-            />
-          ))}
-        </div>
+        <>
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>
+              Showing {templates.length} of {total} template{total !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {templates.map((template) => (
+              <TemplateCard
+                key={template.id}
+                template={template}
+                onEdit={handleEdit}
+                onArchive={openArchiveDialog}
+                onRestore={handleRestore}
+                onPurge={openPurgeDialog}
+                onDuplicate={handleDuplicate}
+                onPublish={handlePublish}
+              />
+            ))}
+          </div>
+
+          {hasMore && (
+            // Sentinel: the observer above watches this node and fetches
+            // the next page as it nears the viewport. The button is a
+            // manual fallback (and shows the in-flight spinner).
+            <div ref={loadMoreRef} className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                onClick={() => void loadMore(tokenGetter)}
+                disabled={loadingMore}
+              >
+                {loadingMore ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Load more'
+                )}
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Archive / Purge Confirmation Dialog

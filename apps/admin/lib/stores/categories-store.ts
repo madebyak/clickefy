@@ -46,6 +46,7 @@ function toServerPayload(data: CategoryFormData) {
     iconUrl: data.iconUrl ?? null,
     parentId: data.parentId ?? null,
     sortOrder: data.sortOrder ?? 0,
+    translations: data.translations ?? null,
   };
 }
 
@@ -93,6 +94,7 @@ export const useCategoriesStore = create<CategoriesStore>((set, get) => ({
       if (data.iconUrl !== undefined) payload.iconUrl = data.iconUrl;
       if (data.parentId !== undefined) payload.parentId = data.parentId;
       if (data.sortOrder !== undefined) payload.sortOrder = data.sortOrder;
+      if (data.translations !== undefined) payload.translations = data.translations;
 
       const updated = await apiFetch<Category>(`/v1/categories/${id}`, {
         method: 'PATCH',

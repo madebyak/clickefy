@@ -58,6 +58,10 @@ export interface BannerFormValues {
   startsAt: string | null;
   endsAt: string | null;
   cta: HomeBannerCta;
+  /** Arabic overlay overrides; blank values fall back to English. */
+  titleAr: string;
+  subtitleAr: string;
+  ctaLabelAr: string;
 }
 
 /**
@@ -131,6 +135,13 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
   );
   const [title, setTitle] = useState(banner?.title ?? '');
   const [subtitle, setSubtitle] = useState(banner?.subtitle ?? '');
+  const [titleAr, setTitleAr] = useState(banner?.translations?.ar?.title ?? '');
+  const [subtitleAr, setSubtitleAr] = useState(
+    banner?.translations?.ar?.subtitle ?? '',
+  );
+  const [ctaLabelAr, setCtaLabelAr] = useState(
+    banner?.translations?.ar?.ctaLabel ?? '',
+  );
   const [isActive, setIsActive] = useState(banner?.isActive ?? true);
   const [startsAt, setStartsAt] = useState(toIsoLocal(banner?.startsAt));
   const [endsAt, setEndsAt] = useState(toIsoLocal(banner?.endsAt));
@@ -271,6 +282,9 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
         startsAt: fromIsoLocal(startsAt),
         endsAt: fromIsoLocal(endsAt),
         cta: ctaPayload,
+        titleAr,
+        subtitleAr,
+        ctaLabelAr,
       });
     } finally {
       setSubmitting(false);
@@ -363,6 +377,19 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Black Friday: 50% off"
         />
+        {/* Arabic override — blank falls back to the English title. */}
+        <Label htmlFor="banner-title-ar" className="text-xs text-muted-foreground">
+          Title (العربية)
+        </Label>
+        <Input
+          id="banner-title-ar"
+          dir="rtl"
+          lang="ar"
+          value={titleAr}
+          maxLength={80}
+          onChange={(e) => setTitleAr(e.target.value)}
+          placeholder="الجمعة البيضاء: خصم 50%"
+        />
       </div>
 
       <div className="space-y-2">
@@ -374,6 +401,20 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
           rows={2}
           onChange={(e) => setSubtitle(e.target.value)}
           placeholder="Drops every Friday until Dec 31"
+        />
+        {/* Arabic override — blank falls back to the English subtitle. */}
+        <Label htmlFor="banner-subtitle-ar" className="text-xs text-muted-foreground">
+          Subtitle (العربية)
+        </Label>
+        <Textarea
+          id="banner-subtitle-ar"
+          dir="rtl"
+          lang="ar"
+          value={subtitleAr}
+          maxLength={160}
+          rows={2}
+          onChange={(e) => setSubtitleAr(e.target.value)}
+          placeholder="عروض جديدة كل جمعة حتى 31 ديسمبر"
         />
       </div>
 
@@ -532,6 +573,19 @@ export function BannerForm({ banner, onSubmit, onCancel }: BannerFormProps) {
               Currently used for accessibility only — visible button
               chrome will land in a future banner overlay pass.
             </p>
+            {/* Arabic override — blank falls back to the English label. */}
+            <Label htmlFor="banner-cta-label-ar" className="text-xs text-muted-foreground">
+              Button label (العربية)
+            </Label>
+            <Input
+              id="banner-cta-label-ar"
+              dir="rtl"
+              lang="ar"
+              value={ctaLabelAr}
+              maxLength={32}
+              onChange={(e) => setCtaLabelAr(e.target.value)}
+              placeholder="استكشف"
+            />
           </div>
         ) : null}
 

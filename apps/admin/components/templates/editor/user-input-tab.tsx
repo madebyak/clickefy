@@ -20,8 +20,19 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { Template, TemplateInput, InputFieldType, TemplateInputType } from '@clickfy/types';
+import type {
+  Template,
+  TemplateInput,
+  InputFieldType,
+  TemplateInputType,
+  TemplateInputTranslation,
+} from '@clickfy/types';
 import { cn } from '@/lib/utils';
+import {
+  getTemplateInputTranslation,
+  pruneTemplateInputTranslations,
+  setTemplateInputTranslation,
+} from '@/lib/i18n-content';
 import {
   ImageIcon,
   Video,
@@ -76,9 +87,36 @@ function generateFieldKey(label: string, existingKeys: string[]): string {
 
 export function UserInputTab({ template, onChange }: UserInputTabProps) {
   const [editingInput, setEditingInput] = useState<TemplateInput | null>(null);
+  // Arabic overrides for the field currently open in the dialog. Kept
+  // separate from `editingInput` (which is the canonical English field)
+  // and committed into `template.translations` only on Save.
+  const [editingTranslation, setEditingTranslation] =
+    useState<TemplateInputTranslation>({});
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const inputs = template.userInputs || [];
+
+  /** Open the dialog for an input, seeding its Arabic overrides. */
+  const openEditor = (input: TemplateInput) => {
+    setEditingInput(input);
+    setEditingTranslation(
+      getTemplateInputTranslation(template.translations, 'ar', input.fieldKey),
+    );
+    setIsDialogOpen(true);
+  };
+
+  /** Patch one Arabic sub-field of the field being edited. */
+  const patchTranslation = (patch: Partial<TemplateInputTranslation>) => {
+    setEditingTranslation((prev) => ({ ...prev, ...patch }));
+  };
+
+  /** Patch one Arabic select-option label (keyed by option `value`). */
+  const patchOptionTranslation = (value: string, label: string) => {
+    setEditingTranslation((prev) => ({
+      ...prev,
+      options: { ...(prev.options ?? {}), [value]: label },
+    }));
+  };
 
   const handleAddInput = (type: InputFieldType) => {
     const existingKeys = inputs.map((i) => i.fieldKey);
@@ -121,6 +159,7 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
     }
 
     setEditingInput(newInput);
+    setEditingTranslation({});
     setIsDialogOpen(true);
   };
 
@@ -137,13 +176,35 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
       updatedInputs = [...inputs, editingInput];
     }
 
-    onChange({ userInputs: updatedInputs });
+    // Commit the Arabic overrides. First prune to the live fieldKeys so a
+    // renamed field drops its stale entry, then write this field's Arabic
+    // under its (possibly new) fieldKey. Empty values are stripped by the
+    // helper so they fall back to English.
+    const validKeys = updatedInputs.map((i) => i.fieldKey);
+    const pruned = pruneTemplateInputTranslations(template.translations, validKeys);
+    const nextTranslations = setTemplateInputTranslation(
+      pruned,
+      'ar',
+      editingInput.fieldKey,
+      editingTranslation,
+    );
+
+    onChange({ userInputs: updatedInputs, translations: nextTranslations });
     setEditingInput(null);
+    setEditingTranslation({});
     setIsDialogOpen(false);
   };
 
   const handleDeleteInput = (id: string) => {
-    onChange({ userInputs: inputs.filter((i) => i.id !== id) });
+    const remaining = inputs.filter((i) => i.id !== id);
+    onChange({
+      userInputs: remaining,
+      // Drop the deleted field's Arabic so it can't resurface on a reused key.
+      translations: pruneTemplateInputTranslations(
+        template.translations,
+        remaining.map((i) => i.fieldKey),
+      ),
+    });
   };
 
   const handleDuplicateInput = (input: TemplateInput) => {
@@ -248,10 +309,7 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
                         <Button
                           size="icon-xs"
                           variant="ghost"
-                          onClick={() => {
-                            setEditingInput(input);
-                            setIsDialogOpen(true);
-                          }}
+                          onClick={() => openEditor(input)}
                           title="Edit"
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -291,7 +349,10 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
         open={isDialogOpen}
         onOpenChange={(open) => {
           setIsDialogOpen(open);
-          if (!open) setEditingInput(null);
+          if (!open) {
+            setEditingInput(null);
+            setEditingTranslation({});
+          }
         }}
       >
         <DialogContent className="max-w-2xl">
@@ -315,6 +376,18 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
                     placeholder="e.g., Product Image"
                   />
                   <p className="text-xs text-muted-foreground">Shown to users in the mobile app</p>
+                  {/* Arabic override — blank falls back to the English label. */}
+                  <Label htmlFor="input-label-ar" className="text-xs text-muted-foreground">
+                    Label (العربية)
+                  </Label>
+                  <Input
+                    id="input-label-ar"
+                    dir="rtl"
+                    lang="ar"
+                    value={editingTranslation.label ?? ''}
+                    onChange={(e) => patchTranslation({ label: e.target.value })}
+                    placeholder="مثال: صورة المنتج"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="input-key">Variable Key</Label>
@@ -347,6 +420,18 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
                     setEditingInput({ ...editingInput, helperText: e.target.value })
                   }
                   placeholder="Instructions for the user, e.g., Upload a clear photo of your product"
+                />
+                {/* Arabic override — blank falls back to the English helper. */}
+                <Label htmlFor="input-helper-ar" className="text-xs text-muted-foreground">
+                  Helper Text (العربية)
+                </Label>
+                <Input
+                  id="input-helper-ar"
+                  dir="rtl"
+                  lang="ar"
+                  value={editingTranslation.helperText ?? ''}
+                  onChange={(e) => patchTranslation({ helperText: e.target.value })}
+                  placeholder="تعليمات للمستخدم بالعربية"
                 />
               </div>
 
@@ -446,6 +531,47 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
                     }
                     placeholder="e.g., Enter your product name"
                   />
+                  {/* Arabic override — blank falls back to English. */}
+                  <Label htmlFor="input-placeholder-ar" className="text-xs text-muted-foreground">
+                    Placeholder Text (العربية)
+                  </Label>
+                  <Input
+                    id="input-placeholder-ar"
+                    dir="rtl"
+                    lang="ar"
+                    value={editingTranslation.placeholder ?? ''}
+                    onChange={(e) => patchTranslation({ placeholder: e.target.value })}
+                    placeholder="مثال: أدخل اسم المنتج"
+                  />
+                </div>
+              )}
+
+              {/* Select option labels — one Arabic field per option,
+                  keyed by the option `value`. Only rendered for `select`
+                  fields (created/seeded via the API; the add-field
+                  buttons above don't yet expose `select`). */}
+              {editingInput.type === 'select' && editingInput.options.length > 0 && (
+                <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                  <Label className="text-sm font-medium">Option labels (العربية)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Translate each choice. Blank falls back to the English label.
+                  </p>
+                  <div className="space-y-2 pt-1">
+                    {editingInput.options.map((opt) => (
+                      <div key={opt.value} className="grid grid-cols-2 items-center gap-3">
+                        <span className="truncate text-sm text-muted-foreground" title={opt.label}>
+                          {opt.label}
+                        </span>
+                        <Input
+                          dir="rtl"
+                          lang="ar"
+                          value={editingTranslation.options?.[opt.value] ?? ''}
+                          onChange={(e) => patchOptionTranslation(opt.value, e.target.value)}
+                          placeholder="الترجمة العربية"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

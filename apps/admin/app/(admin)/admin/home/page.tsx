@@ -71,6 +71,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useBannersStore } from '@/lib/stores/banners-store';
+import { buildBannerTranslations } from '@/lib/i18n-content';
 import type { CreateBannerInput } from '@/lib/api/banners';
 import type { HomeBanner } from '@/lib/api/banners';
 
@@ -129,6 +130,12 @@ export default function HomeBannersPage() {
     startsAt: v.startsAt,
     endsAt: v.endsAt,
     cta: v.cta,
+    // Arabic overlay overrides; `null` when every Arabic field is blank.
+    translations: buildBannerTranslations('ar', {
+      title: v.titleAr,
+      subtitle: v.subtitleAr,
+      ctaLabel: v.ctaLabelAr,
+    }),
   });
 
   const handleCreate = async (values: BannerFormValues) => {

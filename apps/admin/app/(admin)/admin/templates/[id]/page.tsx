@@ -108,6 +108,9 @@ function buildFormPayload(
     output: templateData.output,
     costCredits: templateData.costCredits,
     sortOrder: templateData.sortOrder,
+    // Pass through Arabic overrides as-is. Undefined (a template with no
+    // translations) is omitted downstream so a save never clobbers them.
+    translations: templateData.translations,
   };
 }
 

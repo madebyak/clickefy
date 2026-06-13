@@ -22,6 +22,17 @@ export const categoriesRoute = new Hono<AppEnv>();
 
 // ─── Validation schemas ─────────────────────────────────────────────
 
+// Non-English `name` overrides, keyed by locale. Mirrors
+// `CategoryTranslations` in `@clickfy/types`. English stays canonical in
+// the `name` column; this holds only overrides and is fully optional.
+// Bound mirrors the canonical `name` limit so a translation can't smuggle
+// in oversized content.
+const localeKeySchema = z.enum(['en', 'ar']);
+const categoryTranslationsSchema = z.record(
+  localeKeySchema,
+  z.object({ name: z.string().min(1).max(80).optional() }),
+);
+
 const createCategorySchema = z.object({
   name: z.string().min(1).max(80),
   slug: z
@@ -32,6 +43,8 @@ const createCategorySchema = z.object({
   iconUrl: z.string().url().nullable().optional(),
   parentId: z.string().uuid().nullable().optional(),
   sortOrder: z.number().int().min(0).default(0),
+  // Optional non-English overrides; English `name` above stays canonical.
+  translations: categoryTranslationsSchema.nullable().optional(),
 });
 
 const updateCategorySchema = createCategorySchema.partial();
@@ -219,6 +232,7 @@ categoriesRoute.post(
           iconUrl: body.iconUrl ?? null,
           parentId: body.parentId ?? null,
           sortOrder: body.sortOrder,
+          translations: body.translations ?? null,
         })
         .returning();
       return c.json({ data: row }, 201);
@@ -281,6 +295,7 @@ categoriesRoute.patch(
         ...(body.iconUrl !== undefined && { iconUrl: body.iconUrl }),
         ...(body.parentId !== undefined && { parentId: body.parentId }),
         ...(body.sortOrder !== undefined && { sortOrder: body.sortOrder }),
+        ...(body.translations !== undefined && { translations: body.translations }),
         updatedAt: new Date(),
       })
       .where(eq(categories.id, id))

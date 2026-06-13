@@ -45,6 +45,11 @@ export interface CategoryFormData {
   parentId: string | null;
   iconUrl: string | null;
   sortOrder?: number;
+  /**
+   * Non-English `name` overrides keyed by locale; English `name` above is
+   * the fallback. Absent/`null` = no translations.
+   */
+  translations?: CategoryTranslations | null;
 }
 
 export interface CategoryTreeNode extends Category {

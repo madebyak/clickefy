@@ -274,4 +274,11 @@ export interface TemplateFormData {
 
   costCredits?: number;
   sortOrder?: number;
+
+  /**
+   * Non-English content overrides, keyed by locale. English stays in the
+   * canonical fields above and is the fallback. Absent/`null` = no Arabic
+   * yet. See `@clickfy/types` `TemplateTranslations`.
+   */
+  translations?: TemplateTranslations | null;
 }

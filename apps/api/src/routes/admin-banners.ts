@@ -105,6 +105,19 @@ const ctaSchema = z
     }
   });
 
+// Non-English overrides for `title` / `subtitle` / `ctaLabel`, keyed by
+// locale. Mirrors `HomeBannerTranslations` in `@clickfy/types`. English
+// columns stay canonical; bounds mirror the canonical field limits.
+const localeKeySchema = z.enum(['en', 'ar']);
+const bannerTranslationsSchema = z.record(
+  localeKeySchema,
+  z.object({
+    title: z.string().max(80).optional(),
+    subtitle: z.string().max(160).optional(),
+    ctaLabel: z.string().max(32).optional(),
+  }),
+);
+
 const bannerCreateSchema = z
   .object({
     kind: z.enum(['image', 'video']),
@@ -116,6 +129,7 @@ const bannerCreateSchema = z
     isActive: z.boolean().optional(),
     startsAt: z.string().datetime().nullable().optional(),
     endsAt: z.string().datetime().nullable().optional(),
+    translations: bannerTranslationsSchema.nullable().optional(),
   })
   .superRefine((v, ctx) => {
     // Schedule sanity.
@@ -142,6 +156,7 @@ const bannerUpdateSchema = z
     isActive: z.boolean().optional(),
     startsAt: z.string().datetime().nullable().optional(),
     endsAt: z.string().datetime().nullable().optional(),
+    translations: bannerTranslationsSchema.nullable().optional(),
   })
   .strict();
 
@@ -170,6 +185,7 @@ function rowToDto(row: typeof homeBanners.$inferSelect): HomeBanner {
     isActive: row.isActive,
     startsAt: row.startsAt?.toISOString() ?? null,
     endsAt: row.endsAt?.toISOString() ?? null,
+    translations: row.translations ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -226,6 +242,7 @@ adminBannersRoute.post(
         ctaLabel: cta.label ?? null,
         sortOrder,
         isActive: body.isActive ?? true,
+        translations: body.translations ?? null,
         startsAt: body.startsAt ? new Date(body.startsAt) : null,
         endsAt: body.endsAt ? new Date(body.endsAt) : null,
       })
@@ -303,6 +320,7 @@ adminBannersRoute.patch(
     }
     if (body.sortOrder !== undefined) patch.sortOrder = body.sortOrder;
     if (body.isActive !== undefined) patch.isActive = body.isActive;
+    if (body.translations !== undefined) patch.translations = body.translations;
     if (body.startsAt !== undefined)
       patch.startsAt = body.startsAt ? new Date(body.startsAt) : null;
     if (body.endsAt !== undefined)

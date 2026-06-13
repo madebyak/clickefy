@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import type { Template, Category, TemplateKind, MediaRef } from '@clickfy/types';
 import { ImagePlus, ImageIcon, Film, GalleryHorizontal, Loader2, X, Video as VideoIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { setTemplateField } from '@/lib/i18n-content';
 import { toast } from 'sonner';
 
 import {
@@ -477,6 +478,28 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
             onChange={(e) => onChange({ title: e.target.value })}
             placeholder="e.g., Luxury Skincare Product"
           />
+          {/* Arabic override — falls back to the English title above when
+              left blank. Stored under translations.ar.title. */}
+          <Label htmlFor="title-ar" className="text-xs text-muted-foreground">
+            Title (العربية)
+          </Label>
+          <Input
+            id="title-ar"
+            dir="rtl"
+            lang="ar"
+            value={template.translations?.ar?.title ?? ''}
+            onChange={(e) =>
+              onChange({
+                translations: setTemplateField(
+                  template.translations,
+                  'ar',
+                  'title',
+                  e.target.value,
+                ),
+              })
+            }
+            placeholder="عنوان القالب بالعربية"
+          />
         </div>
 
         <div className="space-y-2">
@@ -596,6 +619,29 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
           Shown in full on the template detail page; clamped to two lines
           on rails / category cards.
         </p>
+        {/* Arabic override — falls back to the English description when
+            left blank. Stored under translations.ar.description. */}
+        <Label htmlFor="desc-ar" className="text-xs text-muted-foreground">
+          Description (العربية)
+        </Label>
+        <Textarea
+          id="desc-ar"
+          dir="rtl"
+          lang="ar"
+          value={template.translations?.ar?.description ?? ''}
+          onChange={(e) =>
+            onChange({
+              translations: setTemplateField(
+                template.translations,
+                'ar',
+                'description',
+                e.target.value,
+              ),
+            })
+          }
+          placeholder="وصف القالب بالعربية"
+          className="min-h-[120px]"
+        />
       </div>
 
       <Separator />

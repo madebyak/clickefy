@@ -221,6 +221,10 @@ function toServerPayload(
   if (data.output !== undefined) payload.output = data.output;
   if (data.costCredits !== undefined) payload.costCredits = data.costCredits;
   if (data.sortOrder !== undefined) payload.sortOrder = data.sortOrder;
+  // Non-English overrides. Only sent when the form actually carries the
+  // key (loaded from the row or edited in the Arabic fields) so a bare
+  // PATCH never NULLs existing translations.
+  if (data.translations !== undefined) payload.translations = data.translations;
   return payload;
 }
 

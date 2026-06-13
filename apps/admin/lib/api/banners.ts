@@ -7,7 +7,12 @@
  * import ergonomics in the dashboard.
  */
 
-import type { HomeBanner, HomeBannerCta, HomeBannerKind } from '@clickfy/types';
+import type {
+  HomeBanner,
+  HomeBannerCta,
+  HomeBannerKind,
+  HomeBannerTranslations,
+} from '@clickfy/types';
 
 import { apiFetch, type TokenGetter } from '@/lib/api';
 
@@ -31,6 +36,8 @@ export interface CreateBannerInput {
   /** ISO 8601. Pass `null` to clear an existing schedule bound. */
   startsAt?: string | null;
   endsAt?: string | null;
+  /** Non-English overrides for title/subtitle/ctaLabel; `null` clears them. */
+  translations?: HomeBannerTranslations | null;
 }
 
 /** Body shape for `PATCH /v1/admin/banners/:id`. Any subset. */

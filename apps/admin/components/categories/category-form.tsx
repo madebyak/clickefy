@@ -17,6 +17,7 @@ import type { Category, CategoryFormData } from '@clickfy/types';
 import { Upload, Loader2, X, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { setCategoryName } from '@/lib/i18n-content';
 
 interface CategoryFormProps {
   category?: Category;
@@ -41,6 +42,7 @@ export function CategoryForm({ category, categories, onSubmit, onCancel }: Categ
   const { getToken } = useAuth();
 
   const [name, setName] = useState(category?.name ?? '');
+  const [nameAr, setNameAr] = useState(category?.translations?.ar?.name ?? '');
   const [slug, setSlug] = useState(category?.slug ?? '');
   const [slugTouched, setSlugTouched] = useState(Boolean(category?.slug));
   const [iconUrl, setIconUrl] = useState<string | null>(category?.iconUrl ?? null);
@@ -117,6 +119,8 @@ export function CategoryForm({ category, categories, onSubmit, onCancel }: Categ
       slug: slug.trim() || deriveSlug(name),
       iconUrl,
       parentId,
+      // Arabic `name` override; blank clears it (falls back to English).
+      translations: setCategoryName(category?.translations, 'ar', nameAr),
     });
   };
 
@@ -130,6 +134,18 @@ export function CategoryForm({ category, categories, onSubmit, onCancel }: Categ
           onChange={(e) => handleNameChange(e.target.value)}
           placeholder="e.g. Skincare"
           required
+        />
+        {/* Arabic override — blank falls back to the English name. */}
+        <Label htmlFor="cat-name-ar" className="text-xs text-muted-foreground">
+          Name (العربية)
+        </Label>
+        <Input
+          id="cat-name-ar"
+          dir="rtl"
+          lang="ar"
+          value={nameAr}
+          onChange={(e) => setNameAr(e.target.value)}
+          placeholder="مثال: العناية بالبشرة"
         />
       </div>
 

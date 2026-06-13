@@ -19,7 +19,7 @@ import { and, asc, desc, eq, ilike, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { homeBanners, savedTemplates, templates, users } from '@clickfy/db';
-import type { MediaRef } from '@clickfy/types';
+import type { MediaRef, UserLocale } from '@clickfy/types';
 import type { MobileHomeBanner } from '@clickfy/types';
 
 import type { AppEnv } from '../types';
@@ -53,6 +53,20 @@ export const catalog = new Hono<AppEnv>();
 const PUBLIC_CACHE_HEADERS = {
   'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
 } as const;
+
+/**
+ * Resolve the request locale from the `?locale=` query param.
+ *
+ * Defaults to `'en'` and only switches on an exact `'ar'` — any other
+ * value (including absent/garbage) safely yields English. The param
+ * lives in the URL on purpose: the edge cache keys on the full URL, so
+ * `?locale=ar` is cached as a distinct entry and Arabic responses never
+ * poison the English cache (or vice-versa). An `Accept-Language` header
+ * would NOT vary the cache and is therefore deliberately not used.
+ */
+function resolveLocale(raw: string | undefined): UserLocale {
+  return raw === 'ar' ? 'ar' : 'en';
+}
 
 // ─── Templates listing ──────────────────────────────────────────────
 
@@ -111,6 +125,12 @@ const listQuerySchema = z.object({
     .transform((v) => v === true || v === 'true'),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
+  /**
+   * Target locale for user-facing copy. `'ar'` resolves Arabic content
+   * (with English fallback per field); anything else is English. Kept
+   * in the query string so it participates in the edge-cache key.
+   */
+  locale: z.enum(['en', 'ar']).optional(),
 });
 
 catalog.get(
@@ -252,6 +272,7 @@ catalog.get(
       : null;
 
   const publicBaseUrl = new URL(c.req.url).origin;
+  const locale = resolveLocale(q.locale);
   // Bulk-load category memberships so we can hand each DTO its
   // ordered `[primary, …extras]` list without an N+1.
   const catsMap = await loadTemplateCategoriesMap(
@@ -262,6 +283,7 @@ catalog.get(
     templateToMobileDTO(row, {
       publicBaseUrl,
       categoryIds: catsMap.get(row.id)?.all ?? [],
+      locale,
     }),
   );
 
@@ -289,6 +311,7 @@ catalog.get(
  */
 const sectionsQuerySchema = z.object({
   categoryId: z.string().optional(),
+  locale: z.enum(['en', 'ar']).optional(),
 });
 
 catalog.get(
@@ -302,6 +325,7 @@ catalog.get(
   const sections = await buildHomeSections(c.var.db, {
     publicBaseUrl,
     categoryId,
+    locale: resolveLocale(c.req.valid('query').locale),
   });
   c.header('Cache-Control', PUBLIC_CACHE_HEADERS['Cache-Control']);
   return c.json({ sections });
@@ -330,6 +354,7 @@ catalog.get(
   withRateLimit((env) => env.RL_PUBLIC_IP, byIp),
   async (c) => {
   const publicBaseUrl = new URL(c.req.url).origin;
+  const locale = resolveLocale(c.req.query('locale'));
 
   const rows = await c.var.db
     .select()
@@ -346,7 +371,7 @@ catalog.get(
   // Map to mobile DTO. Drop banners whose media list is empty (admin
   // misconfiguration); never ship a banner with nothing to render.
   const data = rows
-    .map((row) => bannerToMobileDTO(row, publicBaseUrl))
+    .map((row) => bannerToMobileDTO(row, publicBaseUrl, locale))
     .filter((b): b is MobileHomeBanner => b !== null);
 
   c.header('Cache-Control', PUBLIC_CACHE_HEADERS['Cache-Control']);
@@ -366,19 +391,27 @@ catalog.get(
 function bannerToMobileDTO(
   row: typeof homeBanners.$inferSelect,
   publicBaseUrl: string,
+  locale: UserLocale = 'en',
 ): MobileHomeBanner | null {
   const media = (row.media ?? []) as MediaRef[];
   if (media.length === 0) return null;
 
+  // Per-locale overrides with English (the canonical columns) as the
+  // fallback for any field the translation omits.
+  const tx = locale !== 'en' ? (row.translations?.[locale] ?? undefined) : undefined;
+  const title = tx?.title ?? row.title;
+  const subtitle = tx?.subtitle ?? row.subtitle;
+  const ctaLabel = tx?.ctaLabel ?? row.ctaLabel;
+
   const cta = {
     kind: row.ctaKind,
     target: row.ctaTarget ?? null,
-    label: row.ctaLabel ?? null,
+    label: ctaLabel ?? null,
   };
   const base = {
     id: row.id,
-    title: row.title,
-    subtitle: row.subtitle,
+    title,
+    subtitle,
     cta,
   };
 
@@ -487,6 +520,7 @@ catalog.get(
         ...templateToMobileDTO(row, {
           publicBaseUrl,
           categoryIds: cats?.all ?? [],
+          locale: resolveLocale(c.req.query('locale')),
         }),
         isFavorited,
       },

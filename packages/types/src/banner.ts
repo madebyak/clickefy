@@ -17,6 +17,7 @@
  */
 
 import type { MediaRef } from './json-types';
+import type { HomeBannerTranslations } from './localization';
 import type { MobileImageRef, MobileVideoRef } from './template';
 
 export type HomeBannerKind = 'image' | 'image_slider' | 'video';
@@ -82,6 +83,12 @@ export interface HomeBanner {
   /** ISO 8601 timestamps; null = "always" on the open end. */
   startsAt: string | null;
   endsAt: string | null;
+  /**
+   * Non-English overrides for `title`/`subtitle`/`ctaLabel`, keyed by
+   * locale; the English columns are the fallback. Optional/`null` when
+   * no translations exist.
+   */
+  translations?: HomeBannerTranslations | null;
   createdAt: string;
   updatedAt: string;
 }

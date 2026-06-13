@@ -56,7 +56,7 @@ adminCreditsRoute.use(
   '*',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'credits' }),
   withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
 );
 

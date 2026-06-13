@@ -7,8 +7,11 @@ import { darkColors, lightColors } from '../tokens/colors';
 import { duration, easing, spring } from '../tokens/motion';
 import { radius } from '../tokens/radius';
 import { spacing } from '../tokens/spacing';
-import { fontFamily, typography } from '../tokens/typography';
+import { arabicFontFamily, arabicTypography, fontFamily, typography } from '../tokens/typography';
 import type { ResolvedScheme, ThemeContextValue, ThemeMode } from './types';
+
+/** Supported UI locales for font/direction selection. */
+export type UiLocale = 'en' | 'ar';
 
 const STORAGE_KEYS = {
   mode: 'clickfy:theme:mode',
@@ -23,12 +26,20 @@ interface ThemeProviderProps {
   defaultMode?: ThemeMode;
   /** Initial accent if nothing is persisted yet. Defaults to violet. */
   defaultAccentKey?: AccentKey;
+  /**
+   * Active UI locale. Selects the font family + typography set (Arabic vs
+   * Latin) and the `isRTL` flag. Defaults to `en`. The app resolves this at
+   * boot and switching it triggers a reload, so it's effectively static for
+   * the lifetime of a mounted provider.
+   */
+  locale?: UiLocale;
 }
 
 export function ThemeProvider({
   children,
   defaultMode = 'system',
   defaultAccentKey = defaultAccent,
+  locale = 'en',
 }: ThemeProviderProps) {
   const systemScheme = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>(defaultMode);
@@ -81,15 +92,18 @@ export function ThemeProvider({
     setMode(scheme === 'dark' ? 'light' : 'dark');
   }, [scheme, setMode]);
 
+  const isRTL = locale === 'ar';
+
   const value = useMemo<ThemeContextValue>(() => {
     return {
       scheme,
+      isRTL,
       colors: scheme === 'dark' ? darkColors : lightColors,
       accent: accents[accentKey],
       spacing,
       radius,
-      typography,
-      fontFamily,
+      typography: isRTL ? arabicTypography : typography,
+      fontFamily: isRTL ? arabicFontFamily : fontFamily,
       duration,
       easing,
       spring,
@@ -99,7 +113,7 @@ export function ThemeProvider({
       toggleScheme,
       setAccent,
     };
-  }, [scheme, accentKey, mode, setMode, toggleScheme, setAccent]);
+  }, [scheme, isRTL, accentKey, mode, setMode, toggleScheme, setAccent]);
 
   // Render children even before hydration to avoid a flash. Worst case: one
   // brief frame in default theme before persisted preference loads.

@@ -19,6 +19,26 @@ export const entitlementEnum = pgEnum('entitlement', [
 ]);
 
 /**
+ * `admin_role` — staff authorization tier, intentionally decoupled from
+ * billing `entitlement`. A user is staff iff `users.admin_role` is
+ * non-null. The page-level capability matrix that each role maps to lives
+ * in `@clickfy/types` (`ROLE_DEFAULT_PAGES`), not the DB, so the matrix
+ * can evolve with a deploy rather than a migration.
+ *
+ *   - `superadmin` — everything, incl. Team + Monitoring.
+ *   - `admin`      — everything except the two superadmin-only pages.
+ *   - `creator`    — content authoring (templates + categories).
+ *
+ * Added in migration 0019_admin_roles. The legacy `entitlement = 'admin'`
+ * value is retained for the anti-lockout transition window.
+ */
+export const adminRoleEnum = pgEnum('admin_role', [
+  'superadmin',
+  'admin',
+  'creator',
+]);
+
+/**
  * `template_kind` — what a published template produces, from the user's
  * point of view. Not to be confused with `generation.mode` (a JSON field
  * that captures the *pipeline shape*, e.g. "render an image then animate

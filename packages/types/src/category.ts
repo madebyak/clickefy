@@ -9,6 +9,8 @@
  * here — the admin layer parses them with `new Date(...)` only when
  * formatting for display.
  */
+import type { CategoryTranslations } from './localization';
+
 export interface Category {
   id: string;
   name: string;
@@ -16,6 +18,11 @@ export interface Category {
   parentId: string | null;
   iconUrl: string | null;
   sortOrder: number;
+  /**
+   * Non-English `name` overrides keyed by locale; English `name` above is
+   * the fallback. Optional/`null` when no translations exist.
+   */
+  translations?: CategoryTranslations | null;
   createdAt: string;
   updatedAt: string;
   /**

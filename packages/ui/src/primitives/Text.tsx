@@ -54,7 +54,10 @@ export const Text = forwardRef<RNText, TextProps>(function Text(
     letterSpacing: v.letterSpacing,
     fontWeight: weight ?? v.fontWeight,
     color: resolvedColor,
-    textAlign: align,
+    // RN text does NOT reliably auto-align from an inherited `direction` on the
+    // New Architecture, so we resolve the reading-edge alignment explicitly from
+    // the locale. Callers can still override with `align` (e.g. 'center').
+    textAlign: align ?? (theme.isRTL ? 'right' : 'left'),
     textTransform: transform,
     fontStyle: italic && variant !== 'display' ? 'italic' : undefined,
     opacity,

@@ -191,6 +191,35 @@ export const templateOutputSchema = z.object({
   watermark: z.enum(['always', 'free_only', 'never']).optional(),
 });
 
+// ─── Localization (non-English content overrides) ───────────────────
+//
+// Mirrors `TemplateTranslations` in `@clickfy/types`. English stays in
+// the canonical fields; this holds only per-locale overrides and is
+// fully optional. Bounds mirror the canonical field limits so a
+// translation can't smuggle in oversized content.
+
+const localeKeySchema = z.enum(['en', 'ar']);
+
+const templateInputTranslationSchema = z.object({
+  label: z.string().max(120).optional(),
+  helperText: z.string().max(280).optional(),
+  placeholder: z.string().max(280).optional(),
+  // Keyed by the select option `value` → translated label.
+  options: z.record(z.string().min(1).max(80), z.string().min(1).max(120)).optional(),
+});
+
+const templateLocaleContentSchema = z.object({
+  title: z.string().max(120).optional(),
+  description: z.string().max(2000).optional(),
+  // Keyed by `TemplateInputField.fieldKey`.
+  userInputs: z.record(z.string().min(1).max(64), templateInputTranslationSchema).optional(),
+});
+
+export const templateTranslationsSchema = z.record(
+  localeKeySchema,
+  templateLocaleContentSchema,
+);
+
 // ─── Top-level bodies ───────────────────────────────────────────────
 
 export const templateKindSchema = z.enum(['image', 'video', 'image_set']);
@@ -243,6 +272,10 @@ export const createTemplateSchema = z.object({
 
   costCredits: z.number().int().min(0).max(1000).default(1),
   sortOrder: z.number().int().min(0).default(0),
+
+  // Optional non-English overrides. Absent on most payloads; when
+  // present, persisted verbatim. English fields above remain canonical.
+  translations: templateTranslationsSchema.nullable().optional(),
 });
 
 /** Update is the create schema with everything optional (PATCH semantics). */

@@ -2,20 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  LayoutDashboard,
-  FileText,
-  Flag,
-  FolderTree,
-  Home,
-  Users,
-  Briefcase,
-  BarChart3,
-  Bell,
-  Coins,
-  Settings,
-  Sparkles,
-} from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 import {
   Sidebar,
@@ -30,72 +17,50 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
+import {
+  ADMIN_NAV_ITEMS,
+  ADMIN_SUPERADMIN_NAV_ITEMS,
+  type AdminNavItem,
+} from '@/lib/admin-nav';
+import { useCan, usePermissionsStore } from '@/lib/stores/permissions-store';
 
-const navItems = [
-  {
-    title: 'Dashboard',
-    href: '/admin',
-    icon: LayoutDashboard,
-  },
-  {
-    title: 'Templates',
-    href: '/admin/templates',
-    icon: FileText,
-  },
-  {
-    title: 'Home',
-    href: '/admin/home',
-    icon: Home,
-  },
-  {
-    title: 'Categories',
-    href: '/admin/categories',
-    icon: FolderTree,
-  },
-  {
-    title: 'Users',
-    href: '/admin/users',
-    icon: Users,
-  },
-  {
-    title: 'Jobs & Runs',
-    href: '/admin/jobs',
-    icon: Briefcase,
-  },
-  {
-    title: 'Reports',
-    href: '/admin/reports',
-    icon: Flag,
-  },
-  {
-    title: 'Push',
-    href: '/admin/push',
-    icon: Bell,
-  },
-  {
-    title: 'Credits',
-    href: '/admin/credits',
-    icon: Coins,
-  },
-  {
-    title: 'Analytics',
-    href: '/admin/analytics',
-    icon: BarChart3,
-  },
-  {
-    title: 'Settings',
-    href: '/admin/settings',
-    icon: Settings,
-  },
-];
+const ROLE_LABELS: Record<string, string> = {
+  superadmin: 'Superadmin',
+  admin: 'Admin',
+  creator: 'Creator',
+};
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const can = useCan();
+  const me = usePermissionsStore((s) => s.me);
 
   const isActive = (href: string) => {
     if (href === '/admin') return pathname === '/admin';
     return pathname.startsWith(href);
   };
+
+  // Filter by the effective page set resolved from `/v1/admin/me`. The
+  // API enforces the same keys, so this is purely about not showing a
+  // door the user can't open.
+  const mainItems = ADMIN_NAV_ITEMS.filter((item) => can(item.page));
+  const superadminItems = ADMIN_SUPERADMIN_NAV_ITEMS.filter((item) => can(item.page));
+
+  const renderItem = (item: AdminNavItem) => (
+    <SidebarMenuItem key={item.href}>
+      <SidebarMenuButton
+        render={<Link href={item.href} />}
+        isActive={isActive(item.href)}
+        tooltip={item.title}
+      >
+        <item.icon />
+        <span>{item.title}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+
+  const initial = (me?.name ?? me?.email ?? 'A').trim().charAt(0).toUpperCase();
+  const roleLabel = me ? (ROLE_LABELS[me.role] ?? me.role) : '';
 
   return (
     <Sidebar>
@@ -114,32 +79,31 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    render={<Link href={item.href} />}
-                    isActive={isActive(item.href)}
-                    tooltip={item.title}
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
+            <SidebarMenu>{mainItems.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {superadminItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Superadmin</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{superadminItems.map(renderItem)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-purple/20 text-sm font-medium text-primary-purple">
-            A
+            {initial}
           </div>
-          <div className="flex flex-col text-sm">
-            <span className="font-medium">Admin</span>
-            <span className="text-xs text-muted-foreground">admin@clickefy.com</span>
+          <div className="flex min-w-0 flex-col text-sm">
+            <span className="truncate font-medium">{me?.name ?? me?.email ?? 'Admin'}</span>
+            <span className="text-xs text-muted-foreground">
+              {roleLabel}
+              {me?.name && me?.email ? ` · ${me.email}` : ''}
+            </span>
           </div>
         </div>
       </SidebarFooter>

@@ -3,7 +3,7 @@ import type { ThemeColors } from '../tokens/colors';
 import type { duration, easing, spring } from '../tokens/motion';
 import type { radius } from '../tokens/radius';
 import type { spacing } from '../tokens/spacing';
-import type { fontFamily, typography } from '../tokens/typography';
+import type { FontFamilyKey, typography } from '../tokens/typography';
 
 /** User-selectable theme preference. `system` follows the device. */
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -11,9 +11,14 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 /** Resolved theme — what components actually consume after `system` resolution. */
 export type ResolvedScheme = 'light' | 'dark';
 
+/** Active text/layout direction. `rtl` when the locale is Arabic. */
+export type Direction = 'ltr' | 'rtl';
+
 export interface Theme {
   /** Active resolved color scheme */
   scheme: ResolvedScheme;
+  /** `true` when the active locale is right-to-left (Arabic). */
+  isRTL: boolean;
   /** Color tokens for the active scheme */
   colors: ThemeColors;
   /** Active accent palette */
@@ -22,10 +27,10 @@ export interface Theme {
   spacing: typeof spacing;
   /** Border radius scale */
   radius: typeof radius;
-  /** Typography variants */
+  /** Typography variants (Latin or Arabic depending on locale) */
   typography: typeof typography;
-  /** Font family map */
-  fontFamily: typeof fontFamily;
+  /** Font family map (Latin or Arabic depending on locale) */
+  fontFamily: Record<FontFamilyKey, string>;
   /** Animation durations */
   duration: typeof duration;
   /** Easing curves */

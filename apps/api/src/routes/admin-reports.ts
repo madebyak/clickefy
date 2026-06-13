@@ -24,7 +24,12 @@ import type { AppEnv } from '../types';
 
 export const adminReportsRoute = new Hono<AppEnv>();
 
-adminReportsRoute.use('*', withAuth({ required: true }), withCurrentUser(), withAdmin());
+adminReportsRoute.use(
+  '*',
+  withAuth({ required: true }),
+  withCurrentUser(),
+  withAdmin({ page: 'reports' }),
+);
 
 const ListQuerySchema = z.object({
   status: z

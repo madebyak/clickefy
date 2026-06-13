@@ -26,9 +26,13 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import { DEFAULT_USER_PREFERENCES, type UserPreferences } from '@clickfy/types';
+import {
+  DEFAULT_USER_PREFERENCES,
+  type AdminPageOverrides,
+  type UserPreferences,
+} from '@clickfy/types';
 
-import { entitlementEnum, localeEnum } from './enums';
+import { adminRoleEnum, entitlementEnum, localeEnum } from './enums';
 
 export const users = pgTable(
   'users',
@@ -45,6 +49,17 @@ export const users = pgTable(
     locale: localeEnum('locale').default('en').notNull(),
 
     entitlement: entitlementEnum('entitlement').default('free').notNull(),
+
+    // ── Staff authorization (decoupled from billing entitlement) ─────
+    // `adminRole` is null for normal users; non-null marks the row as
+    // staff. The page-capability matrix each role maps to lives in
+    // `@clickfy/types`. `adminPageOverrides` layers per-user grants /
+    // revokes on top of the role default (tiny cardinality — a handful
+    // of admins × ~13 pages — so JSONB beats a join table; override
+    // edits are themselves captured in `admin_audit_log`).
+    // Added in migration 0019_admin_roles.
+    adminRole: adminRoleEnum('admin_role'),
+    adminPageOverrides: jsonb('admin_page_overrides').$type<AdminPageOverrides>(),
 
     // ── Credit buckets (see `CreditBucket` in enums.ts) ──────────────
     // `creditsBalance` is a denormalised sum (promo + subscription +
@@ -84,6 +99,9 @@ export const users = pgTable(
   (t) => [
     index('users_purge_idx').on(t.purgeAssetsAt),
     index('users_entitlement_idx').on(t.entitlement),
+    // Staff lookups for the Team page filter on a non-null role; this is
+    // a tiny, highly selective set so a plain b-tree index is plenty.
+    index('users_admin_role_idx').on(t.adminRole),
     // Email is unique among LIVE users only — soft-deleted rows are
     // excluded so a deleted user can re-sign-up with the same address
     // (App Store guideline 5.1.1(v) requires this flow to work). The

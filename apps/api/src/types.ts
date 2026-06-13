@@ -1,5 +1,6 @@
 import type { Db } from '@clickfy/db';
 import type { users } from '@clickfy/db';
+import type { AdminPageKey, AdminRole } from '@clickfy/types';
 
 export interface AppEnv {
   Bindings: Bindings;
@@ -123,6 +124,35 @@ export interface Bindings {
 /** Row shape from the `users` table — `users.$inferSelect`. */
 export type CurrentUser = typeof users.$inferSelect;
 
+/**
+ * Resolved staff authorization context — set by `withAdmin()` once the
+ * admin gate passes. `requirePage` / `requireRole` read this, as does
+ * `GET /v1/admin/me`. `effectivePages` is already
+ * `(role_default ∪ grant) − revoke` so downstream checks are a simple
+ * membership test.
+ */
+export interface AdminContext {
+  role: AdminRole;
+  effectivePages: AdminPageKey[];
+  /**
+   * True while the user qualified as admin only via the legacy
+   * `entitlement = 'admin'` clause (no `admin_role` yet). Surfaces the
+   * anti-lockout fallback in logs without changing behavior.
+   */
+  legacyAdmin: boolean;
+}
+
+/**
+ * Handler-supplied audit enrichment. A route handler may set this before
+ * returning so `withAdmin()`'s audit-log write records a human-readable
+ * `metadata` blob and/or a precise `resourceId` (e.g. the id of a row it
+ * just created, which isn't in the URL params).
+ */
+export interface AuditEnrichment {
+  resourceId?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Variables {
   requestId: string;
   /** Drizzle client, attached per-request by `withDb` middleware. */
@@ -131,4 +161,8 @@ export interface Variables {
   clerkUserId?: string;
   /** Neon `users` row — set by `withCurrentUser` after we resolve/upsert. */
   user?: CurrentUser;
+  /** Staff role + effective pages — set by `withAdmin()` on success. */
+  adminContext?: AdminContext;
+  /** Optional per-request audit enrichment a handler can populate. */
+  audit?: AuditEnrichment;
 }

@@ -4,7 +4,9 @@
  *   withAuth({ required: false })   → populate clerkUserId if present, else continue
  *   withAuth({ required: true })    → 401 if no/invalid token
  *   withCurrentUser()               → resolve clerk user → Neon `users` row (lazy upsert)
- *   withAdmin()                     → require `entitlement === 'admin'`
+ *   withAdmin()                     → require a staff `admin_role` (legacy
+ *                                     `entitlement = 'admin'` honored during
+ *                                     the anti-lockout transition window)
  *
  * Why three layers: we want fine-grained guards. Some endpoints are
  * "public-but-better-with-auth" (e.g. `/v1/categories` could show
@@ -22,8 +24,13 @@ import { createClerkClient, verifyToken } from '@clerk/backend';
 import { eq } from 'drizzle-orm';
 
 import { adminAuditLog, users } from '@clickfy/db';
+import {
+  computeEffectivePages,
+  type AdminPageKey,
+  type AdminRole,
+} from '@clickfy/types';
 
-import type { AppEnv, Bindings } from '../types';
+import type { AppEnv, Bindings, CurrentUser } from '../types';
 import { resolveOrLinkUser } from '../lib/provision-user';
 
 /**
@@ -274,24 +281,53 @@ function tagSentryUser(userId: string, clerkUserId: string) {
 }
 
 /**
- * Requires the current user to be an admin.
+ * Resolve a user's staff role.
+ *
+ * Anti-lockout dual-check (transition window): a user is treated as
+ * staff if EITHER `admin_role` is set (the new model) OR the legacy
+ * `entitlement === 'admin'` holds. The legacy clause guarantees that
+ * even an admin row that the 0019 backfill somehow missed cannot be
+ * locked out the instant the gate flips to roles. When a row has the
+ * legacy entitlement but no role yet, we treat them as `superadmin`
+ * (matching the backfill intent — preserve today's all-powerful
+ * behavior) and flag `legacyAdmin` so we can later verify everyone has
+ * a real role before removing the clause.
+ */
+function resolveStaffRole(
+  user: CurrentUser,
+): { role: AdminRole; legacyAdmin: boolean } | null {
+  if (user.adminRole) return { role: user.adminRole, legacyAdmin: false };
+  // LEGACY anti-lockout clause — remove only after verifying every
+  // `entitlement = 'admin'` user has a non-null `admin_role`.
+  if (user.entitlement === 'admin') return { role: 'superadmin', legacyAdmin: true };
+  return null;
+}
+
+/**
+ * Requires the current user to be staff (any admin role).
  *
  * Strictness layers (top → bottom: order matters):
  *   1. `user` populated by `withCurrentUser()` upstream — guarantees a
  *      DB row exists, not just a Clerk token.
  *   2. `is_deleted = false` — a soft-deleted admin must not regain
  *      access if their row is still around for retention.
- *   3. `entitlement === 'admin'` — strict equality on the enum (not a
- *      truthy check that could be tripped by an unknown value).
+ *   3. A resolvable staff role (`admin_role IS NOT NULL`, or the legacy
+ *      `entitlement = 'admin'` anti-lockout fallback).
+ *
+ * On success it builds the per-request permission context
+ * (`c.var.adminContext` = role + effective pages) so `requirePage` /
+ * `requireRole` and `GET /v1/admin/me` can read it. Optional `page` /
+ * `role` constraints can be enforced inline so a route declares its
+ * required capability at its own mount point.
  *
  * Audit side-effect: on success, after the handler completes, an
  * `admin_audit_log` row is recorded for any successful POST/PATCH/
- * PUT/DELETE. The insert runs in `c.executionCtx.waitUntil()` so it
- * never adds latency to the response, never fails the request if the
- * insert itself errors, and never holds open the Worker beyond what
- * Cloudflare's runtime allows.
+ * PUT/DELETE. A handler may enrich it via `c.set('audit', { ... })`.
+ * The insert runs in `c.executionCtx.waitUntil()` so it never adds
+ * latency to the response, never fails the request if the insert itself
+ * errors, and never holds open the Worker beyond what Cloudflare allows.
  */
-export function withAdmin() {
+export function withAdmin(options: { page?: AdminPageKey; role?: AdminRole } = {}) {
   return createMiddleware<AppEnv>(async (c, next) => {
     const user = c.var.user;
     if (!user) {
@@ -306,9 +342,42 @@ export function withAdmin() {
         403,
       );
     }
-    if (user.entitlement !== 'admin') {
+
+    const staff = resolveStaffRole(user);
+    if (!staff) {
       return c.json(
-        { error: { code: 'forbidden', message: 'Admin entitlement required.' } },
+        { error: { code: 'forbidden', message: 'Admin access required.' } },
+        403,
+      );
+    }
+
+    const effectivePages = computeEffectivePages(staff.role, user.adminPageOverrides);
+    c.set('adminContext', {
+      role: staff.role,
+      effectivePages,
+      legacyAdmin: staff.legacyAdmin,
+    });
+
+    // Inline capability constraints declared at the route's mount point.
+    if (options.role && staff.role !== options.role) {
+      return c.json(
+        {
+          error: {
+            code: 'forbidden',
+            message: `This action requires the ${options.role} role.`,
+          },
+        },
+        403,
+      );
+    }
+    if (options.page && !effectivePages.includes(options.page)) {
+      return c.json(
+        {
+          error: {
+            code: 'forbidden',
+            message: 'You do not have access to this section.',
+          },
+        },
         403,
       );
     }
@@ -326,7 +395,10 @@ export function withAdmin() {
       status < 300
     ) {
       const url = new URL(c.req.url);
-      const resourceId = c.req.param('id') ?? null;
+      // Prefer a handler-supplied resourceId (e.g. the id of a row it
+      // just created, which isn't in the URL) over the route `:id` param.
+      const enrichment = c.var.audit;
+      const resourceId = enrichment?.resourceId ?? c.req.param('id') ?? null;
       const auditWrite = c.var.db
         .insert(adminAuditLog)
         .values({
@@ -334,6 +406,7 @@ export function withAdmin() {
           method,
           path: url.pathname,
           resourceId,
+          metadata: enrichment?.metadata ?? null,
           ip: c.req.header('cf-connecting-ip') ?? null,
           userAgent: c.req.header('user-agent') ?? null,
         })
@@ -351,5 +424,53 @@ export function withAdmin() {
         await auditWrite;
       }
     }
+  });
+}
+
+/**
+ * Require a specific page capability. Must run AFTER `withAdmin()` (which
+ * builds `c.var.adminContext`). Prefer the inline `withAdmin({ page })`
+ * form for route groups; this standalone helper exists for routes that
+ * compose guards explicitly (Team / Monitoring).
+ */
+export function requirePage(page: AdminPageKey) {
+  return createMiddleware<AppEnv>(async (c, next) => {
+    const ctx = c.var.adminContext;
+    if (!ctx) {
+      return c.json(
+        { error: { code: 'forbidden', message: 'Admin context missing.' } },
+        403,
+      );
+    }
+    if (!ctx.effectivePages.includes(page)) {
+      return c.json(
+        { error: { code: 'forbidden', message: 'You do not have access to this section.' } },
+        403,
+      );
+    }
+    return next();
+  });
+}
+
+/**
+ * Require an exact role (e.g. `superadmin` for Team / Monitoring). Must
+ * run AFTER `withAdmin()`.
+ */
+export function requireRole(role: AdminRole) {
+  return createMiddleware<AppEnv>(async (c, next) => {
+    const ctx = c.var.adminContext;
+    if (!ctx) {
+      return c.json(
+        { error: { code: 'forbidden', message: 'Admin context missing.' } },
+        403,
+      );
+    }
+    if (ctx.role !== role) {
+      return c.json(
+        { error: { code: 'forbidden', message: `This action requires the ${role} role.` } },
+        403,
+      );
+    }
+    return next();
   });
 }

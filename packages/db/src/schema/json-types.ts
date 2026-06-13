@@ -33,4 +33,11 @@ export type {
   JobProgress,
   JobResult,
   JobError,
+  TemplateInputTranslation,
+  TemplateLocaleContent,
+  TemplateTranslations,
+  CategoryLocaleContent,
+  CategoryTranslations,
+  HomeBannerLocaleContent,
+  HomeBannerTranslations,
 } from '@clickfy/types';

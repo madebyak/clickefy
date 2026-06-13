@@ -181,7 +181,7 @@ adminBannersRoute.get(
   '/',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'home' }),
   async (c) => {
     const rows = await c.var.db
       .select()
@@ -195,7 +195,7 @@ adminBannersRoute.post(
   '/',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'home' }),
   zValidator('json', bannerCreateSchema),
   async (c) => {
     const body = c.req.valid('json');
@@ -245,7 +245,7 @@ adminBannersRoute.patch(
   '/:id',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'home' }),
   zValidator('param', idParamSchema),
   zValidator('json', bannerUpdateSchema),
   async (c) => {
@@ -327,7 +327,7 @@ adminBannersRoute.delete(
   '/:id',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'home' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -346,7 +346,7 @@ adminBannersRoute.post(
   '/reorder',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'home' }),
   zValidator('json', reorderSchema),
   async (c) => {
     const { ids } = c.req.valid('json');

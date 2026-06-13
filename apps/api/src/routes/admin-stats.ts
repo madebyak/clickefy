@@ -42,7 +42,7 @@ adminStatsRoute.use(
   '*',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'dashboard' }),
   withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
 );
 

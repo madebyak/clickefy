@@ -44,7 +44,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { MediaRef } from './json-types';
+import type { HomeBannerTranslations, MediaRef } from './json-types';
 import { homeBannerCtaKindEnum, homeBannerKindEnum } from './enums';
 
 export const homeBanners = pgTable(
@@ -100,6 +100,13 @@ export const homeBanners = pgTable(
      */
     startsAt: timestamp('starts_at', { withTimezone: true }),
     endsAt: timestamp('ends_at', { withTimezone: true }),
+
+    /**
+     * Non-English overrides for `title`/`subtitle`/`ctaLabel` keyed by
+     * locale, e.g. `{"ar": {"title": "...", "ctaLabel": "..."}}`. English
+     * columns are the fallback. Nullable when no translations exist.
+     */
+    translations: jsonb('translations').$type<HomeBannerTranslations | null>(),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)

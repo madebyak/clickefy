@@ -353,7 +353,7 @@ templatesRoute.get(
   '/',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('query', listQuerySchema),
   async (c) => {
   const q = c.req.valid('query');
@@ -438,7 +438,7 @@ templatesRoute.get(
   '/:id',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -459,7 +459,7 @@ templatesRoute.post(
   '/reorder',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('json', reorderTemplatesSchema),
   async (c) => {
     const { ids } = c.req.valid('json');
@@ -477,6 +477,8 @@ templatesRoute.post(
       .update(templates)
       .set({ sortOrder: caseExpr, updatedAt: new Date() })
       .where(inArray(templates.id, ids));
+
+    c.set('audit', { metadata: { action: 'reorder', count: ids.length } });
 
     return c.json({ data: { reordered: ids.length } });
   },
@@ -499,7 +501,7 @@ templatesRoute.post(
   '/:id/publish',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('param', idParamSchema),
   zValidator('json', publishTemplateSchema),
   async (c) => {
@@ -579,6 +581,19 @@ templatesRoute.post(
       .where(eq(templates.id, id))
       .returning();
 
+    // Enrich the audit-log row the withAdmin middleware will write so the
+    // monitoring activity feed reads "Published «Title» (v3)" instead of a
+    // bare "POST /publish".
+    c.set('audit', {
+      resourceId: id,
+      metadata: {
+        action: 'publish',
+        templateTitle: row.title,
+        versionNumber: nextVersion,
+        ...(body.publishNote ? { publishNote: body.publishNote } : {}),
+      },
+    });
+
     return c.json({ data: attachAdminCategoryFields(updated!, cats) });
   },
 );
@@ -587,7 +602,7 @@ templatesRoute.post(
   '/:id/unpublish',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -616,7 +631,7 @@ templatesRoute.post(
   '/:id/duplicate',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -654,6 +669,9 @@ templatesRoute.post(
         output: src.output,
         costCredits: src.costCredits,
         sortOrder: src.sortOrder + 1,
+        // Carry over non-English overrides so a duplicate keeps its
+        // Arabic (and any future locale) content.
+        translations: src.translations,
       })
       .returning();
 
@@ -675,7 +693,7 @@ templatesRoute.post(
   '/',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('json', createTemplateSchema),
   async (c) => {
     const body = c.req.valid('json');
@@ -734,6 +752,9 @@ templatesRoute.post(
           output: derived.output,
           costCredits: costBreakdown.total,
           sortOrder: body.sortOrder,
+          // Non-English overrides (optional). Coerce undefined to null so
+          // Drizzle writes an explicit NULL rather than dropping the column.
+          translations: body.translations ?? null,
         })
         .returning();
 
@@ -760,6 +781,13 @@ templatesRoute.post(
         }
       }
 
+      // The created id isn't in the URL — hand it (and the title) to the
+      // audit middleware so the activity feed can attribute the creation.
+      c.set('audit', {
+        resourceId: row.id,
+        metadata: { action: 'create', title: row.title, slug },
+      });
+
       return c.json(
         { data: { ...attachAdminCategoryFields(row, ordered), costBreakdown } },
         201,
@@ -780,7 +808,7 @@ templatesRoute.patch(
   '/:id',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('param', idParamSchema),
   zValidator('json', updateTemplateSchema),
   async (c) => {
@@ -872,6 +900,11 @@ templatesRoute.patch(
       set.output = body.output;
     }
     if (body.sortOrder !== undefined) set.sortOrder = body.sortOrder;
+    // Only write `translations` when the patch explicitly includes it.
+    // Admin's normal save payload omits it entirely (see admin
+    // `toServerPayload`), so existing Arabic content is never touched or
+    // nulled by a routine English-only edit.
+    if (body.translations !== undefined) set.translations = body.translations;
 
     set.updatedAt = new Date();
 
@@ -935,7 +968,7 @@ templatesRoute.delete(
   '/:id',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -985,7 +1018,7 @@ templatesRoute.post(
   '/:id/restore',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -1010,7 +1043,7 @@ templatesRoute.delete(
   '/:id/purge',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'templates' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');

@@ -7,7 +7,9 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { type AnyPgColumn, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { type AnyPgColumn, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+
+import type { CategoryTranslations } from './json-types';
 
 export const categories = pgTable(
   'categories',
@@ -21,6 +23,13 @@ export const categories = pgTable(
     }),
     iconUrl: text('icon_url'),
     sortOrder: integer('sort_order').default(0).notNull(),
+
+    /**
+     * Non-English `name` overrides keyed by locale, e.g.
+     * `{"ar": {"name": "..."}}`. English `name` above is the fallback.
+     * Nullable — untranslated categories observe NULL.
+     */
+    translations: jsonb('translations').$type<CategoryTranslations | null>(),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)

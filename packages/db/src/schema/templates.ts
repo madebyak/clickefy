@@ -44,6 +44,7 @@ import type {
   TemplateInputField,
   TemplateOutput,
   TemplateStats,
+  TemplateTranslations,
 } from './json-types';
 
 // Inlined as a raw SQL literal — drizzle-kit's diff engine doesn't accept
@@ -122,6 +123,17 @@ export const templates = pgTable(
       .$type<TemplateStats>()
       .default(sql.raw(DEFAULT_STATS_LITERAL))
       .notNull(),
+
+    /**
+     * Non-English content overrides, keyed by locale, e.g.
+     * `{"ar": {"title": "...", "userInputs": {"<fieldKey>": {...}}}}`.
+     * English lives in the canonical columns above and is the fallback;
+     * resolution happens in `templateToMobileDTO`. Nullable — existing
+     * rows (and untranslated templates) observe NULL = English only.
+     * Snapshotted into `template_versions` on publish like every other
+     * column, so historical jobs stay reproducible.
+     */
+    translations: jsonb('translations').$type<TemplateTranslations | null>(),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)

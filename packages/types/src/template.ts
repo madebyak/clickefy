@@ -22,6 +22,7 @@ import type {
   TemplateOutput,
   TemplateStats,
 } from './json-types';
+import type { TemplateTranslations } from './localization';
 
 // ─── Enums ──────────────────────────────────────────────────────────
 
@@ -92,6 +93,14 @@ export interface Template {
   costCredits: number;
   sortOrder: number;
   stats: TemplateStats;
+
+  /**
+   * Non-English content overrides, keyed by locale. English lives in the
+   * canonical columns above and is the fallback. `null`/absent = no
+   * translations yet. Optional so admin code compiled before this field
+   * landed still typechecks. See `@clickfy/types` `TemplateTranslations`.
+   */
+  translations?: TemplateTranslations | null;
 
   createdAt: string;
   updatedAt: string;

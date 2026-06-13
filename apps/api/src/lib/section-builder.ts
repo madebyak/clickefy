@@ -33,7 +33,7 @@ import { and, asc, desc, eq, sql, type SQL } from 'drizzle-orm';
 
 import type { Db } from '@clickfy/db';
 import { categories, templates, type Template as DbTemplate } from '@clickfy/db';
-import type { MobileTemplate } from '@clickfy/types';
+import type { MobileTemplate, UserLocale } from '@clickfy/types';
 
 import { templateToMobileDTO } from './template-dto';
 import {
@@ -67,6 +67,19 @@ export interface BuildHomeSectionsOptions {
    * `'all'` and the empty string are both treated as "no filter".
    */
   categoryId?: string;
+  /**
+   * Target locale for user-facing copy. Passed straight to
+   * `templateToMobileDTO` for each card, and used to localize the
+   * per-category rail title (the category name is dynamic content).
+   *
+   * Note: the four FIXED discovery-rail titles ("Trending Now", etc.)
+   * and the "Browse …" subtitle prefix are system UI strings. They are
+   * intentionally left in English here and localized client-side by
+   * their stable `key` in the mobile i18n layer (Phase 5) — keeping
+   * fixed-string translations in one place rather than duplicated on
+   * the server.
+   */
+  locale?: UserLocale;
 }
 
 // Shared WHERE clause: only published templates ever surface in the
@@ -86,6 +99,7 @@ export async function buildHomeSections(
   opts: BuildHomeSectionsOptions,
 ): Promise<HomeSection[]> {
   const limit = opts.perSectionLimit ?? 8;
+  const locale: UserLocale = opts.locale ?? 'en';
   // Cross-rail dedup oversample factor. The four "discovery" rails
   // (trending / new / video / sets) share a `seen` set applied in
   // priority order — so an item that lands in Trending is filtered
@@ -233,6 +247,7 @@ export async function buildHomeSections(
     templateToMobileDTO(row, {
       publicBaseUrl: opts.publicBaseUrl,
       categoryIds: catsMap.get(row.id)?.all ?? [],
+      locale,
     });
 
   const sections: HomeSection[] = [];
@@ -303,10 +318,13 @@ export async function buildHomeSections(
       return true;
     });
     if (filtered.length === 0) continue;
+    // Category name is dynamic content → localize with English fallback.
+    const catName =
+      locale !== 'en' ? (cat.translations?.[locale]?.name ?? cat.name) : cat.name;
     sections.push({
       key: `category-${cat.id}`,
-      title: cat.name,
-      subtitle: `Browse ${cat.name.toLowerCase()}`,
+      title: catName,
+      subtitle: `Browse ${catName.toLowerCase()}`,
       layout: 'carousel',
       templates: filtered.map(toDto),
     });

@@ -127,6 +127,20 @@
       "when": 1780190000000,
       "tag": "0017_home_banners",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780200000000,
+      "tag": "0018_localization_translations",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780300000000,
+      "tag": "0019_admin_roles",
+      "breakpoints": true
     }
   ]
 }

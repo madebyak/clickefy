@@ -21,9 +21,48 @@ import type {
   MobileImageRef,
   MobileTemplate,
   MobileVideoRef,
+  TemplateInputField,
+  TemplateInputTranslation,
+  TemplateLocaleContent,
+  UserLocale,
 } from '@clickfy/types';
 
 import { deriveDeliverables } from './template-deliverables';
+
+/**
+ * Apply per-field Arabic (or any locale) overrides to a template's
+ * `userInputs`, falling back to the canonical English value whenever a
+ * given override is missing. Returns a NEW array — the source row is
+ * never mutated. When there are no overrides, returns the original
+ * array by reference (cheap no-op for the common English path).
+ */
+function localizeUserInputs(
+  inputs: TemplateInputField[],
+  overrides: Record<string, TemplateInputTranslation> | undefined,
+): TemplateInputField[] {
+  if (!overrides) return inputs;
+  return inputs.map((field) => {
+    const ov = overrides[field.fieldKey];
+    if (!ov) return field;
+    let next: TemplateInputField = { ...field };
+    // A blank/whitespace label would break the UI — fall back to English.
+    if (ov.label && ov.label.trim().length > 0) next.label = ov.label;
+    if (ov.helperText !== undefined) next.helperText = ov.helperText;
+    if ((next.type === 'text' || next.type === 'textarea') && ov.placeholder !== undefined) {
+      next.placeholder = ov.placeholder;
+    }
+    if (next.type === 'select' && ov.options) {
+      const optionLabels = ov.options;
+      next = {
+        ...next,
+        options: next.options.map((o) =>
+          optionLabels[o.value] ? { ...o, label: optionLabels[o.value]! } : o,
+        ),
+      };
+    }
+    return next;
+  });
+}
 
 /**
  * Hosts that point at *our own* Worker (past + present). `cdnUrl`
@@ -129,6 +168,15 @@ export interface MobileDtoOptions {
    * UX. Both fields are always emitted.
    */
   categoryIds: ReadonlyArray<string>;
+  /**
+   * Target locale for user-facing copy (`title`, `description`,
+   * `userInputs` labels). Defaults to `'en'`. For any non-English
+   * locale we merge `row.translations[locale]` over the English base,
+   * field by field, and fall back to English wherever a translation is
+   * absent — so an untranslated (or partially translated) template is
+   * never blank or broken.
+   */
+  locale?: UserLocale;
 }
 
 export function templateToMobileDTO(
@@ -140,6 +188,17 @@ export function templateToMobileDTO(
   // integrity bug we'd want to spot), surface it as empty strings
   // rather than crash the whole catalog response.
   const primaryCategoryId = categoryIds[0] ?? '';
+
+  // ── Locale resolution (English is always the fallback) ──────────────
+  // Only non-English locales consult `translations`; English reads the
+  // canonical columns directly. A missing locale entry, missing field,
+  // or blank title all cleanly fall back to English.
+  const locale: UserLocale = opts.locale ?? 'en';
+  const tx: TemplateLocaleContent | undefined =
+    locale !== 'en' ? (row.translations?.[locale] ?? undefined) : undefined;
+  const title = tx?.title && tx.title.trim().length > 0 ? tx.title : row.title;
+  const description = tx?.description ?? row.description;
+  const userInputs = localizeUserInputs(row.userInputs, tx?.userInputs);
 
   // Defensive: `coverMedia` is nullable on the DB row so drafts can
   // exist without one, but every code path that calls this DTO
@@ -153,9 +212,9 @@ export function templateToMobileDTO(
 
   return {
     id: row.id,
-    title: row.title,
+    title,
     slug: row.slug,
-    description: row.description,
+    description,
     /** @deprecated kept for v1 mobile clients; use `categoryIds[0]`. */
     categoryId: primaryCategoryId,
     categoryIds: [...categoryIds],
@@ -168,7 +227,7 @@ export function templateToMobileDTO(
       : null,
     gallery: row.gallery.map((m) => mediaRefToImage(m, publicBaseUrl)),
 
-    userInputs: row.userInputs,
+    userInputs,
     userCanChooseAspectRatio: row.userCanChooseAspectRatio,
     defaultAspectRatio: row.defaultAspectRatio,
 

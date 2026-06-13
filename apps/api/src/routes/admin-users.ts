@@ -107,7 +107,7 @@ adminUsersRoute.get(
   '/',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'users' }),
   zValidator('query', listQuerySchema),
   async (c) => {
     const q = c.req.valid('query');
@@ -202,7 +202,7 @@ adminUsersRoute.get(
   '/:id',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'users' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -350,7 +350,7 @@ adminUsersRoute.post(
   '/:id/credits',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'users' }),
   zValidator('param', idParamSchema),
   zValidator('json', adjustCreditsSchema),
   async (c) => {
@@ -549,7 +549,7 @@ adminUsersRoute.patch(
   '/:id/entitlement',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'users' }),
   zValidator('param', idParamSchema),
   zValidator('json', setEntitlementSchema),
   async (c) => {
@@ -578,7 +578,7 @@ adminUsersRoute.post(
   '/:id/ban',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'users' }),
   zValidator('param', idParamSchema),
   async (c) => {
     if (!c.env.CLERK_SECRET_KEY) {
@@ -612,7 +612,7 @@ adminUsersRoute.post(
   '/:id/unban',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'users' }),
   zValidator('param', idParamSchema),
   async (c) => {
     if (!c.env.CLERK_SECRET_KEY) {
@@ -648,7 +648,7 @@ adminUsersRoute.post(
   '/:id/soft-delete',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'users' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -682,7 +682,7 @@ adminUsersRoute.delete(
   '/:id',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'users' }),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');

@@ -21,6 +21,8 @@ type RadiusProp = RadiusKey | number;
  */
 export interface BoxProps extends Omit<ViewProps, 'style'> {
   // Padding — `p` overrides; axis/side props refine it.
+  // NOTE: `pl`/`pr` map to logical `paddingStart`/`paddingEnd` so they mirror
+  // automatically under RTL (identical to left/right in LTR).
   p?: SpacingProp;
   px?: SpacingProp;
   py?: SpacingProp;
@@ -28,7 +30,7 @@ export interface BoxProps extends Omit<ViewProps, 'style'> {
   pr?: SpacingProp;
   pb?: SpacingProp;
   pl?: SpacingProp;
-  // Margin
+  // Margin — `ml`/`mr` map to logical `marginStart`/`marginEnd` (see above).
   m?: SpacingProp;
   mx?: SpacingProp;
   my?: SpacingProp;
@@ -121,16 +123,16 @@ export const Box = forwardRef<View, BoxProps>(function Box(
     paddingHorizontal: resolveSpacing(px),
     paddingVertical: resolveSpacing(py),
     paddingTop: resolveSpacing(pt),
-    paddingRight: resolveSpacing(pr),
+    paddingEnd: resolveSpacing(pr),
     paddingBottom: resolveSpacing(pb),
-    paddingLeft: resolveSpacing(pl),
+    paddingStart: resolveSpacing(pl),
     margin: resolveSpacing(m),
     marginHorizontal: resolveSpacing(mx),
     marginVertical: resolveSpacing(my),
     marginTop: resolveSpacing(mt),
-    marginRight: resolveSpacing(mr),
+    marginEnd: resolveSpacing(mr),
     marginBottom: resolveSpacing(mb),
-    marginLeft: resolveSpacing(ml),
+    marginStart: resolveSpacing(ml),
     flex,
     width,
     height,

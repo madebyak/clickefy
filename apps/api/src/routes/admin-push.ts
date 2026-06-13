@@ -96,7 +96,7 @@ adminPushRoute.post(
   '/preview',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'push' }),
   zValidator('json', BroadcastSchema),
   async (c) => {
     const { audience } = c.req.valid('json');
@@ -114,7 +114,7 @@ adminPushRoute.post(
   '/broadcast',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'push' }),
   zValidator('json', BroadcastSchema),
   async (c) => {
     const { title, body, data, audience } = c.req.valid('json');
@@ -221,7 +221,7 @@ adminPushRoute.post(
   '/test',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'push' }),
   zValidator('json', TestPushSchema),
   async (c) => {
     const body = c.req.valid('json') ?? {};
@@ -306,7 +306,7 @@ adminPushRoute.get(
   '/stats',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'push' }),
   async (c) => {
     const rows = await c.var.db
       .select({ token: deviceTokens.expoPushToken, platform: deviceTokens.platform })

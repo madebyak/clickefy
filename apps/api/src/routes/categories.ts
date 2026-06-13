@@ -70,10 +70,30 @@ categoriesRoute.get(
         childrenByParent.set(row.parentId, arr);
       }
     }
-    const data = rows.map((row) => ({
-      ...row,
-      children: row.parentId ? [] : (childrenByParent.get(row.id) ?? []),
-    }));
+
+    // Localize `name` with English fallback. Only the public mobile
+    // client passes `?locale=ar`; admin calls omit it and keep English.
+    // The param is in the URL so the edge cache stores en/ar separately.
+    const locale = c.req.query('locale') === 'ar' ? 'ar' : 'en';
+    const withLocalizedName = <T extends { name: string; translations?: unknown }>(row: T): T =>
+      locale === 'en'
+        ? row
+        : {
+            ...row,
+            name:
+              (row.translations as { ar?: { name?: string } } | null | undefined)?.ar?.name ??
+              row.name,
+          };
+
+    const data = rows.map((row) => {
+      const localized = withLocalizedName(row);
+      return {
+        ...localized,
+        children: row.parentId
+          ? []
+          : (childrenByParent.get(row.id) ?? []).map(withLocalizedName),
+      };
+    });
 
     return c.json({ data });
   },
@@ -105,7 +125,7 @@ categoriesRoute.post(
   '/reorder',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'categories' }),
   zValidator('json', reorderSchema),
   async (c) => {
     const { ids } = c.req.valid('json');
@@ -178,7 +198,7 @@ categoriesRoute.post(
   '/',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'categories' }),
   zValidator('json', createCategorySchema),
   async (c) => {
     const body = c.req.valid('json');
@@ -218,7 +238,7 @@ categoriesRoute.patch(
   '/:id',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'categories' }),
   zValidator('json', updateCategorySchema),
   async (c) => {
     const id = c.req.param('id');
@@ -276,7 +296,7 @@ categoriesRoute.delete(
   '/:id',
   withAuth({ required: true }),
   withCurrentUser(),
-  withAdmin(),
+  withAdmin({ page: 'categories' }),
   async (c) => {
     const id = c.req.param('id');
     const [row] = await c.var.db

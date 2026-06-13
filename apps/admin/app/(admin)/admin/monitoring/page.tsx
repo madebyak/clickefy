@@ -10,6 +10,8 @@ import type {
   MonitoringPublishedTemplate,
 } from '@clickfy/types';
 
+import { MonitoringOverview } from '@/components/monitoring/overview';
+
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -73,7 +75,7 @@ function formatDate(iso: string | null): string {
 export default function MonitoringPage() {
   const { getToken } = useAuth();
   const tokenGetter = useMemo(() => () => getToken(), [getToken]);
-  const [tab, setTab] = useState('published');
+  const [tab, setTab] = useState('overview');
 
   return (
     <div className="space-y-6">
@@ -89,11 +91,15 @@ export default function MonitoringPage() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="published">Published templates</TabsTrigger>
           <TabsTrigger value="leaderboard">Publisher leaderboard</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="overview">
+          <OverviewTab tokenGetter={tokenGetter} active={tab === 'overview'} />
+        </TabsContent>
         <TabsContent value="published">
           <PublishedTab tokenGetter={tokenGetter} active={tab === 'published'} />
         </TabsContent>
@@ -106,6 +112,34 @@ export default function MonitoringPage() {
       </Tabs>
     </div>
   );
+}
+
+// ─── Overview tab ───────────────────────────────────────────────────
+
+function OverviewTab({
+  tokenGetter,
+  active,
+}: {
+  tokenGetter: () => Promise<string | null>;
+  active: boolean;
+}) {
+  const { metrics, summary, metricsLoading, fetchMetrics } = useMonitoringStore();
+
+  useEffect(() => {
+    // Refresh on open so totals stay current with the rolling windows.
+    if (active) void fetchMetrics(tokenGetter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
+  if ((metricsLoading && !summary) || !summary) {
+    return (
+      <div className="mt-4 flex justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return <MonitoringOverview metrics={metrics} summary={summary} />;
 }
 
 // ─── Published templates tab ────────────────────────────────────────

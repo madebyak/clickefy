@@ -234,12 +234,31 @@ export interface MonitoringAdminMetric {
   total: number;
   last7d: number;
   last30d: number;
+  /** Publishes in the PREVIOUS 7d window (days 8–14 ago) for WoW deltas. */
+  prev7d: number;
+  /** Publishes in the PREVIOUS 30d window (days 31–60 ago) for MoM deltas. */
+  prev30d: number;
   /** Publishes within the custom window, present only when one was requested. */
   custom?: number;
 }
 
+/** Aggregate headline numbers for the monitoring Overview tab. */
+export interface MonitoringSummary {
+  /** Distinct templates currently in `published` status. */
+  publishedTemplates: number;
+  /** Total publish actions ever (every `template_versions` row). */
+  totalPublishes: number;
+  thisWeek: number;
+  lastWeek: number;
+  thisMonth: number;
+  lastMonth: number;
+  /** Number of admins with at least one attributed publish. */
+  activePublishers: number;
+}
+
 export interface MonitoringAdminMetricsResponse {
   data: MonitoringAdminMetric[];
+  summary: MonitoringSummary;
   window: { from: string | null; to: string | null };
 }
 

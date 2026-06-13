@@ -14,6 +14,7 @@ import type {
   MonitoringAdminMetricsResponse,
   MonitoringPublishedTemplate,
   MonitoringPublishedTemplatesResponse,
+  MonitoringSummary,
 } from '@clickfy/types';
 
 import { apiFetch, ApiError, type TokenGetter } from '@/lib/api';
@@ -37,8 +38,9 @@ interface MonitoringStore {
   loadMorePublished: (getToken: TokenGetter) => Promise<void>;
   setOwner: (templateId: string, ownerId: string, getToken: TokenGetter) => Promise<void>;
 
-  // Leaderboard
+  // Leaderboard + overview
   metrics: MonitoringAdminMetric[];
+  summary: MonitoringSummary | null;
   metricsLoading: boolean;
   fetchMetrics: (
     getToken: TokenGetter,
@@ -135,6 +137,7 @@ export const useMonitoringStore = create<MonitoringStore>((set, get) => ({
   },
 
   metrics: [],
+  summary: null,
   metricsLoading: false,
 
   fetchMetrics: async (getToken, range) => {
@@ -148,7 +151,7 @@ export const useMonitoringStore = create<MonitoringStore>((set, get) => ({
         `/v1/admin/monitoring/admin-metrics${qs ? `?${qs}` : ''}`,
         { getToken, unwrap: false },
       );
-      set({ metrics: res.data, metricsLoading: false });
+      set({ metrics: res.data, summary: res.summary, metricsLoading: false });
     } catch (err) {
       set({
         metricsLoading: false,

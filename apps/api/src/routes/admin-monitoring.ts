@@ -25,6 +25,7 @@ import type {
   MonitoringActivityEntry,
   MonitoringAdminMetric,
   MonitoringPublishedTemplate,
+  MonitoringSummary,
 } from '@clickfy/types';
 
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
@@ -226,21 +227,29 @@ adminMonitoringRoute.get('/admin-metrics', async (c) => {
     ? sql<number>`count(*) filter (where ${templateVersions.publishedAt} >= ${from ?? '-infinity'}::timestamptz and ${templateVersions.publishedAt} <= ${to ?? 'infinity'}::timestamptz)::int`
     : sql<number>`0::int`;
 
-  const rows = await c.var.db
-    .select({
-      adminId: templateVersions.publishedBy,
-      name: users.name,
-      email: users.email,
-      role: users.adminRole,
-      total: sql<number>`count(*)::int`,
-      last7d: sql<number>`count(*) filter (where ${templateVersions.publishedAt} >= now() - interval '7 days')::int`,
-      last30d: sql<number>`count(*) filter (where ${templateVersions.publishedAt} >= now() - interval '30 days')::int`,
-      custom: customFilter,
-    })
-    .from(templateVersions)
-    .leftJoin(users, eq(templateVersions.publishedBy, users.id))
-    .groupBy(templateVersions.publishedBy, users.name, users.email, users.adminRole)
-    .orderBy(desc(sql`count(*)`));
+  const [rows, [{ publishedTemplates }]] = await Promise.all([
+    c.var.db
+      .select({
+        adminId: templateVersions.publishedBy,
+        name: users.name,
+        email: users.email,
+        role: users.adminRole,
+        total: sql<number>`count(*)::int`,
+        last7d: sql<number>`count(*) filter (where ${templateVersions.publishedAt} >= now() - interval '7 days')::int`,
+        prev7d: sql<number>`count(*) filter (where ${templateVersions.publishedAt} >= now() - interval '14 days' and ${templateVersions.publishedAt} < now() - interval '7 days')::int`,
+        last30d: sql<number>`count(*) filter (where ${templateVersions.publishedAt} >= now() - interval '30 days')::int`,
+        prev30d: sql<number>`count(*) filter (where ${templateVersions.publishedAt} >= now() - interval '60 days' and ${templateVersions.publishedAt} < now() - interval '30 days')::int`,
+        custom: customFilter,
+      })
+      .from(templateVersions)
+      .leftJoin(users, eq(templateVersions.publishedBy, users.id))
+      .groupBy(templateVersions.publishedBy, users.name, users.email, users.adminRole)
+      .orderBy(desc(sql`count(*)`)),
+    c.var.db
+      .select({ publishedTemplates: sql<number>`count(*)::int` })
+      .from(templates)
+      .where(eq(templates.status, 'published')),
+  ]);
 
   const data: MonitoringAdminMetric[] = rows.map((r) => ({
     adminId: r.adminId,
@@ -249,11 +258,23 @@ adminMonitoringRoute.get('/admin-metrics', async (c) => {
     role: r.role,
     total: r.total,
     last7d: r.last7d,
+    prev7d: r.prev7d,
     last30d: r.last30d,
+    prev30d: r.prev30d,
     ...(hasCustom ? { custom: r.custom } : {}),
   }));
 
-  return c.json({ data, window: { from: from ?? null, to: to ?? null } });
+  const summary: MonitoringSummary = {
+    publishedTemplates,
+    totalPublishes: rows.reduce((acc, r) => acc + r.total, 0),
+    thisWeek: rows.reduce((acc, r) => acc + r.last7d, 0),
+    lastWeek: rows.reduce((acc, r) => acc + r.prev7d, 0),
+    thisMonth: rows.reduce((acc, r) => acc + r.last30d, 0),
+    lastMonth: rows.reduce((acc, r) => acc + r.prev30d, 0),
+    activePublishers: rows.filter((r) => r.adminId !== null && r.total > 0).length,
+  };
+
+  return c.json({ data, summary, window: { from: from ?? null, to: to ?? null } });
 });
 
 // ─── Activity feed (human-readable audit log) ───────────────────────

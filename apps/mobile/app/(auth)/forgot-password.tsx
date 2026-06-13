@@ -16,8 +16,11 @@ import { useSignIn } from '@clerk/expo/legacy';
 import { isClerkAPIResponseError } from '@clerk/react/errors';
 import { Button, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
+import type { TFunction } from 'i18next';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import { Controller, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { z } from 'zod';
@@ -26,23 +29,26 @@ import { FormField } from '@/components/auth/FormField';
 import { Icon } from '@/components/ui/Icon';
 import { tap } from '@/lib/haptics';
 
-const schema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .min(1, 'Email is required')
-    .email('Please enter a valid email address'),
-});
+const buildSchema = (t: TFunction) =>
+  z.object({
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .min(1, t('common.emailRequired'))
+      .email(t('common.emailInvalid')),
+  });
 
-type ForgotValues = z.infer<typeof schema>;
+type ForgotValues = z.infer<ReturnType<typeof buildSchema>>;
 
 export default function ForgotPasswordScreen() {
+  const { t } = useTranslation('auth');
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signIn, isLoaded } = useSignIn();
   const raw = useLocalSearchParams<Record<string, string>>();
+  const schema = useMemo(() => buildSchema(t), [t]);
 
   const {
     control,
@@ -65,7 +71,7 @@ export default function ForgotPasswordScreen() {
       if (!factor) {
         setError('email', {
           type: 'clerk',
-          message: 'Password reset by email is not available for this account.',
+          message: t('forgotPassword.errors.resetUnavailable'),
         });
         return;
       }
@@ -81,18 +87,18 @@ export default function ForgotPasswordScreen() {
         if (first?.code === 'form_identifier_not_found') {
           setError('email', {
             type: 'clerk',
-            message: "We don't recognize this email. Tap “Sign up” to create an account.",
+            message: t('forgotPassword.errors.identifierNotFound'),
           });
         } else {
           setError('email', {
             type: 'clerk',
-            message: first?.longMessage ?? first?.message ?? 'Could not send a reset code.',
+            message: first?.longMessage ?? first?.message ?? t('forgotPassword.errors.couldNotSendResetCode'),
           });
         }
       } else {
         setError('email', {
           type: 'clerk',
-          message: 'Something went wrong. Please try again.',
+          message: t('common.somethingWentWrong'),
         });
       }
     }
@@ -118,7 +124,7 @@ export default function ForgotPasswordScreen() {
           haptic="light"
           pressedOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('common.back')}
           style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
         >
           <Icon name="chevronLeft" size={22} color={colors.ink} weight="bold" />
@@ -129,10 +135,10 @@ export default function ForgotPasswordScreen() {
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 16, gap: 28 }}>
         <Stack gap="sm">
           <Text variant="title" color="ink" style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.8 }}>
-            Reset password
+            {t('forgotPassword.title')}
           </Text>
           <Text variant="body" color="inkMuted" style={{ lineHeight: 22 }}>
-            Enter your email and we&apos;ll send you a 6-digit code to set a new password.
+            {t('forgotPassword.subtitle')}
           </Text>
         </Stack>
 
@@ -141,9 +147,9 @@ export default function ForgotPasswordScreen() {
           name="email"
           render={({ field: { value, onChange, onBlur } }) => (
             <FormField
-              label="Email"
+              label={t('common.emailLabel')}
               leadingIcon="envelope"
-              placeholder="you@example.com"
+              placeholder={t('common.emailPlaceholder')}
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
@@ -169,7 +175,7 @@ export default function ForgotPasswordScreen() {
           onPress={handleSubmit(onSubmit)}
           trailing={<Icon name="arrowRight" size={18} weight="bold" color={colors.surface} />}
         >
-          Send reset code
+          {t('forgotPassword.submit')}
         </Button>
 
         <View style={{ flex: 1 }} />
@@ -180,13 +186,13 @@ export default function ForgotPasswordScreen() {
             haptic="light"
             pressedOpacity={0.7}
             accessibilityRole="link"
-            accessibilityLabel="Back to sign in"
+            accessibilityLabel={t('forgotPassword.footerA11y')}
             style={{ paddingVertical: 8 }}
           >
             <Text variant="caption" color="inkMuted" style={{ fontSize: 14 }}>
-              Remembered it?{' '}
+              {t('forgotPassword.footerPrefix')}
               <Text variant="caption" color="ink" weight="700" style={{ fontSize: 14 }}>
-                Sign in
+                {t('forgotPassword.footerAction')}
               </Text>
             </Text>
           </Pressable>

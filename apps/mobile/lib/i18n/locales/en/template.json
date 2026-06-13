@@ -1,0 +1,72 @@
+{
+  "kind": {
+    "image": "IMAGE",
+    "video": "VIDEO",
+    "set": "SET"
+  },
+  "sections": {
+    "whatYouGet": "What you'll get",
+    "youllProvide": "You'll provide"
+  },
+  "output": {
+    "image_one": "{{count}} image",
+    "image_other": "{{count}} images",
+    "video_one": "{{count}} video",
+    "video_other": "{{count}} videos",
+    "imageHint": "High-resolution image",
+    "videoHint": "Animated, mp4"
+  },
+  "input": {
+    "optional": "Optional",
+    "optionalSuffix": "· optional"
+  },
+  "credits_one": "{{count}} credit",
+  "credits_other": "{{count}} credits",
+  "cta": {
+    "costsLabel": "Costs",
+    "useTemplate": "Use template"
+  },
+  "share": {
+    "message": "Check out \"{{title}}\" on Clickefy"
+  },
+  "a11y": {
+    "back": "Back",
+    "saveToLibrary": "Save to library",
+    "removeFromSaved": "Remove from saved",
+    "shareTemplate": "Share template",
+    "preview": "{{label}} preview",
+    "upload": "{{label}} upload",
+    "remove": "Remove",
+    "replace": "Replace"
+  },
+  "use": {
+    "eyebrow": "Step 1 of 1",
+    "title": "Use template",
+    "aspectRatio": "Aspect ratio",
+    "generate_one": "Generate · {{count}} credit",
+    "generate_other": "Generate · {{count}} credits",
+    "addRequiredInputs": "Add required inputs"
+  },
+  "errors": {
+    "insufficientCreditsTitle": "Not enough credits",
+    "uploadNotFoundTitle": "Upload not found",
+    "genericTitle": "Could not start generation",
+    "genericMessage": "Something went wrong — try again."
+  },
+  "upload": {
+    "uploading": "Uploading…",
+    "uploadingPercent": "Uploading {{percent}}%",
+    "ready": "Ready",
+    "retry": "Retry upload",
+    "failed": "Upload failed.",
+    "processError": "We couldn't process this photo. It may be in a format we can't read — please choose a different image.",
+    "dropPhoto": "Drop your photo",
+    "addVideo": "Add your video",
+    "choosePhoto": "Choose photo",
+    "chooseVideo": "Choose video",
+    "takePhoto": "Take photo",
+    "rateLimitedCaption": "You're uploading a little too fast. We'll let you retry in a moment.",
+    "retryAvailableIn": "Retry available in {{seconds}} seconds",
+    "tryAgainIn": "Try again in {{seconds}}s"
+  }
+}

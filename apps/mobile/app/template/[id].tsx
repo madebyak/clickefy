@@ -22,6 +22,7 @@ import type { TemplateInput } from '@clickfy/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dimensions, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -45,6 +46,7 @@ export default function TemplateDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, accent, fontFamily: ff } = useTheme();
+  const { t: tr } = useTranslation('template');
   const sdk = getSDK();
 
   const templateQuery = useQuery({
@@ -109,13 +111,13 @@ export default function TemplateDetailScreen() {
     if (!t) return;
     try {
       await Share.share({
-        message: `Check out "${t.title}" on Clickefy`,
+        message: tr('share.message', { title: t.title }),
         url: `${config.webUrl}/templates/${t.id}`,
       });
     } catch {
       // user dismissed
     }
-  }, [t]);
+  }, [t, tr]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -173,7 +175,7 @@ export default function TemplateDetailScreen() {
             {t.outputs && t.outputs.length > 0 ? (
               <View style={{ marginTop: 18 }}>
                 <Text style={[s.sectionLabel, { color: colors.inkMuted }]}>
-                  What you&apos;ll get
+                  {tr('sections.whatYouGet')}
                 </Text>
                 <View style={{ gap: 10 }}>
                   {t.outputs.map((out, i) => (
@@ -187,7 +189,7 @@ export default function TemplateDetailScreen() {
             {t.userInputs && t.userInputs.length > 0 ? (
               <View style={{ marginTop: 18 }}>
                 <Text style={[s.sectionLabel, { color: colors.inkMuted }]}>
-                  You&apos;ll provide
+                  {tr('sections.youllProvide')}
                 </Text>
                 <View style={{ gap: 10 }}>
                   {t.userInputs.map((input) => (
@@ -212,10 +214,20 @@ export default function TemplateDetailScreen() {
             },
           ]}
         >
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={[s.costsLabel, { color: colors.inkMuted }]}>Costs</Text>
-            <Text style={[s.costsValue, { color: colors.ink, fontFamily: ff.monoSemibold }]}>
-              {t.credits} credits
+          {/* RN swaps left<->right in RTL subtrees, so `flex-start` / `textAlign:'left'`
+              already resolve to the right edge under RTL. Forcing 'right'/'flex-end'
+              would double-flip back to the left. */}
+          <View style={{ flex: 1, gap: 2, alignItems: 'flex-start' }}>
+            <Text style={[s.costsLabel, { color: colors.inkMuted, textAlign: 'left' }]}>
+              {tr('cta.costsLabel')}
+            </Text>
+            <Text
+              style={[
+                s.costsValue,
+                { color: colors.ink, fontFamily: ff.monoSemibold, textAlign: 'left' },
+              ]}
+            >
+              {tr('credits', { count: t.credits })}
             </Text>
           </View>
           <Button
@@ -225,7 +237,7 @@ export default function TemplateDetailScreen() {
             onPress={() => router.push(`/use/${t.id}`)}
             leading={<Icon name="wand" size={20} color={accent.ink} weight="fill" />}
           >
-            Use template
+            {tr('cta.useTemplate')}
           </Button>
         </View>
       ) : null}
@@ -235,7 +247,7 @@ export default function TemplateDetailScreen() {
         <GlassButton
           icon="chevronLeft"
           onPress={() => router.back()}
-          accessibilityLabel="Back"
+          accessibilityLabel={tr('a11y.back')}
         />
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <GlassButton
@@ -246,12 +258,12 @@ export default function TemplateDetailScreen() {
               if (!t) return;
               favoriteMutation.mutate(!favorited);
             }}
-            accessibilityLabel={favorited ? 'Remove from saved' : 'Save to library'}
+            accessibilityLabel={favorited ? tr('a11y.removeFromSaved') : tr('a11y.saveToLibrary')}
           />
           <GlassButton
             icon="share"
             onPress={handleShare}
-            accessibilityLabel="Share template"
+            accessibilityLabel={tr('a11y.shareTemplate')}
           />
         </View>
       </View>
@@ -301,8 +313,11 @@ const INPUT_ICON_FALLBACK: IconName = 'text';
 
 function OutputRow({ output }: { output: TemplateOutputSummary }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('template');
   const isVideo = output.kind === 'video';
-  const label = `${output.count} ${labelFor(output.kind, output.count)}`;
+  const label = isVideo
+    ? t('output.video', { count: output.count })
+    : t('output.image', { count: output.count });
   return (
     <View style={[s.inputRow, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}>
       <View style={[s.inputIcon, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -311,20 +326,16 @@ function OutputRow({ output }: { output: TemplateOutputSummary }) {
       <View style={{ flex: 1 }}>
         <Text style={[s.inputLabel, { color: colors.ink }]}>{label}</Text>
         <Text style={[s.inputHint, { color: colors.inkMuted }]}>
-          {isVideo ? 'Animated, mp4' : 'High-resolution image'}
+          {isVideo ? t('output.videoHint') : t('output.imageHint')}
         </Text>
       </View>
     </View>
   );
 }
 
-function labelFor(kind: 'image' | 'video', count: number): string {
-  if (kind === 'image') return count === 1 ? 'image' : 'images';
-  return count === 1 ? 'video' : 'videos';
-}
-
 function InputRow({ input }: { input: TemplateInput }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('template');
   return (
     <View style={[s.inputRow, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}>
       <View style={[s.inputIcon, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -335,7 +346,7 @@ function InputRow({ input }: { input: TemplateInput }) {
         {input.helperText ? (
           <Text style={[s.inputHint, { color: colors.inkMuted }]}>{input.helperText}</Text>
         ) : !input.required ? (
-          <Text style={[s.inputHint, { color: colors.inkMuted }]}>Optional</Text>
+          <Text style={[s.inputHint, { color: colors.inkMuted }]}>{t('input.optional')}</Text>
         ) : null}
       </View>
     </View>
@@ -344,10 +355,11 @@ function InputRow({ input }: { input: TemplateInput }) {
 
 function KindChip({ kind }: { kind: CatalogTemplate['kind'] }) {
   const { accent } = useTheme();
+  const { t } = useTranslation('template');
   const labels: Record<CatalogTemplate['kind'], string> = {
-    image: 'IMAGE',
-    video: 'VIDEO',
-    set: 'SET',
+    image: t('kind.image'),
+    video: t('kind.video'),
+    set: t('kind.set'),
   };
   const icons: Record<CatalogTemplate['kind'], IconName> = {
     image: 'image',

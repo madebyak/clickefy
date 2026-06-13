@@ -15,9 +15,11 @@ import { useSignIn } from '@clerk/expo/legacy';
 import { isClerkAPIResponseError } from '@clerk/react/errors';
 import { Button, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
+import type { TFunction } from 'i18next';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { z } from 'zod';
@@ -30,20 +32,23 @@ import { tap } from '@/lib/haptics';
 /** How long to wait before the user can resend a code, in seconds. */
 const RESEND_COOLDOWN_SEC = 30;
 
-const schema = z.object({
-  code: z.string().length(6, 'Enter the 6-digit code'),
-  password: z.string().min(8, 'Use at least 8 characters'),
-});
+const buildSchema = (t: TFunction) =>
+  z.object({
+    code: z.string().length(6, t('resetPassword.validation.codeLength')),
+    password: z.string().min(8, t('common.passwordMinLength')),
+  });
 
-type ResetValues = z.infer<typeof schema>;
+type ResetValues = z.infer<ReturnType<typeof buildSchema>>;
 
 export default function ResetPasswordScreen() {
+  const { t } = useTranslation('auth');
   const { colors, accent } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signIn, setActive, isLoaded } = useSignIn();
   const raw = useLocalSearchParams<Record<string, string>>();
   const email = typeof raw.email === 'string' ? raw.email : '';
+  const schema = useMemo(() => buildSchema(t), [t]);
 
   const [resendCountdown, setResendCountdown] = useState(RESEND_COOLDOWN_SEC);
   const [resending, setResending] = useState(false);
@@ -79,7 +84,7 @@ export default function ResetPasswordScreen() {
       if (attempt.status !== 'needs_new_password') {
         setError('code', {
           type: 'clerk',
-          message: `Unexpected status: ${attempt.status}. Please try again.`,
+          message: t('resetPassword.errors.unexpectedStatus', { status: attempt.status }),
         });
         return;
       }
@@ -92,13 +97,13 @@ export default function ResetPasswordScreen() {
       }
       setError('password', {
         type: 'clerk',
-        message: 'Extra verification is required to finish. Please sign in again.',
+        message: t('resetPassword.errors.extraVerification'),
       });
     } catch (err) {
       if (isClerkAPIResponseError(err)) {
         const first = err.errors?.[0];
         const code1 = first?.code;
-        const msg = first?.longMessage ?? first?.message ?? 'Could not reset your password.';
+        const msg = first?.longMessage ?? first?.message ?? t('resetPassword.errors.couldNotReset');
         if (code1 === 'form_code_incorrect' || code1 === 'verification_expired') {
           setValue('code', '');
           setError('code', { type: 'clerk', message: msg });
@@ -110,7 +115,7 @@ export default function ResetPasswordScreen() {
       } else {
         setError('code', {
           type: 'clerk',
-          message: 'Something went wrong. Please try again.',
+          message: t('common.somethingWentWrong'),
         });
       }
     }
@@ -134,7 +139,7 @@ export default function ResetPasswordScreen() {
     } catch {
       setError('code', {
         type: 'clerk',
-        message: 'Could not resend the code. Try again in a moment.',
+        message: t('resetPassword.errors.couldNotResend'),
       });
     } finally {
       setResending(false);
@@ -146,21 +151,21 @@ export default function ResetPasswordScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
         <Text variant="title" color="ink" style={{ fontSize: 22 }}>
-          Start your password reset
+          {t('resetPassword.noEmail.title')}
         </Text>
         <Text variant="body" color="inkMuted" align="center">
-          Begin from the &quot;Forgot password&quot; screen — it only takes a moment.
+          {t('resetPassword.noEmail.body')}
         </Text>
         <Pressable
           onPress={() => router.replace('/(auth)/forgot-password')}
           haptic="light"
           pressedOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Go to forgot password"
+          accessibilityLabel={t('resetPassword.noEmail.a11y')}
           style={{ marginTop: 12, paddingVertical: 12, paddingHorizontal: 22, borderRadius: 14, backgroundColor: accent.solid }}
         >
           <Text variant="caption" weight="700" style={{ color: colors.surface, fontSize: 14 }}>
-            Reset password
+            {t('resetPassword.noEmail.action')}
           </Text>
         </Pressable>
       </View>
@@ -189,7 +194,7 @@ export default function ResetPasswordScreen() {
           haptic="light"
           pressedOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('common.back')}
           style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
         >
           <Icon name="chevronLeft" size={22} color={colors.ink} weight="bold" />
@@ -200,14 +205,14 @@ export default function ResetPasswordScreen() {
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 16, gap: 24 }}>
         <Stack gap="sm">
           <Text variant="title" color="ink" style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.8 }}>
-            Set a new password
+            {t('resetPassword.title')}
           </Text>
           <Text variant="body" color="inkMuted" style={{ lineHeight: 22 }}>
-            Enter the 6-digit code we sent to{' '}
+            {t('resetPassword.bodyPrefix')}
             <Text variant="body" color="ink" weight="700">
               {email}
-            </Text>{' '}
-            and choose a new password.
+            </Text>
+            {t('resetPassword.bodySuffix')}
           </Text>
         </Stack>
 
@@ -240,9 +245,9 @@ export default function ResetPasswordScreen() {
           render={({ field: { value, onChange, onBlur } }) => (
             <PasswordField
               variant="new"
-              label="New password"
-              placeholder="At least 8 characters"
-              helper="At least 8 characters."
+              label={t('resetPassword.passwordLabel')}
+              placeholder={t('resetPassword.passwordPlaceholder')}
+              helper={t('resetPassword.passwordHelper')}
               returnKeyType="send"
               value={value}
               onChangeText={onChange}
@@ -263,7 +268,7 @@ export default function ResetPasswordScreen() {
           onPress={handleSubmit(onSubmit)}
           trailing={<Icon name="check" size={18} weight="bold" color={colors.surface} />}
         >
-          Update password
+          {t('resetPassword.submit')}
         </Button>
 
         <View style={{ alignItems: 'center' }}>
@@ -273,16 +278,16 @@ export default function ResetPasswordScreen() {
             pressedOpacity={0.7}
             disabled={resendDisabled}
             accessibilityRole="button"
-            accessibilityLabel="Resend code"
+            accessibilityLabel={t('resetPassword.resendA11y')}
             accessibilityState={{ disabled: resendDisabled }}
             style={{ paddingVertical: 10, paddingHorizontal: 16, opacity: resendDisabled ? 0.5 : 1 }}
           >
             <Text variant="caption" color="ink" weight="700" style={{ fontSize: 14 }}>
               {resending
-                ? 'Sending\u2026'
+                ? t('resetPassword.resendSending')
                 : resendCountdown > 0
-                  ? `Resend in ${resendCountdown}s`
-                  : 'Resend code'}
+                  ? t('resetPassword.resendCountdown', { seconds: resendCountdown })
+                  : t('resetPassword.resendCode')}
             </Text>
           </Pressable>
         </View>

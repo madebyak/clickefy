@@ -17,8 +17,11 @@ import { isClerkAPIResponseError } from '@clerk/react/errors';
 import { Button, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Checkbox } from 'expo-checkbox';
+import type { TFunction } from 'i18next';
 import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import { Controller, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -33,36 +36,39 @@ import { PasswordField } from '@/components/auth/PasswordField';
 import { Icon } from '@/components/ui/Icon';
 import { tap } from '@/lib/haptics';
 
-const schema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(2, 'Please enter your full name')
-    .max(60, 'That name is a bit too long'),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .min(1, 'Email is required')
-    .email('Please enter a valid email address'),
-  // Clerk's default policy requires 8+ characters. We mirror it client-side
-  // so the user gets instant feedback; Clerk still does the authoritative
-  // check (length + breach detection) and we surface any server error below.
-  password: z
-    .string()
-    .min(8, 'Use at least 8 characters'),
-  agreedToTos: z.literal(true, {
-    errorMap: () => ({ message: 'You must accept the terms to continue' }),
-  }),
-});
+const buildSchema = (t: TFunction) =>
+  z.object({
+    name: z
+      .string()
+      .trim()
+      .min(2, t('signUp.validation.nameMin'))
+      .max(60, t('signUp.validation.nameMax')),
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .min(1, t('common.emailRequired'))
+      .email(t('common.emailInvalid')),
+    // Clerk's default policy requires 8+ characters. We mirror it client-side
+    // so the user gets instant feedback; Clerk still does the authoritative
+    // check (length + breach detection) and we surface any server error below.
+    password: z
+      .string()
+      .min(8, t('common.passwordMinLength')),
+    agreedToTos: z.literal(true, {
+      errorMap: () => ({ message: t('signUp.validation.tosRequired') }),
+    }),
+  });
 
-type SignUpValues = z.infer<typeof schema>;
+type SignUpValues = z.infer<ReturnType<typeof buildSchema>>;
 
 export default function SignUpScreen() {
+  const { t } = useTranslation('auth');
   const { colors, accent } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signUp, isLoaded } = useSignUp();
+  const schema = useMemo(() => buildSchema(t), [t]);
 
   const {
     control,
@@ -104,11 +110,11 @@ export default function SignUpScreen() {
     } catch (err) {
       if (isClerkAPIResponseError(err)) {
         const first = err.errors?.[0];
-        const msg = first?.longMessage ?? first?.message ?? 'Could not create the account.';
+        const msg = first?.longMessage ?? first?.message ?? t('signUp.errors.couldNotCreate');
         if (first?.code === 'form_identifier_exists') {
           setError('email', {
             type: 'clerk',
-            message: 'An account with this email already exists. Try signing in.',
+            message: t('signUp.errors.emailExists'),
           });
         } else if (first?.meta?.paramName === 'first_name') {
           setError('name', { type: 'clerk', message: msg });
@@ -122,7 +128,7 @@ export default function SignUpScreen() {
       } else {
         setError('email', {
           type: 'clerk',
-          message: 'Something went wrong. Please try again.',
+          message: t('common.somethingWentWrong'),
         });
       }
     }
@@ -148,7 +154,7 @@ export default function SignUpScreen() {
           haptic="light"
           pressedOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('common.back')}
           style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
         >
           <Icon name="chevronLeft" size={22} color={colors.ink} weight="bold" />
@@ -161,10 +167,10 @@ export default function SignUpScreen() {
       >
         <Stack gap="sm">
           <Text variant="title" color="ink" style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.8 }}>
-            Create your account
+            {t('signUp.title')}
           </Text>
           <Text variant="body" color="inkMuted" style={{ lineHeight: 22 }}>
-            Free to start. No card required.
+            {t('signUp.subtitle')}
           </Text>
         </Stack>
 
@@ -174,9 +180,9 @@ export default function SignUpScreen() {
             name="name"
             render={({ field: { value, onChange, onBlur } }) => (
               <FormField
-                label="Full name"
+                label={t('signUp.nameLabel')}
                 leadingIcon="profile"
-                placeholder="Ada Lovelace"
+                placeholder={t('signUp.namePlaceholder')}
                 autoCapitalize="words"
                 autoComplete="name"
                 autoCorrect={false}
@@ -195,9 +201,9 @@ export default function SignUpScreen() {
             name="email"
             render={({ field: { value, onChange, onBlur } }) => (
               <FormField
-                label="Email"
+                label={t('common.emailLabel')}
                 leadingIcon="envelope"
-                placeholder="you@example.com"
+                placeholder={t('common.emailPlaceholder')}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -218,9 +224,9 @@ export default function SignUpScreen() {
             render={({ field: { value, onChange, onBlur } }) => (
               <PasswordField
                 variant="new"
-                label="Password"
-                placeholder="At least 8 characters"
-                helper="At least 8 characters."
+                label={t('signUp.passwordLabel')}
+                placeholder={t('signUp.passwordPlaceholder')}
+                helper={t('signUp.passwordHelper')}
                 returnKeyType="send"
                 value={value}
                 onChangeText={onChange}
@@ -241,7 +247,7 @@ export default function SignUpScreen() {
                 pressedOpacity={0.7}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: !!value }}
-                accessibilityLabel="I agree to the Terms of Service and Privacy Policy"
+                accessibilityLabel={t('signUp.tos.a11y')}
                 style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 4 }}
               >
                 <Checkbox
@@ -252,15 +258,15 @@ export default function SignUpScreen() {
                 />
                 <View style={{ flex: 1 }}>
                   <Text variant="caption" color="ink" style={{ lineHeight: 20, fontSize: 13.5 }}>
-                    I agree to the{' '}
+                    {t('signUp.tos.prefix')}
                     <Text variant="caption" color="ink" weight="700" style={{ fontSize: 13.5 }}>
-                      Terms of Service
-                    </Text>{' '}
-                    and{' '}
-                    <Text variant="caption" color="ink" weight="700" style={{ fontSize: 13.5 }}>
-                      Privacy Policy
+                      {t('signUp.tos.terms')}
                     </Text>
-                    .
+                    {t('signUp.tos.and')}
+                    <Text variant="caption" color="ink" weight="700" style={{ fontSize: 13.5 }}>
+                      {t('signUp.tos.privacy')}
+                    </Text>
+                    {t('signUp.tos.period')}
                   </Text>
                   {errors.agreedToTos ? (
                     <Text variant="caption" color="danger" style={{ marginTop: 4, fontSize: 12 }}>
@@ -283,7 +289,7 @@ export default function SignUpScreen() {
           onPress={handleSubmit(onSubmit)}
           trailing={<Icon name="arrowRight" size={18} weight="bold" color={colors.surface} />}
         >
-          Create account
+          {t('signUp.submit')}
         </Button>
 
         <View style={{ flex: 1 }} />
@@ -295,13 +301,13 @@ export default function SignUpScreen() {
             haptic="light"
             pressedOpacity={0.7}
             accessibilityRole="link"
-            accessibilityLabel="Sign in to an existing account"
+            accessibilityLabel={t('signUp.footerA11y')}
             style={{ paddingVertical: 8 }}
           >
             <Text variant="caption" color="inkMuted" style={{ fontSize: 14 }}>
-              Already have an account?{' '}
+              {t('signUp.footerPrefix')}
               <Text variant="caption" color="ink" weight="700" style={{ fontSize: 14 }}>
-                Sign in
+                {t('signUp.footerAction')}
               </Text>
             </Text>
           </Pressable>

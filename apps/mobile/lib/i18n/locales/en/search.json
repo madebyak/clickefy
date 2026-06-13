@@ -1,0 +1,90 @@
+{
+  "input": {
+    "placeholder": "Search templates",
+    "searchInCategory": "Search in {{category}}",
+    "back": "Back",
+    "clearAccessibilityLabel": "Clear search"
+  },
+  "meta": {
+    "searching": "Searching…",
+    "results_one": "{{formatted}} result",
+    "results_other": "{{formatted}} results"
+  },
+  "filterButton": {
+    "label": "Filters",
+    "accessibilityLabel": "Filters",
+    "accessibilityLabelActive_one": "Filters ({{count}} active)",
+    "accessibilityLabelActive_other": "Filters ({{count}} active)"
+  },
+  "credits_one": "{{count}} credit",
+  "credits_other": "{{count}} credits",
+  "noResults": {
+    "title": "No results",
+    "withQuery": "No templates match \"{{query}}\". Try a different keyword or clear your filters.",
+    "noQuery": "No templates match these filters. Try widening the criteria.",
+    "clearFilters": "Clear filters"
+  },
+  "recents": {
+    "title": "Recent",
+    "clear": "Clear",
+    "clearAccessibilityLabel": "Clear recent searches",
+    "searchItemAccessibilityLabel": "Search {{query}}",
+    "removeAccessibilityLabel": "Remove {{query}} from recents"
+  },
+  "categories": {
+    "title": "Browse categories",
+    "browseAccessibilityLabel": "Browse {{category}}"
+  },
+  "kind": {
+    "image": "Image",
+    "video": "Video",
+    "set": "Set"
+  },
+  "filtersSheet": {
+    "title": "Filters",
+    "close": "Close",
+    "sections": {
+      "type": "Type",
+      "featured": "Featured",
+      "sort": "Sort"
+    },
+    "featured": {
+      "title": "Featured only",
+      "description": "Hand-picked, hero-quality templates"
+    },
+    "sort": {
+      "default": { "label": "Recommended", "description": "Curated picks first" },
+      "recent": { "label": "Newest", "description": "Most recently added" },
+      "popular": { "label": "Most popular", "description": "Most-used templates first" }
+    },
+    "reset": "Reset",
+    "resetAccessibilityLabel": "Reset filters",
+    "apply": "Show results",
+    "applyCount_one": "Show {{formatted}} result",
+    "applyCount_other": "Show {{formatted}} results"
+  },
+  "activeFilters": {
+    "inCategory": "In {{category}}",
+    "featured": "Featured",
+    "removeAccessibilityLabel": "Remove {{label}} filter",
+    "clearAll": "Clear all",
+    "clearAllAccessibilityLabel": "Clear all filters",
+    "sort": {
+      "default": "Recommended",
+      "recent": "Newest",
+      "popular": "Popular"
+    }
+  },
+  "section": {
+    "defaultTitle": "Templates",
+    "back": "Back",
+    "empty": {
+      "title": "Nothing here yet",
+      "description": "Check back soon — new templates land here as they go live."
+    },
+    "unknown": {
+      "title": "Section not found",
+      "description": "That link is no longer valid. Pull down or go back to refresh."
+    }
+  }
+}

@@ -10,6 +10,7 @@ import {
 import type { GenerationProgress } from '@clickfy/sdk';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
@@ -27,18 +28,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { getSDK } from '@/lib/sdk';
 
-/**
- * Fallback label rendered when we don't have progress data yet
- * (queued, first ~1s of a job). Once the Trigger.dev task starts,
- * the real per-stage message replaces this.
- */
-const QUEUED_LABEL = 'Waiting in queue…';
-
 export default function GeneratingScreen() {
   const { jobId, templateId } = useLocalSearchParams<{ jobId: string; templateId: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('generate');
   const sdk = getSDK();
 
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
@@ -86,10 +81,10 @@ export default function GeneratingScreen() {
 
         <Stack gap="sm" align="center" style={{ maxWidth: 320 }}>
           <Text variant="title" color="ink" align="center" style={{ fontSize: 26, lineHeight: 30 }}>
-            Cooking your shot…
+            {t('title')}
           </Text>
           <Text variant="body" color="inkMuted" align="center">
-            Usually takes 20–40 seconds. Feel free to leave — we&apos;ll ping you when it&apos;s ready.
+            {t('subtitle')}
           </Text>
         </Stack>
 
@@ -112,17 +107,17 @@ export default function GeneratingScreen() {
                   color="ink"
                   style={{ fontSize: 14, lineHeight: 18 }}
                 >
-                  {progress?.stageLabel || QUEUED_LABEL}
+                  {progress?.stageLabel || t('queuedLabel')}
                 </Text>
                 {progress && progress.stageCount > 1 ? (
                   <Text variant="caption" color="inkMuted">
-                    Step {progress.stageIndex} of {progress.stageCount}
+                    {t('step', { current: progress.stageIndex, total: progress.stageCount })}
                   </Text>
                 ) : null}
               </Stack>
               {progress?.status === 'processing' ? (
                 <Text variant="caption" color={accent.solid} weight="700">
-                  Working…
+                  {t('working')}
                 </Text>
               ) : null}
             </HStack>
@@ -148,7 +143,7 @@ export default function GeneratingScreen() {
           // their balance restored.
           <Stack gap="sm">
             <Text variant="bodySemi" color="ink" align="center">
-              {progress.error || 'Something went wrong while generating.'}
+              {progress.error || t('errorFallback')}
             </Text>
             {templateId ? (
               <Button
@@ -161,17 +156,17 @@ export default function GeneratingScreen() {
                   })
                 }
               >
-                Try again
+                {t('tryAgain')}
               </Button>
             ) : (
               <Button variant="primary" full onPress={() => router.replace('/(tabs)')}>
-                Back to home
+                {t('backToHome')}
               </Button>
             )}
           </Stack>
         ) : (
           <Button variant="ghost" full onPress={() => router.back()}>
-            Run in background
+            {t('runInBackground')}
           </Button>
         )}
       </Box>

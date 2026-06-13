@@ -1,0 +1,20 @@
+{
+  "overline": "Saved",
+  "title": "Your bookmarks",
+  "subtitle_one": "{{count}} template you’ve saved",
+  "subtitle_other": "{{count}} templates you’ve saved",
+  "filters": {
+    "all": "All",
+    "image": "Image",
+    "video": "Video",
+    "set": "Set"
+  },
+  "credits_one": "{{count}} credit",
+  "credits_other": "{{count}} credits",
+  "empty": {
+    "allTitle": "No saved templates yet",
+    "filteredTitle": "No {{filter}} templates saved",
+    "allDescription": "Tap the bookmark on any template to keep it close at hand.",
+    "filteredDescription": "Try a different filter, or open a template and tap the bookmark icon."
+  }
+}

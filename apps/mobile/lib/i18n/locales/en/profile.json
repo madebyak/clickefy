@@ -1,0 +1,129 @@
+{
+  "identity": {
+    "signInPrompt": "Sign in to Clickefy"
+  },
+  "plan": {
+    "sectionTitle": "Your plan",
+    "topUp": "Top up",
+    "credits": "Credits",
+    "renews": "Renews"
+  },
+  "language": {
+    "title": "Language",
+    "caption": "Changes the app interface language. Switching restarts the app."
+  },
+  "appearance": {
+    "title": "Appearance",
+    "modeSystem": "System",
+    "modeLight": "Light",
+    "modeDark": "Dark",
+    "darkMode": "Dark mode",
+    "followingSystem": "Following system",
+    "on": "On",
+    "off": "Off",
+    "accent": "Accent",
+    "accents": {
+      "violet": "Violet",
+      "coral": "Coral",
+      "citrus": "Citrus",
+      "ocean": "Ocean"
+    },
+    "accentA11y": "{{accent}} accent",
+    "debug": "Active accent: {{accent}} · Scheme: {{scheme}} · Brand: {{brand}}"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "jobComplete": {
+      "label": "Job complete",
+      "helper": "Get notified when a generation finishes."
+    },
+    "productUpdates": {
+      "label": "Product updates",
+      "helper": "New templates, paywall offers, milestones."
+    },
+    "tips": {
+      "label": "Tips & tutorials",
+      "helper": "Get the most out of Clickfy."
+    },
+    "diagnostic": {
+      "checking": "Checking…",
+      "label": "Check notification setup",
+      "helper": "Tap to verify this device can receive push.",
+      "registeredTitle": "Push registered ✅",
+      "registeredMessage": "Token: {{token}}…\n\nThis device is now reachable from the admin panel.",
+      "failedTitle": "Push registration failed",
+      "unknownReason": "Unknown reason: {{reason}}",
+      "reasons": {
+        "simulator": "You're on a simulator. Push tokens only work on a real device.",
+        "permissionDenied": "Notification permission is OFF. Open iOS Settings → Notifications → Expo Go → enable Allow Notifications, then tap this button again.",
+        "noProjectId": "Couldn't find the Expo projectId. Restart the app from the QR code.",
+        "tokenFetchFailed": "Expo could not issue a push token. Common causes: no internet, Apple Push servers blocked on this network.",
+        "backendRegisterFailed": "Got a token from Expo but our API rejected it. Check that you're signed in."
+      }
+    }
+  },
+  "actions": {
+    "editProfile": "Edit profile",
+    "savedTemplates": "Saved templates",
+    "buyCredits": "Buy credits"
+  },
+  "legal": {
+    "title": "Legal & policies"
+  },
+  "auth": {
+    "signOut": "Sign out",
+    "signIn": "Sign in"
+  },
+  "danger": {
+    "title": "Danger zone",
+    "description": "Deleting your account is permanent. Your library, history, and any unused credits are removed and can't be restored.",
+    "confirmTitle": "Delete your account?",
+    "confirmMessage": "This permanently removes your account, library, and any unused credits. We can't undo this.",
+    "cancel": "Cancel",
+    "delete": "Delete account",
+    "deleting": "Deleting…",
+    "errorTitle": "Could not delete",
+    "errorMessage": "Check your connection and try again."
+  },
+  "edit": {
+    "headerTitle": "Edit profile",
+    "changePhoto": "Change photo",
+    "addPhoto": "Add photo",
+    "identity": "Identity",
+    "displayName": "Display name",
+    "namePlaceholder": "Your name",
+    "email": "Email",
+    "readOnly": "Read only",
+    "emailHelper": "Email changes are managed by your sign-in provider.",
+    "account": "Account",
+    "memberSince": "Member since",
+    "saveChanges": "Save changes",
+    "signInToEdit": "Sign in to edit your profile.",
+    "photoPermTitle": "Photo access needed",
+    "photoPermMessage": "Allow photo library access to change your avatar.",
+    "uploadFailedTitle": "Upload failed",
+    "saveFailedTitle": "Save failed",
+    "tryAgain": "Try again.",
+    "nameEmpty": "Name cannot be empty.",
+    "nameTooLong": "Keep it under 80 characters."
+  },
+  "drawer": {
+    "nav": {
+      "explore": "Explore",
+      "library": "Library",
+      "projects": "Projects",
+      "savedTemplates": "Saved templates",
+      "buyCredits": "Buy credits",
+      "notifications": "Notifications",
+      "settings": "Settings"
+    },
+    "closeMenu": "Close menu",
+    "close": "Close",
+    "signedOut": "You're signed out",
+    "signIn": "Sign in →",
+    "language": "Language",
+    "darkMode": "Dark mode",
+    "signOut": "Sign out",
+    "replayOnboarding": "Replay onboarding (dev)"
+  }
+}

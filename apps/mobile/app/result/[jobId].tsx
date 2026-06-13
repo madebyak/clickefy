@@ -30,6 +30,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, ScrollView, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -49,6 +50,7 @@ export default function ResultScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, accent } = useTheme();
+  const { t: tr } = useTranslation('generate');
   const sdk = getSDK();
   const toast = useToast();
 
@@ -115,7 +117,7 @@ export default function ResultScreen() {
   const handleShare = async () => {
     if (!hero) return;
     try {
-      await Share.share({ url: hero.url, message: 'Made with Clickefy' });
+      await Share.share({ url: hero.url, message: tr('shareMessage') });
     } catch {
       // user dismissed
     }
@@ -131,7 +133,7 @@ export default function ResultScreen() {
         <CenteredState insets={insets} colors={colors}>
           <ActivityIndicator size="large" color={accent.solid} />
           <Text variant="body" color="inkMuted" align="center">
-            Loading your result…
+            {tr('loading')}
           </Text>
         </CenteredState>
       );
@@ -142,18 +144,18 @@ export default function ResultScreen() {
       return (
         <CenteredState insets={insets} colors={colors}>
           <Text variant="title" color="ink" align="center" style={{ fontSize: 22 }}>
-            Generation failed
+            {tr('failedTitle')}
           </Text>
           <Text variant="body" color="inkMuted" align="center">
-            {jobQuery.data?.error || 'Something went wrong while generating.'}
+            {jobQuery.data?.error || tr('errorFallback')}
           </Text>
           {templateId ? (
             <Button variant="primary" full onPress={() => router.replace(`/use/${templateId}`)}>
-              Try again
+              {tr('tryAgain')}
             </Button>
           ) : (
             <Button variant="primary" full onPress={() => router.replace('/(tabs)')}>
-              Back to home
+              {tr('backToHome')}
             </Button>
           )}
         </CenteredState>
@@ -166,13 +168,13 @@ export default function ResultScreen() {
       return (
         <CenteredState insets={insets} colors={colors}>
           <Text variant="title" color="ink" align="center" style={{ fontSize: 22 }}>
-            Result unavailable
+            {tr('unavailableTitle')}
           </Text>
           <Text variant="body" color="inkMuted" align="center">
-            We couldn&apos;t load this generation. It may have been removed.
+            {tr('unavailableMessage')}
           </Text>
           <Button variant="primary" full onPress={() => router.replace('/(tabs)')}>
-            Back to home
+            {tr('backToHome')}
           </Button>
         </CenteredState>
       );
@@ -206,16 +208,16 @@ export default function ResultScreen() {
           >
             <Icon name="check" size={11} color={accent.deep} weight="bold" />
             <Text color={accent.deep} weight="700" transform="uppercase" style={{ fontSize: 11.5, letterSpacing: 0.4 }}>
-              Ready
+              {tr('ready')}
             </Text>
           </View>
           <Stack gap="xs" mt="sm">
             <Text variant="title" color="ink" style={{ fontSize: 30, lineHeight: 32 }}>
-              Your generation
+              {tr('resultTitle')}
             </Text>
             <Text variant="caption" color="inkMuted">
-              {outputs.length} output{outputs.length === 1 ? '' : 's'}
-              {t ? ` · ${t.title} template` : ''}
+              {tr('outputCount', { count: outputs.length })}
+              {t ? tr('templateSuffix', { title: t.title }) : ''}
             </Text>
           </Stack>
         </Box>
@@ -246,7 +248,7 @@ export default function ResultScreen() {
         {variants.length > 0 ? (
           <Box px="lg" pb="md">
             <Text variant="overline" color="ink" transform="uppercase" weight="700" style={{ marginBottom: 12 }}>
-              Variations
+              {tr('variations')}
             </Text>
             <Stack gap="md">
               {variants.map((out, i) => (
@@ -272,7 +274,7 @@ export default function ResultScreen() {
                 leading={<Icon name="download" size={18} color={accent.ink} weight="bold" />}
                 onPress={() => void downloadOutputs(outputs, toast)}
               >
-                Download all ({outputs.length})
+                {tr('downloadAll', { count: outputs.length })}
               </Button>
             ) : null}
 
@@ -286,7 +288,7 @@ export default function ResultScreen() {
                 if (templateId) router.replace(`/use/${templateId}`);
               }}
             >
-              Regenerate{t ? ` · ${t.credits} credits` : ''}
+              {t ? tr('regenerateWithCredits', { count: t.credits }) : tr('regenerate')}
             </Button>
 
             <Button
@@ -298,7 +300,7 @@ export default function ResultScreen() {
                 if (templateId) router.replace(`/use/${templateId}`);
               }}
             >
-              Tweak inputs
+              {tr('tweakInputs')}
             </Button>
           </Stack>
         </Box>
@@ -354,6 +356,7 @@ function HeroSlot({
   onReport: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('generate');
 
   return (
     <View
@@ -393,12 +396,12 @@ function HeroSlot({
           gap: 10,
         }}
       >
-        <GlassButton icon="share" label="Share result" onPress={onShare} />
+        <GlassButton icon="share" label={t('a11y.shareResult')} onPress={onShare} />
         {/* Flag — required by App Store guideline 1.2 for any UGC.
             Sits next to Share so it's discoverable without scrolling,
             but the colour stays neutral-glass so it doesn't compete
             with the primary Download CTA on the right. */}
-        <GlassButton icon="flag" label="Report this generation" onPress={onReport} />
+        <GlassButton icon="flag" label={t('a11y.reportGeneration')} onPress={onReport} />
         <View style={{ flex: 1 }} />
         <Pressable
           onPress={onDownload}
@@ -416,7 +419,7 @@ function HeroSlot({
         >
           <Icon name="download" size={16} color={colors.chipInk} />
           <Text color={colors.chipInk} weight="700" style={{ fontSize: 14 }}>
-            Download
+            {t('download')}
           </Text>
         </Pressable>
       </View>
@@ -434,6 +437,7 @@ function VariantCard({
   onDownload: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('generate');
 
   return (
     <View
@@ -458,11 +462,11 @@ function VariantCard({
         onPress={onDownload}
         haptic="light"
         pressedOpacity={0.85}
-        accessibilityLabel="Download this variation"
+        accessibilityLabel={t('a11y.downloadVariation')}
         style={{
           position: 'absolute',
           bottom: 12,
-          right: 12,
+          end: 12,
           width: 40,
           height: 40,
           borderRadius: 20,

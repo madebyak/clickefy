@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, TextInput, View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
@@ -100,6 +101,7 @@ type UploadState =
 
 function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProps) {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('template');
   const isVideo = input.type === 'video';
   const fallbackMime = isVideo ? DEFAULT_VIDEO_MIME : DEFAULT_IMAGE_MIME;
 
@@ -208,7 +210,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
         return;
       }
 
-      const message = err instanceof Error ? err.message : 'Upload failed.';
+      const message = err instanceof Error ? err.message : t('upload.failed');
       // Surface to Sentry with the upload context so we can diagnose
       // future failures without having to add log statements ad-hoc.
       // `fingerprint` groups all upload errors together regardless of
@@ -315,8 +317,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
       onChange('');
       setUploadState({
         phase: 'error',
-        message:
-          "We couldn't process this photo. It may be in a format we can't read — please choose a different image.",
+        message: t('upload.processError'),
       });
       onUploadComplete?.(null);
     }
@@ -376,7 +377,11 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
         onPress={value ? () => {} : pickFromLibrary}
         haptic="light"
         pressedOpacity={0.92}
-        accessibilityLabel={`${input.label} ${value ? 'preview' : 'upload'}`}
+        accessibilityLabel={
+          value
+            ? t('a11y.preview', { label: input.label })
+            : t('a11y.upload', { label: input.label })
+        }
         style={{
           height: 200,
           borderRadius: 22,
@@ -428,8 +433,10 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
                   <ActivityIndicator size="small" color="#FFFFFF" />
                   <Text color="#FFFFFF" weight="600" style={{ fontSize: 12, flex: 1 }}>
                     {uploadState.progress > 0
-                      ? `Uploading ${Math.round(uploadState.progress * 100)}%`
-                      : 'Uploading…'}
+                      ? t('upload.uploadingPercent', {
+                          percent: Math.round(uploadState.progress * 100),
+                        })
+                      : t('upload.uploading')}
                   </Text>
                 </HStack>
                 {/* Thin determinate progress bar. We keep the visual
@@ -457,7 +464,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
               <View
                 style={{
                   position: 'absolute',
-                  left: 10,
+                  start: 10,
                   bottom: 10,
                   paddingHorizontal: 10,
                   paddingVertical: 6,
@@ -470,7 +477,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
               >
                 <Icon name="check" size={12} color="#FFFFFF" weight="bold" />
                 <Text color="#FFFFFF" weight="600" style={{ fontSize: 12 }}>
-                  Ready
+                  {t('upload.ready')}
                 </Text>
               </View>
             ) : uploadState.phase === 'rate_limited' ? (
@@ -488,10 +495,10 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
               <Pressable
                 onPress={retryUpload}
                 haptic="warning"
-                accessibilityLabel="Retry upload"
+                accessibilityLabel={t('upload.retry')}
                 style={{
                   position: 'absolute',
-                  left: 10,
+                  start: 10,
                   bottom: 10,
                   paddingHorizontal: 10,
                   paddingVertical: 6,
@@ -504,7 +511,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
               >
                 <Icon name="refresh" size={12} color="#FFFFFF" weight="bold" />
                 <Text color="#FFFFFF" weight="600" style={{ fontSize: 12 }}>
-                  Retry upload
+                  {t('upload.retry')}
                 </Text>
               </Pressable>
             ) : null}
@@ -513,7 +520,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
               style={{
                 position: 'absolute',
                 top: 10,
-                right: 10,
+                end: 10,
                 flexDirection: 'row',
                 gap: 6,
               }}
@@ -521,7 +528,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
               <Pressable
                 onPress={clearSelection}
                 haptic="warning"
-                accessibilityLabel="Remove"
+                accessibilityLabel={t('a11y.remove')}
                 style={{
                   width: 36,
                   height: 36,
@@ -536,7 +543,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
               <Pressable
                 onPress={pickFromLibrary}
                 haptic="light"
-                accessibilityLabel="Replace"
+                accessibilityLabel={t('a11y.replace')}
                 style={{
                   width: 36,
                   height: 36,
@@ -574,7 +581,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
               />
             </View>
             <Text variant="bodySemi" color="ink" style={{ fontSize: 15 }}>
-              {isVideo ? 'Add your video' : 'Drop your photo'}
+              {isVideo ? t('upload.addVideo') : t('upload.dropPhoto')}
             </Text>
             {input.helperText ? (
               <Text variant="caption" color="inkMuted" align="center" style={{ paddingHorizontal: 24 }}>
@@ -590,7 +597,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
                   <Icon name="imageStack" size={14} color={colors.surface} />
                 }
               >
-                {isVideo ? 'Choose video' : 'Choose photo'}
+                {isVideo ? t('upload.chooseVideo') : t('upload.choosePhoto')}
               </Button>
               {!isVideo && (
                 <Button
@@ -601,7 +608,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
                     <Icon name="camera" size={14} color={colors.ink} weight="fill" />
                   }
                 >
-                  Take photo
+                  {t('upload.takePhoto')}
                 </Button>
               )}
             </HStack>
@@ -622,7 +629,7 @@ function MediaInput({ input, value, onChange, onUploadComplete }: InputFieldProp
       ) : null}
       {uploadState.phase === 'rate_limited' ? (
         <Text variant="caption" color="inkMuted" style={{ paddingHorizontal: 4 }}>
-          You&apos;re uploading a little too fast. We&apos;ll let you retry in a moment.
+          {t('upload.rateLimitedCaption')}
         </Text>
       ) : null}
     </Stack>
@@ -649,6 +656,7 @@ function RateLimitedPill({
   availableAt: number;
   onRetry: () => void;
 }) {
+  const { t } = useTranslation('template');
   const [now, setNow] = useState(() => Date.now());
 
   // Tick once per second while the countdown is active. Stops as soon
@@ -667,11 +675,13 @@ function RateLimitedPill({
       onPress={ready ? onRetry : () => {}}
       haptic={ready ? 'light' : 'warning'}
       accessibilityLabel={
-        ready ? 'Retry upload' : `Retry available in ${remainingSeconds} seconds`
+        ready
+          ? t('upload.retry')
+          : t('upload.retryAvailableIn', { seconds: remainingSeconds })
       }
       style={{
         position: 'absolute',
-        left: 10,
+        start: 10,
         bottom: 10,
         paddingHorizontal: 10,
         paddingVertical: 6,
@@ -689,7 +699,7 @@ function RateLimitedPill({
         weight="bold"
       />
       <Text color="#FFFFFF" weight="600" style={{ fontSize: 12 }}>
-        {ready ? 'Retry upload' : `Try again in ${remainingSeconds}s`}
+        {ready ? t('upload.retry') : t('upload.tryAgainIn', { seconds: remainingSeconds })}
       </Text>
     </Pressable>
   );
@@ -762,6 +772,7 @@ function TextInputField({ input, value, onChange }: InputFieldProps) {
 // ─── Shared label ────────────────────────────────────────────────────
 
 function FieldLabel({ input }: { input: TemplateInput }) {
+  const { t } = useTranslation('template');
   return (
     <HStack align="center" gap="xs">
       <Text variant="overline" color="ink" transform="uppercase" weight="700" style={{ letterSpacing: 0.5 }}>
@@ -773,7 +784,7 @@ function FieldLabel({ input }: { input: TemplateInput }) {
         </Text>
       ) : (
         <Text variant="overline" color="inkMuted" weight="500" style={{ textTransform: 'none', letterSpacing: 0 }}>
-          · optional
+          {t('input.optionalSuffix')}
         </Text>
       )}
     </HStack>

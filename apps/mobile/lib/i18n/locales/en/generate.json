@@ -1,0 +1,33 @@
+{
+  "queuedLabel": "Waiting in queue…",
+  "title": "Cooking your shot…",
+  "subtitle": "Usually takes 20–40 seconds. Feel free to leave — we'll ping you when it's ready.",
+  "step": "Step {{current}} of {{total}}",
+  "working": "Working…",
+  "errorFallback": "Something went wrong while generating.",
+  "tryAgain": "Try again",
+  "backToHome": "Back to home",
+  "runInBackground": "Run in background",
+  "loading": "Loading your result…",
+  "failedTitle": "Generation failed",
+  "unavailableTitle": "Result unavailable",
+  "unavailableMessage": "We couldn't load this generation. It may have been removed.",
+  "ready": "Ready",
+  "resultTitle": "Your generation",
+  "outputCount_one": "{{count}} output",
+  "outputCount_other": "{{count}} outputs",
+  "templateSuffix": " · {{title}} template",
+  "download": "Download",
+  "variations": "Variations",
+  "downloadAll": "Download all ({{count}})",
+  "regenerate": "Regenerate",
+  "regenerateWithCredits_one": "Regenerate · {{count}} credit",
+  "regenerateWithCredits_other": "Regenerate · {{count}} credits",
+  "tweakInputs": "Tweak inputs",
+  "shareMessage": "Made with Clickefy",
+  "a11y": {
+    "shareResult": "Share result",
+    "reportGeneration": "Report this generation",
+    "downloadVariation": "Download this variation"
+  }
+}

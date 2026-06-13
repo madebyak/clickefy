@@ -1,0 +1,88 @@
+{
+  "kind": {
+    "image": "صورة",
+    "video": "فيديو",
+    "set": "مجموعة"
+  },
+  "sections": {
+    "whatYouGet": "ما ستحصل عليه",
+    "youllProvide": "ما ستوفّره"
+  },
+  "output": {
+    "image_zero": "{{count}} صورة",
+    "image_one": "صورة واحدة",
+    "image_two": "صورتان",
+    "image_few": "{{count}} صور",
+    "image_many": "{{count}} صورة",
+    "image_other": "{{count}} صورة",
+    "video_zero": "{{count}} فيديو",
+    "video_one": "فيديو واحد",
+    "video_two": "فيديوهان",
+    "video_few": "{{count}} فيديوهات",
+    "video_many": "{{count}} فيديو",
+    "video_other": "{{count}} فيديو",
+    "imageHint": "صورة عالية الدقة",
+    "videoHint": "متحرّك، mp4"
+  },
+  "input": {
+    "optional": "اختياري",
+    "optionalSuffix": "· اختياري"
+  },
+  "credits_zero": "{{count}} رصيد",
+  "credits_one": "رصيد واحد",
+  "credits_two": "رصيدان",
+  "credits_few": "{{count}} أرصدة",
+  "credits_many": "{{count}} رصيدًا",
+  "credits_other": "{{count}} رصيد",
+  "cta": {
+    "costsLabel": "التكلفة",
+    "useTemplate": "استخدام القالب"
+  },
+  "share": {
+    "message": "اطّلع على \"{{title}}\" على Clickefy"
+  },
+  "a11y": {
+    "back": "رجوع",
+    "saveToLibrary": "حفظ في المكتبة",
+    "removeFromSaved": "إزالة من المحفوظات",
+    "shareTemplate": "مشاركة القالب",
+    "preview": "معاينة {{label}}",
+    "upload": "رفع {{label}}",
+    "remove": "إزالة",
+    "replace": "استبدال"
+  },
+  "use": {
+    "eyebrow": "الخطوة 1 من 1",
+    "title": "استخدام القالب",
+    "aspectRatio": "نسبة الأبعاد",
+    "generate_zero": "إنشاء · {{count}} رصيد",
+    "generate_one": "إنشاء · رصيد واحد",
+    "generate_two": "إنشاء · رصيدان",
+    "generate_few": "إنشاء · {{count}} أرصدة",
+    "generate_many": "إنشاء · {{count}} رصيدًا",
+    "generate_other": "إنشاء · {{count}} رصيد",
+    "addRequiredInputs": "أضف المدخلات المطلوبة"
+  },
+  "errors": {
+    "insufficientCreditsTitle": "رصيد غير كافٍ",
+    "uploadNotFoundTitle": "لم يتم العثور على الملف المرفوع",
+    "genericTitle": "تعذّر بدء الإنشاء",
+    "genericMessage": "حدث خطأ ما — حاول مرة أخرى."
+  },
+  "upload": {
+    "uploading": "جارٍ الرفع…",
+    "uploadingPercent": "جارٍ الرفع {{percent}}%",
+    "ready": "جاهز",
+    "retry": "إعادة محاولة الرفع",
+    "failed": "فشل الرفع.",
+    "processError": "تعذّر علينا معالجة هذه الصورة. قد تكون بتنسيق لا يمكننا قراءته — يرجى اختيار صورة أخرى.",
+    "dropPhoto": "أضف صورتك",
+    "addVideo": "أضف الفيديو الخاص بك",
+    "choosePhoto": "اختيار صورة",
+    "chooseVideo": "اختيار فيديو",
+    "takePhoto": "التقاط صورة",
+    "rateLimitedCaption": "أنت ترفع بسرعة كبيرة قليلًا. سنتيح لك إعادة المحاولة بعد لحظات.",
+    "retryAvailableIn": "تتوفّر إعادة المحاولة خلال {{seconds}} ثانية",
+    "tryAgainIn": "حاول مرة أخرى خلال {{seconds}} ثانية"
+  }
+}

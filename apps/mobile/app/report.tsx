@@ -19,6 +19,7 @@
 import { useAuth } from '@clerk/expo';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -55,23 +56,25 @@ type Reason =
   | 'copyright'
   | 'other';
 
-const REASONS: { value: Reason; label: string; helper: string }[] = [
-  // Order matters: most-severe first so users intent on flagging
-  // serious abuse don't have to scroll past mild categories.
-  { value: 'csam', label: 'Child safety', helper: 'Sexual content involving minors.' },
-  { value: 'sexual_content', label: 'Sexual content', helper: 'Explicit imagery of adults, non-consensual content.' },
-  { value: 'violence_or_threats', label: 'Violence or threats', helper: 'Graphic violence, threats, self-harm.' },
-  { value: 'hate_speech', label: 'Hate speech', helper: 'Slurs or dehumanising content targeting a group.' },
-  { value: 'harassment', label: 'Harassment', helper: 'Bullying, doxxing, or sustained targeting.' },
-  { value: 'copyright', label: 'Copyright', helper: 'Uses my work without permission.' },
-  { value: 'spam', label: 'Spam', helper: 'Repetitive, promotional, or misleading.' },
-  { value: 'other', label: 'Other', helper: "Doesn't fit the categories above." },
+// Order matters: most-severe first so users intent on flagging
+// serious abuse don't have to scroll past mild categories. Labels +
+// helpers are resolved at render via i18n (see `reasons.<key>` keys).
+const REASONS: { value: Reason; key: string }[] = [
+  { value: 'csam', key: 'csam' },
+  { value: 'sexual_content', key: 'sexualContent' },
+  { value: 'violence_or_threats', key: 'violenceOrThreats' },
+  { value: 'hate_speech', key: 'hateSpeech' },
+  { value: 'harassment', key: 'harassment' },
+  { value: 'copyright', key: 'copyright' },
+  { value: 'spam', key: 'spam' },
+  { value: 'other', key: 'other' },
 ];
 
 export default function ReportScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('report');
   const { getToken } = useAuth();
   const toast = useToast();
   const { targetType, targetId } = useLocalSearchParams<{
@@ -85,11 +88,11 @@ export default function ReportScreen() {
 
   async function handleSubmit() {
     if (!reason) {
-      Alert.alert('Pick a reason', 'Choose the category that best matches your report.');
+      Alert.alert(t('pickReasonTitle'), t('pickReasonMessage'));
       return;
     }
     if (!targetType || !targetId) {
-      Alert.alert('Missing target', "We couldn't identify what you're reporting. Please try again.");
+      Alert.alert(t('missingTargetTitle'), t('missingTargetMessage'));
       return;
     }
     setSubmitting(true);
@@ -116,17 +119,11 @@ export default function ReportScreen() {
       // confirmation — protects the anonymity of the moderation flow.
       // Toast is non-blocking; the screen dismisses immediately so the
       // user isn't trapped in a modal-on-modal flow.
-      toast.success(
-        'Thanks for the report',
-        "We'll review it and take action if it breaks our policies.",
-      );
+      toast.success(t('successTitle'), t('successMessage'));
       router.back();
     } catch (err) {
       console.error('[report] submit failed', err);
-      toast.error(
-        "Couldn't submit",
-        'Check your connection and try again.',
-      );
+      toast.error(t('errorTitle'), t('errorMessage'));
     } finally {
       setSubmitting(false);
     }
@@ -153,13 +150,13 @@ export default function ReportScreen() {
         <Box px="lg" pb="lg">
           <VStack gap="sm">
             <Text variant="overline" color="inkMuted" transform="uppercase">
-              Report content
+              {t('eyebrow')}
             </Text>
             <Text variant="title" color="ink">
-              What&apos;s wrong with this?
+              {t('title')}
             </Text>
             <Text variant="caption" color="inkMuted">
-              Reports are anonymous to the creator. A human reviewer looks at every flagged item.
+              {t('subtitle')}
             </Text>
           </VStack>
         </Box>
@@ -176,7 +173,7 @@ export default function ReportScreen() {
                     onPress={() => setReason(r.value)}
                     haptic="selection"
                     pressedOpacity={0.85}
-                    accessibilityLabel={r.label}
+                    accessibilityLabel={t(`reasons.${r.key}.label`)}
                     accessibilityState={{ selected: isActive }}
                   >
                     <HStack align="center" gap="md" py="sm">
@@ -196,10 +193,10 @@ export default function ReportScreen() {
                       </View>
                       <VStack style={{ flex: 1 }} gap="xs">
                         <Text variant="bodySemi" color="ink">
-                          {r.label}
+                          {t(`reasons.${r.key}.label`)}
                         </Text>
                         <Text variant="caption" color="inkMuted">
-                          {r.helper}
+                          {t(`reasons.${r.key}.helper`)}
                         </Text>
                       </VStack>
                     </HStack>
@@ -211,7 +208,7 @@ export default function ReportScreen() {
                         style={{
                           height: 1,
                           backgroundColor: colors.border,
-                          marginLeft: 34,
+                          marginStart: 34,
                         }}
                       />
                     ) : null}
@@ -226,7 +223,7 @@ export default function ReportScreen() {
         <Box px="lg" pt="lg">
           <VStack gap="sm">
             <Text variant="overline" color="inkMuted" transform="uppercase">
-              Add context (optional)
+              {t('notesLabel')}
             </Text>
             <View
               style={{
@@ -242,7 +239,7 @@ export default function ReportScreen() {
               <TextInput
                 value={notes}
                 onChangeText={setNotes}
-                placeholder="Anything that helps us review faster (links, who's affected, etc.)"
+                placeholder={t('notesPlaceholder')}
                 placeholderTextColor={colors.inkMuted}
                 multiline
                 maxLength={2000}
@@ -258,7 +255,7 @@ export default function ReportScreen() {
               />
             </View>
             <Text variant="caption" color="inkSubtle" align="right">
-              {notes.length}/2000
+              {t('notesCount', { current: notes.length })}
             </Text>
           </VStack>
         </Box>
@@ -276,15 +273,15 @@ export default function ReportScreen() {
                 <HStack align="center" gap="sm">
                   <ActivityIndicator size="small" color="#FFFFFF" />
                   <Text color="#FFFFFF" weight="700">
-                    Submitting…
+                    {t('submitting')}
                   </Text>
                 </HStack>
               ) : (
-                'Submit report'
+                t('submit')
               )}
             </Button>
             <Button variant="ghost" full onPress={() => router.back()}>
-              Cancel
+              {t('cancel')}
             </Button>
           </VStack>
         </Box>

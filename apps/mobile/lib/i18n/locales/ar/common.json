@@ -1,0 +1,15 @@
+{
+  "appName": "Clickefy",
+  "header": {
+    "back": "رجوع",
+    "close": "إغلاق",
+    "action": "إجراء"
+  },
+  "toast": {
+    "dismiss": "إغلاق الإشعار"
+  },
+  "modal": {
+    "title": "هذه نافذة منبثقة",
+    "close": "إغلاق"
+  }
+}

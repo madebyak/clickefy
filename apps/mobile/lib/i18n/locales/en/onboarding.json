@@ -1,0 +1,28 @@
+{
+  "skip": "Skip",
+  "skipA11y": "Skip onboarding",
+  "backA11y": "Back",
+  "continue": "Continue",
+  "getStarted": "Get started",
+  "slide1": {
+    "eyebrow": "Meet Clickefy",
+    "headPre": "Studio-grade hero shots in ",
+    "headEm": "one tap",
+    "headPost": ".",
+    "body": "Drop your product photo and we'll handle the lighting, shadows, and polish — automatically."
+  },
+  "slide2": {
+    "eyebrow": "Browse the catalog",
+    "headPre": "",
+    "headEm": "Hundreds ",
+    "headPost": "of templates, zero design skills.",
+    "body": "Pick a vibe — skincare, food, fashion, tech. Every template is tuned by a creative director so you don’t have to think."
+  },
+  "slide3": {
+    "eyebrow": "Go beyond photos",
+    "headPre": "Turn any photo into a ",
+    "headEm": "scroll-stopping",
+    "headPost": " video.",
+    "body": "4–8 second product clips, perfect for Reels, TikTok, and your storefront."
+  }
+}

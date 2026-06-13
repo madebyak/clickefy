@@ -1,10 +1,13 @@
 /**
- * Edit Profile — modal screen for editing display name, locale, and the
- * user's avatar. Email is intentionally read-only here: address changes
- * must go through Clerk's verified flow (out of scope for v1).
+ * Edit Profile — modal screen for editing the display name and avatar.
+ * Email is intentionally read-only here: address changes must go through
+ * Clerk's verified flow (out of scope for v1). Language is no longer set
+ * here — it lives in the dedicated Language switcher on the Profile screen
+ * and the drawer (`components/settings/LanguageSwitcher`), because switching
+ * locale restarts the app and shouldn't be buried in a save-button form.
  *
  * Server contract:
- *   - PATCH /v1/users/me           — name + locale
+ *   - PATCH /v1/users/me           — name
  *   - POST  /v1/users/me/avatar    — multipart upload
  *
  * Both calls live in `useSession()` as mutations with optimistic cache
@@ -16,8 +19,6 @@ import {
   Box,
   Button,
   Card,
-  Chip,
-  Divider,
   HStack,
   Pressable,
   Stack,
@@ -27,6 +28,7 @@ import {
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -35,21 +37,14 @@ import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { Icon } from '@/components/ui/Icon';
 import { useSession } from '@/lib/use-session';
 
-type Locale = 'en' | 'ar';
-
-const LOCALE_OPTIONS: { value: Locale; label: string; native: string }[] = [
-  { value: 'en', label: 'English', native: 'EN' },
-  { value: 'ar', label: 'العربية', native: 'AR' },
-];
-
 export default function EditProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, accent } = useTheme();
-  const { user, locale: currentLocale, updateProfile, uploadAvatar, meQuery } = useSession();
+  const { t } = useTranslation('profile');
+  const { user, updateProfile, uploadAvatar, meQuery } = useSession();
 
   const [name, setName] = useState(user?.name ?? '');
-  const [locale, setLocale] = useState<Locale>(currentLocale);
   const [nameError, setNameError] = useState<string | undefined>();
 
   // Keep the form in sync if the upstream query refreshes (e.g. webhook
@@ -57,25 +52,17 @@ export default function EditProfileScreen() {
   // started editing.
   useEffect(() => {
     if (user?.name && !name) setName(user.name);
-    if (currentLocale && currentLocale !== locale) {
-      // Only adopt server value while we haven't diverged locally.
-      // (Heuristic: if our local value still matches the last known
-      // server value, follow the new server value.)
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.name, currentLocale]);
+  }, [user?.name]);
 
-  const isDirty = name.trim() !== (user?.name ?? '') || locale !== currentLocale;
+  const isDirty = name.trim() !== (user?.name ?? '');
   const isSaving = updateProfile.isPending;
   const isUploading = uploadAvatar.isPending;
 
   const onPickAvatar = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert(
-        'Photo access needed',
-        'Allow photo library access to change your avatar.',
-      );
+      Alert.alert(t('edit.photoPermTitle'), t('edit.photoPermMessage'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -102,18 +89,18 @@ export default function EditProfileScreen() {
         type: mime,
       });
     } catch (err) {
-      Alert.alert('Upload failed', err instanceof Error ? err.message : 'Try again.');
+      Alert.alert(t('edit.uploadFailedTitle'), err instanceof Error ? err.message : t('edit.tryAgain'));
     }
   };
 
   const onSave = async () => {
     const trimmed = name.trim();
     if (trimmed.length === 0) {
-      setNameError('Name cannot be empty.');
+      setNameError(t('edit.nameEmpty'));
       return;
     }
     if (trimmed.length > 80) {
-      setNameError('Keep it under 80 characters.');
+      setNameError(t('edit.nameTooLong'));
       return;
     }
     setNameError(undefined);
@@ -121,11 +108,10 @@ export default function EditProfileScreen() {
     try {
       await updateProfile.mutateAsync({
         ...(trimmed !== (user?.name ?? '') && { name: trimmed }),
-        ...(locale !== currentLocale && { locale }),
       });
       router.back();
     } catch (err) {
-      Alert.alert('Save failed', err instanceof Error ? err.message : 'Try again.');
+      Alert.alert(t('edit.saveFailedTitle'), err instanceof Error ? err.message : t('edit.tryAgain'));
     }
   };
 
@@ -140,7 +126,7 @@ export default function EditProfileScreen() {
         }}
       >
         <Text variant="body" color="inkMuted">
-          Sign in to edit your profile.
+          {t('edit.signInToEdit')}
         </Text>
       </View>
     );
@@ -148,7 +134,7 @@ export default function EditProfileScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
-      <ScreenHeader variant="close" title="Edit profile" />
+      <ScreenHeader variant="close" title={t('edit.headerTitle')} />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -193,7 +179,7 @@ export default function EditProfileScreen() {
                 <HStack align="center" gap="sm" px="md" py="sm">
                   <Icon name="camera" size={16} color={accent.solid} weight="fill" />
                   <Text variant="bodySemi" color={accent.solid} weight="700">
-                    {user.avatarUri ? 'Change photo' : 'Add photo'}
+                    {user.avatarUri ? t('edit.changePhoto') : t('edit.addPhoto')}
                   </Text>
                 </HStack>
               </Pressable>
@@ -204,17 +190,17 @@ export default function EditProfileScreen() {
           <Card>
             <Stack gap="md">
               <Text variant="overline" color="inkMuted" transform="uppercase">
-                Identity
+                {t('edit.identity')}
               </Text>
 
               <FormField
-                label="Display name"
+                label={t('edit.displayName')}
                 value={name}
                 onChangeText={(t) => {
                   setName(t);
                   if (nameError) setNameError(undefined);
                 }}
-                placeholder="Your name"
+                placeholder={t('edit.namePlaceholder')}
                 autoCapitalize="words"
                 error={nameError}
                 leadingIcon="profile"
@@ -224,7 +210,7 @@ export default function EditProfileScreen() {
                   in a later iteration if we want in-app changes. */}
               <Stack gap="xs">
                 <Text variant="overline" color="inkMuted" transform="uppercase">
-                  Email
+                  {t('edit.email')}
                 </Text>
                 <Box
                   style={{
@@ -249,37 +235,14 @@ export default function EditProfileScreen() {
                       </Text>
                     </HStack>
                     <Text variant="caption" color="inkSubtle">
-                      Read only
+                      {t('edit.readOnly')}
                     </Text>
                   </HStack>
                 </Box>
                 <Text variant="caption" color="inkSubtle" style={{ paddingHorizontal: 4 }}>
-                  Email changes are managed by your sign-in provider.
+                  {t('edit.emailHelper')}
                 </Text>
               </Stack>
-            </Stack>
-          </Card>
-
-          {/* Locale */}
-          <Card>
-            <Stack gap="md">
-              <Text variant="overline" color="inkMuted" transform="uppercase">
-                Language
-              </Text>
-              <HStack gap="sm" wrap="wrap">
-                {LOCALE_OPTIONS.map((opt) => (
-                  <Chip
-                    key={opt.value}
-                    label={`${opt.label} · ${opt.native}`}
-                    active={locale === opt.value}
-                    onPress={() => setLocale(opt.value)}
-                  />
-                ))}
-              </HStack>
-              <Divider />
-              <Text variant="caption" color="inkSubtle">
-                The app interface and AI prompts will follow this preference.
-              </Text>
             </Stack>
           </Card>
 
@@ -287,11 +250,11 @@ export default function EditProfileScreen() {
           <Card>
             <Stack gap="md">
               <Text variant="overline" color="inkMuted" transform="uppercase">
-                Account
+                {t('edit.account')}
               </Text>
               <HStack align="center" justify="space-between">
                 <Text variant="body" color="inkMuted">
-                  Member since
+                  {t('edit.memberSince')}
                 </Text>
                 <Text variant="bodySemi" color="ink">
                   {meQuery.data?.createdAt
@@ -320,7 +283,7 @@ export default function EditProfileScreen() {
             disabled={!isDirty || isSaving}
             loading={isSaving}
           >
-            Save changes
+            {t('edit.saveChanges')}
           </Button>
         </View>
       </KeyboardAvoidingView>

@@ -1,4 +1,5 @@
 import { HStack, Pressable, Text, useTheme } from '@clickfy/ui';
+import { useTranslation } from 'react-i18next';
 import { Pressable as RNPressable, View } from 'react-native';
 
 import { Logo } from '@/components/brand/Logo';
@@ -28,6 +29,7 @@ export interface TopBarProps {
  */
 export function TopBar({ credits, plan, onMenu, onCreditsPress }: TopBarProps) {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('home');
 
   return (
     <HStack px="base" py="sm" align="center" justify="space-between" gap="md">
@@ -36,7 +38,7 @@ export function TopBar({ credits, plan, onMenu, onCreditsPress }: TopBarProps) {
         <Pressable
           onPress={onMenu}
           haptic="light"
-          accessibilityLabel="Open menu"
+          accessibilityLabel={t('topBar.openMenu')}
           style={{
             width: 44,
             height: 44,
@@ -59,7 +61,7 @@ export function TopBar({ credits, plan, onMenu, onCreditsPress }: TopBarProps) {
       {/* Right: unified credits + plan pill */}
       <RNPressable
         onPress={onCreditsPress}
-        accessibilityLabel={`${plan} plan, ${credits} credits`}
+        accessibilityLabel={t('topBar.creditsLabel', { plan, credits })}
         accessibilityRole="button"
         style={({ pressed }) => ({
           height: 36,

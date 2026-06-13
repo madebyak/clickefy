@@ -2,6 +2,7 @@ import type { CatalogCategory } from '@clickfy/sdk';
 import { Pressable, Text, useTheme } from '@clickfy/ui';
 import { Image } from 'expo-image';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
@@ -31,13 +32,6 @@ const IMAGE_SIZE = CARD_WIDTH; // 72
 const IMAGE_RADIUS = CARD_RADIUS;
 const IMAGE_LABEL_GAP = 5;
 
-/** Synthetic "All" pseudo-category — never returned by the API. */
-const ALL_CHIP: CatalogCategory = {
-  id: 'all',
-  label: 'All',
-  imageUri: null,
-  color: 'transparent',
-};
 
 /**
  * Horizontal rail of vertical chip cards. Each chip is a small
@@ -60,12 +54,24 @@ const ALL_CHIP: CatalogCategory = {
  */
 export function CategoryRail({ categories, activeId, onSelect }: CategoryRailProps) {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('home');
+
+  // Synthetic "All" pseudo-category — never returned by the API.
+  const allChip = useMemo<CatalogCategory>(
+    () => ({
+      id: 'all',
+      label: t('categoryRail.all'),
+      imageUri: null,
+      color: 'transparent',
+    }),
+    [t],
+  );
 
   // Root-only filter (defensive — caller already filters, but a
   // double-check keeps stray children out if upstream regresses).
   const items = useMemo(
-    () => [ALL_CHIP, ...categories.filter((c) => !c.parentId)],
-    [categories],
+    () => [allChip, ...categories.filter((c) => !c.parentId)],
+    [allChip, categories],
   );
 
   return (

@@ -9,6 +9,7 @@
  */
 
 import { Pressable, Text, useTheme } from '@clickfy/ui';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
@@ -35,18 +36,6 @@ export interface ActiveFiltersBarProps {
   onClearAll?: () => void;
 }
 
-const KIND_LABEL: Record<TemplateKindFilter, string> = {
-  image: 'Image',
-  video: 'Video',
-  image_set: 'Set',
-};
-
-const SORT_LABEL: Record<TemplateSortFilter, string> = {
-  default: 'Recommended',
-  recent: 'Newest',
-  popular: 'Popular',
-};
-
 export function ActiveFiltersBar({
   filters,
   onClearKind,
@@ -55,8 +44,20 @@ export function ActiveFiltersBar({
   onClearCategory,
   onClearAll,
 }: ActiveFiltersBarProps) {
+  const { t } = useTranslation('search');
   const active = countActiveFilters(filters);
   if (active === 0) return null;
+
+  const kindLabel: Record<TemplateKindFilter, string> = {
+    image: t('kind.image'),
+    video: t('kind.video'),
+    image_set: t('kind.set'),
+  };
+  const sortLabel: Record<TemplateSortFilter, string> = {
+    default: t('activeFilters.sort.default'),
+    recent: t('activeFilters.sort.recent'),
+    popular: t('activeFilters.sort.popular'),
+  };
 
   return (
     <ScrollView
@@ -69,22 +70,22 @@ export function ActiveFiltersBar({
           result set and the user's "where am I" anchor. */}
       {filters.categoryId && filters.categoryLabel ? (
         <DismissibleChip
-          label={`In ${filters.categoryLabel}`}
+          label={t('activeFilters.inCategory', { category: filters.categoryLabel })}
           onDismiss={onClearCategory}
         />
       ) : null}
       {filters.kind ? (
         <DismissibleChip
-          label={KIND_LABEL[filters.kind]}
+          label={kindLabel[filters.kind]}
           onDismiss={onClearKind}
         />
       ) : null}
       {filters.featured ? (
-        <DismissibleChip label="Featured" onDismiss={onClearFeatured} />
+        <DismissibleChip label={t('activeFilters.featured')} onDismiss={onClearFeatured} />
       ) : null}
       {filters.sort !== 'default' ? (
         <DismissibleChip
-          label={SORT_LABEL[filters.sort]}
+          label={sortLabel[filters.sort]}
           onDismiss={onClearSort}
         />
       ) : null}
@@ -103,12 +104,13 @@ function DismissibleChip({
   onDismiss?: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('search');
   return (
     <View
       style={{
         height: 30,
-        paddingLeft: 12,
-        paddingRight: 6,
+        paddingStart: 12,
+        paddingEnd: 6,
         borderRadius: 15,
         borderWidth: 1,
         borderColor: colors.ink,
@@ -130,7 +132,7 @@ function DismissibleChip({
         onPress={onDismiss}
         haptic="light"
         accessibilityRole="button"
-        accessibilityLabel={`Remove ${label} filter`}
+        accessibilityLabel={t('activeFilters.removeAccessibilityLabel', { label })}
         style={{
           width: 22,
           height: 22,
@@ -147,12 +149,13 @@ function DismissibleChip({
 
 function ClearAllChip({ onPress }: { onPress?: () => void }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('search');
   return (
     <Pressable
       onPress={onPress}
       haptic="light"
       accessibilityRole="button"
-      accessibilityLabel="Clear all filters"
+      accessibilityLabel={t('activeFilters.clearAllAccessibilityLabel')}
       style={{
         height: 30,
         paddingHorizontal: 12,
@@ -171,7 +174,7 @@ function ClearAllChip({ onPress }: { onPress?: () => void }) {
         color="inkMuted"
         style={{ fontSize: 12.5, lineHeight: 15 }}
       >
-        Clear all
+        {t('activeFilters.clearAll')}
       </Text>
     </Pressable>
   );

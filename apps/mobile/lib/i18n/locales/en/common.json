@@ -1,0 +1,15 @@
+{
+  "appName": "Clickefy",
+  "header": {
+    "back": "Back",
+    "close": "Close",
+    "action": "Action"
+  },
+  "toast": {
+    "dismiss": "Dismiss notification"
+  },
+  "modal": {
+    "title": "This is a modal",
+    "close": "Close"
+  }
+}

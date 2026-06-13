@@ -2,7 +2,7 @@
   "expo": {
     "name": "Clickefy",
     "slug": "clickfy",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "clickfy",
@@ -111,19 +111,29 @@
       [
         "expo-build-properties",
         {
+          "ios": {
+            "extraPods": [
+              { "name": "GoogleUtilities", "modular_headers": true },
+              { "name": "RecaptchaInterop", "modular_headers": true }
+            ]
+          },
           "android": {
             "packagingOptions": {
-              "pickFirst": ["META-INF/versions/9/OSGI-INF/MANIFEST.MF"]
+              "pickFirst": [
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+              ]
             }
           }
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
+      "supportsRTL": true,
       "demoMode": false,
       "router": {},
       "eas": {

@@ -1,0 +1,19 @@
+{
+  "overline": "Library",
+  "title": "Recent templates",
+  "subtitle_one": "{{count}} template you’ve used recently",
+  "subtitle_other": "{{count}} templates you’ve used recently",
+  "savedAccessibilityLabel": "Saved templates",
+  "usedLabel": "Used {{when}}",
+  "filters": {
+    "all": "All",
+    "image": "Image",
+    "video": "Video",
+    "set": "Set"
+  },
+  "empty": {
+    "title": "Nothing here yet",
+    "allDescription": "Generate from a template and it’ll appear here automatically.",
+    "filteredDescription": "No {{filter}} templates used recently. Try another filter."
+  }
+}

@@ -22,6 +22,7 @@ import { FlashList } from '@shopify/flash-list';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -37,12 +38,14 @@ export default function SectionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors } = useTheme();
+  const { t } = useTranslation('search');
   const sdk = getSDK();
 
   const params = useLocalSearchParams<{ key: string; title?: string }>();
   const sectionKey = String(params.key ?? '');
   const spec = useMemo(() => resolveSectionSpec(sectionKey), [sectionKey]);
-  const title = (params.title && String(params.title)) || spec?.fallbackTitle || 'Templates';
+  const title =
+    (params.title && String(params.title)) || spec?.fallbackTitle || t('section.defaultTitle');
 
   const listQuery = useInfiniteQuery({
     queryKey: ['section-list', sectionKey] as const,
@@ -113,6 +116,7 @@ export default function SectionScreen() {
 
 function Header({ title, onBack }: { title: string; onBack: () => void }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('search');
   return (
     <Box px="base" py="sm">
       <View
@@ -127,7 +131,7 @@ function Header({ title, onBack }: { title: string; onBack: () => void }) {
           onPress={onBack}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('section.back')}
           style={{
             width: 36,
             height: 36,
@@ -177,26 +181,28 @@ function ResultsSkeleton() {
 }
 
 function EmptyState() {
+  const { t } = useTranslation('search');
   return (
     <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 6 }}>
       <Text variant="bodySemi" color="ink" align="center">
-        Nothing here yet
+        {t('section.empty.title')}
       </Text>
       <Text variant="caption" color="inkMuted" align="center">
-        Check back soon — new templates land here as they go live.
+        {t('section.empty.description')}
       </Text>
     </View>
   );
 }
 
 function UnknownSection() {
+  const { t } = useTranslation('search');
   return (
     <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 6 }}>
       <Text variant="bodySemi" color="ink" align="center">
-        Section not found
+        {t('section.unknown.title')}
       </Text>
       <Text variant="caption" color="inkMuted" align="center">
-        That link is no longer valid. Pull down or go back to refresh.
+        {t('section.unknown.description')}
       </Text>
     </View>
   );

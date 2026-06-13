@@ -20,9 +20,11 @@ import { useSignIn } from '@clerk/expo/legacy';
 import { isClerkAPIResponseError } from '@clerk/react/errors';
 import { Button, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
+import type { TFunction } from 'i18next';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { z } from 'zod';
@@ -32,23 +34,26 @@ import { PasswordField } from '@/components/auth/PasswordField';
 import { Icon } from '@/components/ui/Icon';
 import { tap } from '@/lib/haptics';
 
-const schema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .min(1, 'Email is required')
-    .email('Please enter a valid email address'),
-  password: z.string().min(1, 'Password is required'),
-});
+const buildSchema = (t: TFunction) =>
+  z.object({
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .min(1, t('common.emailRequired'))
+      .email(t('common.emailInvalid')),
+    password: z.string().min(1, t('signIn.passwordRequired')),
+  });
 
-type SignInValues = z.infer<typeof schema>;
+type SignInValues = z.infer<ReturnType<typeof buildSchema>>;
 
 export default function SignInScreen() {
+  const { t } = useTranslation('auth');
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signIn, setActive, isLoaded } = useSignIn();
+  const schema = useMemo(() => buildSchema(t), [t]);
 
   // The "email me a code instead" path runs independently of form submit, so
   // it gets its own in-flight flag to drive the secondary button's spinner.
@@ -81,16 +86,16 @@ export default function SignInScreen() {
       // user to the code flow rather than dead-ending them.
       setError('password', {
         type: 'clerk',
-        message: 'Extra verification is required. Use “Email me a code instead”.',
+        message: t('signIn.errors.mfaRequired'),
       });
     } catch (err) {
       if (isClerkAPIResponseError(err)) {
         const first = err.errors?.[0];
-        const msg = first?.longMessage ?? first?.message ?? 'Could not sign in.';
+        const msg = first?.longMessage ?? first?.message ?? t('signIn.errors.couldNotSignIn');
         if (first?.code === 'form_identifier_not_found') {
           setError('email', {
             type: 'clerk',
-            message: "We don't recognize this email. Tap “Sign up” below to create an account.",
+            message: t('signIn.errors.identifierNotFound'),
           });
         } else if (
           first?.code === 'form_password_incorrect' ||
@@ -98,7 +103,7 @@ export default function SignInScreen() {
         ) {
           setError('password', {
             type: 'clerk',
-            message: 'Incorrect password. Use “Forgot password?” to reset it.',
+            message: t('signIn.errors.passwordIncorrect'),
           });
         } else if (first?.code === 'strategy_for_user_invalid') {
           // Account exists but has no password set (e.g. signed up with Google
@@ -106,7 +111,7 @@ export default function SignInScreen() {
           // lets them set one.
           setError('password', {
             type: 'clerk',
-            message: 'No password set for this account. Tap “Forgot password?” to create one.',
+            message: t('signIn.errors.noPassword'),
           });
         } else {
           setError('password', { type: 'clerk', message: msg });
@@ -114,7 +119,7 @@ export default function SignInScreen() {
       } else {
         setError('password', {
           type: 'clerk',
-          message: 'Something went wrong. Please try again.',
+          message: t('common.somethingWentWrong'),
         });
       }
     }
@@ -134,7 +139,7 @@ export default function SignInScreen() {
     if (!parsed.success) {
       setError('email', {
         type: 'clerk',
-        message: parsed.error.errors[0]?.message ?? 'Enter your email first',
+        message: parsed.error.errors[0]?.message ?? t('signIn.errors.enterEmailFirst'),
       });
       return;
     }
@@ -147,7 +152,7 @@ export default function SignInScreen() {
       if (!factor) {
         setError('email', {
           type: 'clerk',
-          message: 'Email code sign-in is not available for this account.',
+          message: t('signIn.errors.emailCodeUnavailable'),
         });
         return;
       }
@@ -166,18 +171,18 @@ export default function SignInScreen() {
         if (first?.code === 'form_identifier_not_found') {
           setError('email', {
             type: 'clerk',
-            message: "We don't recognize this email. Tap “Sign up” below to create an account.",
+            message: t('signIn.errors.identifierNotFound'),
           });
         } else {
           setError('email', {
             type: 'clerk',
-            message: first?.longMessage ?? first?.message ?? 'Could not send a code.',
+            message: first?.longMessage ?? first?.message ?? t('signIn.errors.couldNotSendCode'),
           });
         }
       } else {
         setError('email', {
           type: 'clerk',
-          message: 'Something went wrong. Please try again.',
+          message: t('common.somethingWentWrong'),
         });
       }
     } finally {
@@ -207,7 +212,7 @@ export default function SignInScreen() {
           haptic="light"
           pressedOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('common.back')}
           style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
         >
           <Icon name="chevronLeft" size={22} color={colors.ink} weight="bold" />
@@ -218,10 +223,10 @@ export default function SignInScreen() {
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 16, gap: 24 }}>
         <Stack gap="sm">
           <Text variant="title" color="ink" style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.8 }}>
-            Welcome back
+            {t('signIn.title')}
           </Text>
           <Text variant="body" color="inkMuted" style={{ lineHeight: 22 }}>
-            Sign in with your email and password.
+            {t('signIn.subtitle')}
           </Text>
         </Stack>
 
@@ -231,9 +236,9 @@ export default function SignInScreen() {
             name="email"
             render={({ field: { value, onChange, onBlur } }) => (
               <FormField
-                label="Email"
+                label={t('common.emailLabel')}
                 leadingIcon="envelope"
-                placeholder="you@example.com"
+                placeholder={t('common.emailPlaceholder')}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -254,8 +259,8 @@ export default function SignInScreen() {
             render={({ field: { value, onChange, onBlur } }) => (
               <PasswordField
                 variant="current"
-                label="Password"
-                placeholder="Your password"
+                label={t('signIn.passwordLabel')}
+                placeholder={t('signIn.passwordPlaceholder')}
                 returnKeyType="send"
                 value={value}
                 onChangeText={onChange}
@@ -271,11 +276,11 @@ export default function SignInScreen() {
             haptic="light"
             pressedOpacity={0.7}
             accessibilityRole="link"
-            accessibilityLabel="Forgot your password?"
+            accessibilityLabel={t('signIn.forgotPasswordA11y')}
             style={{ alignSelf: 'flex-end', paddingVertical: 4, marginTop: -4 }}
           >
             <Text variant="caption" color="ink" weight="700" style={{ fontSize: 13.5 }}>
-              Forgot password?
+              {t('signIn.forgotPassword')}
             </Text>
           </Pressable>
         </Stack>
@@ -292,7 +297,7 @@ export default function SignInScreen() {
             <Icon name="arrowRight" size={18} weight="bold" color={colors.surface} />
           }
         >
-          Sign in
+          {t('signIn.submit')}
         </Button>
 
         <Button
@@ -305,7 +310,7 @@ export default function SignInScreen() {
           onPress={sendEmailCode}
           leading={<Icon name="envelope" size={18} weight="bold" color={colors.ink} />}
         >
-          Email me a code instead
+          {t('signIn.emailCodeInstead')}
         </Button>
 
         <View style={{ flex: 1 }} />
@@ -317,13 +322,13 @@ export default function SignInScreen() {
             haptic="light"
             pressedOpacity={0.7}
             accessibilityRole="link"
-            accessibilityLabel="Create a new account"
+            accessibilityLabel={t('signIn.footerA11y')}
             style={{ paddingVertical: 8 }}
           >
             <Text variant="caption" color="inkMuted" style={{ fontSize: 14 }}>
-              Don&apos;t have an account?{' '}
+              {t('signIn.footerPrefix')}
               <Text variant="caption" color="ink" weight="700" style={{ fontSize: 14 }}>
-                Sign up
+                {t('signIn.footerAction')}
               </Text>
             </Text>
           </Pressable>

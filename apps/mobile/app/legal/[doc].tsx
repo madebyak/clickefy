@@ -12,6 +12,7 @@
  */
 
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -32,6 +33,7 @@ export default function LegalDocScreen() {
   const { doc } = useLocalSearchParams<{ doc: string }>();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const { t } = useTranslation('legal');
 
   const slug = doc as LegalDocSlug;
   const content = LEGAL_DOCS[slug];
@@ -39,10 +41,10 @@ export default function LegalDocScreen() {
   if (!content) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + 24 }}>
-        <Stack.Screen options={{ title: 'Not found' }} />
+        <Stack.Screen options={{ title: t('notFoundTitle') }} />
         <Box px="lg">
           <Text variant="body" color="inkMuted">
-            We couldn&apos;t find that document.
+            {t('notFoundBody')}
           </Text>
         </Box>
       </View>
@@ -62,7 +64,7 @@ export default function LegalDocScreen() {
         <Box px="lg" pb="md">
           <VStack gap="sm">
             <Text variant="overline" color="inkMuted" transform="uppercase">
-              Legal
+              {t('eyebrow')}
             </Text>
             <Text variant="title" color="ink">
               {content.title}
@@ -71,7 +73,7 @@ export default function LegalDocScreen() {
               {content.summary}
             </Text>
             <Text variant="caption" color="inkSubtle">
-              Effective {content.effectiveDate}
+              {t('effective', { date: content.effectiveDate })}
             </Text>
           </VStack>
         </Box>

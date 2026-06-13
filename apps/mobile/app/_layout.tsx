@@ -5,6 +5,12 @@ import * as Notifications from 'expo-notifications';
 import { Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold } from '@expo-google-fonts/geist';
 import { GeistMono_500Medium, GeistMono_600SemiBold, GeistMono_700Bold } from '@expo-google-fonts/geist-mono';
 import { InstrumentSerif_400Regular, InstrumentSerif_400Regular_Italic } from '@expo-google-fonts/instrument-serif';
+import {
+  IBMPlexSansArabic_400Regular,
+  IBMPlexSansArabic_500Medium,
+  IBMPlexSansArabic_600SemiBold,
+  IBMPlexSansArabic_700Bold,
+} from '@expo-google-fonts/ibm-plex-sans-arabic';
 import { ThemeProvider as NavThemeProvider, type Theme as NavTheme } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@clickfy/ui';
@@ -21,10 +27,12 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorFallback } from '@/components/ErrorFallback';
+import { LocaleSwitchOverlay } from '@/components/settings/LocaleSwitchOverlay';
 import { ToastProvider } from '@/components/shared/Toast';
 import { Splash } from '@/components/Splash';
 import { usePushRegistration } from '@/lib/use-push-registration';
 import { attachTokenGetter } from '@/lib/sdk';
+import { initI18n } from '@/lib/i18n';
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 if (!CLERK_PUBLISHABLE_KEY) {
@@ -115,7 +123,37 @@ function RootLayout() {
     GeistMono_700Bold,
     InstrumentSerif_400Regular,
     InstrumentSerif_400Regular_Italic,
+    IBMPlexSansArabic_400Regular,
+    IBMPlexSansArabic_500Medium,
+    IBMPlexSansArabic_600SemiBold,
+    IBMPlexSansArabic_700Bold,
   });
+
+  // Initialize i18next before the first paint so screens that read
+  // translations never flash the wrong language. Resolves device/stored
+  // locale internally; defaults to English. Mirrors the font gate below.
+  // The resolved locale also drives the theme's font set + RTL flag.
+  const [i18nReady, setI18nReady] = useState(false);
+  const [locale, setLocale] = useState<'en' | 'ar'>('en');
+  useEffect(() => {
+    let cancelled = false;
+    void initI18n()
+      .then((resolved) => {
+        if (!cancelled) setLocale(resolved);
+      })
+      .catch((err) => {
+        // i18next falls back to its in-memory English resources even if
+        // init rejects, so we still let the app through rather than hang
+        // on the splash. Surface the error for diagnostics.
+        console.error('[i18n] init failed', err);
+      })
+      .finally(() => {
+        if (!cancelled) setI18nReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const queryClient = useMemo(
     () =>
@@ -158,12 +196,12 @@ function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if ((fontsLoaded || fontError) && i18nReady) {
       void SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, i18nReady]);
 
-  if (!fontsLoaded && !fontError) {
+  if ((!fontsLoaded && !fontError) || !i18nReady) {
     // Native splash stays visible thanks to preventAutoHideAsync above.
     return null;
   }
@@ -172,10 +210,10 @@ function RootLayout() {
     <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
       <SdkBridge />
       <PushRegistration />
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView style={{ flex: 1, direction: locale === 'ar' ? 'rtl' : 'ltr' }}>
         <SafeAreaProvider>
           <QueryClientProvider client={queryClient}>
-            <ThemeProvider defaultMode="system" defaultAccentKey="violet">
+            <ThemeProvider defaultMode="system" defaultAccentKey="violet" locale={locale}>
               <ThemedShell>
               <ToastProvider>
               <ErrorBoundary
@@ -347,9 +385,11 @@ function ThemedShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: t.colors.bg, direction: t.isRTL ? 'rtl' : 'ltr' }}>
       <NavThemeProvider value={navTheme}>{children}</NavThemeProvider>
       {!splashDone ? <Splash onComplete={() => setSplashDone(true)} /> : null}
+      {/* Branded cover shown during a language/RTL restart. */}
+      <LocaleSwitchOverlay />
       <StatusBar style={t.scheme === 'dark' ? 'light' : 'dark'} />
     </View>
   );

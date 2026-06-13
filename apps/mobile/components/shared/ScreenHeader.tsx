@@ -1,5 +1,6 @@
 import { HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/ui/Icon';
@@ -38,6 +39,7 @@ export function ScreenHeader({
 }: ScreenHeaderProps) {
   const router = useRouter();
   const { colors } = useTheme();
+  const { t } = useTranslation('common');
 
   const defaultLeftIcon: IconName = variant === 'close' ? 'close' : 'chevronLeft';
   const buttonBg = transparent ? colors.glass : colors.surface;
@@ -48,7 +50,7 @@ export function ScreenHeader({
       <Pressable
         onPress={onLeft ?? (() => router.back())}
         haptic="light"
-        accessibilityLabel={variant === 'close' ? 'Close' : 'Back'}
+        accessibilityLabel={variant === 'close' ? t('header.close') : t('header.back')}
         style={{
           width: 44,
           height: 44,
@@ -89,7 +91,7 @@ export function ScreenHeader({
         <Pressable
           onPress={onRight}
           haptic="light"
-          accessibilityLabel="Action"
+          accessibilityLabel={t('header.action')}
           style={{
             width: 44,
             height: 44,

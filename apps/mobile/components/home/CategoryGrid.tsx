@@ -24,6 +24,7 @@ import { FlashList } from '@shopify/flash-list';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { ActiveFiltersBar } from '@/components/search/ActiveFiltersBar';
@@ -177,10 +178,11 @@ function ResultsSkeleton() {
 
 function EmptyState() {
   const { colors } = useTheme();
+  const { t } = useTranslation('home');
   return (
     <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 6 }}>
       <Text variant="bodySemi" color="ink" align="center">
-        Nothing in this category yet
+        {t('grid.emptyTitle')}
       </Text>
       <Text
         variant="caption"
@@ -188,7 +190,7 @@ function EmptyState() {
         align="center"
         style={{ color: colors.inkMuted }}
       >
-        Switch to another category, or back to All to browse the full feed.
+        {t('grid.emptyBody')}
       </Text>
     </View>
   );

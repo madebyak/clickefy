@@ -15,6 +15,8 @@
  */
 
 import type { ComponentType } from 'react';
+import { View } from 'react-native';
+import { useTheme } from '@clickfy/ui';
 import {
   AppleLogo,
   ArrowLeft,
@@ -69,6 +71,7 @@ import {
   Star,
   Sun,
   TextT,
+  Translate,
   Trash,
   User,
   VideoCamera,
@@ -150,11 +153,28 @@ export type IconName =
   | 'gear'
   | 'sun'
   | 'moon'
+  | 'language'
   | 'signOut'
   | 'shop'
   | 'plus';
 
 type PhosphorIcon = ComponentType<IconProps>;
+
+/**
+ * Directional icons that must visually flip under RTL so they keep pointing
+ * the right way (e.g. a "back" chevron points toward the leading edge, a
+ * disclosure chevron toward the trailing edge). Non-directional glyphs are
+ * left untouched. We mirror based on the theme's `isRTL` (derived from the
+ * active locale) — NOT `I18nManager.isRTL`, which is unreliable on the New
+ * Architecture (it can report `false` even when RTL is active).
+ */
+const MIRRORED_ICONS: Partial<Record<IconName, true>> = {
+  chevronLeft: true,
+  chevronRight: true,
+  arrowLeft: true,
+  arrowRight: true,
+  send: true,
+};
 
 const ICONS: Record<IconName, PhosphorIcon> = {
   home: House,
@@ -213,6 +233,7 @@ const ICONS: Record<IconName, PhosphorIcon> = {
   gear: Gear,
   sun: Sun,
   moon: Moon,
+  language: Translate,
   signOut: SignOut,
   shop: ShoppingBag,
   plus: Plus,
@@ -255,6 +276,7 @@ export function Icon({
   accessibilityLabel,
   testID,
 }: IconComponentProps) {
+  const { isRTL } = useTheme();
   const Glyph = ICONS[name];
   if (!Glyph) {
     if (__DEV__) {
@@ -262,7 +284,7 @@ export function Icon({
     }
     return null;
   }
-  return (
+  const glyph = (
     <Glyph
       weight={weight}
       size={size}
@@ -278,6 +300,12 @@ export function Icon({
       {...(testID ? { testID } : {})}
     />
   );
+
+  // Mirror directional glyphs under RTL so arrows/chevrons keep their meaning.
+  if (isRTL && MIRRORED_ICONS[name]) {
+    return <View style={{ transform: [{ scaleX: -1 }] }}>{glyph}</View>;
+  }
+  return glyph;
 }
 
 // Re-export the weight type so consumers don't need to import phosphor directly.

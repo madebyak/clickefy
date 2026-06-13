@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -47,6 +48,7 @@ export default function UseTemplateScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, accent } = useTheme();
+  const { t: tr } = useTranslation('template');
   const sdk = getSDK();
 
   const templateQuery = useQuery({
@@ -143,12 +145,12 @@ export default function UseTemplateScreen() {
       const isJobErr = err instanceof JobSubmissionError;
       const title =
         isJobErr && err.code === 'insufficient_credits'
-          ? 'Not enough credits'
+          ? tr('errors.insufficientCreditsTitle')
           : isJobErr && err.code === 'r2_key_not_found'
-            ? 'Upload not found'
-            : 'Could not start generation';
+            ? tr('errors.uploadNotFoundTitle')
+            : tr('errors.genericTitle');
       const message =
-        err instanceof Error ? err.message : 'Something went wrong — try again.';
+        err instanceof Error ? err.message : tr('errors.genericMessage');
       Alert.alert(title, message);
     } finally {
       setSubmitting(false);
@@ -162,8 +164,8 @@ export default function UseTemplateScreen() {
     >
       <ScreenHeader
         variant="close"
-        eyebrow="Step 1 of 1"
-        title="Use template"
+        eyebrow={tr('use.eyebrow')}
+        title={tr('use.title')}
         rightIcon="help"
       />
 
@@ -219,7 +221,7 @@ export default function UseTemplateScreen() {
                 >
                   <Icon name="credit" size={11} color={accent.solid} weight="fill" />
                   <Text color={accent.deep} weight="700" style={{ fontSize: 12 }}>
-                    {t.credits} credits
+                    {tr('credits', { count: t.credits })}
                   </Text>
                 </View>
               </Stack>
@@ -240,7 +242,7 @@ export default function UseTemplateScreen() {
             {t.userCanChooseAspectRatio ? (
               <Stack gap="sm">
                 <Text variant="overline" color="ink" transform="uppercase" weight="700">
-                  Aspect ratio
+                  {tr('use.aspectRatio')}
                 </Text>
                 <HStack gap="sm" wrap="wrap">
                   {ASPECT_OPTIONS.map((a) => (
@@ -284,7 +286,7 @@ export default function UseTemplateScreen() {
               <Icon name="wand" size={18} color={accent.ink} weight="fill" />
             }
           >
-            {canGenerate ? `Generate · ${totalCredits} credits` : 'Add required inputs'}
+            {canGenerate ? tr('use.generate', { count: totalCredits }) : tr('use.addRequiredInputs')}
           </Button>
         </View>
       ) : null}

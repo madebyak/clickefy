@@ -1,0 +1,54 @@
+{
+  "tabBar": {
+    "home": "الرئيسية",
+    "library": "المكتبة",
+    "create": "إنشاء",
+    "projects": "المشاريع",
+    "profile": "الملف الشخصي"
+  },
+  "topBar": {
+    "openMenu": "فتح القائمة",
+    "creditsLabel": "خطة {{plan}}، {{credits}} رصيد"
+  },
+  "search": {
+    "placeholder": "ابحث في القوالب",
+    "scoped": "ابحث في {{scope}}",
+    "filters": "عوامل التصفية",
+    "filtersActive": "عوامل التصفية، {{count}} نشطة"
+  },
+  "section": {
+    "seeAll": "عرض الكل"
+  },
+  "sections": {
+    "trending": { "title": "الأكثر رواجًا", "subtitle": "مختارات منتقاة بعناية" },
+    "new-arrivals": { "title": "وصل حديثًا", "subtitle": "قوالب أُضيفت مؤخرًا" },
+    "video-magic": { "title": "سحر الفيديو", "subtitle": "امنح لقطاتك الحياة" },
+    "photo-sets": { "title": "مجموعات الصور", "subtitle": "إطلالات منسّقة" }
+  },
+  "feed": {
+    "error": "تعذّر تحميل القوالب. اسحب للأسفل للمحاولة مرة أخرى."
+  },
+  "create": {
+    "overline": "إنشاء سريع",
+    "title": "ابدأ الإنشاء",
+    "subtitle": "اختر قالبًا، وأضِف صورة منتجك، وسنتولّى الباقي.",
+    "browseTemplates": "تصفّح القوالب"
+  },
+  "grid": {
+    "emptyTitle": "لا يوجد شيء في هذه الفئة بعد",
+    "emptyBody": "انتقل إلى فئة أخرى، أو عُد إلى \"الكل\" لتصفّح كل المحتوى."
+  },
+  "categoryRail": {
+    "all": "الكل"
+  },
+  "subcategoryRail": {
+    "all": "كل {{parent}}"
+  },
+  "templateCard": {
+    "kind": {
+      "image": "صورة",
+      "video": "فيديو",
+      "set": "مجموعة"
+    }
+  }
+}

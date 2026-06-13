@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -33,6 +34,7 @@ export default function LibraryScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('library');
   const sdk = getSDK();
   const [filter, setFilter] = useState<Filter>('All');
 
@@ -61,13 +63,13 @@ export default function LibraryScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
           <Stack gap="sm" style={{ flex: 1 }}>
             <Text variant="overline" color="inkMuted" transform="uppercase">
-              Library
+              {t('overline')}
             </Text>
             <Text variant="title" color="ink" style={{ fontSize: 36, lineHeight: 38 }}>
-              Recent templates
+              {t('title')}
             </Text>
             <Text variant="caption" color="inkMuted">
-              {(libraryQuery.data ?? []).length} template{(libraryQuery.data ?? []).length === 1 ? '' : 's'} you&apos;ve used recently
+              {t('subtitle', { count: (libraryQuery.data ?? []).length })}
             </Text>
           </Stack>
           {/* Saved → dedicated screen with the user's bookmarks.
@@ -77,7 +79,7 @@ export default function LibraryScreen() {
           <Pressable
             onPress={() => router.push('/saved')}
             accessibilityRole="button"
-            accessibilityLabel="Saved templates"
+            accessibilityLabel={t('savedAccessibilityLabel')}
             haptic="light"
             style={{
               width: 44,
@@ -107,7 +109,12 @@ export default function LibraryScreen() {
         contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingVertical: 4 }}
       >
         {FILTERS.map((f) => (
-          <Chip key={f} label={f} active={filter === f} onPress={() => setFilter(f)} />
+          <Chip
+            key={f}
+            label={t(`filters.${f.toLowerCase()}`)}
+            active={filter === f}
+            onPress={() => setFilter(f)}
+          />
         ))}
       </ScrollView>
 
@@ -165,6 +172,7 @@ function RecentTemplateCard({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('library');
   return (
     <Pressable onPress={onPress}>
       <Stack gap="sm">
@@ -190,7 +198,7 @@ function RecentTemplateCard({
           {project.templateName}
         </Text>
         <Text variant="caption" color="inkMuted">
-          Used {project.whenLabel}
+          {t('usedLabel', { when: project.whenLabel })}
         </Text>
       </Stack>
     </Pressable>
@@ -213,6 +221,7 @@ function GridSkeleton() {
 
 function EmptyState({ filter }: { filter: Filter }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('library');
   return (
     <View
       style={{
@@ -227,12 +236,12 @@ function EmptyState({ filter }: { filter: Filter }) {
       }}
     >
       <Text variant="bodySemi" color="ink">
-        Nothing here yet
+        {t('empty.title')}
       </Text>
       <Text variant="caption" color="inkMuted" align="center">
         {filter === 'All'
-          ? 'Generate from a template and it\u2019ll appear here automatically.'
-          : `No ${filter.toLowerCase()} templates used recently. Try another filter.`}
+          ? t('empty.allDescription')
+          : t('empty.filteredDescription', { filter: t(`filters.${filter.toLowerCase()}`) })}
       </Text>
     </View>
   );

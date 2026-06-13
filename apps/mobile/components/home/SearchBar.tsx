@@ -16,6 +16,7 @@
  */
 
 import { Box, Pressable, Text, useTheme } from '@clickfy/ui';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
@@ -57,8 +58,10 @@ export function SearchBar({
   onPressFilters,
   activeFilterCount = 0,
 }: SearchBarProps) {
+  const { t } = useTranslation('home');
   const resolvedPlaceholder =
-    placeholder ?? (scopeLabel ? `Search in ${scopeLabel}` : 'Search templates');
+    placeholder ??
+    (scopeLabel ? t('search.scoped', { scope: scopeLabel }) : t('search.placeholder'));
   const { colors, accent } = useTheme();
   const showFilters = !!onPressFilters;
 
@@ -66,8 +69,8 @@ export function SearchBar({
     <View
       style={{
         height: 52,
-        paddingLeft: 16,
-        paddingRight: showFilters ? 6 : 16,
+        paddingStart: 16,
+        paddingEnd: showFilters ? 6 : 16,
         borderRadius: 18,
         backgroundColor: colors.surface,
         borderWidth: 1,
@@ -111,14 +114,14 @@ export function SearchBar({
           accessibilityRole="button"
           accessibilityLabel={
             activeFilterCount > 0
-              ? `Filters, ${activeFilterCount} active`
-              : 'Filters'
+              ? t('search.filtersActive', { count: activeFilterCount })
+              : t('search.filters')
           }
           accessibilityState={{ selected: activeFilterCount > 0 }}
           style={{
             width: 40,
             height: 40,
-            marginRight: 4,
+            marginEnd: 4,
             borderRadius: 12,
             alignItems: 'center',
             justifyContent: 'center',
@@ -139,7 +142,7 @@ export function SearchBar({
               style={{
                 position: 'absolute',
                 top: 6,
-                right: 6,
+                end: 6,
                 width: 8,
                 height: 8,
                 borderRadius: 4,

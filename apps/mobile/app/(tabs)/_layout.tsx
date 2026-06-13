@@ -1,5 +1,6 @@
 import { useTheme } from '@clickfy/ui';
 import { Redirect, Tabs } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -27,6 +28,7 @@ import { useAuthGate } from '@/lib/auth-gate';
  */
 export default function TabLayout() {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('home');
   const { isReady, hasOnboarded, isAuthed } = useAuthGate();
   const insets = useSafeAreaInsets();
 
@@ -88,35 +90,35 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('tabBar.home'),
           tabBarIcon: ({ focused }) => renderIcon('home', focused),
         }}
       />
       <Tabs.Screen
         name="library"
         options={{
-          title: 'Library',
+          title: t('tabBar.library'),
           tabBarIcon: ({ focused }) => renderIcon('categories', focused),
         }}
       />
       <Tabs.Screen
         name="create"
         options={{
-          title: 'Create',
+          title: t('tabBar.create'),
           tabBarIcon: ({ focused }) => renderIcon('create', focused),
         }}
       />
       <Tabs.Screen
         name="projects"
         options={{
-          title: 'Projects',
+          title: t('tabBar.projects'),
           tabBarIcon: ({ focused }) => renderIcon('projects', focused),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: t('tabBar.profile'),
           tabBarIcon: ({ focused }) => renderIcon('profile', focused),
         }}
       />

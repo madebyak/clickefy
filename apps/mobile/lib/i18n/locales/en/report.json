@@ -1,0 +1,53 @@
+{
+  "eyebrow": "Report content",
+  "title": "What's wrong with this?",
+  "subtitle": "Reports are anonymous to the creator. A human reviewer looks at every flagged item.",
+  "reasons": {
+    "csam": {
+      "label": "Child safety",
+      "helper": "Sexual content involving minors."
+    },
+    "sexualContent": {
+      "label": "Sexual content",
+      "helper": "Explicit imagery of adults, non-consensual content."
+    },
+    "violenceOrThreats": {
+      "label": "Violence or threats",
+      "helper": "Graphic violence, threats, self-harm."
+    },
+    "hateSpeech": {
+      "label": "Hate speech",
+      "helper": "Slurs or dehumanising content targeting a group."
+    },
+    "harassment": {
+      "label": "Harassment",
+      "helper": "Bullying, doxxing, or sustained targeting."
+    },
+    "copyright": {
+      "label": "Copyright",
+      "helper": "Uses my work without permission."
+    },
+    "spam": {
+      "label": "Spam",
+      "helper": "Repetitive, promotional, or misleading."
+    },
+    "other": {
+      "label": "Other",
+      "helper": "Doesn't fit the categories above."
+    }
+  },
+  "notesLabel": "Add context (optional)",
+  "notesPlaceholder": "Anything that helps us review faster (links, who's affected, etc.)",
+  "notesCount": "{{current}}/2000",
+  "submit": "Submit report",
+  "submitting": "Submitting…",
+  "cancel": "Cancel",
+  "pickReasonTitle": "Pick a reason",
+  "pickReasonMessage": "Choose the category that best matches your report.",
+  "missingTargetTitle": "Missing target",
+  "missingTargetMessage": "We couldn't identify what you're reporting. Please try again.",
+  "successTitle": "Thanks for the report",
+  "successMessage": "We'll review it and take action if it breaks our policies.",
+  "errorTitle": "Couldn't submit",
+  "errorMessage": "Check your connection and try again."
+}

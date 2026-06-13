@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, RefreshControl, View } from 'react-native';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
@@ -42,6 +43,7 @@ export default function ProjectsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors } = useTheme();
+  const { t } = useTranslation('projects');
   const sdk = getSDK();
   const qc = useQueryClient();
 
@@ -82,10 +84,7 @@ export default function ProjectsScreen() {
       // Roll back — the network call failed but the user already
       // saw the row vanish. Restoring keeps the list honest.
       if (ctx?.previous) qc.setQueryData(['projects'], ctx.previous);
-      Alert.alert(
-        'Could not delete',
-        'We couldn\u2019t remove that project. Check your connection and try again.',
-      );
+      Alert.alert(t('error.title'), t('error.message'));
     },
     onSettled: () => {
       // The list mutation interacts with credit_ledger FKs server-side
@@ -118,12 +117,12 @@ export default function ProjectsScreen() {
   const handleConfirmDelete = useCallback(
     (p: UserProject) => {
       Alert.alert(
-        'Delete this project?',
-        'It will be removed from your history. Generated images stay accessible through any direct links you\u2019ve already shared.',
+        t('deleteConfirm.title'),
+        t('deleteConfirm.message'),
         [
-          { text: 'Cancel', style: 'cancel', onPress: () => openRowRef.current?.close() },
+          { text: t('deleteConfirm.cancel'), style: 'cancel', onPress: () => openRowRef.current?.close() },
           {
-            text: 'Delete',
+            text: t('deleteConfirm.confirm'),
             style: 'destructive',
             onPress: () => {
               openRowRef.current?.close();
@@ -134,7 +133,7 @@ export default function ProjectsScreen() {
         ],
       );
     },
-    [deleteMutation],
+    [deleteMutation, t],
   );
 
   return (
@@ -142,10 +141,10 @@ export default function ProjectsScreen() {
       <Box px="lg" pb="md">
         <Stack gap="sm">
           <Text variant="overline" color="inkMuted" transform="uppercase">
-            Your work
+            {t('overline')}
           </Text>
           <Text variant="title" color="ink">
-            Projects
+            {t('title')}
           </Text>
         </Stack>
       </Box>
@@ -218,6 +217,7 @@ function ProjectRow({
   registerOpenRow: (row: SwipeableMethods | null) => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('projects');
   const swipeableRef = useRef<SwipeableMethods>(null);
 
   return (
@@ -266,7 +266,7 @@ function ProjectRow({
                   <>
                     <Dot color={colors.inkSubtle} />
                     <Text variant="caption" color="inkMuted">
-                      {project.count} output{project.count === 1 ? '' : 's'}
+                      {t('outputs', { count: project.count })}
                     </Text>
                   </>
                 ) : null}
@@ -293,6 +293,7 @@ function DeleteAction({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('projects');
 
   // Slide the action in from the right. While the row is being
   // dragged, `translation.value` runs from 0 (closed) to -ACTION_WIDTH
@@ -321,7 +322,7 @@ function DeleteAction({
           // like a tacked-on rectangle.
           justifyContent: 'center',
           alignItems: 'center',
-          paddingLeft: 12,
+          paddingStart: 12,
         },
         animatedStyle,
       ]}
@@ -329,7 +330,7 @@ function DeleteAction({
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel="Delete project"
+        accessibilityLabel={t('deleteAccessibilityLabel')}
         style={({ pressed }) => ({
           width: 56,
           height: 56,
@@ -357,14 +358,16 @@ function Dot({ color }: { color: string }) {
 }
 
 function StatusBadge({ status }: { status: 'queued' | 'processing' | 'failed' }) {
+  const { t } = useTranslation('projects');
   const tone = status === 'failed' ? 'danger' : 'neutral';
-  const label = status === 'queued' ? 'Queued' : status === 'processing' ? 'Generating' : 'Failed';
+  const label = t(`status.${status}`);
   return <Badge label={label} tone={tone as 'danger' | 'neutral'} />;
 }
 
 function EmptyState() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { t } = useTranslation('projects');
   return (
     <View
       style={{
@@ -379,13 +382,13 @@ function EmptyState() {
       }}
     >
       <Text variant="bodySemi" color="ink">
-        No projects yet
+        {t('empty.title')}
       </Text>
       <Text variant="caption" color="inkMuted" align="center">
-        Generate your first image from a template and it&apos;ll show up here.
+        {t('empty.description')}
       </Text>
       <Button variant="accent" size="md" onPress={() => router.push('/(tabs)')}>
-        Browse templates
+        {t('empty.cta')}
       </Button>
     </View>
   );

@@ -27,6 +27,7 @@
  */
 
 import { Text, useTheme } from '@clickfy/ui';
+import { useTranslation } from 'react-i18next';
 import {
   createContext,
   useCallback,
@@ -184,6 +185,7 @@ function ToastViewport({
 }) {
   const insets = useSafeAreaInsets();
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('common');
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: offset.value }],
@@ -229,7 +231,7 @@ function ToastViewport({
         <Pressable
           onPress={onPress}
           accessibilityRole="button"
-          accessibilityLabel="Dismiss notification"
+          accessibilityLabel={t('toast.dismiss')}
           style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}
         >
           <Icon name={TOAST_ICON[payload.tone]} size={18} color={ink} weight="fill" />

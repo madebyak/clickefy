@@ -14,8 +14,10 @@ import {
   type AccentKey,
 } from '@clickfy/ui';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Alert, ScrollView, View } from 'react-native';
 
+import { LanguageSwitcher } from '@/components/settings/LanguageSwitcher';
 import { PlanLabel } from '@/components/shared/PlanLabel';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +35,7 @@ const ACCENT_OPTIONS: AccentKey[] = ['violet', 'coral', 'citrus', 'ocean'];
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation('profile');
   const { colors, accent } = useTheme();
   const {
     user,
@@ -58,25 +61,23 @@ export default function ProfileScreen() {
       const result = await registerForPushNotificationsAsync(async () => getToken());
       if (result.token) {
         Alert.alert(
-          'Push registered ✅',
-          `Token: ${result.token.slice(0, 36)}…\n\nThis device is now reachable from the admin panel.`,
+          t('notifications.diagnostic.registeredTitle'),
+          t('notifications.diagnostic.registeredMessage', {
+            token: result.token.slice(0, 36),
+          }),
         );
       } else {
         const friendly: Record<string, string> = {
-          simulator:
-            "You're on a simulator. Push tokens only work on a real device.",
-          permission_denied:
-            'Notification permission is OFF. Open iOS Settings → Notifications → Expo Go → enable Allow Notifications, then tap this button again.',
-          no_project_id:
-            "Couldn't find the Expo projectId. Restart the app from the QR code.",
-          token_fetch_failed:
-            'Expo could not issue a push token. Common causes: no internet, Apple Push servers blocked on this network.',
-          backend_register_failed:
-            "Got a token from Expo but our API rejected it. Check that you're signed in.",
+          simulator: t('notifications.diagnostic.reasons.simulator'),
+          permission_denied: t('notifications.diagnostic.reasons.permissionDenied'),
+          no_project_id: t('notifications.diagnostic.reasons.noProjectId'),
+          token_fetch_failed: t('notifications.diagnostic.reasons.tokenFetchFailed'),
+          backend_register_failed: t('notifications.diagnostic.reasons.backendRegisterFailed'),
         };
         Alert.alert(
-          'Push registration failed',
-          friendly[result.reason ?? ''] ?? `Unknown reason: ${result.reason}`,
+          t('notifications.diagnostic.failedTitle'),
+          friendly[result.reason ?? ''] ??
+            t('notifications.diagnostic.unknownReason', { reason: result.reason }),
         );
       }
     } finally {
@@ -113,7 +114,7 @@ export default function ProfileScreen() {
               />
               <Stack style={{ flex: 1 }} gap="xs">
                 <Text variant="subhead" color="ink" weight="700">
-                  {session?.user.name ?? 'Sign in to Clickefy'}
+                  {session?.user.name ?? t('identity.signInPrompt')}
                 </Text>
                 <HStack align="center" gap="sm">
                   <PlanLabel plan={session?.plan?.tier ?? 'Free'} size="md" />
@@ -138,14 +139,14 @@ export default function ProfileScreen() {
             <HStack align="center" justify="space-between">
               <Stack gap="xs">
                 <Text variant="overline" color="inkMuted" transform="uppercase">
-                  Your plan
+                  {t('plan.sectionTitle')}
                 </Text>
                 <Text variant="heading" color="ink">
                   {session?.plan?.tier ?? 'Free'}
                 </Text>
               </Stack>
               <Button variant="accent" size="sm" onPress={() => router.push('/paywall')}>
-                Top up
+                {t('plan.topUp')}
               </Button>
             </HStack>
             <Divider />
@@ -153,7 +154,7 @@ export default function ProfileScreen() {
               <HStack align="center" gap="sm">
                 <Icon name="credit" size={16} color={accent.solid} weight="fill" />
                 <Text variant="body" color="inkMuted">
-                  Credits
+                  {t('plan.credits')}
                 </Text>
               </HStack>
               <Text variant="mono" color="ink" weight="700" style={{ fontSize: 18 }}>
@@ -165,7 +166,7 @@ export default function ProfileScreen() {
                 <Divider />
                 <HStack align="center" justify="space-between">
                   <Text variant="body" color="inkMuted">
-                    Renews
+                    {t('plan.renews')}
                   </Text>
                   <Text variant="bodySemi" color="ink">
                     {new Date(session.plan.renewsAt).toLocaleDateString()}
@@ -176,18 +177,38 @@ export default function ProfileScreen() {
           </Stack>
         </Card>
 
+        {/* Language */}
+        <Card>
+          <Stack gap="md">
+            <Text variant="overline" color="inkMuted" transform="uppercase">
+              {t('language.title')}
+            </Text>
+            <LanguageSwitcher />
+            <Divider />
+            <Text variant="caption" color="inkSubtle">
+              {t('language.caption')}
+            </Text>
+          </Stack>
+        </Card>
+
         {/* Appearance */}
         <Card>
           <Stack gap="md">
             <Text variant="overline" color="inkMuted" transform="uppercase">
-              Appearance
+              {t('appearance.title')}
             </Text>
 
             <HStack gap="sm" wrap="wrap">
               {(['system', 'light', 'dark'] as const).map((opt) => (
                 <Chip
                   key={opt}
-                  label={opt === 'system' ? 'System' : opt === 'light' ? 'Light' : 'Dark'}
+                  label={
+                    opt === 'system'
+                      ? t('appearance.modeSystem')
+                      : opt === 'light'
+                        ? t('appearance.modeLight')
+                        : t('appearance.modeDark')
+                  }
                   active={mode === opt}
                   onPress={() => setMode(opt)}
                 />
@@ -206,10 +227,14 @@ export default function ProfileScreen() {
                 />
                 <Stack gap="xs">
                   <Text variant="bodySemi" color="ink">
-                    Dark mode
+                    {t('appearance.darkMode')}
                   </Text>
                   <Text variant="caption" color="inkMuted">
-                    {mode === 'system' ? 'Following system' : isDark ? 'On' : 'Off'}
+                    {mode === 'system'
+                      ? t('appearance.followingSystem')
+                      : isDark
+                        ? t('appearance.on')
+                        : t('appearance.off')}
                   </Text>
                 </Stack>
               </HStack>
@@ -220,7 +245,7 @@ export default function ProfileScreen() {
 
             <Stack gap="sm">
               <Text variant="bodySemi" color="ink">
-                Accent
+                {t('appearance.accent')}
               </Text>
               <HStack gap="md" wrap="wrap">
                 {ACCENT_OPTIONS.map((key) => {
@@ -231,7 +256,9 @@ export default function ProfileScreen() {
                       onPress={() => setAccent(key)}
                       haptic="selection"
                       pressedOpacity={0.7}
-                      accessibilityLabel={`${key} accent`}
+                      accessibilityLabel={t('appearance.accentA11y', {
+                        accent: t(`appearance.accents.${key}`),
+                      })}
                       style={{ alignItems: 'center', gap: 6 }}
                     >
                       <View
@@ -254,7 +281,7 @@ export default function ProfileScreen() {
                         weight={isActive ? '600' : '500'}
                         style={{ fontSize: 11.5, textTransform: 'capitalize' }}
                       >
-                        {key}
+                        {t(`appearance.accents.${key}`)}
                       </Text>
                     </Pressable>
                   );
@@ -269,28 +296,28 @@ export default function ProfileScreen() {
           <Card>
             <Stack gap="md">
               <Text variant="overline" color="inkMuted" transform="uppercase">
-                Notifications
+                {t('notifications.title')}
               </Text>
               <NotificationRow
                 icon="bell"
-                label="Job complete"
-                helper="Get notified when a generation finishes."
+                label={t('notifications.jobComplete.label')}
+                helper={t('notifications.jobComplete.helper')}
                 value={preferences.notifications.jobCompleted}
                 onValueChange={() => onToggleNotification('jobCompleted')}
               />
               <Divider />
               <NotificationRow
                 icon="sparkle"
-                label="Product updates"
-                helper="New templates, paywall offers, milestones."
+                label={t('notifications.productUpdates.label')}
+                helper={t('notifications.productUpdates.helper')}
                 value={preferences.notifications.productUpdates}
                 onValueChange={() => onToggleNotification('productUpdates')}
               />
               <Divider />
               <NotificationRow
                 icon="wand"
-                label="Tips & tutorials"
-                helper="Get the most out of Clickfy."
+                label={t('notifications.tips.label')}
+                helper={t('notifications.tips.helper')}
                 value={preferences.notifications.tipsAndTutorials}
                 onValueChange={() => onToggleNotification('tipsAndTutorials')}
               />
@@ -306,10 +333,12 @@ export default function ProfileScreen() {
                     <Icon name="info" size={20} color={colors.ink} weight="fill" />
                     <Stack gap="xs" style={{ flex: 1 }}>
                       <Text variant="bodySemi" color="ink">
-                        {diagBusy ? 'Checking…' : 'Check notification setup'}
+                        {diagBusy
+                          ? t('notifications.diagnostic.checking')
+                          : t('notifications.diagnostic.label')}
                       </Text>
                       <Text variant="caption" color="inkMuted">
-                        Tap to verify this device can receive push.
+                        {t('notifications.diagnostic.helper')}
                       </Text>
                     </Stack>
                   </HStack>
@@ -329,20 +358,20 @@ export default function ProfileScreen() {
           <Stack gap="sm">
             <ProfileRow
               icon="edit"
-              label="Edit profile"
+              label={t('actions.editProfile')}
               onPress={() => router.push('/edit-profile')}
               disabled={!session}
             />
             <Divider />
             <ProfileRow
               icon="bookmark"
-              label="Saved templates"
+              label={t('actions.savedTemplates')}
               onPress={() => router.push('/saved')}
             />
             <Divider />
             <ProfileRow
               icon="credit"
-              label="Buy credits"
+              label={t('actions.buyCredits')}
               onPress={() => router.push('/paywall')}
             />
           </Stack>
@@ -357,7 +386,7 @@ export default function ProfileScreen() {
         <Card>
           <Stack gap="sm">
             <Text variant="overline" color="inkMuted" transform="uppercase">
-              Legal & policies
+              {t('legal.title')}
             </Text>
             {LEGAL_DOC_ORDER.map((slug, i) => (
               <View key={slug}>
@@ -376,7 +405,7 @@ export default function ProfileScreen() {
 
         {session ? (
           <Button variant="ghost" full onPress={() => void signOut()}>
-            Sign out
+            {t('auth.signOut')}
           </Button>
         ) : (
           <Button
@@ -384,7 +413,7 @@ export default function ProfileScreen() {
             full
             onPress={() => router.push('/(auth)/welcome')}
           >
-            Sign in
+            {t('auth.signIn')}
           </Button>
         )}
 
@@ -397,21 +426,20 @@ export default function ProfileScreen() {
           <Card>
             <Stack gap="sm">
               <Text variant="overline" color="danger" transform="uppercase" weight="700">
-                Danger zone
+                {t('danger.title')}
               </Text>
               <Text variant="caption" color="inkMuted">
-                Deleting your account is permanent. Your library, history,
-                and any unused credits are removed and can&apos;t be restored.
+                {t('danger.description')}
               </Text>
               <Pressable
                 onPress={() =>
                   Alert.alert(
-                    'Delete your account?',
-                    'This permanently removes your account, library, and any unused credits. We can\u2019t undo this.',
+                    t('danger.confirmTitle'),
+                    t('danger.confirmMessage'),
                     [
-                      { text: 'Cancel', style: 'cancel' },
+                      { text: t('danger.cancel'), style: 'cancel' },
                       {
-                        text: 'Delete account',
+                        text: t('danger.delete'),
                         style: 'destructive',
                         onPress: () => {
                           deleteAccount.mutate(undefined, {
@@ -420,10 +448,10 @@ export default function ProfileScreen() {
                             },
                             onError: (err) => {
                               Alert.alert(
-                                'Could not delete',
+                                t('danger.errorTitle'),
                                 err instanceof Error
                                   ? err.message
-                                  : 'Check your connection and try again.',
+                                  : t('danger.errorMessage'),
                               );
                             },
                           });
@@ -451,7 +479,7 @@ export default function ProfileScreen() {
                   <HStack align="center" gap="md">
                     <Icon name="trash" size={18} color={colors.danger} weight="bold" />
                     <Text variant="bodySemi" color="danger">
-                      {deleteAccount.isPending ? 'Deleting\u2026' : 'Delete account'}
+                      {deleteAccount.isPending ? t('danger.deleting') : t('danger.delete')}
                     </Text>
                   </HStack>
                 </HStack>
@@ -461,7 +489,11 @@ export default function ProfileScreen() {
         ) : null}
 
         <Text variant="caption" color="inkSubtle" align="center">
-          Active accent: {accentKey} · Scheme: {scheme} · Brand: {accent.solid}
+          {t('appearance.debug', {
+            accent: t(`appearance.accents.${accentKey}`),
+            scheme,
+            brand: accent.solid,
+          })}
         </Text>
       </ScrollView>
     </View>

@@ -1,0 +1,44 @@
+{
+  "close": "إغلاق صفحة الاشتراك",
+  "eyebrow": "Clickefy Pro",
+  "headlineLine1": "اجعل كل لقطة",
+  "headlineLine2": "تجذب الأنظار.",
+  "perks": {
+    "templates": {
+      "title": "قوالب غير محدودة",
+      "subtitle": "كل قوالب الاستوديو والقوالب المميّزة"
+    },
+    "video": {
+      "title": "توليد الفيديو",
+      "subtitle": "مقاطع متحركة بدقة 4K حتى 8 ثوانٍ"
+    },
+    "multiImage": {
+      "title": "مجموعات متعددة الصور",
+      "subtitle": "صور دوّارة ومجموعات إطلالات بضغطة واحدة"
+    },
+    "downloads": {
+      "title": "تنزيلات عالية الدقة",
+      "subtitle": "صدّر PNG / MP4 بدون أي علامة مائية"
+    }
+  },
+  "chooseYourPlan": "اختر باقتك",
+  "plans": {
+    "monthly": "شهري",
+    "annual": "سنوي",
+    "lifetime": "مدى الحياة",
+    "bestValue": "الأفضل قيمة",
+    "perMonth": "/ شهريًا",
+    "perYear": "/ سنويًا",
+    "oneTime": "دفعة واحدة",
+    "creditsIncluded_zero": "{{formatted}} رصيد متضمَّن",
+    "creditsIncluded_one": "رصيد واحد متضمَّن",
+    "creditsIncluded_two": "رصيدان متضمَّنان",
+    "creditsIncluded_few": "{{formatted}} أرصدة متضمَّنة",
+    "creditsIncluded_many": "{{formatted}} رصيدًا متضمَّنًا",
+    "creditsIncluded_other": "{{formatted}} رصيد متضمَّن"
+  },
+  "cta": {
+    "startTrial": "ابدأ تجربة مجانية لمدة 7 أيام",
+    "fineprint": "ألغِ في أي وقت · لا رسوم خلال الفترة التجريبية"
+  }
+}

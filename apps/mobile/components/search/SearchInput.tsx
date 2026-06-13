@@ -19,6 +19,7 @@
 
 import { Pressable, useTheme } from '@clickfy/ui';
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Platform, TextInput, View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
@@ -44,11 +45,13 @@ export function SearchInput({
   onChangeText,
   onSubmit,
   onBack,
-  placeholder = 'Search templates',
+  placeholder,
   autoFocus = true,
 }: SearchInputProps) {
   const { colors } = useTheme();
+  const { t } = useTranslation('search');
   const inputRef = useRef<TextInput>(null);
+  const resolvedPlaceholder = placeholder ?? t('input.placeholder');
 
   // `autoFocus` on TextInput is unreliable when the route is
   // pre-rendered by Expo Router's stack — focus the input imperatively
@@ -64,8 +67,8 @@ export function SearchInput({
     <View
       style={{
         height: 52,
-        paddingLeft: 8,
-        paddingRight: 12,
+        paddingStart: 8,
+        paddingEnd: 12,
         borderRadius: 18,
         backgroundColor: colors.surface,
         borderWidth: 1,
@@ -79,7 +82,7 @@ export function SearchInput({
         onPress={onBack}
         haptic="light"
         accessibilityRole="button"
-        accessibilityLabel="Back"
+        accessibilityLabel={t('input.back')}
         style={{
           width: 36,
           height: 36,
@@ -97,7 +100,7 @@ export function SearchInput({
         ref={inputRef}
         value={value}
         onChangeText={onChangeText}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         placeholderTextColor={colors.inkMuted}
         // `web-search` keyboard hint shows a magnifier on the return
         // key on iOS; Android infers the same from `returnKeyType`.
@@ -122,7 +125,7 @@ export function SearchInput({
           onPress={() => onChangeText('')}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="Clear search"
+          accessibilityLabel={t('input.clearAccessibilityLabel')}
           style={{
             width: 28,
             height: 28,

@@ -19,6 +19,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -36,6 +37,7 @@ export default function SavedTemplatesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('saved');
   const sdk = getSDK();
   const [filter, setFilter] = useState<Filter>('All');
 
@@ -65,13 +67,13 @@ export default function SavedTemplatesScreen() {
       <Box px="lg" pb="md">
         <Stack gap="sm">
           <Text variant="overline" color="inkMuted" transform="uppercase">
-            Saved
+            {t('overline')}
           </Text>
           <Text variant="title" color="ink" style={{ fontSize: 36, lineHeight: 38 }}>
-            Your bookmarks
+            {t('title')}
           </Text>
           <Text variant="caption" color="inkMuted">
-            {(savedQuery.data ?? []).length} template{(savedQuery.data ?? []).length === 1 ? '' : 's'} you&apos;ve saved
+            {t('subtitle', { count: (savedQuery.data ?? []).length })}
           </Text>
         </Stack>
       </Box>
@@ -83,7 +85,12 @@ export default function SavedTemplatesScreen() {
         contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingVertical: 4 }}
       >
         {FILTERS.map((f) => (
-          <Chip key={f} label={f} active={filter === f} onPress={() => setFilter(f)} />
+          <Chip
+            key={f}
+            label={t(`filters.${f.toLowerCase()}`)}
+            active={filter === f}
+            onPress={() => setFilter(f)}
+          />
         ))}
       </ScrollView>
 
@@ -133,6 +140,7 @@ function SavedCard({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('saved');
   return (
     <Pressable onPress={onPress}>
       <Stack gap="sm">
@@ -156,7 +164,7 @@ function SavedCard({
             style={{
               position: 'absolute',
               top: 10,
-              right: 10,
+              end: 10,
               width: 30,
               height: 30,
               borderRadius: 15,
@@ -172,7 +180,7 @@ function SavedCard({
           {template.title}
         </Text>
         <Text variant="caption" color="inkMuted">
-          {template.credits} credits
+          {t('credits', { count: template.credits })}
         </Text>
       </Stack>
     </Pressable>
@@ -195,6 +203,7 @@ function GridSkeleton() {
 
 function EmptyState({ filter }: { filter: Filter }) {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('saved');
   return (
     <View
       style={{
@@ -222,12 +231,12 @@ function EmptyState({ filter }: { filter: Filter }) {
         <Icon name="bookmark" size={22} color={accent.deep} weight="fill" />
       </View>
       <Text variant="bodySemi" color="ink">
-        {filter === 'All' ? 'No saved templates yet' : `No ${filter.toLowerCase()} templates saved`}
+        {filter === 'All'
+          ? t('empty.allTitle')
+          : t('empty.filteredTitle', { filter: t(`filters.${filter.toLowerCase()}`) })}
       </Text>
       <Text variant="caption" color="inkMuted" align="center">
-        {filter === 'All'
-          ? 'Tap the bookmark on any template to keep it close at hand.'
-          : 'Try a different filter, or open a template and tap the bookmark icon.'}
+        {filter === 'All' ? t('empty.allDescription') : t('empty.filteredDescription')}
       </Text>
     </View>
   );

@@ -14,6 +14,7 @@
 
 import { useTheme } from '@clickfy/ui';
 import { forwardRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, type TextInput } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
@@ -31,6 +32,7 @@ export interface PasswordFieldProps
 
 export const PasswordField = forwardRef<TextInput, PasswordFieldProps>(
   function PasswordField({ variant = 'current', ...props }, ref) {
+    const { t } = useTranslation('auth');
     const { colors } = useTheme();
     const [visible, setVisible] = useState(false);
 
@@ -48,7 +50,7 @@ export const PasswordField = forwardRef<TextInput, PasswordFieldProps>(
             onPress={() => setVisible((v) => !v)}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={visible ? 'Hide password' : 'Show password'}
+            accessibilityLabel={visible ? t('passwordField.hide') : t('passwordField.show')}
             style={{ padding: 4 }}
           >
             <Icon

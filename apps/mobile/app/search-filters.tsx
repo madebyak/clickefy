@@ -25,6 +25,7 @@ import { Box, Button, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -40,22 +41,23 @@ import {
 } from '@/lib/search-state';
 import { getSDK } from '@/lib/sdk';
 
-const KIND_OPTIONS: { value: TemplateKindFilter; label: string; icon: 'image' | 'play' | 'imageStack' }[] = [
-  { value: 'image', label: 'Image', icon: 'image' },
-  { value: 'video', label: 'Video', icon: 'play' },
-  { value: 'image_set', label: 'Set', icon: 'imageStack' },
+const KIND_OPTIONS: { value: TemplateKindFilter; labelKey: string; icon: 'image' | 'play' | 'imageStack' }[] = [
+  { value: 'image', labelKey: 'kind.image', icon: 'image' },
+  { value: 'video', labelKey: 'kind.video', icon: 'play' },
+  { value: 'image_set', labelKey: 'kind.set', icon: 'imageStack' },
 ];
 
-const SORT_OPTIONS: { value: TemplateSortFilter; label: string; description: string }[] = [
-  { value: 'default', label: 'Recommended', description: 'Curated picks first' },
-  { value: 'recent', label: 'Newest', description: 'Most recently added' },
-  { value: 'popular', label: 'Most popular', description: 'Most-used templates first' },
+const SORT_OPTIONS: { value: TemplateSortFilter; labelKey: string; descriptionKey: string }[] = [
+  { value: 'default', labelKey: 'filtersSheet.sort.default.label', descriptionKey: 'filtersSheet.sort.default.description' },
+  { value: 'recent', labelKey: 'filtersSheet.sort.recent.label', descriptionKey: 'filtersSheet.sort.recent.description' },
+  { value: 'popular', labelKey: 'filtersSheet.sort.popular.label', descriptionKey: 'filtersSheet.sort.popular.description' },
 ];
 
 export default function SearchFiltersScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('search');
   const sdk = getSDK();
   // The search screen passes its current query through navigation
   // params so the count preview reflects "templates matching this
@@ -143,13 +145,13 @@ export default function SearchFiltersScreen() {
         }}
       >
         <Text variant="title" color="ink" weight="700" style={{ fontSize: 22 }}>
-          Filters
+          {t('filtersSheet.title')}
         </Text>
         <Pressable
           onPress={() => router.back()}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="Close"
+          accessibilityLabel={t('filtersSheet.close')}
           style={{
             width: 36,
             height: 36,
@@ -172,7 +174,7 @@ export default function SearchFiltersScreen() {
         {/* ── Type ─────────────────────────────────────────────── */}
         <Stack gap="sm">
           <Text variant="overline" color="inkMuted" transform="uppercase">
-            Type
+            {t('filtersSheet.sections.type')}
           </Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {KIND_OPTIONS.map((opt) => {
@@ -215,7 +217,7 @@ export default function SearchFiltersScreen() {
                       color: active ? colors.surface : colors.ink,
                     }}
                   >
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </Text>
                 </Pressable>
               );
@@ -226,7 +228,7 @@ export default function SearchFiltersScreen() {
         {/* ── Featured ─────────────────────────────────────────── */}
         <Stack gap="sm">
           <Text variant="overline" color="inkMuted" transform="uppercase">
-            Featured
+            {t('filtersSheet.sections.featured')}
           </Text>
           <Pressable
             onPress={() =>
@@ -266,10 +268,10 @@ export default function SearchFiltersScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text variant="bodySemi" color="ink">
-                Featured only
+                {t('filtersSheet.featured.title')}
               </Text>
               <Text variant="caption" color="inkMuted">
-                Hand-picked, hero-quality templates
+                {t('filtersSheet.featured.description')}
               </Text>
             </View>
             {pending.featured ? (
@@ -281,7 +283,7 @@ export default function SearchFiltersScreen() {
         {/* ── Sort ─────────────────────────────────────────────── */}
         <Stack gap="sm">
           <Text variant="overline" color="inkMuted" transform="uppercase">
-            Sort
+            {t('filtersSheet.sections.sort')}
           </Text>
           <View style={{ gap: 8 }}>
             {SORT_OPTIONS.map((opt) => {
@@ -307,10 +309,10 @@ export default function SearchFiltersScreen() {
                 >
                   <View style={{ flex: 1 }}>
                     <Text variant="bodySemi" color="ink">
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </Text>
                     <Text variant="caption" color="inkMuted">
-                      {opt.description}
+                      {t(opt.descriptionKey)}
                     </Text>
                   </View>
                   {active ? (
@@ -344,7 +346,7 @@ export default function SearchFiltersScreen() {
           haptic="light"
           disabled={pendingActive === 0}
           accessibilityRole="button"
-          accessibilityLabel="Reset filters"
+          accessibilityLabel={t('filtersSheet.resetAccessibilityLabel')}
           style={{
             height: 48,
             paddingHorizontal: 18,
@@ -355,7 +357,7 @@ export default function SearchFiltersScreen() {
           }}
         >
           <Text variant="bodySemi" color="ink" weight="600">
-            Reset
+            {t('filtersSheet.reset')}
           </Text>
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -366,10 +368,10 @@ export default function SearchFiltersScreen() {
             disabled={total === 0}
           >
             {countQuery.isLoading
-              ? 'Show results'
+              ? t('filtersSheet.apply')
               : total !== undefined
-                ? `Show ${formatCount(total)} result${total === 1 ? '' : 's'}`
-                : 'Show results'}
+                ? t('filtersSheet.applyCount', { count: total, formatted: formatCount(total) })
+                : t('filtersSheet.apply')}
           </Button>
         </View>
       </Box>

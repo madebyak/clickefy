@@ -19,6 +19,7 @@
 
 import { useTheme } from '@clickfy/ui';
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   StyleSheet,
@@ -64,6 +65,7 @@ export function OtpInput({
   disabled = false,
   autoFocus = true,
 }: OtpInputProps) {
+  const { t } = useTranslation('auth');
   const { colors, accent } = useTheme();
   const inputRef = useRef<TextInput>(null);
 
@@ -116,8 +118,8 @@ export function OtpInput({
     <Pressable
       onPress={focus}
       accessibilityRole="button"
-      accessibilityLabel="One-time code input"
-      accessibilityHint={`Enter the ${length}-digit code we sent to your email.`}
+      accessibilityLabel={t('otp.inputLabel')}
+      accessibilityHint={t('otp.inputHint', { length })}
     >
       <Animated.View style={[styles.row, shakeStyle]}>
         {Array.from({ length }, (_, i) => {

@@ -11,6 +11,7 @@ import {
 } from '@clickfy/ui';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable as RNPressable, ScrollView, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -21,6 +22,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Logo } from '@/components/brand/Logo';
+import { LanguageSwitcher } from '@/components/settings/LanguageSwitcher';
 import { PlanLabel } from '@/components/shared/PlanLabel';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { useAppearance } from '@/lib/use-appearance';
@@ -31,7 +33,8 @@ const DRAWER_WIDTH = 320;
 
 interface NavItem {
   icon: IconName;
-  label: string;
+  /** i18n key under `drawer.nav` for this row's label. */
+  labelKey: string;
   href?:
     | '/(tabs)'
     | '/(tabs)/library'
@@ -47,26 +50,33 @@ interface NavItem {
 // page) lives on the Profile tab instead — we route through it rather than
 // rendering dead rows. "Refer a friend" was removed entirely.
 const NAV_ITEMS: NavItem[] = [
-  { icon: 'home', label: 'Explore', href: '/(tabs)', active: true },
-  { icon: 'categories', label: 'Library', href: '/(tabs)/library' },
-  { icon: 'projects', label: 'Projects', href: '/(tabs)/projects' },
-  { icon: 'bookmark', label: 'Saved templates', href: '/saved' },
-  { icon: 'credit', label: 'Buy credits', href: '/paywall' },
-  { icon: 'bell', label: 'Notifications', href: '/(tabs)/profile' },
-  { icon: 'sliders', label: 'Settings', href: '/(tabs)/profile' },
+  { icon: 'home', labelKey: 'explore', href: '/(tabs)', active: true },
+  { icon: 'categories', labelKey: 'library', href: '/(tabs)/library' },
+  { icon: 'projects', labelKey: 'projects', href: '/(tabs)/projects' },
+  { icon: 'bookmark', labelKey: 'savedTemplates', href: '/saved' },
+  { icon: 'credit', labelKey: 'buyCredits', href: '/paywall' },
+  { icon: 'bell', labelKey: 'notifications', href: '/(tabs)/profile' },
+  { icon: 'sliders', labelKey: 'settings', href: '/(tabs)/profile' },
 ];
 
 export default function DrawerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors, accent } = useTheme();
+  const { colors, accent, isRTL } = useTheme();
+  const { t } = useTranslation('profile');
   const { scheme, toggleScheme } = useAppearance();
   const { user, plan, isAuthed, signOut: sessionSignOut } = useSession();
   const session = isAuthed && user ? { user, plan } : null;
   const { resetOnboarding } = useAuthGate();
 
+  // The drawer anchors to the leading edge — left in LTR, right in RTL — and
+  // slides in from off that edge. `translateX` is physical, so flip its sign
+  // under RTL. `isRTL` comes from the theme (locale-derived), not
+  // `I18nManager`, which is unreliable on the New Architecture.
+  const HIDDEN = isRTL ? DRAWER_WIDTH : -DRAWER_WIDTH;
+
   // Slide-in + scrim fade animation.
-  const offset = useSharedValue(-DRAWER_WIDTH);
+  const offset = useSharedValue(HIDDEN);
   const scrim = useSharedValue(0);
 
   useEffect(() => {
@@ -75,7 +85,7 @@ export default function DrawerScreen() {
   }, [offset, scrim]);
 
   const close = () => {
-    offset.value = withTiming(-DRAWER_WIDTH, { duration: 220 });
+    offset.value = withTiming(HIDDEN, { duration: 220 });
     scrim.value = withTiming(0, { duration: 220 });
     setTimeout(() => router.back(), 200);
   };
@@ -85,7 +95,7 @@ export default function DrawerScreen() {
       close();
       return;
     }
-    offset.value = withTiming(-DRAWER_WIDTH, { duration: 200 });
+    offset.value = withTiming(HIDDEN, { duration: 200 });
     scrim.value = withTiming(0, { duration: 200 });
     setTimeout(() => {
       router.back();
@@ -104,7 +114,7 @@ export default function DrawerScreen() {
   // production bundles, but the surrounding code should still go away once
   // we have a proper QA build flavor.
   const replayOnboarding = async () => {
-    offset.value = withTiming(-DRAWER_WIDTH, { duration: 200 });
+    offset.value = withTiming(HIDDEN, { duration: 200 });
     scrim.value = withTiming(0, { duration: 200 });
     await resetOnboarding();
     setTimeout(() => {
@@ -129,7 +139,7 @@ export default function DrawerScreen() {
           scrimStyle,
         ]}
       >
-        <RNPressable onPress={close} style={{ flex: 1 }} accessibilityLabel="Close menu" />
+        <RNPressable onPress={close} style={{ flex: 1 }} accessibilityLabel={t('drawer.closeMenu')} />
       </Animated.View>
 
       {/* Drawer */}
@@ -139,18 +149,22 @@ export default function DrawerScreen() {
             position: 'absolute',
             top: 0,
             bottom: 0,
-            left: 0,
+            // Anchor to the leading edge (left in LTR, right in RTL).
+            ...(isRTL ? { right: 0 } : { left: 0 }),
             width: DRAWER_WIDTH,
             backgroundColor: colors.bg,
-            borderTopRightRadius: 28,
-            borderBottomRightRadius: 28,
+            // Round the inner edge that faces the content area.
+            ...(isRTL
+              ? { borderTopLeftRadius: 28, borderBottomLeftRadius: 28 }
+              : { borderTopRightRadius: 28, borderBottomRightRadius: 28 }),
             paddingTop: insets.top + 16,
             paddingHorizontal: 20,
             paddingBottom: insets.bottom + 24,
             shadowColor: '#000',
             shadowOpacity: 0.25,
             shadowRadius: 40,
-            shadowOffset: { width: 14, height: 0 },
+            // Shadow falls toward the content side.
+            shadowOffset: { width: isRTL ? -14 : 14, height: 0 },
             flexDirection: 'column',
           },
           drawerStyle,
@@ -162,7 +176,7 @@ export default function DrawerScreen() {
           <Pressable
             onPress={close}
             haptic="light"
-            accessibilityLabel="Close"
+            accessibilityLabel={t('drawer.close')}
             style={{
               width: 36,
               height: 36,
@@ -216,11 +230,11 @@ export default function DrawerScreen() {
             <Card surface="surfaceMuted">
               <Stack gap="sm" align="flex-start">
                 <Text variant="bodySemi" color="ink">
-                  You&apos;re signed out
+                  {t('drawer.signedOut')}
                 </Text>
                 <Pressable onPress={() => navigate('/(tabs)/profile')} haptic="light">
                   <Text variant="caption" color={accent.solid} weight="700">
-                    Sign in →
+                    {t('drawer.signIn')}
                   </Text>
                 </Pressable>
               </Stack>
@@ -232,13 +246,25 @@ export default function DrawerScreen() {
         <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
           <Stack gap="xs">
             {NAV_ITEMS.map((item) => (
-              <NavRow key={item.label} item={item} onPress={() => navigate(item.href)} />
+              <NavRow key={item.labelKey} item={item} onPress={() => navigate(item.href)} />
             ))}
           </Stack>
         </ScrollView>
 
-        {/* Footer — dark mode toggle + sign out */}
+        {/* Footer — language + dark mode toggle + sign out */}
         <Stack gap="sm" mt="md">
+          <Card surface="surface">
+            <Stack gap="sm">
+              <HStack align="center" gap="md">
+                <Icon name="language" size={18} color={colors.ink} weight="fill" />
+                <Text variant="bodySemi" color="ink" style={{ flex: 1 }}>
+                  {t('drawer.language')}
+                </Text>
+              </HStack>
+              <LanguageSwitcher />
+            </Stack>
+          </Card>
+
           <Card surface="surface">
             <HStack align="center" gap="md">
               <Icon
@@ -248,7 +274,7 @@ export default function DrawerScreen() {
                 weight="fill"
               />
               <Text variant="bodySemi" color="ink" style={{ flex: 1 }}>
-                Dark mode
+                {t('drawer.darkMode')}
               </Text>
               <Switch value={scheme === 'dark'} onValueChange={toggleScheme} />
             </HStack>
@@ -259,7 +285,7 @@ export default function DrawerScreen() {
               <HStack align="center" gap="md" px="sm" py="md">
                 <Icon name="signOut" size={18} color={colors.danger} />
                 <Text variant="bodySemi" color="danger">
-                  Sign out
+                  {t('drawer.signOut')}
                 </Text>
               </HStack>
             </Pressable>
@@ -279,7 +305,7 @@ export default function DrawerScreen() {
                 <HStack align="center" gap="md" px="sm" py="md">
                   <Icon name="refresh" size={18} color={colors.inkMuted} />
                   <Text variant="caption" color="inkMuted" weight="600">
-                    Replay onboarding (dev)
+                    {t('drawer.replayOnboarding')}
                   </Text>
                 </HStack>
               </Pressable>
@@ -293,6 +319,7 @@ export default function DrawerScreen() {
 
 function NavRow({ item, onPress }: { item: NavItem; onPress: () => void }) {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('profile');
   return (
     <Pressable onPress={onPress} haptic="light" pressedOpacity={0.8}>
       <View
@@ -320,7 +347,7 @@ function NavRow({ item, onPress }: { item: NavItem; onPress: () => void }) {
           weight={item.active ? '700' : '500'}
           style={{ flex: 1, fontSize: 15 }}
         >
-          {item.label}
+          {t(`drawer.nav.${item.labelKey}`)}
         </Text>
       </View>
     </Pressable>

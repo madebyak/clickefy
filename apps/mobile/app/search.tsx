@@ -37,6 +37,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Keyboard, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -65,6 +66,7 @@ export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors } = useTheme();
+  const { t } = useTranslation('search');
   const sdk = getSDK();
   const filters = useSearchFilters();
 
@@ -161,8 +163,8 @@ export default function SearchScreen() {
           onChangeText={setQuery}
           placeholder={
             filters.categoryLabel
-              ? `Search in ${filters.categoryLabel}`
-              : 'Search templates'
+              ? t('input.searchInCategory', { category: filters.categoryLabel })
+              : t('input.placeholder')
           }
           onSubmit={(v) => {
             // Submitting persists the query immediately rather than
@@ -209,10 +211,10 @@ export default function SearchScreen() {
           >
             <Text variant="caption" color="inkMuted">
               {resultsQuery.isLoading
-                ? 'Searching…'
+                ? t('meta.searching')
                 : total !== undefined
-                  ? `${formatCount(total)} result${total === 1 ? '' : 's'}`
-                  : `${items.length} result${items.length === 1 ? '' : 's'}`}
+                  ? t('meta.results', { count: total, formatted: formatCount(total) })
+                  : t('meta.results', { count: items.length, formatted: String(items.length) })}
             </Text>
             <FilterButton
               activeCount={activeFilterCount}
@@ -314,12 +316,17 @@ function FilterButton({
   onPress: () => void;
 }) {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('search');
   return (
     <Pressable
       onPress={onPress}
       haptic="light"
       accessibilityRole="button"
-      accessibilityLabel={`Filters${activeCount > 0 ? ` (${activeCount} active)` : ''}`}
+      accessibilityLabel={
+        activeCount > 0
+          ? t('filterButton.accessibilityLabelActive', { count: activeCount })
+          : t('filterButton.accessibilityLabel')
+      }
       style={{
         height: 32,
         paddingHorizontal: 12,
@@ -334,7 +341,7 @@ function FilterButton({
     >
       <Icon name="sliders" size={14} color={colors.ink} weight="bold" />
       <Text variant="caption" color="ink" weight="600" style={{ fontSize: 12.5 }}>
-        Filters
+        {t('filterButton.label')}
       </Text>
       {activeCount > 0 ? (
         <View
@@ -369,6 +376,7 @@ function ResultCard({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('search');
   return (
     <Pressable onPress={onPress} haptic="light" pressedOpacity={0.92}>
       <Stack gap="sm">
@@ -391,7 +399,7 @@ function ResultCard({
           {template.title}
         </Text>
         <Text variant="caption" color="inkMuted">
-          {template.credits} credits
+          {t('credits', { count: template.credits })}
         </Text>
       </Stack>
     </Pressable>
@@ -434,6 +442,7 @@ function NoResults({
   onClearFilters: () => void;
 }) {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('search');
   return (
     <View
       style={{
@@ -462,12 +471,10 @@ function NoResults({
         <Icon name="search" size={22} color={accent.deep} weight="bold" />
       </View>
       <Text variant="bodySemi" color="ink">
-        No results
+        {t('noResults.title')}
       </Text>
       <Text variant="caption" color="inkMuted" align="center">
-        {query
-          ? `No templates match "${query}". Try a different keyword or clear your filters.`
-          : 'No templates match these filters. Try widening the criteria.'}
+        {query ? t('noResults.withQuery', { query }) : t('noResults.noQuery')}
       </Text>
       <Pressable
         onPress={onClearFilters}
@@ -486,7 +493,7 @@ function NoResults({
         }}
       >
         <Text variant="caption" color="ink" weight="600" style={{ fontSize: 12.5 }}>
-          Clear filters
+          {t('noResults.clearFilters')}
         </Text>
       </Pressable>
     </View>
@@ -509,6 +516,7 @@ function RecentsAndCategories({
   onPickCategory: (id: string) => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useTranslation('search');
 
   // Plain ScrollView is fine here — recents+categories fit in one
   // viewport on every common phone size, and we already use ScrollView
@@ -525,16 +533,16 @@ function RecentsAndCategories({
             }}
           >
             <Text variant="overline" color="inkMuted" transform="uppercase">
-              Recent
+              {t('recents.title')}
             </Text>
             <Pressable
               onPress={() => void onClearRecents()}
               haptic="light"
               accessibilityRole="button"
-              accessibilityLabel="Clear recent searches"
+              accessibilityLabel={t('recents.clearAccessibilityLabel')}
             >
               <Text variant="caption" color="inkMuted" weight="600">
-                Clear
+                {t('recents.clear')}
               </Text>
             </Pressable>
           </View>
@@ -552,7 +560,7 @@ function RecentsAndCategories({
                 onPress={() => onPickRecent(q)}
                 haptic="light"
                 accessibilityRole="button"
-                accessibilityLabel={`Search ${q}`}
+                accessibilityLabel={t('recents.searchItemAccessibilityLabel', { query: q })}
                 style={{
                   flex: 1,
                   flexDirection: 'row',
@@ -569,7 +577,7 @@ function RecentsAndCategories({
                 onPress={() => void onRemoveRecent(q)}
                 haptic="light"
                 accessibilityRole="button"
-                accessibilityLabel={`Remove ${q} from recents`}
+                accessibilityLabel={t('recents.removeAccessibilityLabel', { query: q })}
                 style={{
                   width: 28,
                   height: 28,
@@ -588,7 +596,7 @@ function RecentsAndCategories({
       {categories.length > 0 ? (
         <Stack gap="sm">
           <Text variant="overline" color="inkMuted" transform="uppercase">
-            Browse categories
+            {t('categories.title')}
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {categories.map((c) => (
@@ -597,7 +605,7 @@ function RecentsAndCategories({
                 onPress={() => onPickCategory(c.id)}
                 haptic="selection"
                 accessibilityRole="button"
-                accessibilityLabel={`Browse ${c.label}`}
+                accessibilityLabel={t('categories.browseAccessibilityLabel', { category: c.label })}
                 style={{
                   height: 34,
                   paddingHorizontal: 14,

@@ -1,0 +1,19 @@
+{
+  "overline": "المكتبة",
+  "title": "القوالب الأخيرة",
+  "subtitle_one": "قالب واحد استخدمته مؤخرًا",
+  "subtitle_other": "{{count}} قالب استخدمتها مؤخرًا",
+  "savedAccessibilityLabel": "القوالب المحفوظة",
+  "usedLabel": "استُخدم {{when}}",
+  "filters": {
+    "all": "الكل",
+    "image": "صورة",
+    "video": "فيديو",
+    "set": "مجموعة"
+  },
+  "empty": {
+    "title": "لا يوجد شيء هنا بعد",
+    "allDescription": "أنشئ من قالب وسيظهر هنا تلقائيًا.",
+    "filteredDescription": "لا توجد قوالب {{filter}} استُخدمت مؤخرًا. جرّب فلترًا آخر."
+  }
+}

@@ -3,6 +3,7 @@ import { FlashList } from '@shopify/flash-list';
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,10 +25,17 @@ import {
 } from '@/lib/search-state';
 import { useSession } from '@/lib/use-session';
 
+// The four fixed discovery rails carry server-provided English titles that are
+// actually system UI strings (see api/section-builder.ts). We localize them on
+// the client by key. Category rails (key `category-<uuid>`) keep their dynamic,
+// server-localized title.
+const FIXED_SECTION_KEYS = new Set(['trending', 'new-arrivals', 'video-magic', 'photo-sets']);
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors } = useTheme();
+  const { t } = useTranslation('home');
   const sdk = getSDK();
   // `activeCat` always tracks the ROOT category id (or the synthetic
   // 'all'). When a root has sub-categories, `activeSubcategoryId` is
@@ -248,19 +256,29 @@ export default function HomeScreen() {
         <FlashList
           data={sectionsQuery.data ?? []}
           keyExtractor={(section) => section.key}
-          renderItem={({ item: section }) => (
-            <Box pb="xxl">
+          renderItem={({ item: section }) => {
+            // Localize the four fixed discovery rails by key; category rails
+            // keep their server-provided (already locale-aware) title.
+            const isFixed = FIXED_SECTION_KEYS.has(section.key);
+            const localizedTitle = isFixed
+              ? t(`sections.${section.key}.title`)
+              : section.title;
+            const localizedSubtitle = isFixed
+              ? t(`sections.${section.key}.subtitle`)
+              : section.subtitle;
+            return (
+            <Box pb="xxl" style={{ width: '100%' }}>
               {/* "See all" → /section/[key]. We forward the title via
                   query param so the destination header renders without
                   an extra fetch. The route falls back to a per-key
                   default title if the param is missing or stale. */}
               <SectionHeader
-                title={section.title}
-                subtitle={section.subtitle}
+                title={localizedTitle}
+                subtitle={localizedSubtitle}
                 onAction={() =>
                   router.push({
                     pathname: '/section/[key]',
-                    params: { key: section.key, title: section.title },
+                    params: { key: section.key, title: localizedTitle },
                   })
                 }
               />
@@ -280,7 +298,8 @@ export default function HomeScreen() {
                 </ScrollView>
               )}
             </Box>
-          )}
+            );
+          }}
           /* Banner strip — admin-curated, sits between the category rail
              and the section list. One 16:9 slot; if the admin has multiple
              active banner rows, the slot becomes a horizontal pager
@@ -299,7 +318,7 @@ export default function HomeScreen() {
             ) : sectionsQuery.isError ? (
               <Box px="lg">
                 <Text variant="body" color="danger">
-                  Couldn&apos;t load templates. Pull down to try again.
+                  {t('feed.error')}
                 </Text>
               </Box>
             ) : null

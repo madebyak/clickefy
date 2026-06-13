@@ -1,0 +1,40 @@
+{
+  "close": "Close paywall",
+  "eyebrow": "Clickefy Pro",
+  "headlineLine1": "Make every shot",
+  "headlineLine2": "scroll-stopping.",
+  "perks": {
+    "templates": {
+      "title": "Unlimited templates",
+      "subtitle": "Every studio + premium template"
+    },
+    "video": {
+      "title": "Video generations",
+      "subtitle": "4K motion clips up to 8s"
+    },
+    "multiImage": {
+      "title": "Multi-image sets",
+      "subtitle": "Carousels & lookbooks in one tap"
+    },
+    "downloads": {
+      "title": "High-res downloads",
+      "subtitle": "Export PNG / MP4 with zero watermark"
+    }
+  },
+  "chooseYourPlan": "Choose your plan",
+  "plans": {
+    "monthly": "Monthly",
+    "annual": "Annual",
+    "lifetime": "Lifetime",
+    "bestValue": "Best value",
+    "perMonth": "/ month",
+    "perYear": "/ year",
+    "oneTime": "one-time",
+    "creditsIncluded_one": "{{formatted}} credit included",
+    "creditsIncluded_other": "{{formatted}} credits included"
+  },
+  "cta": {
+    "startTrial": "Start 7-day free trial",
+    "fineprint": "Cancel anytime · No charge during trial"
+  }
+}

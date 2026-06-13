@@ -2,6 +2,7 @@ import type { CatalogCategory } from '@clickfy/sdk';
 import { Pressable, Text, useTheme } from '@clickfy/ui';
 import { Image } from 'expo-image';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
@@ -48,6 +49,7 @@ export function SubcategoryRail({
   onSelect,
 }: SubcategoryRailProps) {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('home');
 
   // Wrap subcategories in a stable, memoised list with the "All"
   // pill pinned to the front. We use `null` as the sentinel id so
@@ -74,7 +76,7 @@ export function SubcategoryRail({
         const cat = isAll ? null : item.cat;
         const id = isAll ? null : cat!.id;
         const isActive = activeChildId === id;
-        const label = isAll ? `All ${parent.label}` : (cat!.label ?? '');
+        const label = isAll ? t('subcategoryRail.all', { parent: parent.label }) : (cat!.label ?? '');
         const imageUri = isAll ? parent.imageUri : cat!.imageUri;
 
         return (
@@ -90,8 +92,8 @@ export function SubcategoryRail({
               alignItems: 'center',
               gap: 8,
               height: PILL_HEIGHT,
-              paddingLeft: 6,
-              paddingRight: 14,
+              paddingStart: 6,
+              paddingEnd: 14,
               borderRadius: PILL_RADIUS,
               backgroundColor: isActive ? accent.solid : colors.surface,
               borderWidth: 1,

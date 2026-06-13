@@ -20,7 +20,8 @@
 
 import { Button, Pressable, useTheme } from '@clickfy/ui';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -53,43 +54,38 @@ interface Slide {
   body: string;
 }
 
-const SLIDES: Slide[] = [
-  {
-    deck: { layout: 'orbit', sources: slide1Images },
-    eyebrow: 'Meet Clickefy',
-    headPre: 'Studio-grade hero shots in ',
-    headEm: 'one tap',
-    headPost: '.',
-    body:
-      "Drop your product photo and we'll handle the lighting, shadows, and polish — automatically.",
-  },
-  {
-    deck: { layout: 'grid', sources: slide2Images },
-    eyebrow: 'Browse the catalog',
-    headPre: '',
-    headEm: 'Hundreds ',
-    headPost: 'of templates, zero design skills.',
-    body:
-      'Pick a vibe — skincare, food, fashion, tech. Every template is tuned by a creative director so you don\u2019t have to think.',
-  },
-  {
-    deck: { layout: 'stack', sources: slide3Images, showPlayBadge: true },
-    eyebrow: 'Go beyond photos',
-    headPre: 'Turn any photo into a ',
-    headEm: 'scroll-stopping',
-    headPost: ' video.',
-    body:
-      "4\u20138 second product clips, perfect for Reels, TikTok, and your storefront.",
-  },
+// Image decks stay at module scope (no translatable copy); the localized text
+// is produced inside the component so we never call hooks outside React.
+const SLIDE_DECKS: FloatingDeckProps[] = [
+  { layout: 'orbit', sources: slide1Images },
+  { layout: 'grid', sources: slide2Images },
+  { layout: 'stack', sources: slide3Images, showPlayBadge: true },
 ];
 
 // ─── Screen ──────────────────────────────────────────────────────────
 
 export default function OnboardingScreen() {
+  const { t } = useTranslation('onboarding');
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { markOnboardingComplete } = useAuthGate();
+
+  const SLIDES = useMemo<Slide[]>(
+    () =>
+      SLIDE_DECKS.map((deck, i) => {
+        const n = i + 1;
+        return {
+          deck,
+          eyebrow: t(`slide${n}.eyebrow`),
+          headPre: t(`slide${n}.headPre`),
+          headEm: t(`slide${n}.headEm`),
+          headPost: t(`slide${n}.headPost`),
+          body: t(`slide${n}.body`),
+        };
+      }),
+    [t],
+  );
 
   const [index, setIndex] = useState(0);
   const slide = SLIDES[index]!;
@@ -131,7 +127,7 @@ export default function OnboardingScreen() {
         ]}
       >
         <TopCorner
-          accessibilityLabel="Back"
+          accessibilityLabel={t('backA11y')}
           onPress={isFirst ? undefined : handleBack}
           disabled={isFirst}
           icon={
@@ -142,11 +138,11 @@ export default function OnboardingScreen() {
         <ProgressBar current={index} total={SLIDES.length} />
 
         <TopCorner
-          accessibilityLabel="Skip onboarding"
+          accessibilityLabel={t('skipA11y')}
           onPress={handleSkip}
           icon={
             <Animated.Text style={[styles.skipText, { color: colors.inkMuted }]}>
-              Skip
+              {t('skip')}
             </Animated.Text>
           }
         />
@@ -191,7 +187,7 @@ export default function OnboardingScreen() {
               />
             }
           >
-            {isLast ? 'Get started' : 'Continue'}
+            {isLast ? t('getStarted') : t('continue')}
           </Button>
 
         </View>

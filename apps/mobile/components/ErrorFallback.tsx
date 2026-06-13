@@ -1,5 +1,6 @@
 import { Button, Stack, Text, useTheme } from '@clickfy/ui';
 import type { FallbackProps } from 'react-error-boundary';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,6 +9,7 @@ import { Icon } from '@/components/ui/Icon';
 export function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const { colors, accent } = useTheme();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation('errors');
 
   // `react-error-boundary` types `error` as `{}` (errors can be
   // anything thrown), so guard before reading `.message`.
@@ -46,10 +48,10 @@ export function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
 
       <Stack gap="sm" align="center" style={{ maxWidth: 300 }}>
         <Text variant="title" color="ink" align="center" style={{ fontSize: 22 }}>
-          Something went wrong
+          {t('title')}
         </Text>
         <Text variant="body" color="inkMuted" align="center">
-          An unexpected error occurred. You can try again or go back.
+          {t('body')}
         </Text>
         {__DEV__ && errorMessage ? (
           <Text
@@ -66,7 +68,7 @@ export function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
 
       <View style={{ marginTop: 32, width: '100%', maxWidth: 280 }}>
         <Button variant="accent" size="lg" full haptic="medium" onPress={resetErrorBoundary}>
-          Try again
+          {t('tryAgain')}
         </Button>
       </View>
     </View>

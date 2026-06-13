@@ -23,6 +23,7 @@ import * as Sentry from '@sentry/react-native';
 import { Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -39,6 +40,7 @@ const MAX_FAILED_ATTEMPTS = 5;
 type Flow = 'sign-in' | 'sign-up';
 
 export default function VerifyScreen() {
+  const { t } = useTranslation('auth');
   const { colors, accent } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -106,8 +108,8 @@ export default function VerifyScreen() {
             );
             const human =
               missing.length > 0
-                ? `Your account needs: ${missing.join(', ')}. Check your Clerk dashboard sign-up settings.`
-                : 'Email verified, but sign-up could not complete. Check the Metro logs for missing fields.';
+                ? t('verify.errors.accountNeedsFields', { fields: missing.join(', ') })
+                : t('verify.errors.signUpIncomplete');
             setError(human);
             setSubmitting(false);
             submitInFlight.current = false;
@@ -132,7 +134,7 @@ export default function VerifyScreen() {
               extra: { status: result.status },
             });
             setError(
-              `Sign-in not complete (status: ${result.status}). See logs.`,
+              t('verify.errors.signInIncomplete', { status: result.status }),
             );
             setSubmitting(false);
             submitInFlight.current = false;
@@ -142,7 +144,7 @@ export default function VerifyScreen() {
         if (isClerkAPIResponseError(err)) {
           const first = err.errors?.[0];
           const errCode = first?.code;
-          const message = first?.longMessage ?? first?.message ?? 'That code didn\u2019t work.';
+          const message = first?.longMessage ?? first?.message ?? t('verify.errors.codeFailed');
           console.warn('[verify] clerk api error', {
             code: errCode,
             message,
@@ -167,7 +169,7 @@ export default function VerifyScreen() {
             const retryMeta = first?.meta as Record<string, unknown> | undefined;
             const waitSec = typeof retryMeta?.retryAfter === 'number' ? retryMeta.retryAfter : 60;
             setLocked(true);
-            setError(`Too many attempts. Please wait ${waitSec} seconds before trying again.`);
+            setError(t('verify.errors.tooManyAttempts', { seconds: waitSec }));
             setTimeout(() => setLocked(false), waitSec * 1000);
             setCode('');
           } else if (errCode === 'verification_already_verified' && flow === 'sign-up' && signUp) {
@@ -182,18 +184,18 @@ export default function VerifyScreen() {
             }
             setError(
               missing.length > 0
-                ? `Email verified. Sign-up still needs: ${missing.join(', ')}. Update your Clerk dashboard sign-up settings to passwordless email.`
-                : 'Email already verified, but sign-up can\u2019t complete. Check Metro logs.',
+                ? t('verify.errors.alreadyVerifiedNeedsFields', { fields: missing.join(', ') })
+                : t('verify.errors.alreadyVerifiedIncomplete'),
             );
           } else {
             failedAttempts.current += 1;
             if (failedAttempts.current >= MAX_FAILED_ATTEMPTS) {
               setLocked(true);
-              setError('Too many incorrect codes. Please request a new one.');
+              setError(t('verify.errors.tooManyIncorrect'));
               setCode('');
             } else {
               const remaining = MAX_FAILED_ATTEMPTS - failedAttempts.current;
-              setError(`${message} ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`);
+              setError(`${message} ${t('verify.errors.attemptsRemaining', { count: remaining })}`);
               if (errCode === 'verification_expired') {
                 setCode('');
               }
@@ -202,13 +204,13 @@ export default function VerifyScreen() {
         } else {
           console.warn('[verify] non-clerk error', err);
           Sentry.captureException(err, { extra: { flow, where: 'verify_submit' } });
-          setError('Something went wrong. Please try again.');
+          setError(t('common.somethingWentWrong'));
         }
         setSubmitting(false);
         submitInFlight.current = false;
       }
     },
-    [flow, isLoaded, locked, router, setSignInActive, setSignUpActive, signIn, signUp],
+    [flow, isLoaded, locked, router, setSignInActive, setSignUpActive, signIn, signUp, t],
   );
 
   const handleResend = async () => {
@@ -241,13 +243,13 @@ export default function VerifyScreen() {
         if (first?.code === 'too_many_requests') {
           const retryMeta = first?.meta as Record<string, unknown> | undefined;
           const waitSec = typeof retryMeta?.retryAfter === 'number' ? retryMeta.retryAfter : 60;
-          setError(`Too many resend attempts. Please wait ${waitSec} seconds.`);
+          setError(t('verify.errors.tooManyResend', { seconds: waitSec }));
           setResendCountdown(waitSec);
         } else {
-          setError(first?.longMessage ?? first?.message ?? 'Could not resend the code.');
+          setError(first?.longMessage ?? first?.message ?? t('verify.errors.couldNotResend'));
         }
       } else {
-        setError("We couldn't resend the code. Try again in a moment.");
+        setError(t('verify.errors.couldNotResendRetry'));
       }
     } finally {
       setResending(false);
@@ -265,26 +267,26 @@ export default function VerifyScreen() {
       !hasChallenge ? (
         <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
           <Text variant="title" color="ink" style={{ fontSize: 22 }}>
-            This sign-in link expired
+            {t('verify.expired.title')}
           </Text>
           <Text variant="body" color="inkMuted" align="center">
-            Start over from the sign-in screen — it only takes a second.
+            {t('verify.expired.body')}
           </Text>
           <Pressable
             onPress={() => router.replace('/(auth)/welcome')}
             haptic="light"
             pressedOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="Back to welcome"
+            accessibilityLabel={t('verify.expired.a11y')}
             style={{ marginTop: 12, paddingVertical: 12, paddingHorizontal: 22, borderRadius: 14, backgroundColor: accent.solid }}
           >
             <Text variant="caption" weight="700" style={{ color: colors.surface, fontSize: 14 }}>
-              Back to start
+              {t('verify.expired.action')}
             </Text>
           </Pressable>
         </View>
       ) : null,
-    [accent.solid, hasChallenge, colors.bg, colors.surface, router],
+    [accent.solid, hasChallenge, colors.bg, colors.surface, router, t],
   );
 
   if (!hasChallenge) return fallback;
@@ -310,7 +312,7 @@ export default function VerifyScreen() {
           haptic="light"
           pressedOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('common.back')}
           style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
         >
           <Icon name="chevronLeft" size={22} color={colors.ink} weight="bold" />
@@ -321,14 +323,14 @@ export default function VerifyScreen() {
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 16, gap: 32 }}>
         <Stack gap="sm">
           <Text variant="title" color="ink" style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.8 }}>
-            Check your email
+            {t('verify.title')}
           </Text>
           <Text variant="body" color="inkMuted" style={{ lineHeight: 22 }}>
-            We sent a 6-digit code to{' '}
+            {t('verify.sentPrefix')}
             <Text variant="body" color="ink" weight="700">
               {email}
             </Text>
-            .
+            {t('verify.sentSuffix')}
           </Text>
         </Stack>
 
@@ -366,16 +368,16 @@ export default function VerifyScreen() {
             pressedOpacity={0.7}
             disabled={resendDisabled}
             accessibilityRole="button"
-            accessibilityLabel="Resend code"
+            accessibilityLabel={t('verify.resendA11y')}
             accessibilityState={{ disabled: resendDisabled }}
             style={{ paddingVertical: 10, paddingHorizontal: 16, opacity: resendDisabled ? 0.5 : 1 }}
           >
             <Text variant="caption" color="ink" weight="700" style={{ fontSize: 14 }}>
               {resending
-                ? 'Sending\u2026'
+                ? t('verify.resendSending')
                 : resendCountdown > 0
-                  ? `Resend in ${resendCountdown}s`
-                  : 'Resend code'}
+                  ? t('verify.resendCountdown', { seconds: resendCountdown })
+                  : t('verify.resendCode')}
             </Text>
           </Pressable>
 
@@ -384,13 +386,13 @@ export default function VerifyScreen() {
             haptic="light"
             pressedOpacity={0.7}
             accessibilityRole="link"
-            accessibilityLabel="Change email address"
+            accessibilityLabel={t('verify.changeEmailA11y')}
             style={{ paddingVertical: 6 }}
           >
             <Text variant="caption" color="inkMuted" style={{ fontSize: 13.5 }}>
-              Wrong email?{' '}
+              {t('verify.changeEmailPrefix')}
               <Text variant="caption" color="ink" weight="700" style={{ fontSize: 13.5 }}>
-                Change it
+                {t('verify.changeEmailAction')}
               </Text>
             </Text>
           </Pressable>
@@ -401,7 +403,7 @@ export default function VerifyScreen() {
         {__DEV__ ? (
           <View style={{ paddingBottom: insets.bottom + 20, alignItems: 'center' }}>
             <Text variant="caption" color="inkSubtle" style={{ fontSize: 12 }} align="center">
-              [dev] Any 6-digit code works. The real one is logged in your Metro console.
+              {t('verify.devHint')}
             </Text>
           </View>
         ) : (

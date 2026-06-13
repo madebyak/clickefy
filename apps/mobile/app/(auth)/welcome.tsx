@@ -26,6 +26,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AccessibilityInfo, Alert, Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -51,6 +52,7 @@ WebBrowser.maybeCompleteAuthSession();
 type SocialProvider = 'apple' | 'google';
 
 export default function WelcomeScreen() {
+  const { t } = useTranslation('auth');
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -122,22 +124,22 @@ export default function WelcomeScreen() {
             extra: { provider, clerkErrorCode: first?.code, clerkErrorMessage: first?.message },
           });
           Alert.alert(
-            'Sign in failed',
-            first?.longMessage ?? first?.message ?? 'Please try again.',
+            t('welcome.signInFailedTitle'),
+            first?.longMessage ?? first?.message ?? t('welcome.tryAgain'),
           );
         } else {
           console.warn(`[welcome] ${provider} oauth error`, err);
           Sentry.captureException(err, { extra: { provider, where: 'sso_flow' } });
           Alert.alert(
-            'Sign in failed',
-            'Something went wrong. Please try again or use email.',
+            t('welcome.signInFailedTitle'),
+            t('welcome.socialError'),
           );
         }
       } finally {
         setPending(null);
       }
     },
-    [pending, startSSOFlow],
+    [pending, startSSOFlow, t],
   );
 
   // Entrance animation — staggered fade-up on each block below the hero.
@@ -215,7 +217,7 @@ export default function WelcomeScreen() {
           align="center"
           style={styles.tagline}
         >
-          Make every product look unforgettable.
+          {t('welcome.tagline')}
         </Text>
       </Animated.View>
 
@@ -236,7 +238,7 @@ export default function WelcomeScreen() {
               onPress={() => completeSocialSignIn('apple')}
               leading={<Icon name="apple" weight="fill" size={18} color={colors.surface} />}
             >
-              Continue with Apple
+              {t('welcome.continueApple')}
             </Button>
           )}
 
@@ -250,7 +252,7 @@ export default function WelcomeScreen() {
             onPress={() => completeSocialSignIn('google')}
             leading={<GoogleG size={18} />}
           >
-            Continue with Google
+            {t('welcome.continueGoogle')}
           </Button>
 
           <Button
@@ -262,7 +264,7 @@ export default function WelcomeScreen() {
             onPress={() => router.push('/(auth)/sign-in')}
             leading={<Icon name="envelope" size={18} color={colors.ink} />}
           >
-            Continue with email
+            {t('welcome.continueEmail')}
           </Button>
         </Stack>
       </Animated.View>
@@ -278,15 +280,15 @@ export default function WelcomeScreen() {
             align="center"
             style={{ lineHeight: 18 }}
           >
-            By continuing you agree to our{' '}
+            {t('welcome.tos.prefix')}
             <Text variant="caption" color="ink" weight="600">
-              Terms of Service
-            </Text>{' '}
-            and{' '}
-            <Text variant="caption" color="ink" weight="600">
-              Privacy Policy
+              {t('welcome.tos.terms')}
             </Text>
-            .
+            {t('welcome.tos.and')}
+            <Text variant="caption" color="ink" weight="600">
+              {t('welcome.tos.privacy')}
+            </Text>
+            {t('welcome.tos.period')}
           </Text>
         </Box>
       </Animated.View>

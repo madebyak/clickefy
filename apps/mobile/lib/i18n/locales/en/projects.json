@@ -1,0 +1,27 @@
+{
+  "overline": "Your work",
+  "title": "Projects",
+  "deleteAccessibilityLabel": "Delete project",
+  "outputs_one": "{{count}} output",
+  "outputs_other": "{{count}} outputs",
+  "status": {
+    "queued": "Queued",
+    "processing": "Generating",
+    "failed": "Failed"
+  },
+  "deleteConfirm": {
+    "title": "Delete this project?",
+    "message": "It will be removed from your history. Generated images stay accessible through any direct links you’ve already shared.",
+    "cancel": "Cancel",
+    "confirm": "Delete"
+  },
+  "error": {
+    "title": "Could not delete",
+    "message": "We couldn’t remove that project. Check your connection and try again."
+  },
+  "empty": {
+    "title": "No projects yet",
+    "description": "Generate your first image from a template and it’ll show up here.",
+    "cta": "Browse templates"
+  }
+}

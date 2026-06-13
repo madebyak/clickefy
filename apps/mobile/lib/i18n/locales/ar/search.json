@@ -1,0 +1,90 @@
+{
+  "input": {
+    "placeholder": "ابحث عن القوالب",
+    "searchInCategory": "ابحث في {{category}}",
+    "back": "رجوع",
+    "clearAccessibilityLabel": "مسح البحث"
+  },
+  "meta": {
+    "searching": "جارٍ البحث…",
+    "results_one": "{{formatted}} نتيجة",
+    "results_other": "{{formatted}} نتيجة"
+  },
+  "filterButton": {
+    "label": "الفلاتر",
+    "accessibilityLabel": "الفلاتر",
+    "accessibilityLabelActive_one": "الفلاتر ({{count}} نشط)",
+    "accessibilityLabelActive_other": "الفلاتر ({{count}} نشطة)"
+  },
+  "credits_one": "رصيد واحد",
+  "credits_other": "{{count}} رصيد",
+  "noResults": {
+    "title": "لا توجد نتائج",
+    "withQuery": "لا توجد قوالب تطابق \"{{query}}\". جرّب كلمة مختلفة أو امسح الفلاتر.",
+    "noQuery": "لا توجد قوالب تطابق هذه الفلاتر. جرّب توسيع المعايير.",
+    "clearFilters": "مسح الفلاتر"
+  },
+  "recents": {
+    "title": "الأخيرة",
+    "clear": "مسح",
+    "clearAccessibilityLabel": "مسح عمليات البحث الأخيرة",
+    "searchItemAccessibilityLabel": "ابحث عن {{query}}",
+    "removeAccessibilityLabel": "إزالة {{query}} من الأخيرة"
+  },
+  "categories": {
+    "title": "تصفّح الفئات",
+    "browseAccessibilityLabel": "تصفّح {{category}}"
+  },
+  "kind": {
+    "image": "صورة",
+    "video": "فيديو",
+    "set": "مجموعة"
+  },
+  "filtersSheet": {
+    "title": "الفلاتر",
+    "close": "إغلاق",
+    "sections": {
+      "type": "النوع",
+      "featured": "مميّز",
+      "sort": "الترتيب"
+    },
+    "featured": {
+      "title": "المميّزة فقط",
+      "description": "قوالب مختارة بعناية وعالية الجودة"
+    },
+    "sort": {
+      "default": { "label": "موصى به", "description": "المختارات المنسّقة أولًا" },
+      "recent": { "label": "الأحدث", "description": "المضافة حديثًا" },
+      "popular": { "label": "الأكثر شيوعًا", "description": "القوالب الأكثر استخدامًا أولًا" }
+    },
+    "reset": "إعادة تعيين",
+    "resetAccessibilityLabel": "إعادة تعيين الفلاتر",
+    "apply": "عرض النتائج",
+    "applyCount_one": "عرض {{formatted}} نتيجة",
+    "applyCount_other": "عرض {{formatted}} نتيجة"
+  },
+  "activeFilters": {
+    "inCategory": "في {{category}}",
+    "featured": "مميّز",
+    "removeAccessibilityLabel": "إزالة فلتر {{label}}",
+    "clearAll": "مسح الكل",
+    "clearAllAccessibilityLabel": "مسح كل الفلاتر",
+    "sort": {
+      "default": "موصى به",
+      "recent": "الأحدث",
+      "popular": "شائع"
+    }
+  },
+  "section": {
+    "defaultTitle": "القوالب",
+    "back": "رجوع",
+    "empty": {
+      "title": "لا يوجد شيء هنا بعد",
+      "description": "عُد قريبًا — تظهر قوالب جديدة هنا فور إطلاقها."
+    },
+    "unknown": {
+      "title": "القسم غير موجود",
+      "description": "هذا الرابط لم يعد صالحًا. اسحب للأسفل أو ارجع للتحديث."
+    }
+  }
+}

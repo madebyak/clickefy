@@ -1,6 +1,7 @@
 import { Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,10 +9,11 @@ import { Icon, type IconName } from '@/components/ui/Icon';
 
 interface Plan {
   id: 'monthly' | 'annual' | 'lifetime';
-  badge?: string;
-  title: string;
+  /** Whether to render the "best value" badge. */
+  badge?: boolean;
   priceLabel: string;
-  perLabel?: string;
+  /** i18n key (under `plans`) for the price suffix label. */
+  perKey?: 'perMonth' | 'perYear' | 'oneTime';
   /** Cross-out previous price */
   strike?: string;
   credits: number;
@@ -21,41 +23,39 @@ interface Plan {
 const PLANS: Plan[] = [
   {
     id: 'monthly',
-    title: 'Monthly',
     priceLabel: '$19',
-    perLabel: '/ month',
+    perKey: 'perMonth',
     credits: 250,
   },
   {
     id: 'annual',
-    badge: 'Best value',
-    title: 'Annual',
+    badge: true,
     priceLabel: '$129',
-    perLabel: '/ year',
+    perKey: 'perYear',
     strike: '$228',
     credits: 3000,
     highlighted: true,
   },
   {
     id: 'lifetime',
-    title: 'Lifetime',
     priceLabel: '$299',
-    perLabel: 'one-time',
+    perKey: 'oneTime',
     credits: 5000,
   },
 ];
 
-const PERKS: { icon: IconName; title: string; subtitle: string }[] = [
-  { icon: 'wand', title: 'Unlimited templates', subtitle: 'Every studio + premium template' },
-  { icon: 'video', title: 'Video generations', subtitle: '4K motion clips up to 8s' },
-  { icon: 'imageStack', title: 'Multi-image sets', subtitle: 'Carousels & lookbooks in one tap' },
-  { icon: 'download', title: 'High-res downloads', subtitle: 'Export PNG / MP4 with zero watermark' },
+const PERKS: { icon: IconName; key: string }[] = [
+  { icon: 'wand', key: 'templates' },
+  { icon: 'video', key: 'video' },
+  { icon: 'imageStack', key: 'multiImage' },
+  { icon: 'download', key: 'downloads' },
 ];
 
 export default function PaywallScreen() {
   const { colors, accent } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation('paywall');
   const [selected, setSelected] = useState<Plan['id']>('annual');
 
   const handleStartTrial = () => {
@@ -70,11 +70,11 @@ export default function PaywallScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Close button */}
-      <View style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 20 }}>
+      <View style={{ position: 'absolute', top: insets.top + 8, end: 16, zIndex: 20 }}>
         <Pressable
           onPress={handleClose}
           haptic="light"
-          accessibilityLabel="Close paywall"
+          accessibilityLabel={t('close')}
           style={{
             width: 36,
             height: 36,
@@ -109,21 +109,21 @@ export default function PaywallScreen() {
               transform="uppercase"
               style={{ fontSize: 11.5, letterSpacing: 1.4 }}
             >
-              Clickefy Pro
+              {t('eyebrow')}
             </Text>
           </HStack>
           <Text variant="display" color="ink" italic style={{ fontSize: 40, lineHeight: 44 }}>
-            Make every shot
+            {t('headlineLine1')}
           </Text>
           <Text variant="display" color="ink" italic style={{ fontSize: 40, lineHeight: 44 }}>
-            scroll-stopping.
+            {t('headlineLine2')}
           </Text>
         </Stack>
 
         {/* Perks */}
         <Stack gap="md">
           {PERKS.map((perk) => (
-            <HStack key={perk.title} align="center" gap="md">
+            <HStack key={perk.key} align="center" gap="md">
               <View
                 style={{
                   width: 40,
@@ -143,10 +143,10 @@ export default function PaywallScreen() {
               </View>
               <Stack gap="xs" style={{ flex: 1 }}>
                 <Text variant="bodySemi" color="ink">
-                  {perk.title}
+                  {t(`perks.${perk.key}.title`)}
                 </Text>
                 <Text variant="caption" color="inkMuted">
-                  {perk.subtitle}
+                  {t(`perks.${perk.key}.subtitle`)}
                 </Text>
               </Stack>
             </HStack>
@@ -156,7 +156,7 @@ export default function PaywallScreen() {
         {/* Plans */}
         <Stack gap="sm">
           <Text variant="overline" color="inkMuted" transform="uppercase">
-            Choose your plan
+            {t('chooseYourPlan')}
           </Text>
           {PLANS.map((plan) => (
             <PlanCard
@@ -186,10 +186,10 @@ export default function PaywallScreen() {
         }}
       >
         <Button variant="accent" size="lg" full haptic="medium" onPress={handleStartTrial}>
-          Start 7-day free trial
+          {t('cta.startTrial')}
         </Button>
         <Text variant="caption" color="inkSubtle" align="center">
-          Cancel anytime · No charge during trial
+          {t('cta.fineprint')}
         </Text>
       </View>
     </View>
@@ -206,6 +206,7 @@ function PlanCard({
   onSelect: () => void;
 }) {
   const { colors, accent } = useTheme();
+  const { t } = useTranslation('paywall');
   return (
     <Pressable
       onPress={onSelect}
@@ -253,7 +254,7 @@ function PlanCard({
         <Stack gap="xs" style={{ flex: 1 }}>
           <HStack align="center" gap="sm">
             <Text variant="bodySemi" color={selected ? accent.deep : 'ink'}>
-              {plan.title}
+              {t(`plans.${plan.id}`)}
             </Text>
             {plan.badge ? (
               <View
@@ -270,13 +271,16 @@ function PlanCard({
                   transform="uppercase"
                   style={{ fontSize: 10, letterSpacing: 0.6 }}
                 >
-                  {plan.badge}
+                  {t('plans.bestValue')}
                 </Text>
               </View>
             ) : null}
           </HStack>
           <Text variant="caption" color="inkMuted">
-            {plan.credits.toLocaleString()} credits included
+            {t('plans.creditsIncluded', {
+              count: plan.credits,
+              formatted: plan.credits.toLocaleString(),
+            })}
           </Text>
         </Stack>
 
@@ -294,9 +298,9 @@ function PlanCard({
             <Text variant="mono" color={selected ? accent.deep : 'ink'} weight="700" style={{ fontSize: 18 }}>
               {plan.priceLabel}
             </Text>
-            {plan.perLabel ? (
+            {plan.perKey ? (
               <Text variant="caption" color="inkMuted">
-                {plan.perLabel}
+                {t(`plans.${plan.perKey}`)}
               </Text>
             ) : null}
           </HStack>

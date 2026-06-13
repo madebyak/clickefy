@@ -3,6 +3,7 @@ import { Box, Pressable, Text, useTheme } from '@clickfy/ui';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/ui/Icon';
@@ -60,6 +61,7 @@ export function TemplateCard({
 }: TemplateCardProps) {
   const { colors, accent } = useTheme();
   const router = useRouter();
+  const { t } = useTranslation('home');
   // Aspect priority: explicit prop override > uniform default.
   // We deliberately ignore `template.aspect` so the rail keeps a
   // consistent visual rhythm no matter what shape the admin uploads.
@@ -121,15 +123,15 @@ export function TemplateCard({
           />
         )}
 
-        {/* Kind chip — top left */}
+        {/* Kind chip — top leading edge */}
         <View
           style={{
             position: 'absolute',
             top: 10,
-            left: 10,
+            start: 10,
             height: 26,
-            paddingLeft: 8,
-            paddingRight: 10,
+            paddingStart: 8,
+            paddingEnd: 10,
             borderRadius: 13,
             backgroundColor: colors.overlayStrong,
             flexDirection: 'row',
@@ -149,16 +151,16 @@ export function TemplateCard({
             transform="uppercase"
             style={{ fontSize: 11, letterSpacing: 0.2, lineHeight: 13 }}
           >
-            {template.kind}
+            {t(`templateCard.kind.${template.kind}`)}
           </Text>
         </View>
 
-        {/* Credit chip — bottom right */}
+        {/* Credit chip — bottom trailing edge */}
         <View
           style={{
             position: 'absolute',
             bottom: 10,
-            right: 10,
+            end: 10,
             height: 26,
             paddingHorizontal: 9,
             borderRadius: 13,

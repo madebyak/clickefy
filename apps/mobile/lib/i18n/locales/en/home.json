@@ -1,0 +1,54 @@
+{
+  "tabBar": {
+    "home": "Home",
+    "library": "Library",
+    "create": "Create",
+    "projects": "Projects",
+    "profile": "Profile"
+  },
+  "topBar": {
+    "openMenu": "Open menu",
+    "creditsLabel": "{{plan}} plan, {{credits}} credits"
+  },
+  "search": {
+    "placeholder": "Search templates",
+    "scoped": "Search in {{scope}}",
+    "filters": "Filters",
+    "filtersActive": "Filters, {{count}} active"
+  },
+  "section": {
+    "seeAll": "See all"
+  },
+  "sections": {
+    "trending": { "title": "Trending Now", "subtitle": "Hand-picked highlights" },
+    "new-arrivals": { "title": "New Arrivals", "subtitle": "Fresh templates added recently" },
+    "video-magic": { "title": "Video Magic", "subtitle": "Bring your shots to life" },
+    "photo-sets": { "title": "Photo Sets", "subtitle": "Coordinated lookbooks" }
+  },
+  "feed": {
+    "error": "Couldn't load templates. Pull down to try again."
+  },
+  "create": {
+    "overline": "Quick create",
+    "title": "Start a generation",
+    "subtitle": "Pick a template, drop your product photo, and we'll do the rest.",
+    "browseTemplates": "Browse templates"
+  },
+  "grid": {
+    "emptyTitle": "Nothing in this category yet",
+    "emptyBody": "Switch to another category, or back to All to browse the full feed."
+  },
+  "categoryRail": {
+    "all": "All"
+  },
+  "subcategoryRail": {
+    "all": "All {{parent}}"
+  },
+  "templateCard": {
+    "kind": {
+      "image": "Image",
+      "video": "Video",
+      "set": "Set"
+    }
+  }
+}

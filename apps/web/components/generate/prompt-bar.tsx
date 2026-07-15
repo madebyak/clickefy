@@ -1,0 +1,314 @@
+"use client";
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Plus,
+  Minus,
+  Check,
+  CaretDown,
+  GoogleLogo,
+  Diamond,
+  PencilSimple,
+  Sparkle,
+} from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
+
+/* --------------------------------------------------------------------- data */
+
+const ASPECTS = ["Auto", "1:1", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9", "5:4", "4:5", "21:9"];
+const QUALITIES: { label: string; premium?: boolean }[] = [
+  { label: "1K" },
+  { label: "2K" },
+  { label: "4K", premium: true },
+];
+const MODELS = [
+  { id: "nano-pro", name: "Nano Banana Pro" },
+  { id: "nano-2", name: "Nano Banana 2 Flash" },
+  { id: "seedream", name: "Seedream" },
+];
+const MAX_IMAGES = 4;
+const CREDIT_COST = 2;
+
+/* ------------------------------------------------------------------ atoms */
+
+/** Mini rectangle drawn in a ratio's proportions (used in the aspect menu). */
+function RatioGlyph({ ratio, className }: { ratio: string; className?: string }) {
+  if (ratio === "Auto") {
+    return <span className={cn("size-4 rounded-[3px] border-[1.5px] border-dashed border-current", className)} />;
+  }
+  const [w, h] = ratio.split(":").map(Number);
+  const scale = 16 / Math.max(w, h);
+  return (
+    <span
+      className={cn("rounded-[3px] border-[1.5px] border-current", className)}
+      style={{ width: w * scale, height: h * scale }}
+    />
+  );
+}
+
+function Pill({
+  active,
+  className,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "inline-flex h-9 items-center gap-2 rounded-lg border bg-surface-3 px-3 text-sm text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1",
+        active ? "border-border" : "border-transparent",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/* --------------------------------------------------------------- dropdown */
+
+function Dropdown({
+  trigger,
+  panelClassName,
+  children,
+}: {
+  trigger: (s: { open: boolean; toggle: () => void }) => ReactNode;
+  panelClassName?: string;
+  children: (h: { close: () => void }) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      {trigger({ open, toggle: () => setOpen((o) => !o) })}
+      {open && (
+        <div
+          className={cn(
+            "absolute bottom-full start-0 z-50 mb-2 rounded-xl border border-border bg-surface-3 p-1.5 shadow-2xl shadow-black/50",
+            panelClassName,
+          )}
+        >
+          {children({ close: () => setOpen(false) })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuLabel({ children }: { children: ReactNode }) {
+  return <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{children}</p>;
+}
+
+function MenuItem({
+  selected,
+  onClick,
+  children,
+}: {
+  selected?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm outline-none transition-colors hover:bg-white/5 focus-visible:bg-white/5",
+        selected ? "text-foreground" : "text-muted-foreground",
+      )}
+    >
+      {children}
+      {selected && <Check weight="bold" className="ms-auto size-4 text-foreground" />}
+    </button>
+  );
+}
+
+/* --------------------------------------------------------------- component */
+
+export function PromptBar() {
+  const [prompt, setPrompt] = useState("");
+  const [model, setModel] = useState(MODELS[0]);
+  const [aspect, setAspect] = useState("3:4");
+  const [quality, setQuality] = useState("1K");
+  const [count, setCount] = useState(1);
+  const [draw, setDraw] = useState(false);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl bg-surface-1 p-3 sm:flex-row">
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {/* prompt row */}
+        <div className="flex items-start gap-2">
+          <button
+            type="button"
+            aria-label="Add reference image"
+            className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
+          >
+            <Plus className="size-5" />
+          </button>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Describe the scene you imagine"
+            rows={1}
+            className="mt-1.5 max-h-40 w-full resize-none bg-transparent text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
+          />
+        </div>
+
+        {/* controls row */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* model */}
+          <Dropdown
+            panelClassName="min-w-60"
+            trigger={({ toggle }) => (
+              <Pill onClick={toggle}>
+                <GoogleLogo weight="bold" className="size-4 text-accent-turquoise" />
+                {model.name}
+                <CaretDown className="size-3.5 text-muted-foreground" />
+              </Pill>
+            )}
+          >
+            {({ close }) => (
+              <>
+                <MenuLabel>Model</MenuLabel>
+                {MODELS.map((m) => (
+                  <MenuItem
+                    key={m.id}
+                    selected={m.id === model.id}
+                    onClick={() => {
+                      setModel(m);
+                      close();
+                    }}
+                  >
+                    <GoogleLogo weight="bold" className="size-4 text-accent-turquoise" />
+                    {m.name}
+                  </MenuItem>
+                ))}
+              </>
+            )}
+          </Dropdown>
+
+          {/* aspect ratio */}
+          <Dropdown
+            panelClassName="max-h-80 min-w-44 overflow-y-auto"
+            trigger={({ toggle }) => (
+              <Pill onClick={toggle}>
+                <RatioGlyph ratio={aspect} className="text-muted-foreground" />
+                {aspect}
+              </Pill>
+            )}
+          >
+            {({ close }) => (
+              <>
+                <MenuLabel>Aspect ratio</MenuLabel>
+                {ASPECTS.map((a) => (
+                  <MenuItem
+                    key={a}
+                    selected={a === aspect}
+                    onClick={() => {
+                      setAspect(a);
+                      close();
+                    }}
+                  >
+                    <span className="grid w-4 place-items-center">
+                      <RatioGlyph ratio={a} />
+                    </span>
+                    {a}
+                  </MenuItem>
+                ))}
+              </>
+            )}
+          </Dropdown>
+
+          {/* quality */}
+          <Dropdown
+            panelClassName="min-w-52"
+            trigger={({ toggle }) => (
+              <Pill onClick={toggle}>
+                <Diamond weight="fill" className="size-3.5 text-accent-turquoise" />
+                {quality}
+              </Pill>
+            )}
+          >
+            {({ close }) => (
+              <>
+                <MenuLabel>Select quality</MenuLabel>
+                {QUALITIES.map((q) => (
+                  <MenuItem
+                    key={q.label}
+                    selected={q.label === quality}
+                    onClick={() => {
+                      setQuality(q.label);
+                      close();
+                    }}
+                  >
+                    {q.label}
+                    {q.premium && (
+                      <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                        Premium
+                      </span>
+                    )}
+                  </MenuItem>
+                ))}
+              </>
+            )}
+          </Dropdown>
+
+          {/* count stepper */}
+          <div className="inline-flex h-9 items-center rounded-lg bg-surface-3 px-1">
+            <button
+              type="button"
+              aria-label="Fewer images"
+              onClick={() => setCount((c) => Math.max(1, c - 1))}
+              disabled={count <= 1}
+              className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
+            >
+              <Minus className="size-4" />
+            </button>
+            <span className="min-w-11 text-center text-sm tabular-nums text-muted-foreground">
+              {count}/{MAX_IMAGES}
+            </span>
+            <button
+              type="button"
+              aria-label="More images"
+              onClick={() => setCount((c) => Math.min(MAX_IMAGES, c + 1))}
+              disabled={count >= MAX_IMAGES}
+              className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
+            >
+              <Plus className="size-4" />
+            </button>
+          </div>
+
+          {/* draw */}
+          <Pill active={draw} onClick={() => setDraw((d) => !d)}>
+            <PencilSimple className="size-4" />
+            Draw
+          </Pill>
+        </div>
+      </div>
+
+      {/* generate */}
+      <button
+        type="button"
+        className="flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-6 font-semibold text-primary-foreground outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 sm:h-auto sm:w-auto sm:self-stretch"
+      >
+        Generate
+        <Sparkle weight="fill" className="size-4" />
+        <span className="tabular-nums">{CREDIT_COST * count}</span>
+      </button>
+    </div>
+  );
+}

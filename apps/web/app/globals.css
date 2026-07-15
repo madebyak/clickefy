@@ -5,16 +5,32 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Clickefy Web — design tokens.
- * This is a neutral starting base (shadcn "neutral" scale + violet accent).
- * The Design System page (/design-system) is the source of truth; refine these
- * tokens there rather than hard-coding colors in components.
+ * ============================================================================
+ * Clickefy Web — Design Tokens
+ * Black-first creator studio. The /design-system route renders all of these.
+ * Refine tokens HERE, never hard-code values in components.
+ *
+ * SPACING NOTE: Tailwind v4 spacing utilities (p-, m-, gap-, w-, h-) come from
+ * the numeric scale (p-4 = 16px, gap-6 = 24px), derived from --spacing (4px).
+ * Use numeric utilities in components. The t-shirt names (xs/sm/md…) shown in
+ * the design system are a naming convention that maps onto those numbers.
+ * ============================================================================
  */
 
-@theme inline {
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-mono-src), ui-monospace, monospace;
+/* Literal theme values that must register as Tailwind scales/variants. */
+@theme {
+  --spacing: 0.25rem; /* 4px atomic base → p-1=4, p-2=8, p-4=16, p-6=24 … */
+  --breakpoint-xs: 30rem; /* 480px — large phones / small foldables */
+  --breakpoint-3xl: 120rem; /* 1920px — ultrawide / 4K */
+}
 
+/* Tokens that reference :root custom properties (colors, fonts, radius). */
+@theme inline {
+  /* Swappable stack: Latin-first by default, Arabic-first under dir="rtl" (see below). */
+  --font-sans: var(--app-font-sans);
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Semantic (shadcn-compatible) colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -30,64 +46,121 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  /* Brand palette (raw) */
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-purple: var(--brand-purple);
+  --color-accent-turquoise: var(--accent-turquoise);
+  --color-accent-pink: var(--accent-pink);
+  --color-status-red: var(--status-red);
+  --color-status-green: var(--status-green);
+
+  /* Radius scale */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 }
 
-/* Light theme (default) */
+/*
+ * Values. Single black-first theme (light mode deferred).
+ * :root already holds the theme so it applies with or without the .dark class.
+ */
 :root {
   --radius: 0.75rem;
 
-  --background: #ffffff;
-  --foreground: #0a0a0b;
-  --card: #ffffff;
-  --card-foreground: #0a0a0b;
-  --popover: #ffffff;
-  --popover-foreground: #0a0a0b;
-  --primary: #7c3aed;
-  --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #18181b;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
-  --accent: #f4f4f5;
-  --accent-foreground: #18181b;
-  --destructive: #ef4444;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #7c3aed;
-}
+  /* Font stack — Latin (Geist) leads, Arabic (IBM Plex Sans Arabic) for Arabic glyphs. */
+  --app-font-sans: var(--font-geist-sans), var(--font-ibm-arabic), ui-sans-serif, system-ui,
+    sans-serif;
 
-/* Dark theme */
-.dark {
-  --background: #0a0a0f;
+  /* Backgrounds & surfaces (main black + 3 modern shades) */
+  --background: #000000;      /* full black — main BG */
+  --surface-1: #0a0a0c;       /* subtle raise (rails, inputs) */
+  --surface-2: #131317;       /* cards */
+  --surface-3: #1c1c22;       /* elevated (popovers, menus, modals) */
+
+  /* Text */
   --foreground: #fafafa;
-  --card: #16161f;
+  --muted-foreground: #9b9ba4;
+
+  /* Semantic surface mappings */
+  --card: var(--surface-2);
   --card-foreground: #fafafa;
-  --popover: #1e1e2a;
+  --popover: var(--surface-3);
   --popover-foreground: #fafafa;
-  --primary: #8b5cf6;
-  --primary-foreground: #ffffff;
-  --secondary: #27272a;
-  --secondary-foreground: #fafafa;
-  --muted: #1e1e2a;
-  --muted-foreground: #a1a1aa;
-  --accent: #27272a;
+  --muted: var(--surface-1);
+  --accent: var(--surface-2);
   --accent-foreground: #fafafa;
-  --destructive: #f87171;
-  --border: #27272a;
-  --input: #27272a;
-  --ring: #8b5cf6;
+  --secondary: var(--surface-2);
+  --secondary-foreground: #fafafa;
+
+  /* Actions — yellow primary (dark text), purple secondary brand */
+  --primary: #ebf81a;
+  --primary-foreground: #000000;
+
+  /* Brand palette */
+  --brand-yellow: #ebf81a;
+  --brand-purple: #6303e0;
+  --accent-turquoise: #00dcae;
+  --accent-pink: #db0078;
+  --status-red: #ef0744;
+  --status-green: #07dd44;
+
+  /* Status semantic */
+  --destructive: #ef0744;
+  --destructive-foreground: #ffffff;
+
+  /* Lines & focus */
+  --border: #26262d;
+  --input: #26262d;
+  --ring: #ebf81a;
 }
 
-* {
-  border-color: var(--color-border);
+/*
+ * RTL / Arabic. Set dir="rtl" on <html> (per-locale). Tailwind logical utilities
+ * (ms-/me-/ps-/pe-/start-/end-/text-start) then flip automatically — author those,
+ * not ml/mr/left/right. Arabic leads the font stack and gets looser line-height.
+ */
+@layer base {
+  /*
+   * Arabic renders in IBM Plex Sans Arabic. We declare font-family DIRECTLY on
+   * Arabic elements (IBM first) rather than reordering the inherited stack —
+   * the Latin font's auto-generated fallback also carries Arabic glyphs and
+   * would otherwise win. In @layer base so the `font-mono` utility still beats it.
+   */
+  :is([lang="ar"], [dir="rtl"]) {
+    font-family: var(--font-ibm-arabic), var(--font-geist-sans), ui-sans-serif, system-ui,
+      sans-serif;
+  }
+}
+[dir="rtl"] body {
+  line-height: 1.75; /* Arabic has tall ascenders / deep descenders */
+  letter-spacing: 0; /* never track connected Arabic script */
+}
+
+@layer base {
+  /*
+   * Default border color (Tailwind v4 defaults borders to currentColor).
+   * MUST live in @layer base so `border-primary`, `border-status-green/30`,
+   * `focus-visible:border-primary`, etc. (in @layer utilities) still win.
+   */
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-border);
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -95,4 +168,11 @@ body {
   color: var(--color-foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Thin, on-brand scrollbars for the dark UI */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
 }

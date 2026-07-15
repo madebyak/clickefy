@@ -141,6 +141,13 @@
       sans-serif;
   }
 }
+/* Full-page RTL: swap the sans-stack variable so <body> and everything that
+   resolves var(--font-sans) leads with IBM Plex Sans Arabic (not Geist's
+   Latin auto-fallback, which also carries — and would grab — Arabic glyphs). */
+[dir="rtl"] {
+  --app-font-sans: var(--font-ibm-arabic), var(--font-geist-sans), ui-sans-serif, system-ui,
+    sans-serif;
+}
 [dir="rtl"] body {
   line-height: 1.75; /* Arabic has tall ascenders / deep descenders */
   letter-spacing: 0; /* never track connected Arabic script */

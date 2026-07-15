@@ -1,7 +1,10 @@
+import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
 
-export function VideoBanner() {
+export async function VideoBanner() {
+  const t = await getTranslations("home");
+
   return (
     <section className="mx-auto mt-16 max-w-[90rem] px-4 sm:px-6">
       <div className="relative overflow-hidden rounded-2xl bg-surface-2">
@@ -19,19 +22,17 @@ export function VideoBanner() {
 
         <div className="relative z-10 flex min-h-[320px] flex-col items-center justify-center px-6 py-16 text-center sm:min-h-[400px] lg:min-h-[480px]">
           <p className="font-mono text-xs uppercase tracking-widest text-brand-yellow">
-            One studio, every format
+            {t("bannerLabel")}
           </p>
           <h2 className="mt-4 max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
-            From idea to campaign, in minutes
+            {t("bannerHeadline")}
           </h2>
-          <p className="mt-4 max-w-xl text-base text-white/70 sm:text-lg">
-            Generate images and video, tell the whole story, and ship — all in one place.
-          </p>
+          <p className="mt-4 max-w-xl text-base text-white/70 sm:text-lg">{t("bannerSub")}</p>
           <Link
-            href="#"
+            href="/create"
             className="mt-8 inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
-            Start creating <ArrowRight className="size-4" weight="bold" />
+            {t("startCreating")} <ArrowRight className="size-4 rtl:-scale-x-100" weight="bold" />
           </Link>
         </div>
       </div>

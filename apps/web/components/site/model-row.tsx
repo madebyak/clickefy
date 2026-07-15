@@ -1,21 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import { Check } from "@phosphor-icons/react";
+import { Check, ArrowRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
-type Model = { id: string; name: string; company: string; tag: string };
+type Model = { id: string; name: string; company: string; tagKey: string };
 
 const MODELS: Model[] = [
-  { id: "gpt-image", name: "GPT Image", company: "OpenAI", tag: "Best text" },
-  { id: "nano-banana-pro", name: "Nano Banana Pro", company: "Google", tag: "Quality" },
-  { id: "nano-banana-2", name: "Nano Banana 2", company: "Google", tag: "Fast" },
-  { id: "seedream", name: "Seedream 5", company: "ByteDance", tag: "4K" },
-  { id: "imagen", name: "Imagen 4", company: "Google", tag: "Detail" },
+  { id: "gpt-image", name: "GPT Image", company: "OpenAI", tagKey: "tagBestText" },
+  { id: "nano-banana-pro", name: "Nano Banana Pro", company: "Google", tagKey: "tagQuality" },
+  { id: "nano-banana-2", name: "Nano Banana 2", company: "Google", tagKey: "tagFast" },
+  { id: "seedream", name: "Seedream 5", company: "ByteDance", tagKey: "tag4k" },
+  { id: "imagen", name: "Imagen 4", company: "Google", tagKey: "tagDetail" },
 ];
 
-/** Model logo from /media/models/<id>.svg, falling back to a monogram tile. */
 function ModelLogo({ model }: { model: Model }) {
   const [ok, setOk] = useState(true);
   const ref = useRef<HTMLImageElement>(null);
@@ -49,6 +49,7 @@ function ModelCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const t = useTranslations("models");
   return (
     <button
       type="button"
@@ -58,9 +59,7 @@ function ModelCard({
         selected ? "bg-surface-3" : "bg-surface-1 hover:bg-surface-3/60",
       )}
     >
-      {selected && (
-        <Check weight="bold" className="absolute end-3 top-3 size-4 text-brand-purple" />
-      )}
+      {selected && <Check weight="bold" className="absolute end-3 top-3 size-4 text-brand-purple" />}
       <div className="flex items-center gap-3">
         <ModelLogo model={model} />
         <div className="min-w-0">
@@ -69,13 +68,14 @@ function ModelCard({
         </div>
       </div>
       <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {model.tag}
+        {t(model.tagKey)}
       </p>
     </button>
   );
 }
 
 export function ModelRow() {
+  const t = useTranslations("home");
   const [selected, setSelected] = useState(0);
   return (
     <section className="mx-auto max-w-[90rem] px-4 sm:px-6">
@@ -83,23 +83,18 @@ export function ModelRow() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-[3px] bg-brand-purple" />
-            <h3 className="text-sm font-medium">Choose your model</h3>
+            <h3 className="text-sm font-medium">{t("chooseModel")}</h3>
           </div>
           <Link
             href="#"
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            View all models →
+            {t("viewAllModels")} <ArrowRight className="size-4 rtl:-scale-x-100" />
           </Link>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {MODELS.map((m, i) => (
-            <ModelCard
-              key={m.id}
-              model={m}
-              selected={i === selected}
-              onSelect={() => setSelected(i)}
-            />
+            <ModelCard key={m.id} model={m} selected={i === selected} onSelect={() => setSelected(i)} />
           ))}
         </div>
       </div>

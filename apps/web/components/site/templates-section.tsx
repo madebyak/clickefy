@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import {
   Image as ImageIcon,
@@ -15,13 +16,14 @@ import { cn } from "@/lib/utils";
 
 type TemplateType = "image" | "image-set" | "image-video" | "video";
 
-const TYPE_META: Record<TemplateType, { label: string; Icon: Icon }> = {
-  image: { label: "Image", Icon: ImageIcon },
-  "image-set": { label: "Image set", Icon: Images },
-  "image-video": { label: "Image + Video", Icon: FilmSlate },
-  video: { label: "Video", Icon: VideoCamera },
+const TYPE_META: Record<TemplateType, { labelKey: string; Icon: Icon }> = {
+  image: { labelKey: "typeImage", Icon: ImageIcon },
+  "image-set": { labelKey: "typeImageSet", Icon: Images },
+  "image-video": { labelKey: "typeImageVideo", Icon: FilmSlate },
+  video: { labelKey: "typeVideo", Icon: VideoCamera },
 };
 
+// Internal category values (used for filtering); display goes through `cat<Value>` keys.
 const CATEGORIES = ["All", "Fashion", "Beauty", "Portrait", "Product", "Cinematic", "Interior"];
 
 type Template = {
@@ -29,7 +31,6 @@ type Template = {
   category: string;
   type: TemplateType;
   img: string;
-  /** When set, the card previews as an auto-looping video (img is the poster). */
   video?: string;
 };
 
@@ -51,12 +52,13 @@ const TEMPLATES: Template[] = [
   { title: "Lookbook", category: "Fashion", type: "image", img: "/assets/9dc49668408f711f0a052b89dcdba229.jpg" },
 ];
 
-function TemplateCard({ t }: { t: Template }) {
-  const meta = TYPE_META[t.type];
+function TemplateCard({ template }: { template: Template }) {
+  const t = useTranslations("templates");
+  const meta = TYPE_META[template.type];
   return (
     <Link href="#" className="group block overflow-hidden rounded-xl bg-surface-2">
       <div className="relative aspect-[3/4] overflow-hidden bg-surface-3">
-        {t.video ? (
+        {template.video ? (
           <video
             className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-105"
             autoPlay
@@ -64,14 +66,14 @@ function TemplateCard({ t }: { t: Template }) {
             muted
             playsInline
             preload="metadata"
-            poster={t.img}
+            poster={template.img}
           >
-            <source src={t.video} type="video/mp4" />
+            <source src={template.video} type="video/mp4" />
           </video>
         ) : (
           <Image
-            src={t.img}
-            alt={t.title}
+            src={template.img}
+            alt={template.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
             className="object-cover transition-transform duration-300 group-hover:scale-105"
@@ -79,41 +81,40 @@ function TemplateCard({ t }: { t: Template }) {
         )}
         <span className="absolute start-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-1 text-[11px] font-medium text-white backdrop-blur">
           <meta.Icon weight="fill" className="size-3.5" />
-          {meta.label}
+          {t(meta.labelKey)}
         </span>
       </div>
       <div className="p-3">
-        <p className="truncate text-sm font-medium">{t.title}</p>
-        <p className="truncate text-xs text-muted-foreground">{t.category}</p>
+        <p className="truncate text-sm font-medium">{template.title}</p>
+        <p className="truncate text-xs text-muted-foreground">{t(`cat${template.category}`)}</p>
       </div>
     </Link>
   );
 }
 
 export function TemplatesSection() {
+  const t = useTranslations("templates");
   const [cat, setCat] = useState("All");
-  const shown = cat === "All" ? TEMPLATES : TEMPLATES.filter((t) => t.category === cat);
+  const shown = cat === "All" ? TEMPLATES : TEMPLATES.filter((tpl) => tpl.category === cat);
 
   return (
     <section className="mx-auto mt-16 max-w-[90rem] px-4 sm:px-6">
-      {/* header row */}
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Templates</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Start from a proven recipe.</p>
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t("heading")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("sub")}</p>
         </div>
         <Link
           href="#"
           className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
-          View all templates <ArrowRight className="size-4" />
+          {t("viewAll")} <ArrowRight className="size-4 rtl:-scale-x-100" />
         </Link>
       </div>
 
-      {/* categories */}
       <div className="mt-6">
         <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          All categories
+          {t("allCategories")}
         </p>
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {CATEGORIES.map((c) => (
@@ -128,16 +129,15 @@ export function TemplatesSection() {
                   : "bg-surface-2 text-muted-foreground hover:bg-surface-3 hover:text-foreground",
               )}
             >
-              {c}
+              {t(`cat${c}`)}
             </button>
           ))}
         </div>
       </div>
 
-      {/* grid */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {shown.map((t) => (
-          <TemplateCard key={t.title} t={t} />
+        {shown.map((tpl) => (
+          <TemplateCard key={tpl.title} template={tpl} />
         ))}
       </div>
     </section>

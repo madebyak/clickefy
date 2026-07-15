@@ -1,20 +1,16 @@
+import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
-import {
-  XLogo,
-  InstagramLogo,
-  YoutubeLogo,
-  TiktokLogo,
-} from "@phosphor-icons/react/dist/ssr";
+import { XLogo, InstagramLogo, YoutubeLogo, TiktokLogo } from "@phosphor-icons/react/dist/ssr";
 
 const COLUMNS = [
   {
-    title: "Create",
-    links: ["Create Image", "Create Video", "Storyboard", "Cinema Studio", "AI UGC"],
+    titleKey: "create",
+    links: ["linkCreateImage", "linkCreateVideo", "linkStoryboard", "linkCinemaStudio", "linkAiUgc"],
   },
-  { title: "Explore", links: ["Templates", "Models", "Pricing"] },
-  { title: "Company", links: ["About", "Blog", "Careers", "Contact"] },
-  { title: "Legal", links: ["Privacy Policy", "Terms of Service", "Account Deletion", "Content Policy"] },
-];
+  { titleKey: "explore", links: ["linkTemplates", "linkModels", "linkPricing"] },
+  { titleKey: "company", links: ["linkAbout", "linkBlog", "linkCareers", "linkContact"] },
+  { titleKey: "legal", links: ["linkPrivacy", "linkTerms", "linkAccountDeletion", "linkContentPolicy"] },
+] as const;
 
 const SOCIALS = [
   { Icon: XLogo, label: "X" },
@@ -23,18 +19,17 @@ const SOCIALS = [
   { Icon: TiktokLogo, label: "TikTok" },
 ];
 
-export function Footer() {
+export async function Footer() {
+  const t = await getTranslations("footer");
+
   return (
     <footer className="mt-20 bg-surface-1">
       <div className="mx-auto max-w-[90rem] px-4 py-14 sm:px-6">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-6">
-          {/* brand */}
           <div className="lg:col-span-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-7 w-auto" />
-            <p className="mt-4 max-w-xs text-sm text-muted-foreground">
-              Professional AI image &amp; video creation studio for creators and teams.
-            </p>
+            <p className="mt-4 max-w-xs text-sm text-muted-foreground">{t("tagline")}</p>
             <div className="mt-5 flex gap-2">
               {SOCIALS.map(({ Icon, label }) => (
                 <Link
@@ -49,15 +44,14 @@ export function Footer() {
             </div>
           </div>
 
-          {/* link columns */}
           {COLUMNS.map((col) => (
-            <div key={col.title}>
-              <h4 className="text-sm font-semibold">{col.title}</h4>
+            <div key={col.titleKey}>
+              <h4 className="text-sm font-semibold">{t(col.titleKey)}</h4>
               <ul className="mt-4 space-y-3">
                 {col.links.map((l) => (
                   <li key={l}>
                     <Link href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-                      {l}
+                      {t(l)}
                     </Link>
                   </li>
                 ))}
@@ -67,8 +61,8 @@ export function Footer() {
         </div>
 
         <div className="mt-12 flex flex-col items-center justify-between gap-3 pt-8 text-sm text-muted-foreground sm:flex-row">
-          <p>© 2026 Cast U FZE LLC. All rights reserved.</p>
-          <p>Built for creators.</p>
+          <p>{t("copyright", { year: new Date().getFullYear() })}</p>
+          <p>{t("builtForCreators")}</p>
         </div>
       </div>
     </footer>

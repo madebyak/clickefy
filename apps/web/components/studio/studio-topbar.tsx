@@ -1,11 +1,11 @@
 "use client";
 
-import { Link } from "@/i18n/navigation";
-import { usePathname } from "@/i18n/navigation";
+import { Link, usePathname } from "@/i18n/navigation";
 import { List, MagnifyingGlass } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { CreditMenu } from "@/components/site/credit-menu";
 import { ProfileMenu } from "@/components/site/profile-menu";
+import { LanguageSwitcher } from "@/components/site/language-switcher";
 
 const NAV = [
   { label: "Create Image", href: "/create" },
@@ -62,6 +62,7 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
           <MagnifyingGlass className="size-4" />
           <span className="hidden lg:inline">Search anything…</span>
         </button>
+        <LanguageSwitcher />
         <CreditMenu balance={3450} subscription={3200} topup={250} />
         <ProfileMenu name="Ahmed Kamal" email="ahmed@clickefy.ai" plan="Pro" />
       </div>

@@ -1,50 +1,51 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { List, X } from "@phosphor-icons/react";
 import { buttonVariants } from "@/components/ui/button";
 import { CreditMenu } from "./credit-menu";
 import { ProfileMenu } from "./profile-menu";
+import { LanguageSwitcher } from "./language-switcher";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
-  { label: "Create Image", href: "/create" },
-  { label: "Create Video", href: "/create-video" },
-  { label: "Storyboard", href: "#" },
-  { label: "Cinema Studio", href: "#" },
-  { label: "AI UGC", href: "#" },
-  { label: "Templates", href: "/#templates" },
-  { label: "Pricing", href: "/#pricing" },
-];
+  { key: "createImage", href: "/create" },
+  { key: "createVideo", href: "/create-video" },
+  { key: "storyboard", href: "#" },
+  { key: "cinemaStudio", href: "#" },
+  { key: "aiUgc", href: "#" },
+  { key: "templates", href: "/#templates" },
+  { key: "pricing", href: "/#pricing" },
+] as const;
 
 export function Navbar({ authed = false }: { authed?: boolean }) {
+  const t = useTranslations("nav");
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-[90rem] items-center gap-4 px-4 sm:px-6">
-        {/* logo */}
-        <Link href="/" className="shrink-0" aria-label="Clickefy home">
+        <Link href="/" className="shrink-0" aria-label={t("home")}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-7 w-auto" />
         </Link>
 
-        {/* desktop nav */}
         <nav className="ms-2 hidden items-center xl:flex">
           {NAV_LINKS.map((l) => (
             <Link
-              key={l.label}
+              key={l.key}
               href={l.href}
               className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
-              {l.label}
+              {t(l.key)}
             </Link>
           ))}
         </nav>
 
-        {/* right actions */}
         <div className="ms-auto flex items-center gap-2">
+          <LanguageSwitcher />
           {authed ? (
             <>
               <CreditMenu />
@@ -53,19 +54,18 @@ export function Navbar({ authed = false }: { authed?: boolean }) {
           ) : (
             <div className="hidden items-center gap-2 sm:flex">
               <Link href="#" className={buttonVariants({ variant: "ghost", size: "sm" })}>
-                Log in
+                {t("login")}
               </Link>
               <Link href="#" className={buttonVariants({ size: "sm" })}>
-                Sign up
+                {t("signup")}
               </Link>
             </div>
           )}
 
-          {/* mobile toggle */}
           <button
             type="button"
             onClick={() => setMobileOpen((o) => !o)}
-            aria-label="Toggle menu"
+            aria-label={t("toggleMenu")}
             aria-expanded={mobileOpen}
             className="grid size-9 place-items-center rounded-lg text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary xl:hidden"
           >
@@ -74,27 +74,26 @@ export function Navbar({ authed = false }: { authed?: boolean }) {
         </div>
       </div>
 
-      {/* mobile menu */}
       {mobileOpen && (
         <div className="border-t border-border bg-background xl:hidden">
           <nav className="mx-auto flex max-w-[90rem] flex-col gap-0.5 px-4 py-3 sm:px-6">
             {NAV_LINKS.map((l) => (
               <Link
-                key={l.label}
+                key={l.key}
                 href={l.href}
                 onClick={() => setMobileOpen(false)}
                 className="rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-surface-2"
               >
-                {l.label}
+                {t(l.key)}
               </Link>
             ))}
             {!authed && (
               <div className="mt-3 flex flex-col gap-2 sm:hidden">
                 <Link href="#" className={cn(buttonVariants({ variant: "outline" }), "w-full")}>
-                  Log in
+                  {t("login")}
                 </Link>
                 <Link href="#" className={cn(buttonVariants(), "w-full")}>
-                  Sign up
+                  {t("signup")}
                 </Link>
               </div>
             )}

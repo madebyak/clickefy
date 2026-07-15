@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+const withNextIntl = createNextIntlPlugin();
 
 // Deployed to Vercel from the feat/web branch (root: apps/web).
 const nextConfig: NextConfig = {
@@ -7,4 +10,4 @@ const nextConfig: NextConfig = {
   // studio app starts talking to the API — mirror apps/admin/next.config.ts then.
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

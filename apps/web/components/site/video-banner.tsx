@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
 
 export function VideoBanner() {

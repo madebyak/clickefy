@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 import { List, X } from "@phosphor-icons/react";
 import { buttonVariants } from "@/components/ui/button";
 import { CreditMenu } from "./credit-menu";

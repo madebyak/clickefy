@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
 import { FolderSimple, FolderPlus, Plus, DotsThree } from "@phosphor-icons/react";
 import { useStudio, type Project } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/menu";

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 import { ArrowRight, ArrowUpRight, VideoCamera } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { PromptBar } from "@/components/generate/prompt-bar";

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { List, MagnifyingGlass } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { CreditMenu } from "@/components/site/credit-menu";
@@ -8,13 +9,14 @@ import { ProfileMenu } from "@/components/site/profile-menu";
 
 const NAV = [
   { label: "Create Image", href: "/create" },
-  { label: "Create Video", href: "#" },
+  { label: "Create Video", href: "/create-video" },
   { label: "Storyboard", href: "#" },
   { label: "Camera Angles", href: "#" },
   { label: "Templates", href: "/#templates" },
 ];
 
 export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
+  const pathname = usePathname();
   return (
     <header className="relative flex h-14 shrink-0 items-center justify-between gap-3 bg-surface-1 px-3 sm:px-4">
       {/* left */}
@@ -35,13 +37,13 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
 
       {/* center nav */}
       <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 lg:flex">
-        {NAV.map((n, i) => (
+        {NAV.map((n) => (
           <Link
             key={n.label}
             href={n.href}
             className={cn(
               "rounded-lg px-3 py-1.5 text-sm transition-colors",
-              i === 0
+              pathname === n.href
                 ? "bg-surface-3 text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}

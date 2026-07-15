@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
   { label: "Create Image", href: "/create" },
-  { label: "Create Video", href: "#" },
+  { label: "Create Video", href: "/create-video" },
   { label: "Storyboard", href: "#" },
   { label: "Cinema Studio", href: "#" },
   { label: "AI UGC", href: "#" },

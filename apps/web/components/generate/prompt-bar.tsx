@@ -8,10 +8,13 @@ import {
   CaretDown,
   GoogleLogo,
   Diamond,
+  Timer,
   PencilSimple,
   Sparkle,
+  X,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import type { Asset } from "@/components/studio/studio-context";
 
 /* --------------------------------------------------------------------- data */
 
@@ -21,17 +24,27 @@ const QUALITIES: { label: string; premium?: boolean }[] = [
   { label: "2K" },
   { label: "4K", premium: true },
 ];
-const MODELS = [
+const DURATIONS: { label: string; premium?: boolean }[] = [
+  { label: "5s" },
+  { label: "10s" },
+  { label: "15s", premium: true },
+];
+const IMAGE_MODELS = [
   { id: "nano-pro", name: "Nano Banana Pro" },
   { id: "nano-2", name: "Nano Banana 2 Flash" },
   { id: "seedream", name: "Seedream" },
 ];
-const MAX_IMAGES = 4;
+const VIDEO_MODELS = [
+  { id: "kling-omni", name: "Kling 3 Omni" },
+  { id: "kling-26", name: "Kling 2.6" },
+  { id: "seedance", name: "Seedance 2" },
+  { id: "veo", name: "Veo 3" },
+];
+const MAX_OUTPUTS = 4;
 const CREDIT_COST = 2;
 
 /* ------------------------------------------------------------------ atoms */
 
-/** Mini rectangle drawn in a ratio's proportions (used in the aspect menu). */
 function RatioGlyph({ ratio, className }: { ratio: string; className?: string }) {
   if (ratio === "Auto") {
     return <span className={cn("size-4 rounded-[3px] border-[1.5px] border-dashed border-current", className)} />;
@@ -139,176 +152,213 @@ function MenuItem({
 
 /* --------------------------------------------------------------- component */
 
-export function PromptBar() {
-  const [prompt, setPrompt] = useState("");
+export function PromptBar({
+  kind = "image",
+  attachments,
+  onRemoveAttachment,
+}: {
+  kind?: "image" | "video";
+  attachments?: Asset[];
+  onRemoveAttachment?: (id: string) => void;
+} = {}) {
+  const isVideo = kind === "video";
+  const MODELS = isVideo ? VIDEO_MODELS : IMAGE_MODELS;
+  const SETTINGS = isVideo ? DURATIONS : QUALITIES;
+
   const [model, setModel] = useState(MODELS[0]);
-  const [aspect, setAspect] = useState("3:4");
-  const [quality, setQuality] = useState("1K");
+  const [aspect, setAspect] = useState(isVideo ? "16:9" : "3:4");
+  const [setting, setSetting] = useState(SETTINGS[0].label);
   const [count, setCount] = useState(1);
   const [draw, setDraw] = useState(false);
 
+  const hasAttachments = !!attachments && attachments.length > 0;
+
   return (
-    <div className="flex flex-col gap-3 rounded-2xl bg-surface-1 p-3 sm:flex-row">
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        {/* prompt row */}
-        <div className="flex items-start gap-2">
-          <button
-            type="button"
-            aria-label="Add reference image"
-            className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
-          >
-            <Plus className="size-5" />
-          </button>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe the scene you imagine"
-            rows={1}
-            className="mt-1.5 max-h-40 w-full resize-none bg-transparent text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
-          />
+    <div className="rounded-2xl bg-surface-1 p-3">
+      {/* attachments strip */}
+      {hasAttachments && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {attachments!.map((a) => (
+            <div key={a.id} className="group/att relative size-14 overflow-hidden rounded-lg bg-surface-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={a.poster ?? a.src} alt="" className="size-full object-cover" />
+              <button
+                type="button"
+                aria-label="Remove attachment"
+                onClick={() => onRemoveAttachment?.(a.id)}
+                className="absolute end-0.5 top-0.5 grid size-4 place-items-center rounded-full bg-black/75 text-white transition-colors hover:bg-black"
+              >
+                <X className="size-2.5" weight="bold" />
+              </button>
+            </div>
+          ))}
         </div>
+      )}
 
-        {/* controls row */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* model */}
-          <Dropdown
-            panelClassName="min-w-60"
-            trigger={({ toggle }) => (
-              <Pill onClick={toggle}>
-                <GoogleLogo weight="bold" className="size-4 text-accent-turquoise" />
-                {model.name}
-                <CaretDown className="size-3.5 text-muted-foreground" />
-              </Pill>
-            )}
-          >
-            {({ close }) => (
-              <>
-                <MenuLabel>Model</MenuLabel>
-                {MODELS.map((m) => (
-                  <MenuItem
-                    key={m.id}
-                    selected={m.id === model.id}
-                    onClick={() => {
-                      setModel(m);
-                      close();
-                    }}
-                  >
-                    <GoogleLogo weight="bold" className="size-4 text-accent-turquoise" />
-                    {m.name}
-                  </MenuItem>
-                ))}
-              </>
-            )}
-          </Dropdown>
-
-          {/* aspect ratio */}
-          <Dropdown
-            panelClassName="max-h-80 min-w-44 overflow-y-auto"
-            trigger={({ toggle }) => (
-              <Pill onClick={toggle}>
-                <RatioGlyph ratio={aspect} className="text-muted-foreground" />
-                {aspect}
-              </Pill>
-            )}
-          >
-            {({ close }) => (
-              <>
-                <MenuLabel>Aspect ratio</MenuLabel>
-                {ASPECTS.map((a) => (
-                  <MenuItem
-                    key={a}
-                    selected={a === aspect}
-                    onClick={() => {
-                      setAspect(a);
-                      close();
-                    }}
-                  >
-                    <span className="grid w-4 place-items-center">
-                      <RatioGlyph ratio={a} />
-                    </span>
-                    {a}
-                  </MenuItem>
-                ))}
-              </>
-            )}
-          </Dropdown>
-
-          {/* quality */}
-          <Dropdown
-            panelClassName="min-w-52"
-            trigger={({ toggle }) => (
-              <Pill onClick={toggle}>
-                <Diamond weight="fill" className="size-3.5 text-accent-turquoise" />
-                {quality}
-              </Pill>
-            )}
-          >
-            {({ close }) => (
-              <>
-                <MenuLabel>Select quality</MenuLabel>
-                {QUALITIES.map((q) => (
-                  <MenuItem
-                    key={q.label}
-                    selected={q.label === quality}
-                    onClick={() => {
-                      setQuality(q.label);
-                      close();
-                    }}
-                  >
-                    {q.label}
-                    {q.premium && (
-                      <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-                        Premium
-                      </span>
-                    )}
-                  </MenuItem>
-                ))}
-              </>
-            )}
-          </Dropdown>
-
-          {/* count stepper */}
-          <div className="inline-flex h-9 items-center rounded-lg bg-surface-3 px-1">
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          {/* prompt row */}
+          <div className="flex items-start gap-2">
             <button
               type="button"
-              aria-label="Fewer images"
-              onClick={() => setCount((c) => Math.max(1, c - 1))}
-              disabled={count <= 1}
-              className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
+              aria-label="Add reference"
+              className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
             >
-              <Minus className="size-4" />
+              <Plus className="size-5" />
             </button>
-            <span className="min-w-11 text-center text-sm tabular-nums text-muted-foreground">
-              {count}/{MAX_IMAGES}
-            </span>
-            <button
-              type="button"
-              aria-label="More images"
-              onClick={() => setCount((c) => Math.min(MAX_IMAGES, c + 1))}
-              disabled={count >= MAX_IMAGES}
-              className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
-            >
-              <Plus className="size-4" />
-            </button>
+            <textarea
+              placeholder={isVideo ? "Describe the video you imagine" : "Describe the scene you imagine"}
+              rows={1}
+              className="mt-1.5 max-h-40 w-full resize-none bg-transparent text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
+            />
           </div>
 
-          {/* draw */}
-          <Pill active={draw} onClick={() => setDraw((d) => !d)}>
-            <PencilSimple className="size-4" />
-            Draw
-          </Pill>
-        </div>
-      </div>
+          {/* controls row */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* model */}
+            <Dropdown
+              panelClassName="min-w-60"
+              trigger={({ toggle }) => (
+                <Pill onClick={toggle}>
+                  <GoogleLogo weight="bold" className="size-4 text-accent-turquoise" />
+                  {model.name}
+                  <CaretDown className="size-3.5 text-muted-foreground" />
+                </Pill>
+              )}
+            >
+              {({ close }) => (
+                <>
+                  <MenuLabel>Model</MenuLabel>
+                  {MODELS.map((m) => (
+                    <MenuItem
+                      key={m.id}
+                      selected={m.id === model.id}
+                      onClick={() => {
+                        setModel(m);
+                        close();
+                      }}
+                    >
+                      <GoogleLogo weight="bold" className="size-4 text-accent-turquoise" />
+                      {m.name}
+                    </MenuItem>
+                  ))}
+                </>
+              )}
+            </Dropdown>
 
-      {/* generate */}
-      <button
-        type="button"
-        className="flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-6 font-semibold text-primary-foreground outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 sm:h-auto sm:w-auto sm:self-stretch"
-      >
-        Generate
-        <Sparkle weight="fill" className="size-4" />
-        <span className="tabular-nums">{CREDIT_COST * count}</span>
-      </button>
+            {/* aspect */}
+            <Dropdown
+              panelClassName="max-h-80 min-w-44 overflow-y-auto"
+              trigger={({ toggle }) => (
+                <Pill onClick={toggle}>
+                  <RatioGlyph ratio={aspect} className="text-muted-foreground" />
+                  {aspect}
+                </Pill>
+              )}
+            >
+              {({ close }) => (
+                <>
+                  <MenuLabel>Aspect ratio</MenuLabel>
+                  {ASPECTS.map((a) => (
+                    <MenuItem
+                      key={a}
+                      selected={a === aspect}
+                      onClick={() => {
+                        setAspect(a);
+                        close();
+                      }}
+                    >
+                      <span className="grid w-4 place-items-center">
+                        <RatioGlyph ratio={a} />
+                      </span>
+                      {a}
+                    </MenuItem>
+                  ))}
+                </>
+              )}
+            </Dropdown>
+
+            {/* quality (image) / duration (video) */}
+            <Dropdown
+              panelClassName="min-w-52"
+              trigger={({ toggle }) => (
+                <Pill onClick={toggle}>
+                  {isVideo ? (
+                    <Timer weight="bold" className="size-3.5 text-accent-turquoise" />
+                  ) : (
+                    <Diamond weight="fill" className="size-3.5 text-accent-turquoise" />
+                  )}
+                  {setting}
+                </Pill>
+              )}
+            >
+              {({ close }) => (
+                <>
+                  <MenuLabel>{isVideo ? "Duration" : "Select quality"}</MenuLabel>
+                  {SETTINGS.map((q) => (
+                    <MenuItem
+                      key={q.label}
+                      selected={q.label === setting}
+                      onClick={() => {
+                        setSetting(q.label);
+                        close();
+                      }}
+                    >
+                      {q.label}
+                      {q.premium && (
+                        <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                          Premium
+                        </span>
+                      )}
+                    </MenuItem>
+                  ))}
+                </>
+              )}
+            </Dropdown>
+
+            {/* output count */}
+            <div className="inline-flex h-9 items-center rounded-lg bg-surface-3 px-1">
+              <button
+                type="button"
+                aria-label="Fewer"
+                onClick={() => setCount((c) => Math.max(1, c - 1))}
+                disabled={count <= 1}
+                className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
+              >
+                <Minus className="size-4" />
+              </button>
+              <span className="min-w-11 text-center text-sm tabular-nums text-muted-foreground">
+                {count}/{MAX_OUTPUTS}
+              </span>
+              <button
+                type="button"
+                aria-label="More"
+                onClick={() => setCount((c) => Math.min(MAX_OUTPUTS, c + 1))}
+                disabled={count >= MAX_OUTPUTS}
+                className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
+              >
+                <Plus className="size-4" />
+              </button>
+            </div>
+
+            {/* draw */}
+            <Pill active={draw} onClick={() => setDraw((d) => !d)}>
+              <PencilSimple className="size-4" />
+              Draw
+            </Pill>
+          </div>
+        </div>
+
+        {/* generate */}
+        <button
+          type="button"
+          className="flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-6 font-semibold text-primary-foreground outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 sm:h-auto sm:w-auto sm:self-stretch"
+        >
+          Generate
+          <Sparkle weight="fill" className="size-4" />
+          <span className="tabular-nums">{CREDIT_COST * count}</span>
+        </button>
+      </div>
     </div>
   );
 }

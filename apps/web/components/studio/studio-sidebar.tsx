@@ -1,54 +1,29 @@
 "use client";
 
+import { useRouter, usePathname } from "next/navigation";
 import { Plus, FolderSimple, Heart, CaretUpDown } from "@phosphor-icons/react";
+import { useStudio } from "@/components/studio/studio-context";
 import { cn } from "@/lib/utils";
 
-export type Project = {
-  id: string;
-  name: string;
-  runs: number;
-  time: string;
-  images: string[];
-};
+export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { projects, activeProjectId, setActiveProject, createProject } = useStudio();
 
-function NavItem({
-  icon: Icon,
-  label,
-  active,
-}: {
-  icon: typeof Plus;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-        active ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
-      )}
-    >
-      <Icon className="size-[18px]" weight={active ? "fill" : "regular"} />
-      {label}
-    </button>
-  );
-}
+  const inBrowser = pathname === "/projects";
 
-export function StudioSidebar({
-  projects,
-  activeId,
-  onSelect,
-  onNew,
-  open,
-  onClose,
-}: {
-  projects: Project[];
-  activeId: string | null;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-  open: boolean;
-  onClose: () => void;
-}) {
+  const openProject = (id: string) => {
+    setActiveProject(id);
+    router.push("/create");
+    onClose();
+  };
+
+  const newProject = () => {
+    createProject(null);
+    router.push("/create");
+    onClose();
+  };
+
   return (
     <>
       {open && (
@@ -62,10 +37,7 @@ export function StudioSidebar({
       >
         <button
           type="button"
-          onClick={() => {
-            onNew();
-            onClose();
-          }}
+          onClick={newProject}
           className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-surface-3 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
         >
           <Plus className="size-4" weight="bold" />
@@ -73,8 +45,29 @@ export function StudioSidebar({
         </button>
 
         <nav className="mt-4 space-y-1">
-          <NavItem icon={FolderSimple} label="My Projects" active />
-          <NavItem icon={Heart} label="Favorites" />
+          <button
+            type="button"
+            onClick={() => {
+              router.push("/projects");
+              onClose();
+            }}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+              inBrowser
+                ? "bg-surface-3 text-foreground"
+                : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+            )}
+          >
+            <FolderSimple className="size-[18px]" weight={inBrowser ? "fill" : "regular"} />
+            My Projects
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+          >
+            <Heart className="size-[18px]" />
+            Favorites
+          </button>
         </nav>
 
         <div className="my-4 h-px bg-white/[0.06]" />
@@ -83,36 +76,35 @@ export function StudioSidebar({
           Recent projects
         </p>
         <div className="mt-2 flex-1 space-y-1 overflow-y-auto">
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => {
-                onSelect(p.id);
-                onClose();
-              }}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg p-2 text-start transition-colors",
-                activeId === p.id ? "bg-surface-3" : "hover:bg-surface-2",
-              )}
-            >
-              <span className="size-9 shrink-0 overflow-hidden rounded-md bg-surface-3">
-                {p.images[0] && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.images[0]} alt="" className="size-full object-cover" />
+          {projects.map((p) => {
+            const cover = p.assets[0];
+            const active = !inBrowser && activeProjectId === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => openProject(p.id)}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-lg p-2 text-start transition-colors",
+                  active ? "bg-surface-3" : "hover:bg-surface-2",
                 )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{p.name}</span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {p.runs} {p.runs === 1 ? "run" : "runs"} · {p.time}
+              >
+                <span className="size-9 shrink-0 overflow-hidden rounded-md bg-surface-3">
+                  {cover &&
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={cover.poster ?? cover.src} alt="" className="size-full object-cover" />}
                 </span>
-              </span>
-            </button>
-          ))}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{p.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {p.assets.length} {p.assets.length === 1 ? "asset" : "assets"} · {p.time}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
 
-        {/* profile */}
         <button
           type="button"
           className="mt-2 flex items-center gap-3 rounded-lg p-2 text-start transition-colors hover:bg-surface-2"

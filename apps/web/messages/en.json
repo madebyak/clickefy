@@ -148,7 +148,9 @@
     "addReference": "Add reference",
     "fewer": "Fewer",
     "more": "More",
-    "removeAttachment": "Remove attachment"
+    "removeAttachment": "Remove attachment",
+    "image": "Image",
+    "video": "Video"
   },
   "account": {
     "availableCredits": "Available credits",

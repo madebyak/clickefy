@@ -148,7 +148,9 @@
     "addReference": "إضافة مرجع",
     "fewer": "أقل",
     "more": "أكثر",
-    "removeAttachment": "إزالة المرفق"
+    "removeAttachment": "إزالة المرفق",
+    "image": "صورة",
+    "video": "فيديو"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",

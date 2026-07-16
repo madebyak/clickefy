@@ -12,6 +12,8 @@ import {
   Timer,
   PencilSimple,
   Sparkle,
+  ImageSquare,
+  VideoCamera,
   X,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -237,7 +239,8 @@ export function PromptBar({
 } = {}) {
   const t = useTranslations("promptbar");
   const localeDir = useLocale() === "ar" ? "rtl" : "ltr";
-  const isVideo = kind === "video";
+  const [mode, setMode] = useState<"image" | "video">(kind);
+  const isVideo = mode === "video";
   const MODELS = isVideo ? VIDEO_MODELS : IMAGE_MODELS;
   const SETTINGS = isVideo ? DURATIONS : QUALITIES;
 
@@ -246,6 +249,18 @@ export function PromptBar({
   const [setting, setSetting] = useState(SETTINGS[0].label);
   const [count, setCount] = useState(1);
   const [draw, setDraw] = useState(false);
+
+  // When the mode flips, snap model / aspect / settings to that mode's defaults.
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    setModel(isVideo ? VIDEO_MODELS[0] : IMAGE_MODELS[0]);
+    setSetting((isVideo ? DURATIONS : QUALITIES)[0].label);
+    setAspect(isVideo ? "16:9" : "3:4");
+  }, [isVideo]);
 
   const [prompt, setPrompt] = useState("");
   const [focused, setFocused] = useState(false);
@@ -262,6 +277,33 @@ export function PromptBar({
 
   return (
     <div className="rounded-2xl bg-surface-1 p-3">
+      {/* image / video mode toggle */}
+      <div className="mb-3 inline-flex items-center gap-1 rounded-xl bg-surface-3 p-1">
+        {(["image", "video"] as const).map((m) => {
+          const active = mode === m;
+          const Icon = m === "video" ? VideoCamera : ImageSquare;
+          return (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              aria-pressed={active}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-3",
+                active
+                  ? m === "video"
+                    ? "bg-brand-purple text-white"
+                    : "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon weight={active ? "fill" : "regular"} className="size-4" />
+              {t(m)}
+            </button>
+          );
+        })}
+      </div>
+
       {/* attachments strip */}
       {hasAttachments && (
         <div className="mb-3 flex flex-wrap gap-2">
@@ -447,10 +489,17 @@ export function PromptBar({
         {/* generate */}
         <button
           type="button"
-          className="flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-6 font-semibold text-primary-foreground outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 sm:h-auto sm:w-auto sm:self-stretch"
+          className={cn(
+            "flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl px-6 font-semibold outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 sm:h-auto sm:w-auto sm:self-stretch",
+            isVideo ? "bg-brand-purple text-white" : "bg-primary text-primary-foreground",
+          )}
         >
           {t("generate")}
-          <Sparkle weight="fill" className="size-4" />
+          {isVideo ? (
+            <VideoCamera weight="fill" className="size-4" />
+          ) : (
+            <Sparkle weight="fill" className="size-4" />
+          )}
           <span className="tabular-nums">{CREDIT_COST * count}</span>
         </button>
       </div>

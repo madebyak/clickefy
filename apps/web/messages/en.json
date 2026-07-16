@@ -124,6 +124,16 @@
   "promptbar": {
     "placeholderImage": "Describe the scene you imagine",
     "placeholderVideo": "Describe the video you imagine",
+    "examplesImage": [
+      "A neon-lit Tokyo street, rain-soaked, cinematic",
+      "Studio portrait, soft rim light, 85mm f/1.4",
+      "Cozy reading nook, warm morning light, film grain"
+    ],
+    "examplesVideo": [
+      "Drone glide over misty mountains at sunrise",
+      "Slow-motion coffee pour in warm morning light",
+      "Neon city timelapse, reflections on wet asphalt"
+    ],
     "model": "Model",
     "aspectRatio": "Aspect ratio",
     "quality": "Select quality",

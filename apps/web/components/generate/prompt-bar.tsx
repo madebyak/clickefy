@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import {
   Plus,
   Minus,
@@ -150,6 +151,79 @@ function MenuItem({
   );
 }
 
+/* ------------------------------------------------------------ typewriter */
+
+/**
+ * Animated placeholder text: types a phrase, holds, deletes, moves to the next,
+ * with a blinking caret. Runs only while `active` (field idle + empty); when it
+ * flips off, the display clears so the caller can show a static placeholder.
+ * Honors prefers-reduced-motion by showing the first phrase without animating.
+ */
+function useTypewriterPlaceholder(phrases: string[], active: boolean) {
+  const [display, setDisplay] = useState("");
+
+  useEffect(() => {
+    if (!active) {
+      setDisplay("");
+      return;
+    }
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setDisplay(phrases[0]);
+      return;
+    }
+
+    let phraseIndex = 0;
+    let charIndex = 0;
+    let deleting = false;
+    let caretOn = true;
+    let typeTimer: ReturnType<typeof setTimeout>;
+
+    const render = () => {
+      const phrase = phrases[phraseIndex];
+      setDisplay(phrase.slice(0, charIndex) + (caretOn ? "▏" : ""));
+    };
+
+    const tick = () => {
+      const phrase = phrases[phraseIndex];
+      if (!deleting) {
+        charIndex += 1;
+        if (charIndex >= phrase.length) {
+          deleting = true;
+          typeTimer = setTimeout(tick, 1600); // hold on the full phrase
+        } else {
+          typeTimer = setTimeout(tick, 55);
+        }
+      } else {
+        charIndex -= 1;
+        if (charIndex <= 0) {
+          charIndex = 0;
+          deleting = false;
+          phraseIndex = (phraseIndex + 1) % phrases.length;
+          typeTimer = setTimeout(tick, 350); // pause before the next phrase
+        } else {
+          typeTimer = setTimeout(tick, 28);
+        }
+      }
+      render();
+    };
+
+    const caretTimer = setInterval(() => {
+      caretOn = !caretOn;
+      render();
+    }, 530);
+
+    render();
+    typeTimer = setTimeout(tick, 350);
+
+    return () => {
+      clearTimeout(typeTimer);
+      clearInterval(caretTimer);
+    };
+  }, [active, phrases]);
+
+  return display;
+}
+
 /* --------------------------------------------------------------- component */
 
 export function PromptBar({
@@ -161,6 +235,7 @@ export function PromptBar({
   attachments?: Asset[];
   onRemoveAttachment?: (id: string) => void;
 } = {}) {
+  const t = useTranslations("promptbar");
   const isVideo = kind === "video";
   const MODELS = isVideo ? VIDEO_MODELS : IMAGE_MODELS;
   const SETTINGS = isVideo ? DURATIONS : QUALITIES;
@@ -170,6 +245,17 @@ export function PromptBar({
   const [setting, setSetting] = useState(SETTINGS[0].label);
   const [count, setCount] = useState(1);
   const [draw, setDraw] = useState(false);
+
+  const [prompt, setPrompt] = useState("");
+  const [focused, setFocused] = useState(false);
+  const basePlaceholder = t(isVideo ? "placeholderVideo" : "placeholderImage");
+  const examples = useMemo(
+    () => t.raw(isVideo ? "examplesVideo" : "examplesImage") as string[],
+    [t, isVideo],
+  );
+  // Animate only while the field is idle and empty; static hint once focused.
+  const animate = !focused && prompt.length === 0;
+  const animatedPlaceholder = useTypewriterPlaceholder(examples, animate);
 
   const hasAttachments = !!attachments && attachments.length > 0;
 
@@ -184,7 +270,7 @@ export function PromptBar({
               <img src={a.poster ?? a.src} alt="" className="size-full object-cover" />
               <button
                 type="button"
-                aria-label="Remove attachment"
+                aria-label={t("removeAttachment")}
                 onClick={() => onRemoveAttachment?.(a.id)}
                 className="absolute end-0.5 top-0.5 grid size-4 place-items-center rounded-full bg-black/75 text-white transition-colors hover:bg-black"
               >
@@ -201,15 +287,22 @@ export function PromptBar({
           <div className="flex items-start gap-2">
             <button
               type="button"
-              aria-label="Add reference"
+              aria-label={t("addReference")}
               className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
             >
               <Plus className="size-5" />
             </button>
             <textarea
-              placeholder={isVideo ? "Describe the video you imagine" : "Describe the scene you imagine"}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              placeholder={animate ? animatedPlaceholder : basePlaceholder}
+              // Direction follows the typed content (or placeholder when empty),
+              // independent of the site locale: English → LTR, Arabic → RTL.
+              dir="auto"
               rows={1}
-              className="mt-1.5 max-h-40 w-full resize-none bg-transparent text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
+              className="mt-1.5 max-h-40 w-full resize-none bg-transparent text-start text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
             />
           </div>
 
@@ -228,7 +321,7 @@ export function PromptBar({
             >
               {({ close }) => (
                 <>
-                  <MenuLabel>Model</MenuLabel>
+                  <MenuLabel>{t("model")}</MenuLabel>
                   {MODELS.map((m) => (
                     <MenuItem
                       key={m.id}
@@ -258,7 +351,7 @@ export function PromptBar({
             >
               {({ close }) => (
                 <>
-                  <MenuLabel>Aspect ratio</MenuLabel>
+                  <MenuLabel>{t("aspectRatio")}</MenuLabel>
                   {ASPECTS.map((a) => (
                     <MenuItem
                       key={a}
@@ -294,7 +387,7 @@ export function PromptBar({
             >
               {({ close }) => (
                 <>
-                  <MenuLabel>{isVideo ? "Duration" : "Select quality"}</MenuLabel>
+                  <MenuLabel>{isVideo ? t("duration") : t("quality")}</MenuLabel>
                   {SETTINGS.map((q) => (
                     <MenuItem
                       key={q.label}
@@ -307,7 +400,7 @@ export function PromptBar({
                       {q.label}
                       {q.premium && (
                         <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-                          Premium
+                          {t("premium")}
                         </span>
                       )}
                     </MenuItem>
@@ -320,7 +413,7 @@ export function PromptBar({
             <div className="inline-flex h-9 items-center rounded-lg bg-surface-3 px-1">
               <button
                 type="button"
-                aria-label="Fewer"
+                aria-label={t("fewer")}
                 onClick={() => setCount((c) => Math.max(1, c - 1))}
                 disabled={count <= 1}
                 className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
@@ -332,7 +425,7 @@ export function PromptBar({
               </span>
               <button
                 type="button"
-                aria-label="More"
+                aria-label={t("more")}
                 onClick={() => setCount((c) => Math.min(MAX_OUTPUTS, c + 1))}
                 disabled={count >= MAX_OUTPUTS}
                 className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
@@ -344,7 +437,7 @@ export function PromptBar({
             {/* draw */}
             <Pill active={draw} onClick={() => setDraw((d) => !d)}>
               <PencilSimple className="size-4" />
-              Draw
+              {t("draw")}
             </Pill>
           </div>
         </div>
@@ -354,7 +447,7 @@ export function PromptBar({
           type="button"
           className="flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-6 font-semibold text-primary-foreground outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 sm:h-auto sm:w-auto sm:self-stretch"
         >
-          Generate
+          {t("generate")}
           <Sparkle weight="fill" className="size-4" />
           <span className="tabular-nums">{CREDIT_COST * count}</span>
         </button>

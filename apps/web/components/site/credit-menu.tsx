@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Lightning, Plus, ArrowUpRight } from "@phosphor-icons/react";
 import { Menu } from "@/components/ui/menu";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ export function CreditMenu({
   subscription?: number;
   topup?: number;
 }) {
+  const t = useTranslations("account");
   return (
     <Menu
       align="end"
@@ -35,7 +37,7 @@ export function CreditMenu({
       {({ close }) => (
         <div className="p-1">
           <div className="px-2 pb-3 pt-1">
-            <p className="text-xs text-muted-foreground">Available credits</p>
+            <p className="text-xs text-muted-foreground">{t("availableCredits")}</p>
             <p className="mt-1 flex items-center gap-1.5 text-2xl font-semibold tabular-nums">
               <Lightning weight="fill" className="size-5 text-primary" />
               {balance}
@@ -43,20 +45,20 @@ export function CreditMenu({
           </div>
           <div className="space-y-1.5 rounded-lg bg-surface-2 p-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Subscription</span>
+              <span className="text-muted-foreground">{t("subscription")}</span>
               <span className="tabular-nums">{subscription}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Top-up</span>
+              <span className="text-muted-foreground">{t("topup")}</span>
               <span className="tabular-nums">{topup}</span>
             </div>
           </div>
           <div className="mt-2 flex flex-col gap-1.5">
             <Button size="sm" className="w-full" onClick={close}>
-              <Plus className="size-4" /> Buy credits
+              <Plus className="size-4" /> {t("buyCredits")}
             </Button>
             <Button variant="ghost" size="sm" className="w-full justify-between" onClick={close}>
-              Upgrade plan <ArrowUpRight className="size-4" />
+              {t("upgradePlan")} <ArrowUpRight className="size-4 rtl:-scale-x-100" />
             </Button>
           </div>
         </div>

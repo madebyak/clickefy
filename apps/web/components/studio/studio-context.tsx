@@ -127,7 +127,9 @@ const StudioContext = createContext<StudioValue | null>(null);
 export function StudioProvider({ children }: { children: ReactNode }) {
   const [folders, setFolders] = useState<Folder[]>(SEED_FOLDERS);
   const [projects, setProjects] = useState<Project[]>(SEED_PROJECTS);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>("lavender");
+  // Start with no active project so Create Image / Create Video open on the
+  // empty "Start a new project" state rather than a pre-seeded project.
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Asset[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const seq = useRef(1);

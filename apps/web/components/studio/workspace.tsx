@@ -1,6 +1,8 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Sparkle, ShareNetwork, DownloadSimple } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { useStudio, type Asset, type Project } from "@/components/studio/studio-context";
 import { Masonry } from "@/components/studio/masonry";
 import { SelectionBar } from "@/components/studio/selection-bar";
@@ -15,48 +17,17 @@ function downloadAsset(a: Asset) {
   el.remove();
 }
 
-const TEMPLATE_SUGGESTIONS = [
-  { title: "Product on set", img: "/assets/16654be06b68b715118b40c4a9c2f7ff.jpg" },
-  { title: "Editorial portrait", img: "/assets/0f8dad5a57467f8788f0e6be98924c2e.jpg" },
-  { title: "Glass skin beauty", img: "/assets/9c80f14bd51b051bb029053c71e3bbb3.jpg" },
-  { title: "Street fashion", img: "/assets/66c2bc99b2707c10686fdeaf0af29a0b.jpg" },
-];
-
 function EmptyState({ kind }: { kind: "image" | "video" }) {
+  const t = useTranslations("studio");
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="flex flex-col items-center py-14 text-center sm:py-20">
-        <div className="grid size-14 place-items-center rounded-2xl bg-surface-3">
-          <Sparkle weight="fill" className="size-6 text-brand-yellow" />
-        </div>
-        <h1 className="mt-5 text-2xl font-semibold tracking-tight">Start a new project</h1>
-        <p className="mt-2 max-w-md text-muted-foreground">
-          Describe the {kind} you want in the bar below, or start from a template.
-        </p>
+    <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+      <div className="grid size-14 place-items-center rounded-2xl bg-surface-3">
+        <Sparkle weight="fill" className="size-6 text-brand-yellow" />
       </div>
-      <div>
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Start from a template</h2>
-          <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-            Browse all →
-          </a>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {TEMPLATE_SUGGESTIONS.map((t) => (
-            <a key={t.title} href="#" className="group block overflow-hidden rounded-xl bg-surface-2">
-              <div className="aspect-[3/4] overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={t.img}
-                  alt={t.title}
-                  className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
-              </div>
-              <p className="truncate p-3 text-sm font-medium">{t.title}</p>
-            </a>
-          ))}
-        </div>
-      </div>
+      <h1 className="mt-5 text-2xl font-semibold tracking-tight">{t("startNewProject")}</h1>
+      <p className="mt-2 max-w-md text-muted-foreground">
+        {t(kind === "video" ? "emptyPromptVideo" : "emptyPromptImage")}
+      </p>
     </div>
   );
 }
@@ -72,6 +43,14 @@ function ProjectView({
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
 }) {
+  const t = useTranslations("studio");
+  const tt = useTranslations("time");
+  const timeLabel =
+    project.time === "Just now"
+      ? tt("justNow")
+      : project.time === "Yesterday"
+        ? tt("yesterday")
+        : project.time;
   return (
     <div>
       <div className="flex flex-col items-center py-8 text-center">
@@ -79,11 +58,9 @@ function ProjectView({
           <Sparkle weight="fill" className="size-5 text-brand-yellow" />
         </div>
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">{project.name}</h1>
-        <p className="mt-1 max-w-md text-sm text-muted-foreground">
-          Click any asset to attach it to your prompt. Everything created here stays in this project.
-        </p>
+        <p className="mt-1 max-w-md text-sm text-muted-foreground">{t("projectHint")}</p>
         <p className="mt-3 text-xs text-muted-foreground">
-          {project.assets.length} assets · updated {project.time.toLowerCase()}
+          {t("assetsUpdated", { count: project.assets.length, time: timeLabel })}
         </p>
       </div>
       <Masonry
@@ -97,6 +74,7 @@ function ProjectView({
 }
 
 export function Workspace({ kind }: { kind: "image" | "video" }) {
+  const t = useTranslations("studio");
   const {
     activeProject,
     attachments,
@@ -119,7 +97,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
           <span className="hidden truncate text-muted-foreground sm:inline">Moonwhale Campaigns</span>
           <span className="hidden text-muted-foreground sm:inline">/</span>
           <span className="truncate font-medium">
-            {activeProject ? activeProject.name : "New project"}
+            {activeProject ? activeProject.name : t("newProject")}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -130,7 +108,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-surface-3 px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
             >
               <DownloadSimple className="size-4" />
-              <span className="hidden sm:inline">Download all</span>
+              <span className="hidden sm:inline">{t("downloadAll")}</span>
             </button>
           )}
           <button
@@ -138,13 +116,19 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
             className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-purple px-3 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             <ShareNetwork className="size-4" />
-            <span className="hidden sm:inline">Share</span>
+            <span className="hidden sm:inline">{t("share")}</span>
           </button>
         </div>
       </div>
 
       {/* scrollable content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-44 pt-2 sm:px-6">
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto px-4 pb-44 pt-2 sm:px-6",
+          // Empty state fills the area and centers vertically; content scrolls from top.
+          isEmpty && "flex flex-col",
+        )}
+      >
         {isEmpty ? (
           <EmptyState kind={kind} />
         ) : (

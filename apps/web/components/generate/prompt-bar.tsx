@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Plus,
   Minus,
@@ -236,6 +236,7 @@ export function PromptBar({
   onRemoveAttachment?: (id: string) => void;
 } = {}) {
   const t = useTranslations("promptbar");
+  const localeDir = useLocale() === "ar" ? "rtl" : "ltr";
   const isVideo = kind === "video";
   const MODELS = isVideo ? VIDEO_MODELS : IMAGE_MODELS;
   const SETTINGS = isVideo ? DURATIONS : QUALITIES;
@@ -298,9 +299,10 @@ export function PromptBar({
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               placeholder={animate ? animatedPlaceholder : basePlaceholder}
-              // Direction follows the typed content (or placeholder when empty),
-              // independent of the site locale: English → LTR, Arabic → RTL.
-              dir="auto"
+              // Once the user types, direction follows the content (English → LTR,
+              // Arabic → RTL) regardless of locale. While empty, the placeholder is
+              // in the site language, so follow the locale direction.
+              dir={prompt.length > 0 ? "auto" : localeDir}
               rows={1}
               className="mt-1.5 max-h-40 w-full resize-none bg-transparent text-start text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
             />

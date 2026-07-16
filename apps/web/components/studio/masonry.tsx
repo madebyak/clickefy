@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { ArrowsOutSimple, DownloadSimple, X, Play, Check } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import type { Asset } from "@/components/studio/studio-context";
@@ -51,6 +52,7 @@ export function Masonry({
   selectedIds?: string[];
   onToggleSelect?: (id: string) => void;
 }) {
+  const t = useTranslations("studio");
   const [lightbox, setLightbox] = useState<Asset | null>(null);
 
   return (
@@ -68,7 +70,7 @@ export function Masonry({
               type="button"
               onClick={() => onAssetClick?.(a)}
               className="block w-full cursor-pointer outline-none"
-              aria-label="Use asset"
+              aria-label={t("useAsset")}
             >
               {a.type === "video" ? (
                 <video
@@ -91,7 +93,7 @@ export function Masonry({
             {onToggleSelect && (
               <button
                 type="button"
-                aria-label="Select asset"
+                aria-label={t("selectAsset")}
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleSelect(a.id);
@@ -116,7 +118,7 @@ export function Masonry({
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
             <div className="absolute end-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
               <OverlayButton
-                label="Expand"
+                label={t("expand")}
                 onClick={(e) => {
                   e.stopPropagation();
                   setLightbox(a);
@@ -125,7 +127,7 @@ export function Masonry({
                 <ArrowsOutSimple className="size-4" />
               </OverlayButton>
               <OverlayButton
-                label="Download"
+                label={t("download")}
                 onClick={(e) => {
                   e.stopPropagation();
                   downloadAsset(a);
@@ -152,11 +154,11 @@ export function Masonry({
               }}
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-surface-3 px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
             >
-              <DownloadSimple className="size-4" /> Download
+              <DownloadSimple className="size-4" /> {t("download")}
             </button>
             <button
               type="button"
-              aria-label="Close"
+              aria-label={t("close")}
               onClick={() => setLightbox(null)}
               className="grid size-10 place-items-center rounded-lg bg-surface-3 text-foreground transition-colors hover:bg-surface-2"
             >

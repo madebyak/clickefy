@@ -22,6 +22,10 @@
   "language": {
     "change": "Change language"
   },
+  "time": {
+    "justNow": "just now",
+    "yesterday": "yesterday"
+  },
   "home": {
     "imageStudio": "Image Studio",
     "heroHeadline": "Create images without limits",
@@ -125,14 +129,14 @@
     "placeholderImage": "Describe the scene you imagine",
     "placeholderVideo": "Describe the video you imagine",
     "examplesImage": [
-      "A neon-lit Tokyo street, rain-soaked, cinematic",
-      "Studio portrait, soft rim light, 85mm f/1.4",
-      "Cozy reading nook, warm morning light, film grain"
+      "Creative photoshoot for my product — elegant studio backdrop, soft beauty-dish light, props that match the brand",
+      "High-fashion editorial: model in flowing silk, dramatic rim light, minimalist studio, shot on 85mm",
+      "Luxury skincare serum on marble with dewy droplets and fresh botanicals, soft diffused light, macro detail"
     ],
     "examplesVideo": [
-      "Drone glide over misty mountains at sunrise",
-      "Slow-motion coffee pour in warm morning light",
-      "Neon city timelapse, reflections on wet asphalt"
+      "Cinematic product reveal: perfume bottle slowly rotating, light streaks gliding across the glass, shallow depth of field",
+      "Fashion film in slow motion: silk fabric flowing in the wind, moody studio light, dramatic camera push-in",
+      "Beauty commercial: a serum drop falling into water, extreme slow motion, soft backlight, macro lens"
     ],
     "model": "Model",
     "aspectRatio": "Aspect ratio",

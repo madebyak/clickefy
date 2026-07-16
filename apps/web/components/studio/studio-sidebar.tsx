@@ -1,16 +1,21 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
 import { Plus, FolderSimple, Heart, CaretUpDown } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { cn } from "@/lib/utils";
 
 export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useTranslations("studio");
+  const tt = useTranslations("time");
   const router = useRouter();
   const pathname = usePathname();
   const { projects, activeProjectId, setActiveProject, createProject } = useStudio();
 
   const inBrowser = pathname === "/projects";
+  const timeLabel = (raw: string) =>
+    raw === "Just now" ? tt("justNow") : raw === "Yesterday" ? tt("yesterday") : raw;
 
   const openProject = (id: string) => {
     setActiveProject(id);
@@ -31,8 +36,11 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[264px] flex-col bg-surface-1 p-3 transition-transform lg:static lg:z-auto lg:translate-x-0",
-          open ? "translate-x-0" : "-translate-x-full",
+          // On lg+ the sidebar is static (in flow); below lg it's a fixed drawer
+          // that slides off the start edge — left in LTR, right in RTL. The hide
+          // transform is scoped to max-lg so it never leaks onto the desktop layout.
+          "fixed inset-y-0 start-0 z-40 flex w-[264px] flex-col bg-surface-1 p-3 transition-transform lg:static lg:z-auto",
+          open ? "translate-x-0" : "max-lg:-translate-x-full max-lg:rtl:translate-x-full",
         )}
       >
         <button
@@ -41,7 +49,7 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
           className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-surface-3 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1"
         >
           <Plus className="size-4" weight="bold" />
-          Create new project
+          {t("createNewProject")}
         </button>
 
         <nav className="mt-4 space-y-1">
@@ -59,21 +67,21 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
             )}
           >
             <FolderSimple className="size-[18px]" weight={inBrowser ? "fill" : "regular"} />
-            My Projects
+            {t("myProjects")}
           </button>
           <button
             type="button"
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             <Heart className="size-[18px]" />
-            Favorites
+            {t("favorites")}
           </button>
         </nav>
 
         <div className="my-4 h-px bg-white/[0.06]" />
 
         <p className="px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Recent projects
+          {t("recentProjects")}
         </p>
         <div className="mt-2 flex-1 space-y-1 overflow-y-auto">
           {projects.map((p) => {
@@ -97,7 +105,7 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{p.name}</span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {p.assets.length} {p.assets.length === 1 ? "asset" : "assets"} · {p.time}
+                    {t("assets", { count: p.assets.length })} · {timeLabel(p.time)}
                   </span>
                 </span>
               </button>
@@ -114,7 +122,7 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium">Ahmed Kamal</span>
-            <span className="block truncate text-xs text-muted-foreground">Pro plan</span>
+            <span className="block truncate text-xs text-muted-foreground">{t("proPlan")}</span>
           </span>
           <CaretUpDown className="size-4 shrink-0 text-muted-foreground" />
         </button>

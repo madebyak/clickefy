@@ -1,13 +1,22 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { FolderSimple, FolderPlus, Plus, DotsThree } from "@phosphor-icons/react";
 import { useStudio, type Project } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/menu";
 
 function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: string) => void }) {
+  const t = useTranslations("projects");
+  const tt = useTranslations("time");
   const { folders, moveProjectToFolder } = useStudio();
   const cover = project.assets[0];
+  const timeLabel =
+    project.time === "Just now"
+      ? tt("justNow")
+      : project.time === "Yesterday"
+        ? tt("yesterday")
+        : project.time;
   return (
     <div className="group relative overflow-hidden rounded-xl bg-surface-2">
       <button type="button" onClick={() => onOpen(project.id)} className="block w-full text-start outline-none">
@@ -23,7 +32,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
         <div className="p-3">
           <p className="truncate text-sm font-medium">{project.name}</p>
           <p className="text-xs text-muted-foreground">
-            {project.assets.length} assets · {project.time}
+            {t("assets", { count: project.assets.length })} · {timeLabel}
           </p>
         </div>
       </button>
@@ -34,7 +43,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
           trigger={({ toggle }) => (
             <button
               type="button"
-              aria-label="Project options"
+              aria-label={t("projectOptions")}
               onClick={toggle}
               className="grid size-8 place-items-center rounded-lg bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/80"
             >
@@ -44,7 +53,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
         >
           {({ close }) => (
             <>
-              <MenuLabel>Move to folder</MenuLabel>
+              <MenuLabel>{t("moveToFolder")}</MenuLabel>
               {folders.map((f) => (
                 <MenuItem
                   key={f.id}
@@ -64,7 +73,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
                   close();
                 }}
               >
-                Remove from folder
+                {t("removeFromFolder")}
               </MenuItem>
             </>
           )}
@@ -75,6 +84,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
 }
 
 export default function ProjectsPage() {
+  const t = useTranslations("projects");
   const router = useRouter();
   const { folders, projects, setActiveProject, createProject, createFolder } = useStudio();
 
@@ -95,8 +105,8 @@ export default function ProjectsPage() {
       <div className="mx-auto max-w-[90rem]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">My Projects</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Organize your work into folders.</p>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("heading")}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{t("sub")}</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -104,14 +114,14 @@ export default function ProjectsPage() {
               onClick={() => createFolder("New folder")}
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-surface-3 px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
             >
-              <FolderPlus className="size-4" /> New folder
+              <FolderPlus className="size-4" /> {t("newFolder")}
             </button>
             <button
               type="button"
               onClick={newProject}
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
-              <Plus className="size-4" weight="bold" /> New project
+              <Plus className="size-4" weight="bold" /> {t("newProject")}
             </button>
           </div>
         </div>
@@ -134,7 +144,7 @@ export default function ProjectsPage() {
                   </div>
                 ) : (
                   <div className="rounded-xl bg-surface-1 px-4 py-8 text-center text-sm text-muted-foreground">
-                    Empty — move a project here from its ··· menu.
+                    {t("emptyFolder")}
                   </div>
                 )}
               </section>
@@ -145,7 +155,7 @@ export default function ProjectsPage() {
             <section>
               <div className="mb-4 flex items-center gap-2">
                 <FolderSimple className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-medium">Unfiled</h2>
+                <h2 className="text-sm font-medium">{t("unfiled")}</h2>
                 <span className="text-xs text-muted-foreground">{unfiled.length}</span>
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">

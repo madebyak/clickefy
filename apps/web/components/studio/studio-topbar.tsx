@@ -1,22 +1,26 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { List, MagnifyingGlass } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { CreditMenu } from "@/components/site/credit-menu";
 import { ProfileMenu } from "@/components/site/profile-menu";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
+import { useStudio } from "@/components/studio/studio-context";
 
 const NAV = [
-  { label: "Create Image", href: "/create" },
-  { label: "Create Video", href: "/create-video" },
-  { label: "Storyboard", href: "#" },
-  { label: "Camera Angles", href: "#" },
-  { label: "Templates", href: "/#templates" },
-];
+  { key: "createImage", href: "/create" },
+  { key: "createVideo", href: "/create-video" },
+  { key: "storyboard", href: "#" },
+  { key: "cameraAngles", href: "#" },
+  { key: "templates", href: "/#templates" },
+] as const;
 
 export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
+  const t = useTranslations("nav");
   const pathname = usePathname();
+  const { setActiveProject } = useStudio();
   return (
     <header className="relative flex h-14 shrink-0 items-center justify-between gap-3 bg-surface-1 px-3 sm:px-4">
       {/* left */}
@@ -24,12 +28,12 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
         <button
           type="button"
           onClick={onMenu}
-          aria-label="Open menu"
+          aria-label={t("openMenu")}
           className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-3 lg:hidden"
         >
           <List className="size-5" />
         </button>
-        <Link href="/" aria-label="Clickefy home" className="shrink-0">
+        <Link href="/" aria-label={t("home")} className="shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-6 w-auto" />
         </Link>
@@ -39,8 +43,12 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
       <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 lg:flex">
         {NAV.map((n) => (
           <Link
-            key={n.label}
+            key={n.key}
             href={n.href}
+            onClick={() => {
+              // Entering a studio surface starts fresh on the empty project state.
+              if (n.key === "createImage" || n.key === "createVideo") setActiveProject(null);
+            }}
             className={cn(
               "rounded-lg px-3 py-1.5 text-sm transition-colors",
               pathname === n.href
@@ -48,7 +56,7 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {n.label}
+            {t(n.key)}
           </Link>
         ))}
       </nav>
@@ -60,7 +68,7 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
           className="hidden h-9 items-center gap-2 rounded-lg bg-surface-2 px-3 text-sm text-muted-foreground transition-colors hover:bg-surface-3 md:flex"
         >
           <MagnifyingGlass className="size-4" />
-          <span className="hidden lg:inline">Search anything…</span>
+          <span className="hidden lg:inline">{t("search")}</span>
         </button>
         <LanguageSwitcher />
         <CreditMenu balance={3450} subscription={3200} topup={250} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { X, CopySimple, ArrowRight, DownloadSimple, Trash, CaretDown } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel } from "@/components/ui/menu";
@@ -13,6 +14,7 @@ function ProjectPicker({
   icon: React.ReactNode;
   onPick: (projectId: string) => void;
 }) {
+  const t = useTranslations("studio");
   const { projects, activeProjectId } = useStudio();
   const targets = projects.filter((p) => p.id !== activeProjectId);
 
@@ -58,7 +60,7 @@ function ProjectPicker({
               </MenuItem>
             ))
           ) : (
-            <p className="px-2 py-2 text-sm text-muted-foreground">No other projects</p>
+            <p className="px-2 py-2 text-sm text-muted-foreground">{t("noOtherProjects")}</p>
           )}
         </>
       )}
@@ -67,6 +69,7 @@ function ProjectPicker({
 }
 
 export function SelectionBar() {
+  const t = useTranslations("studio");
   const {
     selectedAssetIds,
     clearSelection,
@@ -97,31 +100,31 @@ export function SelectionBar() {
     <div className="mb-3 flex items-center gap-2 rounded-2xl bg-surface-3 p-2 shadow-2xl shadow-black/40">
       <button
         type="button"
-        aria-label="Clear selection"
+        aria-label={t("clearSelection")}
         onClick={clearSelection}
         className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
       >
         <X className="size-4" />
       </button>
       <span className="px-1 text-sm font-medium tabular-nums">
-        {selectedAssetIds.length} selected
+        {t("selected", { count: selectedAssetIds.length })}
       </span>
 
       <div className="ms-auto flex items-center gap-2">
         <ProjectPicker
-          label="Copy to"
+          label={t("copyTo")}
           icon={<CopySimple className="size-4" />}
           onPick={(id) => copyAssets(selectedAssetIds, id)}
         />
         <ProjectPicker
-          label="Move to"
-          icon={<ArrowRight className="size-4" />}
+          label={t("moveTo")}
+          icon={<ArrowRight className="size-4 rtl:-scale-x-100" />}
           onPick={(id) => moveAssets(selectedAssetIds, activeProjectId, id)}
         />
         <button
           type="button"
           onClick={downloadSelected}
-          aria-label="Download selected"
+          aria-label={t("downloadSelected")}
           className="grid size-9 place-items-center rounded-lg bg-surface-2 text-foreground transition-colors hover:bg-surface-1"
         >
           <DownloadSimple className="size-4" />
@@ -129,7 +132,7 @@ export function SelectionBar() {
         <button
           type="button"
           onClick={() => deleteAssets(activeProjectId, selectedAssetIds)}
-          aria-label="Delete selected"
+          aria-label={t("deleteSelected")}
           className="grid size-9 place-items-center rounded-lg bg-surface-2 text-status-red transition-colors hover:bg-status-red/15"
         >
           <Trash className="size-4" />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { GearSix, Images, CreditCard, Question, SignOut } from "@phosphor-icons/react";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,7 @@ export function ProfileMenu({
   email?: string;
   plan?: string;
 }) {
+  const t = useTranslations("account");
   return (
     <Menu
       align="end"
@@ -40,7 +42,7 @@ export function ProfileMenu({
         <button
           type="button"
           onClick={toggle}
-          aria-label="Account menu"
+          aria-label={t("accountMenu")}
           className="rounded-full outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <Avatar name={name} />
@@ -58,25 +60,25 @@ export function ProfileMenu({
           </div>
           <div className="px-2 pb-1">
             <span className="inline-flex rounded-md bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary">
-              {plan} plan
+              {t("planLabel", { plan })}
             </span>
           </div>
           <MenuSeparator />
           <MenuItem onClick={close}>
-            <Images className="size-4 text-muted-foreground" /> My projects
+            <Images className="size-4 text-muted-foreground" /> {t("myProjects")}
           </MenuItem>
           <MenuItem onClick={close}>
-            <CreditCard className="size-4 text-muted-foreground" /> Billing
+            <CreditCard className="size-4 text-muted-foreground" /> {t("billing")}
           </MenuItem>
           <MenuItem onClick={close}>
-            <GearSix className="size-4 text-muted-foreground" /> Settings
+            <GearSix className="size-4 text-muted-foreground" /> {t("settings")}
           </MenuItem>
           <MenuItem onClick={close}>
-            <Question className="size-4 text-muted-foreground" /> Help
+            <Question className="size-4 text-muted-foreground" /> {t("help")}
           </MenuItem>
           <MenuSeparator />
           <MenuItem onClick={close} className="text-status-red hover:bg-status-red/10">
-            <SignOut className="size-4" /> Sign out
+            <SignOut className="size-4 rtl:-scale-x-100" /> {t("signOut")}
           </MenuItem>
         </>
       )}

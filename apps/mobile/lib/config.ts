@@ -49,6 +49,18 @@ export const config = {
    * Note the spelling: the brand domain is `clickefy.ai` (with the "e").
    */
   webUrl: 'https://clickefy.ai',
+  /**
+   * RevenueCat public SDK keys (`appl_…` for iOS, `goog_…` for Android).
+   * These are the *public* half — safe to ship in the JS bundle — so they
+   * live in EAS env like the other `EXPO_PUBLIC_*` values. `null` until the
+   * store is set up: when a key is null the app skips RevenueCat
+   * configuration entirely and the paywall shows an "unavailable" state
+   * instead of crashing, so builds work before the store goes live.
+   */
+  revenueCat: {
+    iosKey: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY ?? null,
+    androidKey: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY ?? null,
+  },
 } as const;
 
 /** True for `__DEV__` (Metro/Expo Go) OR an explicit demo build. */

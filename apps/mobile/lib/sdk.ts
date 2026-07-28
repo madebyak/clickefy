@@ -22,6 +22,7 @@
 import { createHttpClient, type SDKClient } from '@clickfy/sdk';
 
 import { config } from './config';
+import { i18n } from './i18n';
 
 let tokenGetter: (() => Promise<string | null>) | null = null;
 
@@ -38,6 +39,10 @@ export function getSDK(): SDKClient {
   cached = createHttpClient({
     baseUrl: config.apiUrl,
     getToken: async () => (tokenGetter ? tokenGetter() : null),
+    // Read fresh on every catalog call so dynamic content (categories,
+    // templates, banners) comes back in the active language. Only 'ar'
+    // changes the wire request; English is the canonical fallback.
+    getLocale: () => (i18n.language?.startsWith('ar') ? 'ar' : 'en'),
   });
 
   return cached;

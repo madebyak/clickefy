@@ -179,7 +179,7 @@ const MIRRORED_ICONS: Partial<Record<IconName, true>> = {
 const ICONS: Record<IconName, PhosphorIcon> = {
   home: House,
   categories: SquaresFour,
-  create: Plus,
+  create: Sparkle,
   projects: FolderSimple,
   profile: User,
   search: MagnifyingGlass,

@@ -55,7 +55,11 @@ export default function SavedTemplatesScreen() {
     const data = savedQuery.data ?? [];
     if (filter === 'All') return data;
     const wanted = filter.toLowerCase() as CatalogTemplate['kind'];
-    return data.filter((t) => t.kind === wanted);
+    // `video_image` templates surface under the Video chip — their
+    // primary asset is the video, and a fifth chip isn't worth the row.
+    return data.filter(
+      (t) => t.kind === wanted || (wanted === 'video' && t.kind === 'video_image'),
+    );
   }, [savedQuery.data, filter]);
 
   return (

@@ -27,7 +27,12 @@
       },
       "env": {
         "EXPO_PUBLIC_BUILD_VARIANT": "preview",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_API_URL": "https://api.clickefy.ai",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2xpY2tlZnkuYWkk",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://54186f612b6c7442062de25adf5f6d48@o4511388740354048.ingest.de.sentry.io/4511388747104337",
+        "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_oqTVyiTHKGUimSkwUSpYQvCXEoh",
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY": "test_POxjiaxaftZUatqIczMIPDlwzXI"
       }
     },
     "production": {
@@ -38,11 +43,21 @@
       },
       "env": {
         "EXPO_PUBLIC_BUILD_VARIANT": "production",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_API_URL": "https://api.clickefy.ai",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2xpY2tlZnkuYWkk",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://54186f612b6c7442062de25adf5f6d48@o4511388740354048.ingest.de.sentry.io/4511388747104337",
+        "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_oqTVyiTHKGUimSkwUSpYQvCXEoh",
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY": "test_POxjiaxaftZUatqIczMIPDlwzXI"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleTeamId": "5RH5USQ49V",
+        "ascAppId": "6787395230"
+      }
+    }
   }
 }

@@ -113,32 +113,88 @@ export async function initI18n(): Promise<UserLocale> {
   return locale;
 }
 
+/** AsyncStorage key: the layout direction we've actually applied ('rtl'|'ltr'). */
+const RTL_APPLIED_KEY = 'clickfy.rtl-applied';
+/** AsyncStorage key: timestamp of the last RTL-driven reload (loop backstop). */
+const RTL_RELOAD_TS_KEY = 'clickfy.rtl-reload-ts';
+
+/**
+ * Record the direction we've applied, so the boot right after a language
+ * switch sees it as already-applied and does NOT reload again. Called from the
+ * explicit switch (`useLocaleSwitch`) and from `syncNativeDirection`.
+ */
+export async function markDirectionApplied(rtl: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(RTL_APPLIED_KEY, rtl ? 'rtl' : 'ltr');
+  } catch {
+    // Best-effort; the timestamp backstop still prevents a loop.
+  }
+}
+
 /**
  * Align React Native's native layout direction with the resolved locale.
  *
- * `I18nManager` direction changes only take effect once the React surface is
- * recreated (a reload). So if a device whose stored/system language is Arabic
- * launches while the native flag is still LTR (e.g. first launch after the
- * choice was persisted), we set the flags and reload once so it comes up in
- * RTL. The `isRTL === shouldRTL` guard makes this a one-shot, not a loop.
+ * The native RTL flag is read by the platform BEFORE JS runs, so on a cold
+ * start the app already comes up in the right direction once the flag is set —
+ * no reload needed. A reload is only needed the one time the direction actually
+ * changes, to apply it immediately.
  *
- * We never reload in Expo Go: the flag resets on every launch there, so a
- * reload would loop forever and RTL can't be applied regardless. On dev/EAS/
- * production builds the flag persists and the reload applies cleanly.
+ * ⚠️ We deliberately do NOT gate on `I18nManager.isRTL`. On the New
+ * Architecture / CNG builds it can permanently return `false` even after
+ * `forceRTL` succeeds (expo/expo#34224, #34225). Gating a reload on it turns
+ * this into an infinite boot-reload loop → white screen (expo/expo#26532) —
+ * the exact bug this replaces. Instead we track the direction we've applied
+ * ourselves and reload at most once when it changes, with a timestamp
+ * loop-breaker as a hard backstop so the app can never brick.
+ *
+ * Expo Go resets the flag on every launch and can never apply RTL, so we never
+ * reload there.
  */
 async function syncNativeDirection(locale: UserLocale): Promise<void> {
   const shouldRTL = locale === 'ar';
-  if (I18nManager.isRTL === shouldRTL) return;
+
+  // Idempotent — set every launch so a cold start renders in the right
+  // direction with no reload.
   I18nManager.allowRTL(shouldRTL);
   I18nManager.forceRTL(shouldRTL);
+
   if (IS_EXPO_GO) return;
+
+  const desired: 'rtl' | 'ltr' = shouldRTL ? 'rtl' : 'ltr';
+  let appliedRaw: string | null = null;
+  try {
+    appliedRaw = await AsyncStorage.getItem(RTL_APPLIED_KEY);
+  } catch {
+    // Read failed — treat as the platform default (LTR) below.
+  }
+  // Default LTR: a device with no record is in the platform-default direction,
+  // so an English boot must NOT reload.
+  const applied: 'rtl' | 'ltr' = appliedRaw === 'rtl' ? 'rtl' : 'ltr';
+  if (applied === desired) return;
+
+  // Hard loop-breaker: never reload twice within 10s, whatever the cause. If we
+  // reloaded moments ago, assume the reload already applied the direction (the
+  // isRTL getter just can't confirm it) — record it and stop.
+  try {
+    const last = Number(await AsyncStorage.getItem(RTL_RELOAD_TS_KEY)) || 0;
+    if (Date.now() - last < 10_000) {
+      await markDirectionApplied(shouldRTL);
+      return;
+    }
+    await AsyncStorage.setItem(RTL_RELOAD_TS_KEY, String(Date.now()));
+  } catch {
+    // Storage unavailable — fail safe: do NOT reload (avoid any loop risk).
+    return;
+  }
+
+  await markDirectionApplied(shouldRTL);
   try {
     await reloadAppAsync('rtl-sync');
   } catch {
     try {
       await Updates.reloadAsync();
     } catch {
-      // Reload unavailable — direction applies on next launch; non-fatal.
+      // Reload unavailable — direction applies on next cold start; non-fatal.
     }
   }
 }

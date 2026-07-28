@@ -53,12 +53,14 @@ export function usePushRegistration(): void {
     // round-trip still does the right thing.
     void registerForPushNotificationsAsync(async () => getTokenRef.current()).then(
       (result) => {
-        if (result.token) {
-          console.log('[push] registered', result.token.slice(0, 24) + '...');
-        } else if (result.reason && result.reason !== 'simulator') {
-          // `simulator` is the expected outcome on iOS Sim / Android
-          // Emulator and not worth surfacing.
-          console.log('[push] register skipped:', result.reason);
+        if (__DEV__) {
+          if (result.token) {
+            console.log('[push] registered', result.token.slice(0, 24) + '...');
+          } else if (result.reason && result.reason !== 'simulator') {
+            // `simulator` is the expected outcome on iOS Sim / Android
+            // Emulator and not worth surfacing.
+            console.log('[push] register skipped:', result.reason);
+          }
         }
       },
     );

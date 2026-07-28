@@ -1,0 +1,78 @@
+{
+  "eyebrow": "إنشاء",
+  "title": "أنشئ من الصفر",
+  "subtitle": "اختر نموذجًا، واكتب وصفك، ثم أنشئ.",
+  "model": {
+    "label": "النموذج",
+    "choose": "اختر نموذجًا",
+    "sheetTitle": "اختر نموذجًا",
+    "image": "صورة",
+    "video": "فيديو",
+    "creditsEach_zero": "{{count}} رصيد",
+    "creditsEach_one": "رصيد واحد",
+    "creditsEach_two": "رصيدان",
+    "creditsEach_few": "{{count}} أرصدة",
+    "creditsEach_many": "{{count}} رصيدًا",
+    "creditsEach_other": "{{count}} رصيد",
+    "unavailable": "لا توجد نماذج متاحة حاليًا. تحقق لاحقًا."
+  },
+  "prompt": {
+    "label": "الوصف",
+    "placeholder": "صِف ما تريد إنشاءه…"
+  },
+  "aspect": {
+    "label": "نسبة الأبعاد"
+  },
+  "duration": {
+    "label": "المدة",
+    "seconds": "{{count}} ث"
+  },
+  "attachments": {
+    "references": "صور مرجعية",
+    "startFrame": "الإطار الأول",
+    "endFrame": "الإطار الأخير",
+    "add": "إضافة صورة",
+    "choosePhoto": "اختر صورة",
+    "takePhoto": "التقط صورة",
+    "optional": "اختياري",
+    "required": "مطلوب",
+    "remove": "إزالة",
+    "replace": "استبدال",
+    "uploading": "جارٍ الرفع…",
+    "uploadingPercent": "جارٍ الرفع {{percent}}%",
+    "ready": "جاهزة",
+    "retry": "إعادة المحاولة",
+    "modeFrames": "إطارات",
+    "modeReferences": "مراجع",
+    "referencesHint": "أضف حتى {{count}} صور لتوجيه النتيجة.",
+    "framesHint": "حدد إطارًا أول (وإطارًا أخير اختياري)."
+  },
+  "sound": {
+    "label": "الصوت",
+    "title": "توليد الصوت",
+    "subtitle": "مؤثرات صوتية وأجواء وحوار مولّدة داخل الفيديو."
+  },
+  "imageSource": {
+    "title": "إضافة صورة",
+    "camera": "التقاط صورة",
+    "library": "الاختيار من المكتبة",
+    "libraryMultiple": "اختيار صور",
+    "cancel": "إلغاء"
+  },
+  "generate_zero": "إنشاء · {{count}} رصيد",
+  "generate_one": "إنشاء · رصيد واحد",
+  "generate_two": "إنشاء · رصيدان",
+  "generate_few": "إنشاء · {{count}} أرصدة",
+  "generate_many": "إنشاء · {{count}} رصيدًا",
+  "generate_other": "إنشاء · {{count}} رصيد",
+  "needPrompt": "اكتب وصفًا للبدء",
+  "needStartFrame": "أضف الإطار الأول",
+  "balance": "الرصيد",
+  "errors": {
+    "genericTitle": "حدث خطأ ما",
+    "genericMessage": "تعذّر بدء الإنشاء. يرجى المحاولة مرة أخرى.",
+    "insufficientTitle": "رصيد غير كافٍ",
+    "insufficientMessage": "ليس لديك رصيد كافٍ لهذا الإنشاء.",
+    "promptTooLong": "وصفك طويل جدًا لهذا النموذج."
+  }
+}

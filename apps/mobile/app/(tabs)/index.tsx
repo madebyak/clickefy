@@ -2,9 +2,21 @@ import { Box, Skeleton, Stack, Text, useTheme } from '@clickfy/ui';
 import { FlashList } from '@shopify/flash-list';
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import {
+  RefreshControl,
+  ScrollView,
+  View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Bento } from '@/components/home/Bento';
@@ -157,6 +169,68 @@ export default function HomeScreen() {
     void bannersQuery.refetch();
   };
 
+  // ── Collapsing category rail ─────────────────────────────────────
+  // The rail hides when the feed scrolls down and slides back in on any
+  // scroll-up (modern "shrinking header" UX). The per-frame animation
+  // runs on the UI thread via Reanimated `withTiming`; the JS `onScroll`
+  // only detects direction and flips a boolean — no per-frame JS work, so
+  // it stays smooth even on a long feed.
+  const [railHeight, setRailHeight] = useState(0);
+  const railHeightRef = useRef(0);
+  const railHeightSV = useSharedValue(0);
+  const railTranslate = useSharedValue(0);
+  const railHidden = useRef(false);
+  const lastScrollY = useRef(0);
+
+  const onRailLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const h = e.nativeEvent.layout.height;
+      if (h > 0 && h !== railHeightRef.current) {
+        railHeightRef.current = h;
+        railHeightSV.value = h;
+        setRailHeight(h);
+      }
+    },
+    [railHeightSV],
+  );
+
+  const onFeedScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+      const dy = y - lastScrollY.current;
+      lastScrollY.current = y;
+      const h = railHeightRef.current;
+      if (h <= 0) return;
+      // Near the top → always fully show.
+      if (y <= 4) {
+        if (railHidden.current) {
+          railHidden.current = false;
+          railTranslate.value = withTiming(0, { duration: 220 });
+        }
+        return;
+      }
+      // Direction threshold avoids flip-flopping on tiny scroll jitters.
+      if (dy > 6 && !railHidden.current) {
+        railHidden.current = true;
+        railTranslate.value = withTiming(-h, { duration: 220 });
+      } else if (dy < -6 && railHidden.current) {
+        railHidden.current = false;
+        railTranslate.value = withTiming(0, { duration: 220 });
+      }
+    },
+    [railTranslate],
+  );
+
+  const railStyle = useAnimatedStyle(() => {
+    const h = railHeightSV.value || 1;
+    const progress = Math.min(1, Math.abs(railTranslate.value) / h);
+    return {
+      transform: [{ translateY: railTranslate.value }],
+      // Subtle fade so it dissolves rather than just clipping at the edge.
+      opacity: 1 - progress * 0.2,
+    };
+  });
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
       <TopBar
@@ -219,31 +293,6 @@ export default function HomeScreen() {
         );
       })()}
 
-      {/* Category rail is always pinned below the search bar so the
-          user can switch between "All" (sections feed) and a single
-          category (flat grid) at any time without scrolling back up. */}
-      <Box pb="md">
-        <CategoryRail
-          categories={categoriesQuery.data ?? []}
-          activeId={activeCat}
-          onSelect={handleSelectRoot}
-        />
-      </Box>
-
-      {/* SubcategoryRail only renders when the selected root has
-          children — keeps the home view chrome-free for roots like
-          "Product" that don't (yet) have sub-categories. */}
-      {!isAllCategory && hasSubcategories && activeRoot ? (
-        <Box pb="md">
-          <SubcategoryRail
-            parent={activeRoot}
-            subcategories={activeRootChildren}
-            activeChildId={activeSubcategoryId}
-            onSelect={setActiveSubcategoryId}
-          />
-        </Box>
-      ) : null}
-
       {isAllCategory ? (
         // Vertical feed is a FlashList (not a ScrollView) so off-screen
         // sections — and therefore their rails, cards, and any live video
@@ -252,7 +301,10 @@ export default function HomeScreen() {
         // feed from exhausting the device's MediaCodec budget (the OOM /
         // overheating crashes). Banner lives in the header so it scrolls
         // with the list; loading/error render via ListEmptyComponent so
-        // pull-to-refresh stays available in every state.
+        // pull-to-refresh stays available in every state. The category
+        // rail is an absolute overlay that hides on scroll-down and slides
+        // back in on scroll-up; `overflow:'hidden'` clips it as it leaves.
+        <View style={{ flex: 1, overflow: 'hidden' }}>
         <FlashList
           data={sectionsQuery.data ?? []}
           keyExtractor={(section) => section.key}
@@ -323,22 +375,67 @@ export default function HomeScreen() {
               </Box>
             ) : null
           }
-          contentContainerStyle={{ paddingBottom: 120 }}
+          contentContainerStyle={{ paddingTop: railHeight, paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
+          onScroll={onFeedScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
+              // Nudge the spinner below the rail so it doesn't hide behind it.
+              progressViewOffset={railHeight}
               tintColor={colors.inkMuted}
             />
           }
         />
+        <Animated.View
+          onLayout={onRailLayout}
+          style={[
+            {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 5,
+              backgroundColor: colors.bg,
+            },
+            railStyle,
+          ]}
+        >
+          <Box pb="md">
+            <CategoryRail
+              categories={categoriesQuery.data ?? []}
+              activeId={activeCat}
+              onSelect={handleSelectRoot}
+            />
+          </Box>
+        </Animated.View>
+        </View>
       ) : (
-        // Category selected → flat 2-column infinite-scroll grid.
-        // No banners, no "See all" chevrons — just templates. When a
-        // sub-category is picked we narrow to it; otherwise we feed
-        // the root id which the API expands to root + every child.
-        <CategoryGrid categoryId={gridCategoryId} />
+        // Category selected → fixed rail(s) + a flat 2-column grid. The
+        // grid is its own scroll surface, so the rail stays pinned here
+        // (the collapsing behavior is scoped to the "All" feed above).
+        <>
+          <Box pb="md">
+            <CategoryRail
+              categories={categoriesQuery.data ?? []}
+              activeId={activeCat}
+              onSelect={handleSelectRoot}
+            />
+          </Box>
+          {hasSubcategories && activeRoot ? (
+            <Box pb="md">
+              <SubcategoryRail
+                parent={activeRoot}
+                subcategories={activeRootChildren}
+                activeChildId={activeSubcategoryId}
+                onSelect={setActiveSubcategoryId}
+              />
+            </Box>
+          ) : null}
+          <CategoryGrid categoryId={gridCategoryId} />
+        </>
       )}
     </View>
   );

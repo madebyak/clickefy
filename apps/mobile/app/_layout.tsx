@@ -12,7 +12,7 @@ import {
   IBMPlexSansArabic_700Bold,
 } from '@expo-google-fonts/ibm-plex-sans-arabic';
 import { ThemeProvider as NavThemeProvider, type Theme as NavTheme } from '@react-navigation/native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@clickfy/ui';
 import { useFonts } from 'expo-font';
 import { requireOptionalNativeModule } from 'expo-modules-core';
@@ -31,7 +31,14 @@ import { LocaleSwitchOverlay } from '@/components/settings/LocaleSwitchOverlay';
 import { ToastProvider } from '@/components/shared/Toast';
 import { Splash } from '@/components/Splash';
 import { usePushRegistration } from '@/lib/use-push-registration';
+import {
+  configureRevenueCat,
+  identifyRevenueCat,
+  onCustomerInfoChange,
+  resetRevenueCat,
+} from '@/lib/revenuecat';
 import { attachTokenGetter } from '@/lib/sdk';
+import { ME_QUERY_KEY, useSession } from '@/lib/use-session';
 import { initI18n } from '@/lib/i18n';
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
@@ -213,6 +220,7 @@ function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1, direction: locale === 'ar' ? 'rtl' : 'ltr' }}>
         <SafeAreaProvider>
           <QueryClientProvider client={queryClient}>
+            <RevenueCatBridge />
             <ThemeProvider defaultMode="system" defaultAccentKey="violet" locale={locale}>
               <ThemedShell>
               <ToastProvider>
@@ -258,6 +266,10 @@ function RootLayout() {
               />
               <Stack.Screen
                 name="paywall"
+                options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+              />
+              <Stack.Screen
+                name="buy-credits"
                 options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
               />
               <Stack.Screen
@@ -352,6 +364,42 @@ function SdkBridge() {
  */
 function PushRegistration() {
   usePushRegistration();
+  return null;
+}
+
+/**
+ * Configures RevenueCat once, ties its App User ID to our DB `users.id`
+ * after auth (and resets to anonymous on sign-out), and refreshes the
+ * server-authoritative `/me` whenever entitlements change (purchase /
+ * renewal / restore). UI-less. Mounted inside `QueryClientProvider` because
+ * it reads `useSession`. No-op until the public SDK keys are set — see
+ * `lib/revenuecat.ts`.
+ */
+function RevenueCatBridge() {
+  const { isAuthed, meQuery } = useSession();
+  const queryClient = useQueryClient();
+  const dbUserId = meQuery.data?.id;
+
+  useEffect(() => {
+    configureRevenueCat();
+  }, []);
+
+  useEffect(() => {
+    if (isAuthed && dbUserId) {
+      // `dbUserId` is our Neon `users.id` — the value the RevenueCat webhook
+      // matches on when granting credits. Never pass the Clerk id here.
+      void identifyRevenueCat(dbUserId);
+    } else if (!isAuthed) {
+      void resetRevenueCat();
+    }
+  }, [isAuthed, dbUserId]);
+
+  useEffect(() => {
+    return onCustomerInfoChange(() => {
+      void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+    });
+  }, [queryClient]);
+
   return null;
 }
 

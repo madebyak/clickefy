@@ -9,6 +9,7 @@ import {
   Text,
   useTheme,
 } from '@clickfy/ui';
+import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +26,7 @@ import { Logo } from '@/components/brand/Logo';
 import { LanguageSwitcher } from '@/components/settings/LanguageSwitcher';
 import { PlanLabel } from '@/components/shared/PlanLabel';
 import { Icon, type IconName } from '@/components/ui/Icon';
+import { getSDK } from '@/lib/sdk';
 import { useAppearance } from '@/lib/use-appearance';
 import { useAuthGate } from '@/lib/auth-gate';
 import { useSession } from '@/lib/use-session';
@@ -41,21 +43,25 @@ interface NavItem {
     | '/(tabs)/projects'
     | '/(tabs)/profile'
     | '/saved'
-    | '/paywall';
+    | '/paywall'
+    | '/buy-credits'
+    | '/notifications';
   active?: boolean;
+  /** Show a small unread badge on this row (notifications). */
+  badge?: number;
 }
 
 // Drawer destinations are limited to routes that actually exist. Anything
-// that doesn't have a screen yet (notifications inbox, dedicated settings
-// page) lives on the Profile tab instead — we route through it rather than
-// rendering dead rows. "Refer a friend" was removed entirely.
+// that doesn't have a screen yet (dedicated settings page) lives on the
+// Profile tab instead — we route through it rather than rendering dead
+// rows. "Refer a friend" was removed entirely.
 const NAV_ITEMS: NavItem[] = [
   { icon: 'home', labelKey: 'explore', href: '/(tabs)', active: true },
   { icon: 'categories', labelKey: 'library', href: '/(tabs)/library' },
   { icon: 'projects', labelKey: 'projects', href: '/(tabs)/projects' },
   { icon: 'bookmark', labelKey: 'savedTemplates', href: '/saved' },
-  { icon: 'credit', labelKey: 'buyCredits', href: '/paywall' },
-  { icon: 'bell', labelKey: 'notifications', href: '/(tabs)/profile' },
+  { icon: 'credit', labelKey: 'buyCredits', href: '/buy-credits' },
+  { icon: 'bell', labelKey: 'notifications', href: '/notifications' },
   { icon: 'sliders', labelKey: 'settings', href: '/(tabs)/profile' },
 ];
 
@@ -68,6 +74,18 @@ export default function DrawerScreen() {
   const { user, plan, isAuthed, signOut: sessionSignOut } = useSession();
   const session = isAuthed && user ? { user, plan } : null;
   const { resetOnboarding } = useAuthGate();
+
+  // Unread notification count → badge on the Notifications row.
+  const notifQuery = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => getSDK().notifications.list(),
+    staleTime: 30_000,
+    enabled: isAuthed,
+  });
+  const unread = notifQuery.data?.unreadCount ?? 0;
+  const navItems: NavItem[] = NAV_ITEMS.map((it) =>
+    it.labelKey === 'notifications' ? { ...it, badge: unread } : it,
+  );
 
   // The drawer anchors to the leading edge — left in LTR, right in RTL — and
   // slides in from off that edge. `translateX` is physical, so flip its sign
@@ -245,7 +263,7 @@ export default function DrawerScreen() {
         {/* Nav list — scrolls if content overflows */}
         <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
           <Stack gap="xs">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <NavRow key={item.labelKey} item={item} onPress={() => navigate(item.href)} />
             ))}
           </Stack>
@@ -349,6 +367,23 @@ function NavRow({ item, onPress }: { item: NavItem; onPress: () => void }) {
         >
           {t(`drawer.nav.${item.labelKey}`)}
         </Text>
+        {item.badge && item.badge > 0 ? (
+          <View
+            style={{
+              minWidth: 20,
+              height: 20,
+              paddingHorizontal: 6,
+              borderRadius: 10,
+              backgroundColor: accent.solid,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text color={accent.ink} weight="700" style={{ fontSize: 11 }}>
+              {item.badge > 99 ? '99+' : item.badge}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );

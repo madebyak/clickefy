@@ -18,6 +18,7 @@
   "outputCount_other": "{{count}} outputs",
   "templateSuffix": " · {{title}} template",
   "download": "Download",
+  "savedToPhotos": "Saved to Photos",
   "variations": "Variations",
   "downloadAll": "Download all ({{count}})",
   "regenerate": "Regenerate",
@@ -29,5 +30,12 @@
     "shareResult": "Share result",
     "reportGeneration": "Report this generation",
     "downloadVariation": "Download this variation"
+  },
+  "consent": {
+    "title": "Before you generate",
+    "body": "To create your result, Clickefy sends the inputs you provide — your photos, videos, and prompts — to our AI partners (Google, Kling, and BytePlus). They process them only to generate your content. By continuing, you agree to this.",
+    "learnMore": "How your data is used",
+    "agree": "Agree & Continue",
+    "cancel": "Not now"
   }
 }

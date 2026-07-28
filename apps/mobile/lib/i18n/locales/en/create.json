@@ -1,0 +1,70 @@
+{
+  "eyebrow": "CREATE",
+  "title": "Create from scratch",
+  "subtitle": "Pick a model, write your prompt, and generate.",
+  "model": {
+    "label": "Model",
+    "choose": "Choose a model",
+    "sheetTitle": "Choose a model",
+    "image": "Image",
+    "video": "Video",
+    "creditsEach_one": "{{count}} credit",
+    "creditsEach_other": "{{count}} credits",
+    "unavailable": "No models available right now. Check back soon."
+  },
+  "prompt": {
+    "label": "Prompt",
+    "placeholder": "Describe what you want to create…"
+  },
+  "aspect": {
+    "label": "Aspect ratio"
+  },
+  "duration": {
+    "label": "Duration",
+    "seconds": "{{count}}s"
+  },
+  "attachments": {
+    "references": "Reference images",
+    "startFrame": "Start frame",
+    "endFrame": "End frame",
+    "add": "Add image",
+    "choosePhoto": "Choose photo",
+    "takePhoto": "Take photo",
+    "optional": "Optional",
+    "required": "Required",
+    "remove": "Remove",
+    "replace": "Replace",
+    "uploading": "Uploading…",
+    "uploadingPercent": "Uploading {{percent}}%",
+    "ready": "Ready",
+    "retry": "Retry",
+    "modeFrames": "Frames",
+    "modeReferences": "References",
+    "referencesHint": "Add up to {{count}} images to guide the result.",
+    "framesHint": "Set a start frame (and an optional end frame)."
+  },
+  "sound": {
+    "label": "Audio",
+    "title": "Generate sound",
+    "subtitle": "Native sound effects, ambience, and speech in your video."
+  },
+  "imageSource": {
+    "title": "Add image",
+    "camera": "Take Photo",
+    "library": "Choose from Library",
+    "libraryMultiple": "Choose Photos",
+    "cancel": "Cancel"
+  },
+  "generate_one": "Generate · {{count}} credit",
+  "generate_other": "Generate · {{count}} credits",
+  "needPrompt": "Write a prompt to start",
+  "needStartFrame": "Add a start frame",
+  "balance": "Balance",
+  "errors": {
+    "genericTitle": "Something went wrong",
+    "genericMessage": "We couldn't start your generation. Please try again.",
+    "insufficientTitle": "Not enough credits",
+    "insufficientMessage": "You don't have enough credits for this generation.",
+    "promptTooLong": "Your prompt is too long for this model."
+  }
+}

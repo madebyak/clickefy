@@ -2,6 +2,7 @@
   "overline": "Your work",
   "title": "Projects",
   "deleteAccessibilityLabel": "Delete project",
+  "customBadge": "Custom",
   "outputs_one": "{{count}} output",
   "outputs_other": "{{count}} outputs",
   "status": {

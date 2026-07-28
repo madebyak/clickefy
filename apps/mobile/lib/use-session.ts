@@ -29,6 +29,7 @@ import {
 } from '@clickfy/types';
 import { useCallback, useEffect } from 'react';
 
+import { unregisterCurrentDeviceAsync } from './push-notifications';
 import { getSDK } from './sdk';
 
 export interface SessionUser {
@@ -64,7 +65,7 @@ function makeInitials(name: string, email: string): string {
 export const ME_QUERY_KEY = ['users', 'me'] as const;
 
 export function useSession() {
-  const { isLoaded: clerkLoaded, isSignedIn, signOut } = useAuth();
+  const { isLoaded: clerkLoaded, isSignedIn, signOut, getToken } = useAuth();
   const { user: clerkUser } = useUser();
   const queryClient = useQueryClient();
 
@@ -174,7 +175,17 @@ export function useSession() {
    * have to wrap it in a confirmation modal.
    */
   const deleteAccount = useMutation({
-    mutationFn: (): Promise<void> => getSDK().user.deleteAccount(),
+    mutationFn: async (): Promise<void> => {
+      // Unregister this device's push token FIRST, while the session is
+      // still valid (the delete below invalidates it). Best-effort — never
+      // block account deletion on housekeeping.
+      try {
+        await unregisterCurrentDeviceAsync(() => getToken());
+      } catch {
+        /* ignore */
+      }
+      await getSDK().user.deleteAccount();
+    },
     onSuccess: async () => {
       try {
         await signOut();
@@ -231,9 +242,18 @@ export function useSession() {
   const locale: MeResponse['locale'] = meQuery.data?.locale ?? 'en';
 
   const handleSignOut = useCallback(async () => {
+    // Unregister this device's push token BEFORE signing out — the call is
+    // user-scoped and needs the still-valid session — so pushes meant for
+    // this user never land on the device after they've signed out.
+    // Best-effort; never block sign-out on housekeeping.
+    try {
+      await unregisterCurrentDeviceAsync(() => getToken());
+    } catch {
+      /* ignore */
+    }
     await signOut();
     queryClient.removeQueries();
-  }, [signOut, queryClient]);
+  }, [signOut, queryClient, getToken]);
 
   return {
     isReady,

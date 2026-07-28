@@ -216,7 +216,7 @@ function ProjectRow({
   onRequestDelete: () => void;
   registerOpenRow: (row: SwipeableMethods | null) => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, accent } = useTheme();
   const { t } = useTranslation('projects');
   const swipeableRef = useRef<SwipeableMethods>(null);
 
@@ -259,6 +259,28 @@ function ProjectRow({
                 {project.title}
               </Text>
               <HStack align="center" gap="xs">
+                {project.source === 'user' ? (
+                  <>
+                    <View
+                      style={{
+                        paddingHorizontal: 7,
+                        paddingVertical: 2,
+                        borderRadius: 7,
+                        backgroundColor: accent.soft,
+                      }}
+                    >
+                      <Text
+                        color={accent.deep}
+                        weight="700"
+                        transform="uppercase"
+                        style={{ fontSize: 10, letterSpacing: 0.4 }}
+                      >
+                        {t('customBadge')}
+                      </Text>
+                    </View>
+                    <Dot color={colors.inkSubtle} />
+                  </>
+                ) : null}
                 <Text variant="caption" color="inkMuted">
                   {project.whenLabel}
                 </Text>
@@ -387,7 +409,7 @@ function EmptyState() {
       <Text variant="caption" color="inkMuted" align="center">
         {t('empty.description')}
       </Text>
-      <Button variant="accent" size="md" onPress={() => router.push('/(tabs)')}>
+      <Button variant="accent" size="md" full onPress={() => router.push('/(tabs)')}>
         {t('empty.cta')}
       </Button>
     </View>

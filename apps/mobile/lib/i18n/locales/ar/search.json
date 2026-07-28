@@ -38,7 +38,8 @@
   "kind": {
     "image": "صورة",
     "video": "فيديو",
-    "set": "مجموعة"
+    "set": "مجموعة",
+    "video_image": "فيديو + صورة"
   },
   "filtersSheet": {
     "title": "الفلاتر",

@@ -360,11 +360,13 @@ function KindChip({ kind }: { kind: CatalogTemplate['kind'] }) {
     image: t('kind.image'),
     video: t('kind.video'),
     set: t('kind.set'),
+    video_image: t('kind.video_image'),
   };
   const icons: Record<CatalogTemplate['kind'], IconName> = {
     image: 'image',
     video: 'play',
     set: 'imageStack',
+    video_image: 'video',
   };
   return (
     <View style={[s.kindChip, { backgroundColor: accent.soft }]}>

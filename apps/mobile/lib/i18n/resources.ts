@@ -18,8 +18,10 @@ import enProjects from './locales/en/projects.json';
 import enSearch from './locales/en/search.json';
 import enSaved from './locales/en/saved.json';
 import enTemplate from './locales/en/template.json';
+import enCreate from './locales/en/create.json';
 import enGenerate from './locales/en/generate.json';
 import enProfile from './locales/en/profile.json';
+import enNotifications from './locales/en/notifications.json';
 import enPaywall from './locales/en/paywall.json';
 import enLegal from './locales/en/legal.json';
 import enReport from './locales/en/report.json';
@@ -34,8 +36,10 @@ import arProjects from './locales/ar/projects.json';
 import arSearch from './locales/ar/search.json';
 import arSaved from './locales/ar/saved.json';
 import arTemplate from './locales/ar/template.json';
+import arCreate from './locales/ar/create.json';
 import arGenerate from './locales/ar/generate.json';
 import arProfile from './locales/ar/profile.json';
+import arNotifications from './locales/ar/notifications.json';
 import arPaywall from './locales/ar/paywall.json';
 import arLegal from './locales/ar/legal.json';
 import arReport from './locales/ar/report.json';
@@ -52,8 +56,10 @@ export const NAMESPACES = [
   'search',
   'saved',
   'template',
+  'create',
   'generate',
   'profile',
+  'notifications',
   'paywall',
   'legal',
   'report',
@@ -73,8 +79,10 @@ export const resources = {
     search: enSearch,
     saved: enSaved,
     template: enTemplate,
+    create: enCreate,
     generate: enGenerate,
     profile: enProfile,
+    notifications: enNotifications,
     paywall: enPaywall,
     legal: enLegal,
     report: enReport,
@@ -90,8 +98,10 @@ export const resources = {
     search: arSearch,
     saved: arSaved,
     template: arTemplate,
+    create: arCreate,
     generate: arGenerate,
     profile: arProfile,
+    notifications: arNotifications,
     paywall: arPaywall,
     legal: arLegal,
     report: arReport,

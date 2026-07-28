@@ -23,18 +23,42 @@
   },
   "chooseYourPlan": "Choose your plan",
   "plans": {
+    "weekly": "Weekly",
     "monthly": "Monthly",
     "annual": "Annual",
-    "lifetime": "Lifetime",
     "bestValue": "Best value",
+    "perWeek": "/ week",
     "perMonth": "/ month",
     "perYear": "/ year",
-    "oneTime": "one-time",
     "creditsIncluded_one": "{{formatted}} credit included",
     "creditsIncluded_other": "{{formatted}} credits included"
   },
   "cta": {
-    "startTrial": "Start 7-day free trial",
-    "fineprint": "Cancel anytime · No charge during trial"
+    "subscribe": "Continue",
+    "autoRenew": "Plans auto-renew until canceled. Cancel anytime in your device's Subscriptions settings."
+  },
+  "restore": "Restore",
+  "restoring": "Restoring…",
+  "restoredTitle": "Restored",
+  "restoredBody": "Your purchases have been restored.",
+  "terms": "Terms",
+  "privacy": "Privacy",
+  "unavailable": "Plans are unavailable right now. Please try again later.",
+  "errorTitle": "Something went wrong",
+  "purchaseFailed": "We couldn't complete that purchase. Please try again.",
+  "credits": {
+    "title": "Buy Credits",
+    "balance": "Your balance",
+    "creditsUnit_one": "{{formatted}} credit",
+    "creditsUnit_other": "{{formatted}} credits",
+    "lockedTitle": "Credit packs are a Pro perk",
+    "lockedBody": "Top-up credit packs are available with an active Clickefy Pro plan. Subscribe to unlock them — and get a recurring credit allowance too.",
+    "lockedCta": "See plans",
+    "bonus": "+{{count}} bonus",
+    "buy": "Buy credits",
+    "emptyBody": "No credit packs available right now. Check back soon.",
+    "neverExpire": "Purchased credits never expire and are spendable while your subscription is active.",
+    "purchasedTitle": "Credits added",
+    "purchasedBody": "Your new credits will appear in your balance shortly."
   }
 }

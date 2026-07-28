@@ -48,7 +48,8 @@
     "kind": {
       "image": "Image",
       "video": "Video",
-      "set": "Set"
+      "set": "Set",
+      "video_image": "Video + Image"
     }
   }
 }

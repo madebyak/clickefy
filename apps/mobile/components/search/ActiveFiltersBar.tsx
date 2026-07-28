@@ -52,6 +52,7 @@ export function ActiveFiltersBar({
     image: t('kind.image'),
     video: t('kind.video'),
     image_set: t('kind.set'),
+    video_image: t('kind.video_image'),
   };
   const sortLabel: Record<TemplateSortFilter, string> = {
     default: t('activeFilters.sort.default'),

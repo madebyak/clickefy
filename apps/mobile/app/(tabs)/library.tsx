@@ -129,7 +129,7 @@ export default function LibraryScreen() {
       ) : (
         <FlashList
           data={filtered}
-          keyExtractor={(item) => item.templateId}
+          keyExtractor={(item) => item.templateId ?? item.id}
           numColumns={2}
           renderItem={({ item }) => (
             // Outer wrapper provides the horizontal padding inside each

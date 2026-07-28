@@ -29,7 +29,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, ScrollView, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,7 +37,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { useToast } from '@/components/shared/Toast';
 import { Icon } from '@/components/ui/Icon';
-import { downloadOutput, downloadOutputs } from '@/lib/download';
+import { downloadOutput, downloadOutputs, type DownloadNotify } from '@/lib/download';
 import { getGenerationOutputs, setGenerationOutputs } from '@/lib/generation-cache';
 import { TEMPLATE_QUERY } from '@/lib/query-config';
 import { getSDK } from '@/lib/sdk';
@@ -53,6 +53,30 @@ export default function ResultScreen() {
   const { t: tr } = useTranslation('generate');
   const sdk = getSDK();
   const toast = useToast();
+
+  // The result screen is a fullScreenModal, so a root-level toast renders
+  // *behind* it on iOS — a "Saved" toast would be invisible. We show an
+  // in-modal confirmation pill instead (rendered inside this screen's tree).
+  const [savedVisible, setSavedVisible] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+    },
+    [],
+  );
+  const downloadNotify = useMemo<DownloadNotify>(
+    () => ({
+      ...toast,
+      success: (message, detail) => {
+        toast.success(message, detail); // harmless off-modal; the pill is the visible cue
+        if (savedTimer.current) clearTimeout(savedTimer.current);
+        setSavedVisible(true);
+        savedTimer.current = setTimeout(() => setSavedVisible(false), 1800);
+      },
+    }),
+    [toast],
+  );
 
   // Fast path: the `generating` screen drops the finished outputs into
   // this module-scoped cache the instant the job completes in-session,
@@ -188,6 +212,42 @@ export default function ResultScreen() {
           and duplicated the regenerate button below. */}
       <ScreenHeader />
 
+      {savedVisible ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: insets.top + 52,
+            left: 0,
+            right: 0,
+            alignItems: 'center',
+            zIndex: 50,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              backgroundColor: colors.success,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderRadius: 999,
+              shadowColor: '#000',
+              shadowOpacity: 0.18,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 8,
+            }}
+          >
+            <Icon name="check" size={16} color="#FFFFFF" weight="bold" />
+            <Text variant="bodySemi" weight="700" style={{ color: '#FFFFFF', fontSize: 14 }}>
+              {tr('savedToPhotos')}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
@@ -228,7 +288,7 @@ export default function ResultScreen() {
             <HeroSlot
               output={hero}
               onShare={handleShare}
-              onDownload={() => void downloadOutput(hero, toast)}
+              onDownload={() => void downloadOutput(hero, downloadNotify)}
               onReport={() =>
                 router.push({
                   pathname: '/report',
@@ -255,7 +315,7 @@ export default function ResultScreen() {
                 <VariantCard
                   key={`${out.url}-${i}`}
                   output={out}
-                  onDownload={() => void downloadOutput(out, toast)}
+                  onDownload={() => void downloadOutput(out, downloadNotify)}
                 />
               ))}
             </Stack>
@@ -272,7 +332,7 @@ export default function ResultScreen() {
                 full
                 haptic="medium"
                 leading={<Icon name="download" size={18} color={accent.ink} weight="bold" />}
-                onPress={() => void downloadOutputs(outputs, toast)}
+                onPress={() => void downloadOutputs(outputs, downloadNotify)}
               >
                 {tr('downloadAll', { count: outputs.length })}
               </Button>
@@ -285,7 +345,11 @@ export default function ResultScreen() {
               haptic="medium"
               leading={<Icon name="refresh" size={18} color={isMulti ? colors.ink : accent.ink} weight="bold" />}
               onPress={() => {
+                // Template job → back into the template form. Create job
+                // (no templateId) → back to the Create tab, where the
+                // prompt/model are still filled for a quick re-generate.
                 if (templateId) router.replace(`/use/${templateId}`);
+                else router.back();
               }}
             >
               {t ? tr('regenerateWithCredits', { count: t.credits }) : tr('regenerate')}
@@ -297,7 +361,11 @@ export default function ResultScreen() {
               full
               leading={<Icon name="sliders" size={16} color={colors.ink} />}
               onPress={() => {
+                // Template job → back into the template form. Create job
+                // (no templateId) → back to the Create tab, where the
+                // prompt/model are still filled for a quick re-generate.
                 if (templateId) router.replace(`/use/${templateId}`);
+                else router.back();
               }}
             >
               {tr('tweakInputs')}
@@ -378,7 +446,12 @@ function HeroSlot({
         shadowOffset: { width: 0, height: 14 },
       }}
     >
-      <OutputRenderer output={output} contentFit="cover" />
+      {/* `contain`, never `cover`: the result viewer must show the TRUE
+          shape (iOS Photos convention — grids crop, viewers don't). With
+          real dims from the wire the container ratio matches and contain
+          is visually identical; for legacy dimension-less jobs it
+          letterboxes instead of cropping. */}
+      <OutputRenderer output={output} contentFit="contain" />
 
       {/* Floating actions — Save and "spare" icon removed.
           We keep Share (genuine, often-used) and Download (primary
@@ -454,7 +527,12 @@ function VariantCard({
         backgroundColor: colors.surfaceMuted,
       }}
     >
-      <OutputRenderer output={output} contentFit="cover" />
+      {/* `contain`, never `cover`: the result viewer must show the TRUE
+          shape (iOS Photos convention — grids crop, viewers don't). With
+          real dims from the wire the container ratio matches and contain
+          is visually identical; for legacy dimension-less jobs it
+          letterboxes instead of cropping. */}
+      <OutputRenderer output={output} contentFit="contain" />
       {/* Per-output download — small floating chip, bottom-right.
           We deliberately don't compete with the hero's full bar
           here: variations are secondary, so just the icon. */}

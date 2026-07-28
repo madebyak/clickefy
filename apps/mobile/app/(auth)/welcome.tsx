@@ -18,6 +18,7 @@
  */
 
 import { useSSO } from '@clerk/expo';
+import { useSignInWithApple } from '@clerk/expo/apple';
 import { isClerkAPIResponseError } from '@clerk/react/errors';
 import * as Sentry from '@sentry/react-native';
 import { Box, Button, Stack, Text, useTheme } from '@clickfy/ui';
@@ -57,6 +58,11 @@ export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { startSSOFlow } = useSSO();
+  // Native Sign in with Apple (iOS system sheet via expo-apple-authentication).
+  // Clerk exchanges the Apple identity token for a session — no browser
+  // round-trip — and it satisfies Apple's requirement that iOS apps use the
+  // native Sign in with Apple flow. Google stays on the hosted OAuth flow.
+  const { startAppleAuthenticationFlow } = useSignInWithApple();
 
   const [pending, setPending] = useState<SocialProvider | null>(null);
 
@@ -65,56 +71,49 @@ export default function WelcomeScreen() {
       if (pending) return;
       setPending(provider);
       try {
-        const strategy = provider === 'apple' ? 'oauth_apple' : 'oauth_google';
-        // `makeRedirectUri({ path })` builds a scheme-aware URL: `exp://...`
-        // in Expo Go, `clickfy://sso-callback` in production builds. The
-        // explicit `sso-callback` path matches Clerk's own internal default
-        // — a bare-scheme redirect (`clickfy://`) is not reliably detected
-        // by Chrome Custom Tabs on Android, which silently dismisses the
-        // browser and returns a non-`success` result (the bug we're chasing).
-        const redirectUrl = AuthSession.makeRedirectUri({ path: 'sso-callback' });
+        // Apple → native sheet; Google → hosted OAuth in the in-app browser.
+        // `makeRedirectUri({ path: 'sso-callback' })` builds a scheme-aware URL
+        // (`clickfy://sso-callback` in a build); the explicit path matches
+        // Clerk's default and is reliably detected by Android Custom Tabs,
+        // unlike a bare-scheme redirect.
+        const res =
+          provider === 'apple'
+            ? await startAppleAuthenticationFlow()
+            : await startSSOFlow({
+                strategy: 'oauth_google',
+                redirectUrl: AuthSession.makeRedirectUri({ path: 'sso-callback' }),
+              });
 
-        const { createdSessionId, setActive, authSessionResult, signIn, signUp } =
-          await startSSOFlow({
-            strategy,
-            redirectUrl,
-          });
-
-        if (createdSessionId && setActive) {
-          await setActive({ session: createdSessionId });
+        if (res.createdSessionId && res.setActive) {
+          await res.setActive({ session: res.createdSessionId });
           // The auth-layout redirect flips us to /(tabs) as soon as
           // `isSignedIn` updates — no explicit navigation here.
         } else {
-          // No session came back. This is the silent failure path the user
-          // is hitting: the browser closed without a successful redirect, or
-          // Clerk needs a follow-up step we didn't take. Capture rich
-          // diagnostics to Sentry so we can see WHY in production (the
-          // dismiss/cancel path never throws, so nothing surfaced before).
-          Sentry.captureMessage('[oauth] SSO flow returned no session', {
+          // No session came back — the sheet/browser closed without a
+          // successful exchange, or Clerk needs a follow-up step. Capture
+          // diagnostics (the cancel path never throws, so nothing surfaced
+          // before).
+          Sentry.captureMessage('[oauth] social sign-in returned no session', {
             level: 'warning',
             extra: {
               provider,
-              redirectUrl,
-              authSessionResultType: authSessionResult?.type ?? 'none',
-              authSessionResultUrl:
-                authSessionResult && 'url' in authSessionResult
-                  ? authSessionResult.url
-                  : null,
-              firstFactorStatus: signIn?.firstFactorVerification?.status ?? null,
-              firstFactorError:
-                signIn?.firstFactorVerification?.error?.message ?? null,
-              externalVerificationRedirectURL:
-                signIn?.firstFactorVerification?.externalVerificationRedirectURL?.toString() ??
-                null,
-              signInStatus: signIn?.status ?? null,
-              signUpStatus: signUp?.status ?? null,
+              // `authSessionResult` only exists on the Google/SSO path;
+              // 'native' marks the Apple sheet path where there is none.
+              authSessionResultType:
+                (res as { authSessionResult?: { type?: string } | null })
+                  .authSessionResult?.type ?? 'native',
+              firstFactorStatus: res.signIn?.firstFactorVerification?.status ?? null,
+              signInStatus: res.signIn?.status ?? null,
+              signUpStatus: res.signUp?.status ?? null,
             },
           });
         }
       } catch (err) {
-        // Cancellation (user dismissed the browser sheet) is not an error.
+        // Not an error: the user dismissed the Apple sheet
+        // (`ERR_REQUEST_CANCELED`) or the browser (cancel/dismiss message).
         const msg = err instanceof Error ? err.message : '';
-        if (/cancel|dismiss|user_cancelled/i.test(msg)) {
+        const code = (err as { code?: string })?.code ?? '';
+        if (code === 'ERR_REQUEST_CANCELED' || /cancel|dismiss|user_cancelled/i.test(msg)) {
           return;
         }
         if (isClerkAPIResponseError(err)) {
@@ -129,7 +128,7 @@ export default function WelcomeScreen() {
           );
         } else {
           console.warn(`[welcome] ${provider} oauth error`, err);
-          Sentry.captureException(err, { extra: { provider, where: 'sso_flow' } });
+          Sentry.captureException(err, { extra: { provider, where: 'social_sign_in' } });
           Alert.alert(
             t('welcome.signInFailedTitle'),
             t('welcome.socialError'),
@@ -139,7 +138,7 @@ export default function WelcomeScreen() {
         setPending(null);
       }
     },
-    [pending, startSSOFlow, t],
+    [pending, startSSOFlow, startAppleAuthenticationFlow, t],
   );
 
   // Entrance animation — staggered fade-up on each block below the hero.
@@ -224,9 +223,10 @@ export default function WelcomeScreen() {
       {/* ─── Auth buttons ─── */}
       <Animated.View style={[styles.buttons, buttonsStyle]}>
         <Stack gap="sm">
-          {/* Apple Sign-In is an iOS-first UX — Android users get the web
-              flow which adds friction. Apple's App Store policy still
-              requires offering Sign in with Apple alongside Google on iOS. */}
+          {/* Native Sign in with Apple — iOS only. Apple's App Store policy
+              (Guideline 4.8) requires offering it alongside Google. Rendered
+              first and as the filled primary button so it's at least as
+              prominent as Google, per Apple's HIG. */}
           {Platform.OS === 'ios' && (
             <Button
               variant="primary"

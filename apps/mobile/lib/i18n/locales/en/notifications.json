@@ -1,0 +1,12 @@
+{
+  "title": "Notifications",
+  "markAllRead": "Mark all read",
+  "clearAll": "Clear all",
+  "empty": "You're all caught up",
+  "emptySubtitle": "Updates about your generations will show up here.",
+  "clearTitle": "Clear all notifications?",
+  "clearBody": "This removes every notification. It can't be undone.",
+  "cancel": "Cancel",
+  "errorTitle": "Something went wrong",
+  "errorBody": "We couldn't update your notifications. Please try again."
+}

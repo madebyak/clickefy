@@ -37,6 +37,7 @@ const KIND_ICON: Record<CatalogTemplate['kind'], IconName> = {
   image: 'image',
   video: 'play',
   set: 'imageStack',
+  video_image: 'video',
 };
 
 /** Default card crop. Tall poster shape that reads well on phone widths. */

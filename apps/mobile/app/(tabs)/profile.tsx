@@ -24,11 +24,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/lib/use-appearance';
 import { LEGAL_DOCS, LEGAL_DOC_ORDER } from '@/lib/legal-content';
-import { registerForPushNotificationsAsync } from '@/lib/push-notifications';
 import { useNotificationPrefs } from '@/lib/use-notification-prefs';
 import { useSession } from '@/lib/use-session';
-import { useAuth } from '@clerk/expo';
-import { useState } from 'react';
 
 const ACCENT_OPTIONS: AccentKey[] = ['violet', 'coral', 'citrus', 'ocean'];
 
@@ -46,44 +43,8 @@ export default function ProfileScreen() {
     deleteAccount,
   } = useSession();
   const { setNotification } = useNotificationPrefs();
-  const { getToken } = useAuth();
-  const [diagBusy, setDiagBusy] = useState(false);
   const { mode, scheme, accentKey, setMode, setAccent, toggleScheme } = useAppearance();
   const session = isAuthed && user ? { user, plan } : null;
-
-  // Push diagnostic: re-runs the full registration flow on demand and
-  // surfaces exactly what's happening on this device. Used to debug
-  // empty `device_tokens` rows when testing on Expo Go — without this,
-  // failures are silent because users don't have Metro attached.
-  async function runPushDiagnostic() {
-    setDiagBusy(true);
-    try {
-      const result = await registerForPushNotificationsAsync(async () => getToken());
-      if (result.token) {
-        Alert.alert(
-          t('notifications.diagnostic.registeredTitle'),
-          t('notifications.diagnostic.registeredMessage', {
-            token: result.token.slice(0, 36),
-          }),
-        );
-      } else {
-        const friendly: Record<string, string> = {
-          simulator: t('notifications.diagnostic.reasons.simulator'),
-          permission_denied: t('notifications.diagnostic.reasons.permissionDenied'),
-          no_project_id: t('notifications.diagnostic.reasons.noProjectId'),
-          token_fetch_failed: t('notifications.diagnostic.reasons.tokenFetchFailed'),
-          backend_register_failed: t('notifications.diagnostic.reasons.backendRegisterFailed'),
-        };
-        Alert.alert(
-          t('notifications.diagnostic.failedTitle'),
-          friendly[result.reason ?? ''] ??
-            t('notifications.diagnostic.unknownReason', { reason: result.reason }),
-        );
-      }
-    } finally {
-      setDiagBusy(false);
-    }
-  }
 
   const isDark = scheme === 'dark';
 
@@ -321,30 +282,6 @@ export default function ProfileScreen() {
                 value={preferences.notifications.tipsAndTutorials}
                 onValueChange={() => onToggleNotification('tipsAndTutorials')}
               />
-              <Divider />
-              <Pressable
-                onPress={runPushDiagnostic}
-                disabled={diagBusy}
-                haptic="light"
-                pressedOpacity={0.85}
-              >
-                <HStack align="center" justify="space-between" py="sm">
-                  <HStack align="center" gap="md" style={{ flex: 1 }}>
-                    <Icon name="info" size={20} color={colors.ink} weight="fill" />
-                    <Stack gap="xs" style={{ flex: 1 }}>
-                      <Text variant="bodySemi" color="ink">
-                        {diagBusy
-                          ? t('notifications.diagnostic.checking')
-                          : t('notifications.diagnostic.label')}
-                      </Text>
-                      <Text variant="caption" color="inkMuted">
-                        {t('notifications.diagnostic.helper')}
-                      </Text>
-                    </Stack>
-                  </HStack>
-                  <Icon name="chevronRight" size={16} color={colors.inkSubtle} weight="bold" />
-                </HStack>
-              </Pressable>
             </Stack>
           </Card>
         ) : null}

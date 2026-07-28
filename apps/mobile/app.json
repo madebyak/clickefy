@@ -11,6 +11,7 @@
     "ios": {
       "bundleIdentifier": "ai.clickefy.app",
       "supportsTablet": false,
+      "usesAppleSignIn": true,
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -42,7 +43,8 @@
             ]
           }
         ]
-      }
+      },
+      "buildNumber": "5"
     },
     "android": {
       "package": "ai.clickefy.app",
@@ -113,8 +115,14 @@
         {
           "ios": {
             "extraPods": [
-              { "name": "GoogleUtilities", "modular_headers": true },
-              { "name": "RecaptchaInterop", "modular_headers": true }
+              {
+                "name": "GoogleUtilities",
+                "modular_headers": true
+              },
+              {
+                "name": "RecaptchaInterop",
+                "modular_headers": true
+              }
             ]
           },
           "android": {

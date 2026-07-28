@@ -206,17 +206,33 @@ export async function unregisterPushAsync(
   }
   try {
     const bearer = await getToken();
+    // Unregister is a user-scoped mutation; without a valid session the
+    // backend can't authorize it, so skip rather than send an unauth request.
+    if (!bearer) return;
     await fetch(`${config.apiUrl}/v1/devices/unregister`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        Authorization: `Bearer ${bearer}`,
       },
       body: JSON.stringify({ expoPushToken }),
     });
   } catch (err) {
     console.warn('[push] unregister threw:', err);
   }
+}
+
+/**
+ * Convenience: unregister whatever token we registered this session
+ * (tracked in `lastRegisteredToken`). No-op if nothing was registered.
+ * Must be called while the session is still valid — i.e. BEFORE `signOut()`
+ * or before the account-delete request invalidates the token.
+ */
+export async function unregisterCurrentDeviceAsync(
+  getToken: () => Promise<string | null>,
+): Promise<void> {
+  if (!lastRegisteredToken) return;
+  await unregisterPushAsync(lastRegisteredToken, getToken);
 }
 
 /**
@@ -244,7 +260,7 @@ export function subscribeToTokenRotation(
     if (!isExpoPushToken(token)) return;
     if (lastRegisteredToken === token) return;
 
-    console.log('[push] token rotated, re-registering…');
+    if (__DEV__) console.log('[push] token rotated, re-registering…');
     try {
       const bearer = await getToken();
       const res = await fetch(`${config.apiUrl}/v1/devices/register`, {

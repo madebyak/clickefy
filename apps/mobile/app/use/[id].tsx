@@ -7,18 +7,21 @@ import {
   Text,
   useTheme,
 } from '@clickfy/ui';
+import { useUser } from '@clerk/expo';
 import { JobSubmissionError, type JobInputValue } from '@clickfy/sdk';
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AiConsentSheet } from '@/components/AiConsentSheet';
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
 import { Icon } from '@/components/ui/Icon';
 import { InputField, type UploadedMedia } from '@/components/use-template/InputField';
+import { hasAiConsent, setAiConsent } from '@/lib/ai-consent';
 import { thumbnailUrl } from '@/lib/image-url';
 import { TEMPLATE_QUERY } from '@/lib/query-config';
 import { getSDK } from '@/lib/sdk';
@@ -45,11 +48,16 @@ function idempotencyKey(): string {
 
 export default function UseTemplateScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  // One idempotency key per submission attempt-sequence (see submit below).
+  const submitKeyRef = useRef(idempotencyKey());
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, accent } = useTheme();
   const { t: tr } = useTranslation('template');
   const sdk = getSDK();
+  // Stable Clerk id — used to key the one-time AI-data-sharing consent.
+  const { user: clerkUser } = useUser();
+  const consentUserId = clerkUser?.id ?? '';
 
   const templateQuery = useQuery({
     queryKey: ['template', id],
@@ -67,6 +75,7 @@ export default function UseTemplateScreen() {
   const [mediaMeta, setMediaMeta] = useState<Record<string, UploadedMedia | null>>({});
   const [aspect, setAspect] = useState('4:5');
   const [submitting, setSubmitting] = useState(false);
+  const [showConsent, setShowConsent] = useState(false);
 
   const setField = (key: string, val: string) =>
     setValues((prev) => ({ ...prev, [key]: val }));
@@ -101,7 +110,7 @@ export default function UseTemplateScreen() {
     });
   }, [t, values, mediaMeta]);
 
-  const onGenerate = async () => {
+  const runGeneration = async () => {
     if (!t || !canGenerate) return;
     setSubmitting(true);
     try {
@@ -131,8 +140,12 @@ export default function UseTemplateScreen() {
         templateId: t.id,
         inputs,
         options: t.userCanChooseAspectRatio ? { aspectRatio: aspect } : undefined,
-        idempotencyKey: idempotencyKey(),
+        // Stable per-attempt key: a retry after a timeout/double-tap
+        // re-sends the SAME key so the server dedupes instead of
+        // charging twice. Rotated only after a confirmed success.
+        idempotencyKey: submitKeyRef.current,
       });
+      submitKeyRef.current = idempotencyKey();
 
       router.replace({
         pathname: '/generating',
@@ -155,6 +168,24 @@ export default function UseTemplateScreen() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Gate the first generation on explicit AI-data-sharing consent
+  // (App Store 5.1.2(i) / Google Play). Once accepted we never ask again
+  // for this user (see lib/ai-consent). Cancel = nothing is sent.
+  const onGeneratePress = async () => {
+    if (!t || !canGenerate) return;
+    if (await hasAiConsent(consentUserId)) {
+      void runGeneration();
+    } else {
+      setShowConsent(true);
+    }
+  };
+
+  const onConsentAgree = async () => {
+    setShowConsent(false);
+    await setAiConsent(consentUserId);
+    void runGeneration();
   };
 
   return (
@@ -281,7 +312,7 @@ export default function UseTemplateScreen() {
             disabled={!canGenerate}
             loading={submitting}
             haptic="medium"
-            onPress={onGenerate}
+            onPress={onGeneratePress}
             leading={
               <Icon name="wand" size={18} color={accent.ink} weight="fill" />
             }
@@ -290,6 +321,12 @@ export default function UseTemplateScreen() {
           </Button>
         </View>
       ) : null}
+
+      <AiConsentSheet
+        visible={showConsent}
+        onAgree={onConsentAgree}
+        onCancel={() => setShowConsent(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

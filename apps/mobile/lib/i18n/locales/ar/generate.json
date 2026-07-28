@@ -22,6 +22,7 @@
   "outputCount_other": "{{count}} مخرج",
   "templateSuffix": " · قالب {{title}}",
   "download": "تنزيل",
+  "savedToPhotos": "تم الحفظ في الصور",
   "variations": "تنويعات",
   "downloadAll": "تنزيل الكل ({{count}})",
   "regenerate": "إعادة الإنشاء",
@@ -37,5 +38,12 @@
     "shareResult": "مشاركة النتيجة",
     "reportGeneration": "الإبلاغ عن هذا الإنشاء",
     "downloadVariation": "تنزيل هذا التنويع"
+  },
+  "consent": {
+    "title": "قبل التوليد",
+    "body": "لإنشاء نتيجتك، يرسل Clickefy المدخلات التي تقدّمها — صورك ومقاطعك المصوّرة ونصوصك — إلى شركائنا في الذكاء الاصطناعي (Google وKling وBytePlus). يعالجونها فقط لتوليد المحتوى الخاص بك. بالمتابعة، فإنك توافق على ذلك.",
+    "learnMore": "كيف تُستخدم بياناتك",
+    "agree": "أوافق وأتابع",
+    "cancel": "ليس الآن"
   }
 }

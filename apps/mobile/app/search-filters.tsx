@@ -41,10 +41,11 @@ import {
 } from '@/lib/search-state';
 import { getSDK } from '@/lib/sdk';
 
-const KIND_OPTIONS: { value: TemplateKindFilter; labelKey: string; icon: 'image' | 'play' | 'imageStack' }[] = [
+const KIND_OPTIONS: { value: TemplateKindFilter; labelKey: string; icon: 'image' | 'play' | 'imageStack' | 'video' }[] = [
   { value: 'image', labelKey: 'kind.image', icon: 'image' },
   { value: 'video', labelKey: 'kind.video', icon: 'play' },
   { value: 'image_set', labelKey: 'kind.set', icon: 'imageStack' },
+  { value: 'video_image', labelKey: 'kind.video_image', icon: 'video' },
 ];
 
 const SORT_OPTIONS: { value: TemplateSortFilter; labelKey: string; descriptionKey: string }[] = [

@@ -19,7 +19,7 @@ import * as Updates from 'expo-updates';
 
 import type { UserLocale } from '@clickfy/types';
 
-import { i18n, IS_EXPO_GO, persistLocale } from './i18n';
+import { i18n, IS_EXPO_GO, markDirectionApplied, persistLocale } from './i18n';
 import {
   hideLocaleSwitchOverlay,
   showLocaleSwitchOverlay,
@@ -68,6 +68,10 @@ export function useLocaleSwitch() {
       const rtl = next === 'ar';
       I18nManager.allowRTL(rtl);
       I18nManager.forceRTL(rtl);
+      // Record the applied direction NOW so the boot right after the reload
+      // below sees it as already-applied and does not reload a second time
+      // (and can never enter a loop). See `syncNativeDirection`.
+      await markDirectionApplied(rtl);
 
       // 4) Best-effort cross-device sync (signed-in users only).
       if (isAuthed) {

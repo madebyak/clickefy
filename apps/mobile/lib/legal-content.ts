@@ -52,9 +52,12 @@ export interface LegalDoc {
   sections: LegalSection[];
 }
 
-const COMPANY = '[COMPANY]';
-const CONTACT = '[CONTACT_EMAIL]';
-const COURTS = '[EMIRATE_COURTS]';
+// Operating entity + contacts. Baseline values filled in for launch; a
+// UAE-qualified attorney should still review the full pack (and may adjust
+// the governing courts, e.g. onshore Sharjah courts vs a free-zone forum).
+const COMPANY = 'Cast U FZE LLC';
+const CONTACT = 'support@clickefy.ai';
+const COURTS = 'Courts of Sharjah';
 
 const TERMS: LegalDoc = {
   slug: 'terms',
@@ -103,7 +106,7 @@ const TERMS: LegalDoc = {
     {
       heading: '6. Third-party services',
       paragraphs: [
-        'Clickefy uses third-party AI providers (e.g. Google Gemini, Kling) to generate content. Your inputs and prompts are sent to these providers for the duration of a generation. We do not control how these providers operate beyond contractual data-handling commitments.',
+        'Clickefy uses third-party AI providers (e.g. Google Gemini, Kling, and BytePlus) to generate content. Your inputs and prompts are sent to these providers for the duration of a generation. We do not control how these providers operate beyond contractual data-handling commitments.',
       ],
     },
     {
@@ -170,7 +173,7 @@ const PRIVACY: LegalDoc = {
       paragraphs: [
         'Identity: Clerk (authentication).',
         'Hosting & storage: Cloudflare (Workers, R2 object storage), Neon (Postgres database).',
-        'AI providers: Google (Gemini family), Kling.',
+        'AI providers: Google (Gemini family), Kling, BytePlus (Seedance).',
         'Subscriptions & billing: RevenueCat, Apple, Google.',
         'We sign data-processing agreements with each provider where applicable. We do not sell your personal data.',
       ],

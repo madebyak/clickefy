@@ -2,7 +2,8 @@
   "kind": {
     "image": "صورة",
     "video": "فيديو",
-    "set": "مجموعة"
+    "set": "مجموعة",
+    "video_image": "فيديو + صورة"
   },
   "sections": {
     "whatYouGet": "ما ستحصل عليه",

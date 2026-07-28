@@ -2,6 +2,7 @@
   "overline": "أعمالك",
   "title": "المشاريع",
   "deleteAccessibilityLabel": "حذف المشروع",
+  "customBadge": "مخصّص",
   "outputs_one": "ناتج واحد",
   "outputs_other": "{{count}} نواتج",
   "status": {

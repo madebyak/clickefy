@@ -1,21 +1,25 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { Lightning, Plus, ArrowUpRight } from "@phosphor-icons/react";
+import { Link } from "@/i18n/navigation";
+import { Lightning, LockSimple, Plus, ArrowUpRight } from "@phosphor-icons/react";
 import { Menu } from "@/components/ui/menu";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { useCredits } from "@/lib/use-credits";
+import { useSession } from "@/lib/use-session";
 import { cn } from "@/lib/utils";
 
-export function CreditMenu({
-  balance = 240,
-  subscription = 200,
-  topup = 40,
-}: {
-  balance?: number;
-  subscription?: number;
-  topup?: number;
-}) {
+export function CreditMenu() {
   const t = useTranslations("account");
+  const { user } = useSession();
+  const creditsQuery = useCredits();
+
+  // The /me row already carries the total, so the trigger can render
+  // before the bucket breakdown arrives.
+  const balance = creditsQuery.data?.total ?? user?.creditsBalance;
+  const buckets = creditsQuery.data?.buckets;
+  const topupSpendable = creditsQuery.data?.topupSpendable ?? true;
+
   return (
     <Menu
       align="end"
@@ -30,7 +34,11 @@ export function CreditMenu({
           )}
         >
           <Lightning weight="fill" className="size-4 text-primary" />
-          <span className="tabular-nums">{balance}</span>
+          {balance === undefined ? (
+            <span aria-hidden className="h-3.5 w-7 animate-pulse rounded bg-surface-3" />
+          ) : (
+            <span className="tabular-nums">{balance}</span>
+          )}
         </button>
       )}
     >
@@ -40,26 +48,49 @@ export function CreditMenu({
             <p className="text-xs text-muted-foreground">{t("availableCredits")}</p>
             <p className="mt-1 flex items-center gap-1.5 text-2xl font-semibold tabular-nums">
               <Lightning weight="fill" className="size-5 text-primary" />
-              {balance}
+              {balance ?? "—"}
             </p>
           </div>
           <div className="space-y-1.5 rounded-lg bg-surface-2 p-3 text-sm">
+            {buckets && buckets.promo > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{t("promo")}</span>
+                <span className="tabular-nums">{buckets.promo}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("subscription")}</span>
-              <span className="tabular-nums">{subscription}</span>
+              <span className="tabular-nums">{buckets?.subscription ?? "—"}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">{t("topup")}</span>
-              <span className="tabular-nums">{topup}</span>
+              <span className="flex items-center gap-1 text-muted-foreground">
+                {t("topup")}
+                {!topupSpendable && (
+                  <LockSimple className="size-3.5" aria-label={t("topupLocked")} />
+                )}
+              </span>
+              <span className={cn("tabular-nums", !topupSpendable && "text-muted-foreground")}>
+                {buckets?.topup ?? "—"}
+              </span>
             </div>
           </div>
+          {/* Web billing (Stripe) is a later phase — until then both CTAs
+              land on the marketing pricing section. */}
           <div className="mt-2 flex flex-col gap-1.5">
-            <Button size="sm" className="w-full" onClick={close}>
+            <Link
+              href="/#pricing"
+              onClick={close}
+              className={cn(buttonVariants({ size: "sm" }), "w-full")}
+            >
               <Plus className="size-4" /> {t("buyCredits")}
-            </Button>
-            <Button variant="ghost" size="sm" className="w-full justify-between" onClick={close}>
+            </Link>
+            <Link
+              href="/#pricing"
+              onClick={close}
+              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-full justify-between")}
+            >
               {t("upgradePlan")} <ArrowUpRight className="size-4 rtl:-scale-x-100" />
-            </Button>
+            </Link>
           </div>
         </div>
       )}

@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Geist, Geist_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import { arSA } from "@clerk/localizations";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 import { Toaster } from "sonner";
 import { routing } from "@/i18n/routing";
+import { clerkAppearance } from "@/lib/clerk-appearance";
+import { Providers } from "@/components/providers";
 import "../globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"], display: "swap" });
@@ -48,7 +52,19 @@ export default async function LocaleLayout({
       className={`dark ${geistSans.variable} ${geistMono.variable} ${ibmArabic.variable}`}
     >
       <body>
-        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        {/* ClerkProvider lives inside <body> (Core-3 convention). Sign-in /
+            sign-up paths are locale-aware, so we compute them here instead
+            of relying on the static NEXT_PUBLIC_CLERK_SIGN_IN_URL. */}
+        <ClerkProvider
+          appearance={clerkAppearance}
+          localization={locale === "ar" ? arSA : undefined}
+          signInUrl={locale === "ar" ? "/ar/sign-in" : "/sign-in"}
+          signUpUrl={locale === "ar" ? "/ar/sign-up" : "/sign-up"}
+        >
+          <NextIntlClientProvider>
+            <Providers>{children}</Providers>
+          </NextIntlClientProvider>
+        </ClerkProvider>
         <Toaster richColors position="top-right" theme="dark" />
       </body>
     </html>

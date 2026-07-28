@@ -71,8 +71,8 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
           <span className="hidden lg:inline">{t("search")}</span>
         </button>
         <LanguageSwitcher />
-        <CreditMenu balance={3450} subscription={3200} topup={250} />
-        <ProfileMenu name="Ahmed Kamal" email="ahmed@clickefy.ai" plan="Pro" />
+        <CreditMenu />
+        <ProfileMenu />
       </div>
     </header>
   );

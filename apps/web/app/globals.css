@@ -183,3 +183,21 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--surface-3) transparent;
 }
+
+/*
+ * Clerk component overrides. Most theming flows through the appearance
+ * variables (lib/clerk-appearance.ts); these rules cover the few
+ * internal elements whose CSS-in-JS wins over appearance/Tailwind —
+ * notably the social (Apple/Google) button text, which otherwise
+ * renders dark-on-dark.
+ */
+.cl-socialButtonsBlockButtonText {
+  color: var(--foreground) !important;
+}
+.cl-socialButtonsBlockButton {
+  background-color: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+}
+.cl-socialButtonsBlockButton:hover {
+  background-color: var(--surface-3) !important;
+}

@@ -4,14 +4,26 @@ import { useTranslations } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
 import { Plus, FolderSimple, Heart, CaretUpDown } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
+import { useSession } from "@/lib/use-session";
 import { cn } from "@/lib/utils";
 
 export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useTranslations("studio");
   const tt = useTranslations("time");
+  const ta = useTranslations("account");
   const router = useRouter();
   const pathname = usePathname();
   const { projects, activeProjectId, setActiveProject, createProject } = useStudio();
+  const { user, plan } = useSession();
+
+  const displayName = user?.name?.trim() || user?.email.split("@")[0] || "…";
+  const initials =
+    displayName
+      .split(" ")
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?";
 
   const inBrowser = pathname === "/projects";
   const timeLabel = (raw: string) =>
@@ -115,14 +127,29 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
 
         <button
           type="button"
+          onClick={() => {
+            router.push("/settings");
+            onClose();
+          }}
           className="mt-2 flex items-center gap-3 rounded-lg p-2 text-start transition-colors hover:bg-surface-2"
         >
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-purple text-xs font-semibold text-white">
-            AK
-          </span>
+          {user?.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.avatarUrl}
+              alt=""
+              className="size-9 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-purple text-xs font-semibold text-white">
+              {initials}
+            </span>
+          )}
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">Ahmed Kamal</span>
-            <span className="block truncate text-xs text-muted-foreground">{t("proPlan")}</span>
+            <span className="block truncate text-sm font-medium">{displayName}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {ta("planLabel", { plan: plan.tier })}
+            </span>
           </span>
           <CaretUpDown className="size-4 shrink-0 text-muted-foreground" />
         </button>

@@ -113,8 +113,8 @@ export function TemplatesFilters({
         <SelectTrigger className="w-full sm:w-[160px]">
           <SelectValue placeholder="All Kinds">
             {(val) =>
-              ({ __all__: 'All Kinds', image: 'Image', video: 'Video', image_set: 'Image set' } as const)[
-                val as 'image' | 'video' | 'image_set' | '__all__'
+              ({ __all__: 'All Kinds', image: 'Image', video: 'Video', image_set: 'Image set', video_image: 'Video + Image' } as const)[
+                val as 'image' | 'video' | 'image_set' | 'video_image' | '__all__'
               ] ?? 'All Kinds'
             }
           </SelectValue>
@@ -124,6 +124,7 @@ export function TemplatesFilters({
           <SelectItem value="image">Image</SelectItem>
           <SelectItem value="video">Video</SelectItem>
           <SelectItem value="image_set">Image set</SelectItem>
+          <SelectItem value="video_image">Video + Image</SelectItem>
         </SelectContent>
       </Select>
 

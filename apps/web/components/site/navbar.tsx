@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { List, X } from "@phosphor-icons/react";
@@ -20,9 +21,13 @@ const NAV_LINKS = [
   { key: "pricing", href: "/#pricing" },
 ] as const;
 
-export function Navbar({ authed = false }: { authed?: boolean }) {
+export function Navbar() {
   const t = useTranslations("nav");
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Until Clerk hydrates, render the signed-out header (no layout shift
+  // worse than a brief button swap for returning users).
+  const { isLoaded, isSignedIn } = useAuth();
+  const authed = isLoaded && !!isSignedIn;
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
@@ -53,10 +58,10 @@ export function Navbar({ authed = false }: { authed?: boolean }) {
             </>
           ) : (
             <div className="hidden items-center gap-2 sm:flex">
-              <Link href="#" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+              <Link href="/sign-in" className={buttonVariants({ variant: "ghost", size: "sm" })}>
                 {t("login")}
               </Link>
-              <Link href="#" className={buttonVariants({ size: "sm" })}>
+              <Link href="/sign-up" className={buttonVariants({ size: "sm" })}>
                 {t("signup")}
               </Link>
             </div>
@@ -89,10 +94,10 @@ export function Navbar({ authed = false }: { authed?: boolean }) {
             ))}
             {!authed && (
               <div className="mt-3 flex flex-col gap-2 sm:hidden">
-                <Link href="#" className={cn(buttonVariants({ variant: "outline" }), "w-full")}>
+                <Link href="/sign-in" className={cn(buttonVariants({ variant: "outline" }), "w-full")}>
                   {t("login")}
                 </Link>
-                <Link href="#" className={cn(buttonVariants(), "w-full")}>
+                <Link href="/sign-up" className={cn(buttonVariants(), "w-full")}>
                   {t("signup")}
                 </Link>
               </div>

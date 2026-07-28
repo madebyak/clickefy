@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import type { Template, Category, TemplateKind, MediaRef } from '@clickfy/types';
-import { ImagePlus, ImageIcon, Film, GalleryHorizontal, Loader2, X, Video as VideoIcon } from 'lucide-react';
+import { ImagePlus, ImageIcon, Film, GalleryHorizontal, Languages, Loader2, X, Video as VideoIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { setTemplateField } from '@/lib/i18n-content';
 import { toast } from 'sonner';
@@ -31,7 +31,7 @@ import {
   MAX_VIDEO_UPLOAD_BYTES,
   ApiError,
 } from '@/lib/api/uploads';
-import type { TokenGetter } from '@/lib/api';
+import { apiFetch, type TokenGetter } from '@/lib/api';
 
 interface BasicInfoTabProps {
   template: Partial<Template>;
@@ -53,6 +53,7 @@ const templateKinds: { value: TemplateKind; label: string; description: string; 
   { value: 'image', label: 'Image', description: 'Single still output', icon: ImageIcon },
   { value: 'video', label: 'Video', description: 'Short video clip output', icon: Film },
   { value: 'image_set', label: 'Image set', description: 'Coordinated lookbook (4–6 images)', icon: GalleryHorizontal },
+  { value: 'video_image', label: 'Video + Image', description: 'A still plus its animated clip (image → video pipeline)', icon: VideoIcon },
 ];
 
 /**
@@ -289,6 +290,50 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [translating, setTranslating] = useState(false);
+
+  /**
+   * Auto-translate the English title + description into the Arabic
+   * override fields via `POST /v1/admin/translate` (DeepSeek, style
+   * guide lives in apps/api/src/lib/translate-deepseek.ts). Fills the
+   * fields only — the admin still reviews, tweaks, and saves.
+   */
+  const handleAutoTranslate = async () => {
+    const texts: Record<string, string> = {};
+    if (template.title?.trim()) texts.title = template.title.trim();
+    if (template.description?.trim()) texts.description = template.description.trim();
+    if (Object.keys(texts).length === 0) {
+      toast.error('Write the English title/description first.');
+      return;
+    }
+    setTranslating(true);
+    try {
+      const { translations } = await apiFetch<{
+        translations: Record<string, string>;
+      }>('/v1/admin/translate', {
+        method: 'POST',
+        json: {
+          texts,
+          context:
+            'Template card copy for an AI product photo & video generation app.',
+        },
+        getToken,
+      });
+      let next = template.translations;
+      if (translations.title) {
+        next = setTemplateField(next, 'ar', 'title', translations.title);
+      }
+      if (translations.description) {
+        next = setTemplateField(next, 'ar', 'description', translations.description);
+      }
+      onChange({ translations: next });
+      toast.success('Arabic translation filled — review before saving.');
+    } catch {
+      toast.error('Translation failed. Try again in a moment.');
+    } finally {
+      setTranslating(false);
+    }
+  };
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const [coverDragActive, setCoverDragActive] = useState(false);
   const [galleryDragActive, setGalleryDragActive] = useState(false);
@@ -480,9 +525,26 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
           />
           {/* Arabic override — falls back to the English title above when
               left blank. Stored under translations.ar.title. */}
-          <Label htmlFor="title-ar" className="text-xs text-muted-foreground">
-            Title (العربية)
-          </Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="title-ar" className="text-xs text-muted-foreground">
+              Title (العربية)
+            </Label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              disabled={translating}
+              onClick={handleAutoTranslate}
+            >
+              {translating ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Languages className="h-3 w-3" />
+              )}
+              Translate
+            </Button>
+          </div>
           <Input
             id="title-ar"
             dir="rtl"

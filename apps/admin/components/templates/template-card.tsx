@@ -52,6 +52,7 @@ export function TemplateCard({
     image: 'Image',
     video: 'Video',
     image_set: 'Image set',
+    video_image: 'Video + Image',
   };
 
   // Resolve a delivery URL for the cover. Prefer a foreign CDN URL

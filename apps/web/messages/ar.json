@@ -165,7 +165,9 @@
     "settings": "الإعدادات",
     "help": "المساعدة",
     "signOut": "تسجيل الخروج",
-    "credits": "نقطة"
+    "credits": "نقطة",
+    "promo": "هدايا",
+    "topupLocked": "مقفل — اشترك لفتحه"
   },
   "studio": {
     "createNewProject": "إنشاء مشروع جديد",
@@ -208,5 +210,31 @@
     "projectOptions": "خيارات المشروع",
     "emptyFolder": "فارغ — انقل مشروعًا إلى هنا من قائمة ··· الخاصة به.",
     "assets": "{count, plural, =0 {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}"
+  },
+  "auth": {
+    "panelBadge": "استوديو كليكفاي",
+    "panelTitle": "أنشئ صورًا وفيديوهات بجودة الاستوديو بالذكاء الاصطناعي",
+    "panelSubtitle": "وصول مباشر لأفضل نماذج الصور والفيديو — مساحة عمل واحدة، مشاريعك، ورصيدك."
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "profile": "الملف الشخصي",
+    "name": "الاسم",
+    "namePlaceholder": "اسمك",
+    "email": "البريد الإلكتروني",
+    "save": "حفظ",
+    "saving": "جارٍ الحفظ…",
+    "plan": "الخطة والرصيد",
+    "renewsOn": "يتجدد في {date}",
+    "language": "اللغة",
+    "english": "English",
+    "arabic": "العربية",
+    "session": "الجلسة",
+    "changePhoto": "تغيير الصورة",
+    "avatarTooLarge": "يجب أن يكون حجم الصورة أقل من 4 ميغابايت",
+    "avatarUpdated": "تم تحديث صورة الملف الشخصي",
+    "avatarFailed": "تعذّر رفع الصورة — حاول مرة أخرى",
+    "profileSaved": "تم حفظ الملف الشخصي",
+    "profileFailed": "تعذّر الحفظ — حاول مرة أخرى"
   }
 }

@@ -353,6 +353,7 @@ export default function TemplateEditorPage() {
             <UserInputTab
               template={templateData}
               onChange={handleDataChange}
+              getToken={tokenGetter}
             />
           </TabsContent>
           <TabsContent value="generation">

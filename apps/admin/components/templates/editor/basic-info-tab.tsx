@@ -290,48 +290,41 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
-  const [translating, setTranslating] = useState(false);
+  const [translatingField, setTranslatingField] = useState<'title' | 'description' | null>(null);
 
   /**
-   * Auto-translate the English title + description into the Arabic
-   * override fields via `POST /v1/admin/translate` (DeepSeek, style
-   * guide lives in apps/api/src/lib/translate-deepseek.ts). Fills the
-   * fields only — the admin still reviews, tweaks, and saves.
+   * Auto-translate ONE English field into its Arabic override via
+   * `POST /v1/admin/translate` (DeepSeek; style guide lives in
+   * apps/api/src/lib/translate-deepseek.ts). Fills the field only —
+   * the admin still reviews, tweaks, and saves.
    */
-  const handleAutoTranslate = async () => {
-    const texts: Record<string, string> = {};
-    if (template.title?.trim()) texts.title = template.title.trim();
-    if (template.description?.trim()) texts.description = template.description.trim();
-    if (Object.keys(texts).length === 0) {
-      toast.error('Write the English title/description first.');
+  const translateField = async (field: 'title' | 'description') => {
+    const source = (field === 'title' ? template.title : template.description)?.trim();
+    if (!source) {
+      toast.error(`Write the English ${field} first.`);
       return;
     }
-    setTranslating(true);
+    setTranslatingField(field);
     try {
       const { translations } = await apiFetch<{
         translations: Record<string, string>;
       }>('/v1/admin/translate', {
         method: 'POST',
         json: {
-          texts,
+          texts: { [field]: source },
           context:
             'Template card copy for an AI product photo & video generation app.',
         },
         getToken,
       });
-      let next = template.translations;
-      if (translations.title) {
-        next = setTemplateField(next, 'ar', 'title', translations.title);
-      }
-      if (translations.description) {
-        next = setTemplateField(next, 'ar', 'description', translations.description);
-      }
-      onChange({ translations: next });
-      toast.success('Arabic translation filled — review before saving.');
+      const value = translations[field];
+      if (!value) throw new Error('empty');
+      onChange({ translations: setTemplateField(template.translations, 'ar', field, value) });
+      toast.success('Arabic filled — review before saving.');
     } catch {
       toast.error('Translation failed. Try again in a moment.');
     } finally {
-      setTranslating(false);
+      setTranslatingField(null);
     }
   };
   const [uploadingGallery, setUploadingGallery] = useState(false);
@@ -534,10 +527,10 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
               variant="ghost"
               size="sm"
               className="h-6 px-2 text-xs"
-              disabled={translating}
-              onClick={handleAutoTranslate}
+              disabled={translatingField !== null}
+              onClick={() => translateField('title')}
             >
-              {translating ? (
+              {translatingField === 'title' ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
                 <Languages className="h-3 w-3" />
@@ -683,9 +676,26 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
         </p>
         {/* Arabic override — falls back to the English description when
             left blank. Stored under translations.ar.description. */}
-        <Label htmlFor="desc-ar" className="text-xs text-muted-foreground">
-          Description (العربية)
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="desc-ar" className="text-xs text-muted-foreground">
+            Description (العربية)
+          </Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            disabled={translatingField !== null}
+            onClick={() => translateField('description')}
+          >
+            {translatingField === 'description' ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Languages className="h-3 w-3" />
+            )}
+            Translate
+          </Button>
+        </div>
         <Textarea
           id="desc-ar"
           dir="rtl"

@@ -43,11 +43,17 @@ import {
   GripVertical,
   Copy,
   AlertCircle,
+  Languages,
+  Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { apiFetch, type TokenGetter } from '@/lib/api';
 
 interface UserInputTabProps {
   template: Partial<Template>;
   onChange: (data: Partial<Template>) => void;
+  /** Clerk token getter for authed API calls (auto-translate). */
+  getToken: TokenGetter;
 }
 
 interface FieldTypeMeta {
@@ -85,7 +91,7 @@ function generateFieldKey(label: string, existingKeys: string[]): string {
   return key;
 }
 
-export function UserInputTab({ template, onChange }: UserInputTabProps) {
+export function UserInputTab({ template, onChange, getToken }: UserInputTabProps) {
   const [editingInput, setEditingInput] = useState<TemplateInput | null>(null);
   // Arabic overrides for the field currently open in the dialog. Kept
   // separate from `editingInput` (which is the canonical English field)
@@ -116,6 +122,52 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
       ...prev,
       options: { ...(prev.options ?? {}), [value]: label },
     }));
+  };
+
+  const [translatingInput, setTranslatingInput] = useState(false);
+
+  /**
+   * Auto-translate the open field's English copy (label + helper text +
+   * placeholder, whichever are set) into the Arabic override inputs via
+   * `POST /v1/admin/translate` (DeepSeek). Fills the dialog fields only —
+   * the admin reviews and Saves as usual.
+   */
+  const translateEditingInput = async () => {
+    if (!editingInput) return;
+    const texts: Record<string, string> = {};
+    if (editingInput.label?.trim()) texts.label = editingInput.label.trim();
+    if (editingInput.helperText?.trim()) texts.helperText = editingInput.helperText.trim();
+    if ('placeholder' in editingInput && editingInput.placeholder?.trim()) {
+      texts.placeholder = editingInput.placeholder.trim();
+    }
+    if (Object.keys(texts).length === 0) {
+      toast.error('Write the English label first.');
+      return;
+    }
+    setTranslatingInput(true);
+    try {
+      const { translations } = await apiFetch<{
+        translations: Record<string, string>;
+      }>('/v1/admin/translate', {
+        method: 'POST',
+        json: {
+          texts,
+          context:
+            'Form-field copy (label, helper, placeholder) in an AI product photo & video generation app.',
+        },
+        getToken,
+      });
+      patchTranslation({
+        ...(translations.label ? { label: translations.label } : {}),
+        ...(translations.helperText ? { helperText: translations.helperText } : {}),
+        ...(translations.placeholder ? { placeholder: translations.placeholder } : {}),
+      });
+      toast.success('Arabic filled — review before saving.');
+    } catch {
+      toast.error('Translation failed. Try again in a moment.');
+    } finally {
+      setTranslatingInput(false);
+    }
   };
 
   const handleAddInput = (type: InputFieldType) => {
@@ -377,9 +429,26 @@ export function UserInputTab({ template, onChange }: UserInputTabProps) {
                   />
                   <p className="text-xs text-muted-foreground">Shown to users in the mobile app</p>
                   {/* Arabic override — blank falls back to the English label. */}
-                  <Label htmlFor="input-label-ar" className="text-xs text-muted-foreground">
-                    Label (العربية)
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="input-label-ar" className="text-xs text-muted-foreground">
+                      Label (العربية)
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      disabled={translatingInput}
+                      onClick={translateEditingInput}
+                    >
+                      {translatingInput ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Languages className="h-3 w-3" />
+                      )}
+                      Translate all
+                    </Button>
+                  </div>
                   <Input
                     id="input-label-ar"
                     dir="rtl"

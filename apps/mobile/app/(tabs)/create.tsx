@@ -73,6 +73,7 @@ export default function CreateScreen() {
   const [aspect, setAspect] = useState<string | undefined>(undefined);
   const [duration, setDuration] = useState<number | undefined>(undefined);
   const [sound, setSound] = useState(false);
+  const [quality, setQuality] = useState<'std' | 'pro' | '4k' | undefined>(undefined);
   const [seedanceMode, setSeedanceMode] = useState<'frames' | 'references'>('frames');
   const [startFrame, setStartFrame] = useState<PickedUpload | null>(null);
   const [endFrame, setEndFrame] = useState<PickedUpload | null>(null);
@@ -98,6 +99,8 @@ export default function CreateScreen() {
     if (!selectedModel) return;
     setAspect(selectedModel.aspectRatios[0]);
     setDuration(selectedModel.durations[0]);
+    setQuality(selectedModel.defaultTier);
+    setSound(false);
     setSeedanceMode('frames');
     setStartFrame(null);
     setEndFrame(null);
@@ -143,7 +146,10 @@ export default function CreateScreen() {
     return true;
   }, [selectedModel, submitting, busy, prompt, startFrame]);
 
-  const cost = selectedModel?.costCredits ?? 0;
+  // Cost follows the selected quality tier when the model has tiers
+  // (e.g. Kling 720p/1080p/4K are priced differently).
+  const selectedTier = selectedModel?.tiers?.find((t) => t.mode === quality);
+  const cost = selectedTier?.costCredits ?? selectedModel?.costCredits ?? 0;
   const promptCap = selectedModel?.maxPromptChars ?? 2500;
 
   const runGeneration = async () => {
@@ -159,6 +165,7 @@ export default function CreateScreen() {
         aspectRatio: selectedModel.aspectRatios.length > 0 ? aspect : undefined,
         duration: selectedModel.kind === 'video' ? duration : undefined,
         sound: selectedModel.supportsSound && sound ? true : undefined,
+        quality: selectedModel.tiers ? quality : undefined,
         startFrame: useFrames ? asImage(startFrame) : undefined,
         endFrame: useFrames && selectedModel.supportsEndFrame ? asImage(endFrame) : undefined,
         references: useReferences
@@ -390,6 +397,25 @@ export default function CreateScreen() {
             ) : null}
 
             {/* Duration (video) */}
+            {/* Quality tier — per-tier pricing (e.g. Kling 720p/1080p/4K). */}
+            {selectedModel?.tiers && selectedModel.tiers.length > 0 ? (
+              <Section label={t('quality.label')}>
+                <HStack gap="sm" wrap="wrap">
+                  {selectedModel.tiers.map((tier) => (
+                    <Chip
+                      key={tier.mode}
+                      label={t('quality.tier', {
+                        label: tier.label,
+                        count: tier.costCredits,
+                      })}
+                      active={quality === tier.mode}
+                      onPress={() => setQuality(tier.mode)}
+                    />
+                  ))}
+                </HStack>
+              </Section>
+            ) : null}
+
             {selectedModel && selectedModel.durations.length > 0 ? (
               <Section label={t('duration.label')}>
                 <HStack gap="sm" wrap="wrap">

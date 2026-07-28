@@ -161,6 +161,7 @@ export const generateJob = task({
         aspectRatio?: string;
         duration?: number;
         sound?: boolean;
+        mode?: 'std' | 'pro' | '4k';
       };
       const rawInputKeys = Object.keys(jobRow.inputs as Record<string, unknown>);
       const referenceCount = rawInputKeys.filter((k) => k.startsWith('ref_')).length;
@@ -171,6 +172,7 @@ export const generateJob = task({
           aspectRatio: opts.aspectRatio,
           duration: opts.duration,
           sound: opts.sound,
+          mode: opts.mode,
           hasStartFrame: rawInputKeys.includes(CREATE_START_FRAME_KEY),
           hasEndFrame: rawInputKeys.includes(CREATE_END_FRAME_KEY),
           referenceCount,
@@ -535,7 +537,7 @@ function buildProviderEnv(): ProviderEnv {
 async function waitForAsync(
   taskId: string,
   provider: 'kling' | 'seedance',
-  variant: 'image2video' | 'omni',
+  variant: 'text2video' | 'image2video' | 'omni',
   providerEnv: ProviderEnv,
   ctx: { jobId: string; stageNumber: number; totalStages: number },
 ): Promise<ExecuteResult> {

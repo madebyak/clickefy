@@ -104,6 +104,14 @@ export interface ModelCapabilities {
   supportsSound?: boolean;
 
   /**
+   * Selectable quality tiers (Kling `mode`: std=720p / pro=1080p / 4k).
+   * Absent = the model has one fixed quality. Per-tier pricing lives in
+   * `provider_models.tier_pricing`; the default tier is what old clients
+   * (which never send a quality) are charged and served.
+   */
+  modes?: { values: readonly ('std' | 'pro' | '4k')[]; default: 'std' | 'pro' | '4k' };
+
+  /**
    * Max prompt length in CHARACTERS for the user-facing "create" flow.
    *
    * Optional because it's only meaningful where the app lets an end-user
@@ -344,6 +352,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     // Native audio via the `sound: on|off` request field.
     supportsSound: true,
+    // Quality tiers — default `pro` matches what the adapter has always
+    // sent, so pre-tier clients keep exactly their old behavior + price.
+    modes: { values: ['std', 'pro', '4k'], default: 'pro' },
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
     notes:
@@ -373,6 +384,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 1,
     maxImagesTotal: 1,
     acceptsStartEndImage: true,
+    // Quality tiers — default `pro` (1080p) anchors the sell price.
+    modes: { values: ['std', 'pro', '4k'], default: 'pro' },
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
     notes:

@@ -54,7 +54,7 @@ export type ExecuteResult =
        * `/v1/videos/omni-video/{id}`) so we carry the discriminator
        * forward; the playground passes it back as a query param.
        */
-      variant: 'image2video' | 'omni';
+      variant: 'text2video' | 'image2video' | 'omni';
     }
   | {
       status: 'pending';

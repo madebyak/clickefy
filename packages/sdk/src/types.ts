@@ -358,6 +358,13 @@ export interface GenModel {
   supportsEndFrame: boolean;
   /** Native-audio toggle available (Kling 3 Omni). */
   supportsSound: boolean;
+  /**
+   * Selectable quality tiers with per-tier prices (Kling std=720p /
+   * pro=1080p / 4k). Absent = fixed quality at `costCredits`.
+   */
+  tiers?: { mode: 'std' | 'pro' | '4k'; label: string; costCredits: number }[];
+  /** Pre-selected tier (what `costCredits` reflects). */
+  defaultTier?: 'std' | 'pro' | '4k';
 }
 
 // ─── Notifications (in-app inbox) ────────────────────────────────────
@@ -390,6 +397,8 @@ export interface CreateGenerationInput {
   duration?: number;
   /** Generate native audio (models with `supportsSound` only). */
   sound?: boolean;
+  /** Quality tier (models with `tiers` only). Charged per tier. */
+  quality?: 'std' | 'pro' | '4k';
   startFrame?: Extract<JobInputValue, { kind: 'image' }>;
   endFrame?: Extract<JobInputValue, { kind: 'image' }>;
   references?: Array<Extract<JobInputValue, { kind: 'image' }>>;

@@ -147,10 +147,11 @@ export interface KlingCompiledRequest {
   provider: 'kling';
   /**
    * Which Kling endpoint shape to invoke:
+   *   - `text2video`  for prompt-only runs on t2v-capable models (v3).
    *   - `image2video` for the v2 family (single `image` field).
    *   - `omni`        for v3 Omni (`reference_images[]` + start/end).
    */
-  variant: 'image2video' | 'omni';
+  variant: 'text2video' | 'image2video' | 'omni';
   model: string;
   /** Final prompt — for Omni, contains `<<<image_N>>>` references. */
   prompt: string;
@@ -158,8 +159,8 @@ export interface KlingCompiledRequest {
   aspectRatio?: string;
   /** Video length in seconds. */
   duration?: number;
-  /** Standard vs. pro mode (when supported by the model). */
-  mode?: 'standard' | 'pro' | 'std';
+  /** Quality tier: std (720p) / pro (1080p) / 4k (`standard` = legacy alias for std). */
+  mode?: 'standard' | 'pro' | 'std' | '4k';
   cfgScale?: number;
   /** Native audio generation (Kling v3 Omni `sound: on|off`). */
   soundEnabled?: boolean;

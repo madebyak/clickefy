@@ -81,6 +81,10 @@ export const createUserJobSchema = z.object({
   // Native audio (models with `supportsSound`; others ignore it with a
   // compile warning rather than a hard error).
   sound: z.boolean().optional(),
+  // Quality tier for models with selectable modes (Kling std/pro/4k).
+  // Validated against the model's capability list in the handler; the
+  // charge uses `provider_models.tier_pricing[quality]`.
+  quality: z.enum(['std', 'pro', '4k']).optional(),
   startFrame: jobInputImageSchema.optional(),
   endFrame: jobInputImageSchema.optional(),
   // Reference / subject images. Hard ceiling matches the largest model

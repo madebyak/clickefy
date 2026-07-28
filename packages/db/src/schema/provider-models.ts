@@ -47,6 +47,13 @@ export const providerModels = pgTable(
      * in their pipeline (snapshotted into the template version on publish).
      */
     costCredits: integer('cost_credits').default(0).notNull(),
+    /**
+     * Per-quality-tier pricing for models with selectable modes (Kling
+     * std=720p / pro=1080p / 4k): ABSOLUTE credits keyed by mode, e.g.
+     * `{"std":70,"pro":94,"4k":188}`. NULL = flat `cost_credits` for
+     * every tier. Added in migration 0024.
+     */
+    tierPricing: jsonb('tier_pricing').$type<Record<string, number> | null>(),
     timeoutMs: integer('timeout_ms').default(60000).notNull(),
 
     updatedAt: timestamp('updated_at', { withTimezone: true })

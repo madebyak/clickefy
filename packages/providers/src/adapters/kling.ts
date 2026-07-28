@@ -31,7 +31,7 @@ export interface KlingEnv {
 }
 
 /** Which Kling endpoint owns a given task — drives the poll URL. */
-export type KlingPollVariant = 'image2video' | 'omni';
+export type KlingPollVariant = 'text2video' | 'image2video' | 'omni';
 
 const DEFAULT_BASE_URL = 'https://api.klingai.com';
 
@@ -181,7 +181,7 @@ function buildOmniBody(request: KlingCompiledRequest): Record<string, unknown> {
   let mode: 'std' | 'pro' | '4k' | undefined;
   if (request.mode === 'standard' || request.mode === 'std') mode = 'std';
   else if (request.mode === 'pro') mode = 'pro';
-  // 4k is not yet a documented value from the compiler; opt-in via raw config.
+  else if (request.mode === '4k') mode = '4k';
 
   const body: Record<string, unknown> = {
     model_name: request.model,
@@ -197,6 +197,23 @@ function buildOmniBody(request: KlingCompiledRequest): Record<string, unknown> {
   // API-side; we only send the field when the compiler opted in, so
   // sound-incapable models never see an unknown field).
   if (request.soundEnabled !== undefined) body.sound = request.soundEnabled ? 'on' : 'off';
+  return body;
+}
+
+/**
+ * Prompt-only text-to-video on the classic endpoint (v3 family). Same
+ * field surface as image2video minus the subject image.
+ */
+function buildText2VideoBody(request: KlingCompiledRequest): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model_name: request.model,
+    mode: request.mode ?? 'std',
+    prompt: request.prompt,
+    cfg_scale: request.cfgScale ?? 0.5,
+    duration: request.duration ?? 5,
+  };
+  if (request.aspectRatio) body.aspect_ratio = request.aspectRatio;
+  if (request.negativePrompt) body.negative_prompt = request.negativePrompt;
   return body;
 }
 
@@ -236,10 +253,24 @@ export async function executeKling(
   env: KlingEnv,
 ): Promise<ExecuteResult> {
   const baseUrl = env.baseUrl ?? DEFAULT_BASE_URL;
-  const variant: KlingPollVariant = request.variant === 'omni' ? 'omni' : 'image2video';
+  const variant: KlingPollVariant =
+    request.variant === 'omni'
+      ? 'omni'
+      : request.variant === 'text2video'
+        ? 'text2video'
+        : 'image2video';
   const path =
-    variant === 'omni' ? '/v1/videos/omni-video' : '/v1/videos/image2video';
-  const body = variant === 'omni' ? buildOmniBody(request) : buildImage2VideoBody(request);
+    variant === 'omni'
+      ? '/v1/videos/omni-video'
+      : variant === 'text2video'
+        ? '/v1/videos/text2video'
+        : '/v1/videos/image2video';
+  const body =
+    variant === 'omni'
+      ? buildOmniBody(request)
+      : variant === 'text2video'
+        ? buildText2VideoBody(request)
+        : buildImage2VideoBody(request);
 
   const json = await callKling(
     `${baseUrl}${path}`,
@@ -273,7 +304,9 @@ export async function pollKling(
   const path =
     variant === 'omni'
       ? `/v1/videos/omni-video/${taskId}`
-      : `/v1/videos/image2video/${taskId}`;
+      : variant === 'text2video'
+        ? `/v1/videos/text2video/${taskId}`
+        : `/v1/videos/image2video/${taskId}`;
   const json = await callKling(`${baseUrl}${path}`, { method: 'GET' }, env);
   const status = json.data?.task_status;
   if (status === 'succeed') {

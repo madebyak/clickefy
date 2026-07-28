@@ -338,9 +338,13 @@ jobsRoute.post(
       );
     }
 
-    // ── Price (flat per-model cost from provider_models) ───────────
+    // ── Price (per-tier when the model has quality modes) ──────────
     const priceRows = await c.var.db
-      .select({ costCredits: providerModels.costCredits, status: providerModels.status })
+      .select({
+        costCredits: providerModels.costCredits,
+        tierPricing: providerModels.tierPricing,
+        status: providerModels.status,
+      })
       .from(providerModels)
       .where(
         and(
@@ -349,8 +353,41 @@ jobsRoute.post(
         ),
       )
       .limit(1);
-    const cost = priceRows[0]?.costCredits ?? 0;
-    if (!priceRows[0] || cost <= 0) {
+    const priceRow = priceRows[0];
+
+    // Resolve the quality tier: an explicit request is validated against
+    // the model's mode list; absent → the model's default (which is what
+    // pre-tier clients get, at exactly the pre-tier price). A `quality`
+    // sent for a fixed-quality model is a 422, not a silent ignore —
+    // otherwise a user could believe they bought 4K they didn't get.
+    let mode: 'std' | 'pro' | '4k' | undefined;
+    if (caps.modes) {
+      if (body.quality && !caps.modes.values.includes(body.quality)) {
+        return c.json(
+          {
+            error: {
+              code: 'quality_not_supported',
+              message: `Quality "${body.quality}" is not available for this model.`,
+            },
+          },
+          422,
+        );
+      }
+      mode = body.quality ?? caps.modes.default;
+    } else if (body.quality) {
+      return c.json(
+        {
+          error: {
+            code: 'quality_not_supported',
+            message: 'This model has a fixed quality.',
+          },
+        },
+        422,
+      );
+    }
+
+    const cost = (mode ? priceRow?.tierPricing?.[mode] : undefined) ?? priceRow?.costCredits ?? 0;
+    if (!priceRow || cost <= 0) {
       return c.json(
         { error: { code: 'model_unpriced', message: 'That model is not available right now.' } },
         422,
@@ -401,7 +438,14 @@ jobsRoute.post(
       inputs[createReferenceKey(i)] = ref;
     });
 
-    const options = { aspectRatio: body.aspectRatio, duration: body.duration, sound: body.sound };
+    const options = {
+      aspectRatio: body.aspectRatio,
+      duration: body.duration,
+      sound: body.sound,
+      // Resolved quality tier — persisted so the worker compiles the
+      // stage at exactly the tier the user was charged for.
+      mode,
+    };
 
     // ── Atomic debit + insert (isolated create CTE) ────────────────
     let result;

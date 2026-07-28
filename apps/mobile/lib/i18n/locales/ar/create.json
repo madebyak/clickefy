@@ -47,6 +47,15 @@
     "referencesHint": "أضف حتى {{count}} صور لتوجيه النتيجة.",
     "framesHint": "حدد إطارًا أول (وإطارًا أخير اختياري)."
   },
+  "quality": {
+    "label": "الجودة",
+    "tier_zero": "{{label}} · {{count}} رصيد",
+    "tier_one": "{{label}} · رصيد واحد",
+    "tier_two": "{{label}} · رصيدان",
+    "tier_few": "{{label}} · {{count}} أرصدة",
+    "tier_many": "{{label}} · {{count}} رصيدًا",
+    "tier_other": "{{label}} · {{count}} رصيد"
+  },
   "sound": {
     "label": "الصوت",
     "title": "توليد الصوت",

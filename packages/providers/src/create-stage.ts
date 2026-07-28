@@ -61,6 +61,8 @@ export interface BuildCreateStageInput {
   duration?: number;
   /** Native audio toggle (sound-capable models only; compiler gates it). */
   sound?: boolean;
+  /** Quality tier for models with selectable modes (Kling std/pro/4k). */
+  mode?: 'std' | 'pro' | '4k';
   /** Whether a start-frame image was attached (present in `inputs`). */
   hasStartFrame?: boolean;
   /** Whether an end-frame image was attached. */
@@ -148,6 +150,8 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
     // Native audio — the compiler drops it (with a warning) on models
     // without `supportsSound`, so setting it here is always safe.
     if (!isImage && input.sound) config.sound = true;
+    // Quality tier — the user was charged for this exact tier upstream.
+    if (!isImage && input.mode) config.mode = input.mode;
     if (isImage) config.numberOfOutputs = 1;
   }
 

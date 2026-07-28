@@ -41,6 +41,7 @@ modelsRoute.get(
       .select({
         modelKey: providerModels.modelKey,
         costCredits: providerModels.costCredits,
+        tierPricing: providerModels.tierPricing,
         status: providerModels.status,
       })
       .from(providerModels)
@@ -52,7 +53,7 @@ modelsRoute.get(
     const models = CREATE_MODEL_DEFS.flatMap((def) => {
       const row = priceByKey.get(def.modelKey);
       if (!row || row.status === 'deprecated' || row.costCredits <= 0) return [];
-      const dto = buildCreateModelDTO(def.modelKey, row.costCredits);
+      const dto = buildCreateModelDTO(def.modelKey, row.costCredits, row.tierPricing);
       return dto ? [dto] : [];
     });
 

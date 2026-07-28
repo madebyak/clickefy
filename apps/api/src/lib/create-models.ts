@@ -111,20 +111,48 @@ export interface CreateModelDTO {
   supportsEndFrame: boolean;
   /** Native-audio toggle (Kling 3 Omni `sound`). */
   supportsSound: boolean;
+  /**
+   * Selectable quality tiers with their per-tier prices (models with
+   * modes only — Kling std=720p / pro=1080p / 4k). Absent = fixed
+   * quality at `costCredits`.
+   */
+  tiers?: { mode: 'std' | 'pro' | '4k'; label: string; costCredits: number }[];
+  /** The pre-selected tier (what `costCredits` reflects). */
+  defaultTier?: 'std' | 'pro' | '4k';
 }
+
+const TIER_LABELS: Record<'std' | 'pro' | '4k', string> = {
+  std: '720p',
+  pro: '1080p',
+  '4k': '4K',
+};
 
 /**
  * Build the client DTO for a create-eligible model by merging its roster
  * def, the code capability registry, and its DB price. Returns null if the
  * model isn't in the registry (misconfigured) — callers filter those out.
  */
-export function buildCreateModelDTO(modelKey: string, costCredits: number): CreateModelDTO | null {
+export function buildCreateModelDTO(
+  modelKey: string,
+  costCredits: number,
+  tierPricing?: Record<string, number> | null,
+): CreateModelDTO | null {
   const def = DEF_BY_KEY.get(modelKey);
   const caps = findCapabilities(modelKey);
   if (!def || !caps) return null;
 
   const aspectRatios = caps.sizing.mode === 'aspect' ? [...caps.sizing.values] : [];
   const durations = caps.kind === 'video' && caps.duration ? [...caps.duration.values] : [];
+
+  // Per-tier prices: absolute credits from `tier_pricing`, falling back
+  // to the flat base for any tier the admin hasn't priced explicitly.
+  const tiers = caps.modes
+    ? caps.modes.values.map((m) => ({
+        mode: m,
+        label: TIER_LABELS[m],
+        costCredits: tierPricing?.[m] ?? costCredits,
+      }))
+    : undefined;
 
   return {
     modelKey,
@@ -140,5 +168,7 @@ export function buildCreateModelDTO(modelKey: string, costCredits: number): Crea
     requiresStartFrame: def.requiresStartFrame,
     supportsEndFrame: def.supportsEndFrame,
     supportsSound: caps.supportsSound ?? false,
+    tiers,
+    defaultTier: caps.modes?.default,
   };
 }

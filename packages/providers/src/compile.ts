@@ -762,7 +762,7 @@ function compileKling(
   const cfgScale =
     typeof stage.config.cfgScale === 'number' ? stage.config.cfgScale : undefined;
   const mode = typeof stage.config.mode === 'string'
-    ? (stage.config.mode as 'standard' | 'pro' | 'std')
+    ? (stage.config.mode as 'standard' | 'pro' | 'std' | '4k')
     : undefined;
   const negativePrompt =
     typeof stage.config.negativePrompt === 'string' && stage.config.negativePrompt.length > 0
@@ -782,9 +782,20 @@ function compileKling(
     });
   }
 
+  // Endpoint variant: Omni has its own route; on the classic endpoints a
+  // prompt-only run goes to text2video — but ONLY for models that can do
+  // t2v (the v3 family, discriminated by having quality `modes`). The
+  // i2v-only v2 family keeps image2video so a missing subject still
+  // surfaces the adapter's clear "requires a subject image" error
+  // instead of a confusing provider 4xx.
+  const supportsTextToVideo = !isOmni && capabilities.modes !== undefined;
   const request: KlingCompiledRequest = {
     provider: 'kling',
-    variant: isOmni ? 'omni' : 'image2video',
+    variant: isOmni
+      ? 'omni'
+      : !subjects[0] && supportsTextToVideo
+        ? 'text2video'
+        : 'image2video',
     model: stage.model,
     prompt,
     negativePrompt,

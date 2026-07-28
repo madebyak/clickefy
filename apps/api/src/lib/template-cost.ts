@@ -21,6 +21,8 @@ import { providerModels, type Db } from '@clickfy/db';
 interface StageRef {
   provider: 'gemini' | 'kling' | 'veo' | 'seedance' | string;
   model: string;
+  /** Stage config — `config.mode` selects a quality tier (Kling std/pro/4k). */
+  config?: Record<string, unknown>;
 }
 
 export interface TemplateCostBreakdown {
@@ -57,6 +59,7 @@ export async function computeTemplateCost(
       provider: providerModels.provider,
       modelKey: providerModels.modelKey,
       costCredits: providerModels.costCredits,
+      tierPricing: providerModels.tierPricing,
     })
     .from(providerModels)
     .where(
@@ -68,9 +71,15 @@ export async function computeTemplateCost(
       ),
     );
 
-  const priceByKey = new Map<string, number>();
+  const priceByKey = new Map<
+    string,
+    { base: number; tiers: Record<string, number> | null }
+  >();
   for (const r of rows) {
-    priceByKey.set(`${r.provider}/${r.modelKey}`, r.costCredits);
+    priceByKey.set(`${r.provider}/${r.modelKey}`, {
+      base: r.costCredits,
+      tiers: r.tierPricing ?? null,
+    });
   }
 
   let total = 0;
@@ -78,7 +87,10 @@ export async function computeTemplateCost(
   const perStage = stages.map((s) => {
     const key = `${s.provider}/${s.model}`;
     const found = priceByKey.get(key);
-    const cost = found ?? 0;
+    // Tier-aware: a stage configured for a specific quality (Kling
+    // std/pro/4k) costs that tier's credits; otherwise the flat base.
+    const stageMode = typeof s.config?.mode === 'string' ? s.config.mode : undefined;
+    const cost = found ? ((stageMode ? found.tiers?.[stageMode] : undefined) ?? found.base) : 0;
     const missing = found === undefined;
     if (missing) missingCount += 1;
     total += cost;

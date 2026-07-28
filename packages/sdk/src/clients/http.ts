@@ -580,6 +580,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
               aspectRatio: input.aspectRatio,
               duration: input.duration,
               sound: input.sound,
+              quality: input.quality,
               startFrame: input.startFrame,
               endFrame: input.endFrame,
               references: input.references ?? [],

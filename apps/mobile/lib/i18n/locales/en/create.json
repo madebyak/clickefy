@@ -43,6 +43,11 @@
     "referencesHint": "Add up to {{count}} images to guide the result.",
     "framesHint": "Set a start frame (and an optional end frame)."
   },
+  "quality": {
+    "label": "Quality",
+    "tier_one": "{{label}} · {{count}} credit",
+    "tier_other": "{{label}} · {{count}} credits"
+  },
   "sound": {
     "label": "Audio",
     "title": "Generate sound",

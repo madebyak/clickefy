@@ -24,7 +24,7 @@
  */
 
 import type { TemplateInputField } from '@clickfy/db';
-import type { CreateJobBody, JobInputValueParsed } from './job-schemas';
+import type { CreateJobBody, CreateUserJobBody, JobInputValueParsed } from './job-schemas';
 
 export type JobValidationErrorCode =
   | 'template_not_published'
@@ -37,7 +37,15 @@ export type JobValidationErrorCode =
   | 'r2_key_not_found'
   | 'unsupported_mime'
   | 'aspect_not_allowed'
-  | 'insufficient_credits';
+  | 'insufficient_credits'
+  // ── Create-flow (prompt-first) codes ──
+  | 'prompt_empty'
+  | 'prompt_too_long'
+  | 'model_no_images'
+  | 'model_requires_image'
+  | 'end_frame_not_supported'
+  | 'too_many_images'
+  | 'duration_not_allowed';
 
 export interface JobValidationError {
   code: JobValidationErrorCode;
@@ -256,4 +264,165 @@ function expectedInputKind(type: TemplateInputField['type']): 'image' | 'video' 
     case 'color':
       return 'text';
   }
+}
+
+// ─── Create-flow (prompt-first) validation ──────────────────────────
+
+export interface CreateValidationContext {
+  userId: string;
+  uploadsBucket: R2Bucket;
+  /**
+   * Model capability slice, pre-resolved by the route from
+   * `@clickfy/providers` so this module stays free of that dependency.
+   */
+  model: {
+    modelKey: string;
+    kind: 'image' | 'video';
+    /** Total input-image budget (0 = model accepts no images). */
+    maxImagesTotal: number;
+    /** Per-model prompt character cap; undefined = use the default. */
+    maxPromptChars?: number;
+    /** Aspect ratios the model emits ([] = not user-choosable). */
+    allowedAspectRatios: string[];
+    /** Video durations in seconds ([] = not a video model). */
+    allowedDurations: number[];
+    /** True when the model is image-to-video only (needs a start frame). */
+    requiresStartFrame: boolean;
+    /** Whether an end frame is meaningful for this model. */
+    acceptsStartEndImage: boolean;
+    /** Flat per-model cost in credits. */
+    cost: number;
+  };
+  currentCreditsBalance: number;
+}
+
+/** Conservative fallback when a model declares no `maxPromptChars`. */
+const DEFAULT_MAX_PROMPT_CHARS = 2500;
+
+/**
+ * Semantic validation for `POST /v1/jobs/create`. Runs after Zod. Mirrors
+ * the ownership + existence guarantees of `validateJobSubmission` for the
+ * attachment images, and adds the model-adaptive rules (prompt length,
+ * image budget, image-to-video requirement, aspect/duration allow-lists).
+ */
+export async function validateCreateSubmission(
+  body: CreateUserJobBody,
+  ctx: CreateValidationContext,
+): Promise<JobValidationError | null> {
+  const { model } = ctx;
+
+  // ── Prompt ─────────────────────────────────────────────────────
+  const prompt = body.prompt.trim();
+  if (prompt.length === 0) {
+    return { code: 'prompt_empty', message: 'Enter a prompt to generate.' };
+  }
+  const promptCap = model.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
+  if (body.prompt.length > promptCap) {
+    return {
+      code: 'prompt_too_long',
+      message: `Prompt exceeds the ${promptCap.toLocaleString()}-character limit for this model.`,
+      details: { maxLength: promptCap, actual: body.prompt.length },
+    };
+  }
+
+  // ── Assemble attachments (canonical field keys for error copy) ──
+  const attachments: Array<{ fieldKey: string; val: Extract<JobInputValueParsed, { kind: 'image' }> }> = [];
+  if (body.startFrame) attachments.push({ fieldKey: 'start_frame', val: body.startFrame });
+  if (body.endFrame) attachments.push({ fieldKey: 'end_frame', val: body.endFrame });
+  body.references.forEach((r, i) => attachments.push({ fieldKey: `ref_${i}`, val: r }));
+
+  // ── Image-budget rules ─────────────────────────────────────────
+  if (model.maxImagesTotal === 0 && attachments.length > 0) {
+    return {
+      code: 'model_no_images',
+      message: 'This model does not accept input images.',
+    };
+  }
+  if (model.requiresStartFrame && !body.startFrame) {
+    return {
+      code: 'model_requires_image',
+      message: 'This model needs a start image to animate. Attach one to continue.',
+    };
+  }
+  if (body.endFrame && !model.acceptsStartEndImage) {
+    return {
+      code: 'end_frame_not_supported',
+      message: 'This model does not support an end frame.',
+    };
+  }
+  if (attachments.length > model.maxImagesTotal) {
+    return {
+      code: 'too_many_images',
+      message: `This model accepts at most ${model.maxImagesTotal} image(s).`,
+      details: { max: model.maxImagesTotal, actual: attachments.length },
+    };
+  }
+
+  // ── R2 ownership (prefix) + existence (parallel HEADs) ─────────
+  const expectedPrefix = `user-uploads/${ctx.userId}/`;
+  for (const a of attachments) {
+    if (!a.val.r2Key.startsWith(expectedPrefix)) {
+      return {
+        code: 'forbidden_r2_key',
+        message: 'An attached image does not belong to you.',
+        fieldKey: a.fieldKey,
+      };
+    }
+  }
+  const heads = await Promise.all(
+    attachments.map(async (a) => ({
+      fieldKey: a.fieldKey,
+      r2Key: a.val.r2Key,
+      exists: (await ctx.uploadsBucket.head(a.val.r2Key)) !== null,
+    })),
+  );
+  const missing = heads.find((h) => !h.exists);
+  if (missing) {
+    return {
+      code: 'r2_key_not_found',
+      message: 'An attached image could not be found in storage.',
+      fieldKey: missing.fieldKey,
+      details: { r2Key: missing.r2Key },
+    };
+  }
+
+  // ── Aspect ratio ───────────────────────────────────────────────
+  if (body.aspectRatio !== undefined && model.allowedAspectRatios.length > 0) {
+    if (!model.allowedAspectRatios.includes(body.aspectRatio)) {
+      return {
+        code: 'aspect_not_allowed',
+        message: `Aspect ratio "${body.aspectRatio}" is not supported by this model.`,
+        details: { submitted: body.aspectRatio, allowed: model.allowedAspectRatios },
+      };
+    }
+  }
+
+  // ── Duration ───────────────────────────────────────────────────
+  if (body.duration !== undefined) {
+    if (model.kind !== 'video' || model.allowedDurations.length === 0) {
+      return {
+        code: 'duration_not_allowed',
+        message: 'This model does not support a duration setting.',
+        details: { submitted: body.duration },
+      };
+    }
+    if (!model.allowedDurations.includes(body.duration)) {
+      return {
+        code: 'duration_not_allowed',
+        message: `Duration ${body.duration}s is not supported by this model.`,
+        details: { submitted: body.duration, allowed: model.allowedDurations },
+      };
+    }
+  }
+
+  // ── Credit balance (pre-check; the CTE re-checks authoritatively) ─
+  if (ctx.currentCreditsBalance < model.cost) {
+    return {
+      code: 'insufficient_credits',
+      message: 'Not enough credits.',
+      details: { required: model.cost, available: ctx.currentCreditsBalance },
+    };
+  }
+
+  return null;
 }

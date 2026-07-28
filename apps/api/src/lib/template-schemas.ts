@@ -222,7 +222,7 @@ export const templateTranslationsSchema = z.record(
 
 // ─── Top-level bodies ───────────────────────────────────────────────
 
-export const templateKindSchema = z.enum(['image', 'video', 'image_set']);
+export const templateKindSchema = z.enum(['image', 'video', 'image_set', 'video_image']);
 export const templateStatusSchema = z.enum(['draft', 'published', 'archived']);
 
 /**

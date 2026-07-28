@@ -27,7 +27,7 @@ import type { TemplateTranslations } from './localization';
 // ─── Enums ──────────────────────────────────────────────────────────
 
 /** User-facing output shape — what the user gets back. */
-export type TemplateKind = 'image' | 'video' | 'image_set';
+export type TemplateKind = 'image' | 'video' | 'image_set' | 'video_image';
 
 /** Pipeline shape — how the AI gets there (admin-only concern). */
 export type GenerationMode = 'image' | 'video' | 'image_then_video';
@@ -180,7 +180,15 @@ export interface MobileTemplate {
    * extras by display order. 1..3 entries.
    */
   categoryIds: string[];
+  /**
+   * Legacy-safe kind: `video_image` is down-mapped to `'video'` here so
+   * already-installed app builds (which don't know the new value) render
+   * a normal Video chip instead of a raw i18n key. New clients read
+   * `kindExact` first.
+   */
   kind: TemplateKind;
+  /** The row's true kind, including `video_image`. */
+  kindExact?: TemplateKind;
   featured: boolean;
 
   coverImage: MobileImageRef;

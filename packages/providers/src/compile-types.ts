@@ -161,6 +161,8 @@ export interface KlingCompiledRequest {
   /** Standard vs. pro mode (when supported by the model). */
   mode?: 'standard' | 'pro' | 'std';
   cfgScale?: number;
+  /** Native audio generation (Kling v3 Omni `sound: on|off`). */
+  soundEnabled?: boolean;
   /** First frame of the resulting video. */
   startImage?: ImagePart;
   /** Optional last frame. */

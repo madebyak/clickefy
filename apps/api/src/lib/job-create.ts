@@ -247,3 +247,190 @@ export async function createJobAtomically(
     fromTopup: row.from_topup,
   };
 }
+
+// ─── Create-flow (prompt-first, no template) ────────────────────────
+
+export interface CreateUserJobInput {
+  userId: string;
+  /** Flat per-model cost from `provider_models.cost_credits`. */
+  cost: number;
+  /** The model the user picked (persisted on the job row). */
+  modelKey: string;
+  /** Already-assembled `jobs.inputs` (prompt + optional attachments). */
+  inputs: Record<string, JobInputValueParsed>;
+  options: { aspectRatio?: string; duration?: number };
+  idempotencyKey: string | null;
+}
+
+/**
+ * `createUserJobAtomically` — the prompt-first sibling of
+ * `createJobAtomically`. Same three-bucket spend semantics (promo →
+ * subscription → topup, topup locked when unsubscribed) but with NO
+ * template/version gates: a create job has no template. Cost comes from
+ * the chosen model instead of a template snapshot, and the inserted row
+ * carries `source='user'`, `model_key`, `cost_credits`, and NULL template
+ * FKs.
+ *
+ * Kept as a separate function (rather than parametrising the template
+ * CTE) so the production template money-path is impossible to affect.
+ * Returns null on infeasible allocation, exactly like the template path.
+ */
+export async function createUserJobAtomically(
+  db: Db,
+  args: CreateUserJobInput,
+): Promise<CreateJobResult | null> {
+  const inputsJson = JSON.stringify(args.inputs);
+  const optionsJson = JSON.stringify(args.options ?? {});
+  const cost = args.cost;
+
+  const result = await db.execute<{
+    job_id: string;
+    credits_remaining: number;
+    from_promo: number;
+    from_sub: number;
+    from_topup: number;
+  }>(sql`
+    WITH
+      user_snapshot AS (
+        SELECT
+          id,
+          entitlement,
+          promo_credits,
+          subscription_credits,
+          topup_credits,
+          (entitlement <> 'free') AS is_subscribed
+        FROM users
+        WHERE id = ${args.userId}::uuid
+      ),
+      alloc AS (
+        SELECT
+          us.id AS user_id,
+          LEAST(us.promo_credits, ${cost}::int) AS from_promo,
+          LEAST(
+            us.subscription_credits,
+            GREATEST(0, ${cost}::int - LEAST(us.promo_credits, ${cost}::int))
+          ) AS from_sub,
+          GREATEST(
+            0,
+            ${cost}::int
+              - LEAST(us.promo_credits, ${cost}::int)
+              - LEAST(
+                  us.subscription_credits,
+                  GREATEST(0, ${cost}::int - LEAST(us.promo_credits, ${cost}::int))
+                )
+          ) AS need_topup,
+          CASE WHEN us.is_subscribed THEN us.topup_credits ELSE 0 END AS spendable_topup
+        FROM user_snapshot us
+      ),
+      user_debit AS (
+        UPDATE users
+        SET
+          promo_credits        = users.promo_credits        - alloc.from_promo,
+          subscription_credits = users.subscription_credits - alloc.from_sub,
+          topup_credits        = users.topup_credits        - alloc.need_topup,
+          credits_balance      = users.credits_balance      - ${cost}::int
+        FROM alloc
+        WHERE users.id = alloc.user_id
+          AND alloc.need_topup <= alloc.spendable_topup
+          AND users.promo_credits        >= alloc.from_promo
+          AND users.subscription_credits >= alloc.from_sub
+          AND users.topup_credits        >= alloc.need_topup
+        RETURNING
+          users.credits_balance AS new_balance,
+          alloc.from_promo,
+          alloc.from_sub,
+          alloc.need_topup AS from_topup
+      ),
+      new_job AS (
+        INSERT INTO jobs (
+          user_id, template_id, template_version_id,
+          source, model_key, cost_credits,
+          status, inputs, options, idempotency_key
+        )
+        SELECT
+          ${args.userId}::uuid, NULL, NULL,
+          'user', ${args.modelKey}, ${cost}::int,
+          'queued', ${inputsJson}::jsonb, ${optionsJson}::jsonb, ${args.idempotencyKey}
+        FROM user_debit
+        RETURNING id
+      ),
+      ledger AS (
+        INSERT INTO credit_ledger (
+          user_id, delta, reason, job_id, balance_after, bucket, metadata
+        )
+        SELECT
+          ${args.userId}::uuid,
+          -ud.from_promo,
+          'job_charge'::credit_reason,
+          nj.id,
+          ud.new_balance,
+          'promo',
+          jsonb_build_object(
+            'fromPromo',        ud.from_promo,
+            'fromSubscription', ud.from_sub,
+            'fromTopup',        ud.from_topup,
+            'cost',             ${cost}::int,
+            'source',           'create'
+          )
+        FROM user_debit ud, new_job nj WHERE ud.from_promo > 0
+        UNION ALL
+        SELECT
+          ${args.userId}::uuid,
+          -ud.from_sub,
+          'job_charge'::credit_reason,
+          nj.id,
+          ud.new_balance,
+          'subscription',
+          jsonb_build_object(
+            'fromPromo',        ud.from_promo,
+            'fromSubscription', ud.from_sub,
+            'fromTopup',        ud.from_topup,
+            'cost',             ${cost}::int,
+            'source',           'create'
+          )
+        FROM user_debit ud, new_job nj WHERE ud.from_sub > 0
+        UNION ALL
+        SELECT
+          ${args.userId}::uuid,
+          -ud.from_topup,
+          'job_charge'::credit_reason,
+          nj.id,
+          ud.new_balance,
+          'topup',
+          jsonb_build_object(
+            'fromPromo',        ud.from_promo,
+            'fromSubscription', ud.from_sub,
+            'fromTopup',        ud.from_topup,
+            'cost',             ${cost}::int,
+            'source',           'create'
+          )
+        FROM user_debit ud, new_job nj WHERE ud.from_topup > 0
+        RETURNING id
+      )
+    SELECT
+      nj.id          AS job_id,
+      ud.new_balance AS credits_remaining,
+      ud.from_promo  AS from_promo,
+      ud.from_sub    AS from_sub,
+      ud.from_topup  AS from_topup
+    FROM new_job nj, user_debit ud
+  `);
+
+  const rows = Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? [];
+  if (rows.length === 0) return null;
+
+  const row = rows[0] as {
+    job_id: string;
+    credits_remaining: number;
+    from_promo: number;
+    from_sub: number;
+    from_topup: number;
+  };
+  return {
+    jobId: row.job_id,
+    creditsRemaining: row.credits_remaining,
+    fromPromo: row.from_promo,
+    fromSubscription: row.from_sub,
+    fromTopup: row.from_topup,
+  };
+}

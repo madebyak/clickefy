@@ -10,14 +10,18 @@ import type {
 } from '@clickfy/types';
 
 import type {
+  AppNotification,
   AuthProvider,
   AuthSession,
   CatalogCategory,
   CatalogTemplate,
   CatalogTemplateListOptions,
+  CreateGenerationInput,
   GenerationProgress,
+  GenModel,
   JobSubmission,
   JobSubmissionResponse,
+  NotificationList,
   OtpChallenge,
   Paginated,
   UserProject,
@@ -114,6 +118,14 @@ export interface GenerationClient {
    */
   submit(submission: JobSubmission): Promise<JobSubmissionResponse>;
 
+  /**
+   * Submit a prompt-first "create from scratch" generation (no template).
+   * The user picks the model, writes the prompt, and optionally attaches
+   * images. Debits the model's flat cost and queues a run. Same
+   * idempotency + error semantics as `submit`; hits `POST /v1/jobs/create`.
+   */
+  createGenerate(input: CreateGenerationInput): Promise<JobSubmissionResponse>;
+
   /** Subscribe to job progress. Returns an unsubscribe function. */
   subscribe(jobId: string, onUpdate: (progress: GenerationProgress) => void): () => void;
 
@@ -151,14 +163,23 @@ export interface UploadedAssetRef {
 }
 
 /**
- * Source the mobile app passes when uploading a user asset. We don't
- * type it as a `File` because React Native's `FormData` accepts a
- * `{ uri, name, type }` triple that's not assignable to the DOM
- * `File` type. The HTTP implementation translates accordingly.
+ * Source a caller passes when uploading a user asset. Two forms:
+ *
+ *   • React Native — `{ uri, name, type }`: RN's `FormData` accepts
+ *     the triple and streams the file off-disk; not assignable to the
+ *     DOM `File` type, so we can't just type this as `File`.
+ *   • Web — `{ file, name, type }`: a real DOM `File`/`Blob` from an
+ *     `<input type="file">`. Takes precedence over `uri` when both
+ *     are set. `sizeBytes` should be `file.size` so the upload takes
+ *     the presigned-PUT path.
+ *
+ * The HTTP implementation branches on `file` presence.
  */
 export interface UploadSource {
-  /** Local file URI from `ImagePicker` / camera, e.g. `file:///…`. */
-  uri: string;
+  /** Local file URI from `ImagePicker` / camera, e.g. `file:///…` (React Native callers). */
+  uri?: string;
+  /** DOM `File`/`Blob` (web callers). Wins over `uri` when both are provided. */
+  file?: Blob;
   /** Original filename suggested for the upload. */
   name: string;
   /** Mime type. Lowercase, e.g. `image/jpeg`. */
@@ -268,6 +289,101 @@ export interface LibraryClient {
   deleteProject(jobId: string): Promise<void>;
 }
 
+// ─── Store / billing catalog ────────────────────────────────────────
+//
+// `GET /v1/store` returns the DB catalog the mobile paywall renders:
+// which products exist and how many credits each grants. Prices are
+// intentionally NOT here — App Store / Play are the source of truth and
+// RevenueCat surfaces localised prices on the client via `priceString`.
+// Match each row to a RevenueCat package by `storeProductId`.
+
+export interface StoreSubscription {
+  id: string;
+  /** Store product id — matches the RevenueCat package's product id. */
+  storeProductId: string;
+  displayName: string;
+  entitlement: 'pro' | 'pro_max';
+  /** 'week' | 'month' | 'year'. */
+  intervalUnit: string;
+  intervalCount: number;
+  creditsPerPeriod: number;
+  displayOrder: number;
+  isFeatured: boolean;
+}
+
+export interface StoreCreditPack {
+  id: string;
+  storeProductId: string;
+  displayName: string;
+  credits: number;
+  bonusCredits: number;
+  displayOrder: number;
+  isFeatured: boolean;
+}
+
+export interface StoreCatalog {
+  subscriptions: StoreSubscription[];
+  /** Empty for free / signed-out users (`topupsLocked: true`). */
+  packs: StoreCreditPack[];
+  /** True when top-up packs are hidden because the user isn't subscribed. */
+  topupsLocked: boolean;
+  currentEntitlement: 'free' | 'pro' | 'pro_max' | 'admin' | null;
+}
+
+export interface StoreClient {
+  /**
+   * DB catalog for the paywall + top-up screen. Auth is optional — signed
+   * out returns subscriptions only; a subscribed user additionally gets
+   * the top-up packs. We send the token when we have one so `packs` and
+   * `currentEntitlement` reflect the caller.
+   */
+  getCatalog(): Promise<StoreCatalog>;
+}
+
+/**
+ * `GET /v1/credits/me` — the signed-in user's credit account broken
+ * down by bucket. `MeResponse.creditsBalance` carries the same total;
+ * this endpoint adds the per-bucket split the credit menu displays.
+ */
+export interface CreditsSummary {
+  buckets: {
+    promo: number;
+    subscription: number;
+    topup: number;
+  };
+  total: number;
+  entitlement: 'free' | 'pro' | 'pro_max' | 'admin';
+  /** False for free users — top-up balance is locked until they resubscribe. */
+  topupSpendable: boolean;
+  subscriptionExpiresAt: string | null;
+}
+
+export interface CreditsClient {
+  /** Bucket breakdown for the credit menu. `GET /v1/credits/me`. Auth required. */
+  getSummary(): Promise<CreditsSummary>;
+}
+
+export interface ModelsClient {
+  /**
+   * Create-eligible models for the "create from scratch" screen, in
+   * display order. Each carries everything the model-adaptive UI needs
+   * (cost, prompt cap, aspect ratios, durations, attachment shape).
+   * Hits `GET /v1/models`. Auth required.
+   */
+  listModels(): Promise<GenModel[]>;
+}
+
+export interface NotificationsClient {
+  /** The user's inbox (newest first, ≤30) + unread count. Auth required. */
+  list(): Promise<NotificationList>;
+  /** Mark every unread notification as read. */
+  markAllRead(): Promise<void>;
+  /** Mark a single notification read (e.g. on tap). */
+  markRead(id: string): Promise<void>;
+  /** Clear the entire inbox. */
+  clearAll(): Promise<void>;
+}
+
 /**
  * The composed SDK client used by the mobile app.
  *
@@ -282,8 +398,12 @@ export interface LibraryClient {
  */
 export interface SDKClient {
   catalog: CatalogClient;
+  credits: CreditsClient;
   generation: GenerationClient;
   library: LibraryClient;
+  models: ModelsClient;
+  notifications: NotificationsClient;
+  store: StoreClient;
   uploads: UploadsClient;
   user: UserClient;
 }

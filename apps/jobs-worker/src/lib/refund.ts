@@ -38,7 +38,23 @@ export function isRefundable(code: JobError['code']): boolean {
 
 export async function refundForJob(jobId: string): Promise<number> {
   const db = getDb();
+  try {
+    return await runRefund(db, jobId);
+  } catch (err) {
+    // Unique-violation on (job_id, bucket) WHERE reason='refund': a
+    // concurrent refund (e.g. sweeper + failJob racing) won the insert.
+    // The loser's whole CTE — bucket credit included — rolled back with
+    // the failed INSERT, so exactly one refund applied. Safe no-op.
+    const e = err as { code?: string; message?: string };
+    if (e?.code === '23505' || /duplicate key value/i.test(e?.message ?? '')) {
+      logger.info('refund:lost-concurrent-race (already refunded)', { jobId });
+      return 0;
+    }
+    throw err;
+  }
+}
 
+async function runRefund(db: ReturnType<typeof getDb>, jobId: string): Promise<number> {
   // Single atomic CTE chain:
   //   1. not_yet    — guard: no refund row exists for this job
   //   2. charges    — the job_charge rows that originally debited

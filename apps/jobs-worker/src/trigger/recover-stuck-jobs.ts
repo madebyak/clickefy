@@ -43,11 +43,14 @@ const MAX_RECOVERY_ATTEMPTS = 5;
 /** Only consider `queued` jobs older than this when sweeping. Keeps
  *  the sweeper out of the way of normal dispatch latency. */
 const QUEUED_STUCK_AFTER_SECONDS = 30;
-/** Cap on legitimate `processing` runtime. Our longest provider call
- *  (Kling video) finishes well under 5 minutes; 10 min is a generous
- *  ceiling beyond which the run is almost certainly a crashed worker
- *  rather than slow-but-alive. Bump if a new provider takes longer. */
-const PROCESSING_STUCK_AFTER_SECONDS = 600;
+/** Cap on legitimate `processing` runtime. Must exceed the WORST-case
+ *  provider call: Seedance 1080p/2K commonly runs 6–10+ min and its
+ *  poll budget is 900s; generate-job's own `maxDuration` is 1200s.
+ *  25 min sits safely above both — a row still `processing` past that
+ *  is a crashed worker, never a slow-but-alive one. (Was 600s, which
+ *  predated Seedance and refunded jobs that later completed — i.e.
+ *  free generations on the most expensive model.) */
+const PROCESSING_STUCK_AFTER_SECONDS = 1500;
 
 export const recoverStuckJobs = schedules.task({
   id: 'recover-stuck-jobs',
@@ -191,7 +194,7 @@ async function abandonJob(
       ? `Job could not be dispatched after ${attempts} attempts.`
       : `Job exceeded the ${PROCESSING_STUCK_AFTER_SECONDS}s processing window — worker likely crashed.`;
 
-  await db
+  const updated = await db
     .update(jobs)
     .set({
       status: 'failed',
@@ -203,7 +206,21 @@ async function abandonJob(
       },
       completedAt: new Date(),
     })
-    .where(and(eq(jobs.id, jobId), eq(jobs.status, fromStatus)));
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, fromStatus)))
+    .returning();
+
+  // Refund ONLY when we actually flipped the row. If the UPDATE matched
+  // zero rows the job raced into another state (worker completed it, or
+  // a queued row started processing) — refunding then would hand out
+  // credits for a generation that succeeded.
+  if (updated.length === 0) {
+    logger.info('recover-stuck-jobs:abandon-skipped', {
+      jobId,
+      fromStatus,
+      reason: 'row left the expected status — no refund',
+    });
+    return;
+  }
 
   try {
     await refundForJob(jobId);

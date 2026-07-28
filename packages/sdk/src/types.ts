@@ -6,7 +6,7 @@
 
 import type { TemplateInput } from '@clickfy/types';
 
-export type TemplateKind = 'image' | 'video' | 'set';
+export type TemplateKind = 'image' | 'video' | 'set' | 'video_image';
 
 export interface CatalogCategory {
   id: string;
@@ -136,17 +136,23 @@ export interface JobOutput {
  */
 export interface UserProject {
   id: string;
-  templateId: string;
-  /** Inline template summary — sourced from the row's frozen version. */
+  /** Null for prompt-first "create" generations (they have no template). */
+  templateId: string | null;
+  /**
+   * Inline template summary. For a template job it's the template's name +
+   * cover; for a create job (`source==='user'`) it's the model name and an
+   * empty cover (the client falls back to `outputs[0]`).
+   */
   templateName: string;
   templateCoverImage: string;
-  templateKind: 'image' | 'video' | 'set';
+  templateKind: 'image' | 'video' | 'set' | 'video_image';
   /**
-   * Human title shown in lists. Currently mirrors `templateName` but
-   * lives separately so we can promote a custom job title later
-   * (e.g. user-typed memo) without a schema change.
+   * Human title shown in lists. For template jobs it mirrors
+   * `templateName`; for create jobs it's the user's prompt.
    */
   title: string;
+  /** Provenance — `'user'` drives the Projects "Custom" badge. */
+  source: 'user' | 'template';
   /** ISO timestamp; client formats `whenLabel` so it stays fresh. */
   createdAt: string;
   /** Friendly relative time, e.g. "2 min ago". Computed by the SDK. */
@@ -321,6 +327,75 @@ export interface JobSubmissionResponse {
   idempotent?: boolean;
 }
 
+// ─── Create-flow (prompt-first) ──────────────────────────────────────
+
+/** How the create screen renders image attachments for a model. */
+export type CreateAttachmentMode = 'references' | 'frames' | 'seedance';
+
+/**
+ * A create-eligible model, as returned by `GET /v1/models`. Everything
+ * the model-adaptive create screen needs to reconfigure itself.
+ */
+export interface GenModel {
+  modelKey: string;
+  provider: string;
+  /** Commercial name shown in the picker. */
+  name: string;
+  kind: 'image' | 'video';
+  /** Flat credit cost per generation. */
+  costCredits: number;
+  /** Max prompt length in characters for this model. */
+  maxPromptChars: number;
+  aspectRatios: string[];
+  /** Video durations in seconds; empty for image models. */
+  durations: number[];
+  /** Total input-image budget. */
+  maxImages: number;
+  attachments: CreateAttachmentMode;
+  /** Image-to-video only — a start frame is mandatory. */
+  requiresStartFrame: boolean;
+  /** Whether an end/last frame slot is offered. */
+  supportsEndFrame: boolean;
+  /** Native-audio toggle available (Kling 3 Omni). */
+  supportsSound: boolean;
+}
+
+// ─── Notifications (in-app inbox) ────────────────────────────────────
+
+export interface AppNotification {
+  id: string;
+  type: 'job_completed' | 'job_failed' | 'system';
+  title: string;
+  body: string;
+  /** Deep-link payload (e.g. `{ jobId }`), mirrors the push data. */
+  data?: Record<string, unknown>;
+  read: boolean;
+  /** ISO timestamp. */
+  createdAt: string;
+  /** Friendly relative time ("2 min ago") — computed by the SDK. */
+  whenLabel: string;
+}
+
+export interface NotificationList {
+  items: AppNotification[];
+  unreadCount: number;
+}
+
+/** Input for a prompt-first generation (`POST /v1/jobs/create`). */
+export interface CreateGenerationInput {
+  modelKey: string;
+  prompt: string;
+  aspectRatio?: string;
+  /** Video length in seconds (video models only). */
+  duration?: number;
+  /** Generate native audio (models with `supportsSound` only). */
+  sound?: boolean;
+  startFrame?: Extract<JobInputValue, { kind: 'image' }>;
+  endFrame?: Extract<JobInputValue, { kind: 'image' }>;
+  references?: Array<Extract<JobInputValue, { kind: 'image' }>>;
+  idempotencyKey?: string;
+}
+
 /**
  * Structured error returned by `POST /v1/jobs` (and surfaced as
  * `JobSubmissionError` on the client). The mobile app renders
@@ -406,7 +481,7 @@ export interface Paginated<T> {
 export interface CatalogTemplateListOptions {
   /** Title substring match, case-insensitive. Trim before passing. */
   search?: string;
-  kind?: 'image' | 'video' | 'image_set';
+  kind?: 'image' | 'video' | 'image_set' | 'video_image';
   categoryId?: string;
   featured?: boolean;
   /**

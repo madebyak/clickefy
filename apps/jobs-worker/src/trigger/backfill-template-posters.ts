@@ -133,7 +133,7 @@ export const backfillTemplatePosters = task({
 
     // ── Find candidates ─────────────────────────────────────────────
     const whereClauses = [
-      eq(templates.kind, 'video'),
+      inArray(templates.kind, ['video', 'video_image']),
       isNull(templates.coverMedia),
       isNotNull(templates.previewVideo),
     ];

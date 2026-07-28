@@ -41,6 +41,11 @@ custom_domain = true
 [vars]
 ENVIRONMENT = "production"
 LOG_LEVEL = "info"
+# ⚠️ LAUNCH-DAY FLIP: "true" ONLY during the TestFlight testing phase so
+# sandbox purchases grant credits end-to-end. Set to "false" before the
+# public App Store release — sandbox purchases are free and renew on an
+# accelerated clock, so leaving this on lets testers farm real credits.
+RC_ALLOW_SANDBOX = "true"
 
 # R2 buckets.
 #
@@ -62,6 +67,13 @@ bucket_name = "clickfy-uploads"
 [[r2_buckets]]
 binding = "OUTPUTS"
 bucket_name = "clickfy-outputs"
+
+# ── Retention cron ───────────────────────────────────────────────
+# Daily at 03:00 UTC: the `scheduled` handler purges R2 assets of users
+# whose 30-day post-deletion grace window has elapsed (see
+# src/lib/purge-assets.ts). Only ever matches soft-deleted rows.
+[triggers]
+crons = ["0 3 * * *"]
 
 # ── Rate limiting (native binding) ───────────────────────────────
 # Each `[[ratelimits]]` block declares a fixed-window counter that

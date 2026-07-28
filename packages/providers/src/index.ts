@@ -26,6 +26,16 @@ export {
 
 export { compile } from './compile';
 
+export {
+  buildCreateStage,
+  createReferenceKey,
+  CREATE_PROMPT_KEY,
+  CREATE_START_FRAME_KEY,
+  CREATE_END_FRAME_KEY,
+  type BuildCreateStageInput,
+  type BuiltCreateStage,
+} from './create-stage';
+
 export type {
   CompileContext,
   CompileResult,

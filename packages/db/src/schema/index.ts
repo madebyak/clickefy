@@ -22,6 +22,7 @@ export * from './device-tokens';
 export * from './grant-policies';
 export * from './home-banners';
 export * from './jobs';
+export * from './notifications';
 export * from './provider-models';
 export * from './reports';
 export * from './revenuecat-events';

@@ -218,7 +218,11 @@ export function templateToMobileDTO(
     /** @deprecated kept for v1 mobile clients; use `categoryIds[0]`. */
     categoryId: primaryCategoryId,
     categoryIds: [...categoryIds],
-    kind: row.kind,
+    // Wire-shield for already-installed builds: they don't know
+    // `video_image`, so the legacy field carries 'video' (accurate — the
+    // primary asset is the video) and new clients read `kindExact`.
+    kind: row.kind === 'video_image' ? 'video' : row.kind,
+    kindExact: row.kind,
     featured: row.featured,
 
     coverImage,

@@ -21,9 +21,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
-import { deviceTokens } from '@clickfy/db';
+import { deviceTokens, notifications } from '@clickfy/db';
 
 import type { AppEnv } from '../types';
 import { sendExpoPush, tokensToDeactivate, type ExpoPushMessage } from '../lib/expo-push';
@@ -60,6 +60,34 @@ internalPushRoute.post('/user', zValidator('json', UserPushSchema), async (c) =>
   }
 
   const { userId, title, body, data } = c.req.valid('json');
+
+  // ── Record the in-app inbox notification ───────────────────────────
+  // Independent of push delivery: the user should see it in-app even with
+  // push disabled / no tokens. Best-effort — a failure here must never
+  // block the actual push. Capped at the latest 30 per user (pruned here).
+  const notifType: 'job_completed' | 'job_failed' | 'system' =
+    data?.type === 'job_completed'
+      ? 'job_completed'
+      : data?.type === 'job_failed'
+        ? 'job_failed'
+        : 'system';
+  try {
+    await c.var.db
+      .insert(notifications)
+      .values({ userId, type: notifType, title, body, data: data ?? null });
+    await c.var.db.execute(sql`
+      DELETE FROM notifications
+      WHERE user_id = ${userId}::uuid
+        AND id NOT IN (
+          SELECT id FROM notifications
+          WHERE user_id = ${userId}::uuid
+          ORDER BY created_at DESC
+          LIMIT 30
+        )
+    `);
+  } catch (err) {
+    console.error('notification insert failed:', err);
+  }
 
   const rows = await c.var.db
     .select({ token: deviceTokens.expoPushToken })

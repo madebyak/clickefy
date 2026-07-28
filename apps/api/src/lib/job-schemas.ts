@@ -61,3 +61,31 @@ export const createJobSchema = z.object({
 
 export type CreateJobBody = z.infer<typeof createJobSchema>;
 export type JobInputValueParsed = z.infer<typeof jobInputValueSchema>;
+
+/**
+ * Body for `POST /v1/jobs/create` — the prompt-first "create from
+ * scratch" flow. Distinct from `createJobSchema` (which is template-
+ * driven) so the two paths never share a schema or a handler.
+ *
+ * The model, prompt, aspect ratio and duration are first-class here;
+ * attachments are optional images (start/end frame + references) whose
+ * per-model rules are enforced semantically in `validateCreateSubmission`.
+ */
+export const createUserJobSchema = z.object({
+  modelKey: z.string().min(1).max(128),
+  prompt: z.string().min(1).max(10_000),
+  aspectRatio: z.string().max(16).optional(),
+  // Video length in seconds. Bounded generously; the real per-model
+  // allow-list is checked in validation against the capability registry.
+  duration: z.number().int().positive().max(60).optional(),
+  // Native audio (models with `supportsSound`; others ignore it with a
+  // compile warning rather than a hard error).
+  sound: z.boolean().optional(),
+  startFrame: jobInputImageSchema.optional(),
+  endFrame: jobInputImageSchema.optional(),
+  // Reference / subject images. Hard ceiling matches the largest model
+  // budget (Gemini = 14); per-model caps are enforced in validation.
+  references: z.array(jobInputImageSchema).max(16).optional().default([]),
+});
+
+export type CreateUserJobBody = z.infer<typeof createUserJobSchema>;

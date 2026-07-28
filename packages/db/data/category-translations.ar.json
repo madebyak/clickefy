@@ -1,0 +1,51 @@
+{
+  "_comment": "Arabic translation worksheet for categories. Keyed by SLUG (stable, unique). 'en' is translator context only; the seed script reads 'ar'. Blank 'ar' is skipped (never overwrites). Translations are meaning-based / contextual, not literal — review before applying. Apply with: DATABASE_URL=... pnpm --filter @clickfy/db db:seed-category-translations -- --apply",
+
+  "products":    { "en": "Products",     "ar": "المنتجات" },
+  "grocery":     { "en": "Grocery",      "ar": "البقالة" },
+  "home-care":   { "en": "Home Care",    "ar": "العناية بالمنزل" },
+  "lifestyle":   { "en": "Lifestyle",    "ar": "نمط الحياة" },
+
+  "beauty":      { "en": "Beauty",       "ar": "التجميل" },
+  "makeup":      { "en": "Makeup",       "ar": "المكياج" },
+  "skin-care":   { "en": "Skin Care",    "ar": "العناية بالبشرة" },
+  "perfumes":    { "en": "Perfumes",     "ar": "العطور" },
+  "hair-care":   { "en": "Hair Care",    "ar": "العناية بالشعر" },
+  "nails":       { "en": "Nails",        "ar": "الأظافر" },
+
+  "fashion":     { "en": "Fashion",      "ar": "الموضة" },
+  "women":       { "en": "Women",        "ar": "نساء" },
+  "men":         { "en": "Men",          "ar": "رجال" },
+  "bags":        { "en": "Bags",         "ar": "حقائب" },
+  "shoes":       { "en": "Shoes",        "ar": "أحذية" },
+  "accessories": { "en": "Accessories",  "ar": "إكسسوارات" },
+
+  "jewelry":     { "en": "Jewelry",      "ar": "المجوهرات" },
+  "necklaces":   { "en": "Necklaces",    "ar": "عقود" },
+  "rings":       { "en": "Rings",        "ar": "خواتم" },
+  "earrings":    { "en": "Earrings",     "ar": "أقراط" },
+  "bracelets":   { "en": "Bracelets",    "ar": "أساور" },
+  "set":         { "en": "Set",          "ar": "طقم" },
+
+  "food-drink":  { "en": "Food",         "ar": "الطعام" },
+  "fast-food":   { "en": "Fast Food",    "ar": "الوجبات السريعة" },
+  "restaurants": { "en": "Restaurants",  "ar": "المطاعم" },
+  "bakery":      { "en": "Desserts",     "ar": "الحلويات" },
+
+  "drinks":      { "en": "Drinks",       "ar": "المشروبات" },
+  "cold":        { "en": "Cold",         "ar": "مشروبات باردة" },
+  "hot":         { "en": "Hot",          "ar": "مشروبات ساخنة" },
+
+  "portraits":   { "en": "Portraits",    "ar": "البورتريه" },
+  "cinematic":   { "en": "Cinematic",    "ar": "سينمائي" },
+  "trendy":      { "en": "Trendy",       "ar": "عصري" },
+
+  "branding":    { "en": "Branding",     "ar": "الهوية التجارية" },
+  "logos":       { "en": "Logos",        "ar": "الشعارات" },
+  "mockups":     { "en": "Mockups",      "ar": "نماذج التصميم" },
+
+  "fitness":     { "en": "Fitness",      "ar": "اللياقة البدنية" },
+  "gym":         { "en": "Gym",          "ar": "النادي الرياضي" },
+  "sportswear":  { "en": "Sportswear",   "ar": "الملابس الرياضية" },
+  "supplements": { "en": "Supplements",  "ar": "المكملات الغذائية" }
+}

@@ -768,6 +768,19 @@ function compileKling(
     typeof stage.config.negativePrompt === 'string' && stage.config.negativePrompt.length > 0
       ? stage.config.negativePrompt
       : undefined;
+  // Native audio (`sound: on|off` on the omni endpoint). Only emitted
+  // for sound-capable models; a truthy config on a non-capable model
+  // gets a soft warning instead of a silently-ignored wire field.
+  const cfgSound = stage.config.sound === true || stage.config.sound === 'on';
+  let soundEnabled: boolean | undefined;
+  if (capabilities.supportsSound) {
+    soundEnabled = cfgSound ? true : undefined;
+  } else if (cfgSound) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `${stage.model} does not support native audio; \`sound\` will be omitted from the request.`,
+    });
+  }
 
   const request: KlingCompiledRequest = {
     provider: 'kling',
@@ -779,6 +792,7 @@ function compileKling(
     duration,
     mode,
     cfgScale,
+    soundEnabled,
     startImage: subjects[0],
     endImage: capabilities.acceptsStartEndImage ? subjects[1] : undefined,
     referenceImages: refs.length > 0 ? refs : undefined,

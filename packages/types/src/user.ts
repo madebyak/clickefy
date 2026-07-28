@@ -209,7 +209,8 @@ export interface AdminUserClerkSnapshot {
 /** Lightweight job summary embedded in the user detail drawer. */
 export interface AdminUserJobSummary {
   id: string;
-  templateId: string;
+  /** Null for prompt-first "create" jobs, which have no template. */
+  templateId: string | null;
   templateTitle: string | null;
   status: 'queued' | 'processing' | 'completed' | 'failed' | 'purged';
   createdAt: string;

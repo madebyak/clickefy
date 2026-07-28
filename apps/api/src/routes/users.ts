@@ -315,6 +315,17 @@ usersRoute.post(
 //      subsequent requests will 401 via `withCurrentUser` even if
 //      the token is still nominally valid for a few seconds.
 //
+// Sign in with Apple token revocation (Apple guideline 5.1.1(v) / TN3194):
+// Apple requires revoking the Apple token on deletion ONLY IF the app holds
+// the refresh/access token or authorization code. We authenticate Apple via
+// Clerk, so the Apple grant + tokens are held by CLERK, not us — the native
+// `authorizationCode` is single-use and consumed by Clerk during sign-in, so
+// we never possess a revocable token. Per Apple's own guidance, when you
+// don't hold the token you satisfy the requirement by deleting the account
+// data (done above) and removing the account. `clerk.users.deleteUser()`
+// below removes the Clerk user that owns the Apple connection. This is the
+// compliant path for a Clerk-managed Sign in with Apple integration.
+//
 // Once a row is marked deleted, every protected route returns
 // `account_deleted` 401, so this endpoint is naturally one-shot:
 // a second call from the same session can't reach the handler.

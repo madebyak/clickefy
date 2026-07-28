@@ -846,7 +846,8 @@ templatesRoute.patch(
         columns: { kind: true },
       });
       const nextKind = body.kind ?? existing?.kind;
-      if (nextKind === 'video') {
+      // `video_image` templates also lead with a video → same poster rule.
+      if (nextKind === 'video' || nextKind === 'video_image') {
         return c.json(
           {
             error: {

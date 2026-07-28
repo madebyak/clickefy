@@ -15,7 +15,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { jobStatusEnum } from './enums';
 import type {
@@ -35,19 +35,34 @@ export const jobs = pgTable(
     userId: uuid('user_id')
       .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
-    templateId: uuid('template_id')
-      .references(() => templates.id, { onDelete: 'restrict' })
-      .notNull(),
-    templateVersionId: uuid('template_version_id')
-      .references(() => templateVersions.id, { onDelete: 'restrict' })
-      .notNull(),
+    // Nullable since the "create from scratch" flow (source='user') has
+    // no template. Template-driven jobs (source='template') always set
+    // both. The FKs still restrict deletes so a referenced template can
+    // never be hard-deleted out from under a job.
+    templateId: uuid('template_id').references(() => templates.id, {
+      onDelete: 'restrict',
+    }),
+    templateVersionId: uuid('template_version_id').references(() => templateVersions.id, {
+      onDelete: 'restrict',
+    }),
+
+    // Provenance discriminator. 'template' (default) = a normal template
+    // generation; 'user' = a prompt-first "create" generation. Drives the
+    // worker branch, the Projects "Custom" badge, and catalog filtering.
+    source: text('source').$type<'template' | 'user'>().default('template').notNull(),
+    // Set only for source='user' jobs: the model the user picked and the
+    // flat credit cost debited (create pricing is per-model, not per-template).
+    modelKey: text('model_key'),
+    costCredits: integer('cost_credits'),
 
     status: jobStatusEnum('status').default('queued').notNull(),
     progress: jsonb('progress').$type<JobProgress>(),
 
     inputs: jsonb('inputs').$type<Record<string, JobInputValue>>().notNull(),
+    // `duration` (seconds) is only set for source='user' video jobs; it's
+    // part of the same jsonb blob so no extra column is needed.
     options: jsonb('options')
-      .$type<{ aspectRatio?: string }>()
+      .$type<{ aspectRatio?: string; duration?: number }>()
       .default(sql`'{}'::jsonb`)
       .notNull(),
 

@@ -5,17 +5,21 @@ import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 
 import { withDb } from './middleware/with-db';
+import { purgeDeletedUserAssets } from './lib/purge-assets';
 import { health } from './routes/health';
 import { catalog } from './routes/catalog';
 import { categoriesRoute } from './routes/categories';
 import { jobsRoute } from './routes/jobs';
 import { libraryRoute } from './routes/library';
+import { modelsRoute } from './routes/models';
+import { notificationsRoute } from './routes/notifications';
 import { templatesRoute } from './routes/templates';
 import { adminBannersRoute } from './routes/admin-banners';
 import { adminCreditsRoute } from './routes/admin-credits';
 import { adminMeRoute } from './routes/admin-me';
 import { adminMonitoringRoute } from './routes/admin-monitoring';
 import { adminTeamRoute } from './routes/admin-team';
+import { adminTranslateRoute } from './routes/admin-translate';
 import { adminPushRoute } from './routes/admin-push';
 import { adminReportsRoute } from './routes/admin-reports';
 import { adminStatsRoute } from './routes/admin-stats';
@@ -77,6 +81,7 @@ app.route('/v1/admin/me', adminMeRoute);
 app.route('/v1/admin/team', adminTeamRoute);
 app.route('/v1/admin/monitoring', adminMonitoringRoute);
 app.route('/v1/admin/templates', templatesRoute);
+app.route('/v1/admin/translate', adminTranslateRoute);
 app.route('/v1/admin/users', adminUsersRoute);
 app.route('/v1/admin/reports', adminReportsRoute);
 app.route('/v1/admin/stats', adminStatsRoute);
@@ -88,6 +93,8 @@ app.route('/v1/store', storeRoute);
 app.route('/v1/devices', devicesRoute);
 app.route('/v1/internal/push', internalPushRoute);
 app.route('/v1/jobs', jobsRoute);
+app.route('/v1/models', modelsRoute);
+app.route('/v1/notifications', notificationsRoute);
 app.route('/v1/library', libraryRoute);
 app.route('/v1/reports', reportsRoute);
 app.route('/v1/users', usersRoute);
@@ -143,6 +150,12 @@ app.onError((err, c) => {
  */
 const handler = {
   fetch: (request, env, ctx) => app.fetch(request, env, ctx),
+  // Retention cron (see wrangler.toml [triggers]): purge the R2 assets of
+  // users whose 30-day post-deletion grace window has elapsed. Guarded to
+  // only ever match soft-deleted rows — see `purgeDeletedUserAssets`.
+  scheduled: (_event, env, ctx) => {
+    ctx.waitUntil(purgeDeletedUserAssets(env));
+  },
 } satisfies ExportedHandler<Bindings>;
 
 export default Sentry.withSentry(

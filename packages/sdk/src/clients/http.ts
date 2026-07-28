@@ -21,16 +21,25 @@ import type {
 } from '@clickfy/types';
 
 import type {
+  AppNotification,
   CatalogCategory,
   CatalogTemplate,
   GenerationProgress,
+  GenModel,
   JobSubmission,
   JobSubmissionResponse,
+  NotificationList,
   TemplateKind as SdkTemplateKind,
   UserProject,
 } from '../types';
 import { JobSubmissionError, RateLimitedError } from '../types';
-import type { SDKClient, UploadSource, UploadedAssetRef } from './contract';
+import type {
+  CreditsSummary,
+  SDKClient,
+  StoreCatalog,
+  UploadSource,
+  UploadedAssetRef,
+} from './contract';
 
 // ── /v1/jobs/:id response shape ─────────────────────────────────────
 // Mirrors apps/api/src/routes/jobs.ts. Kept in this file rather than
@@ -167,6 +176,14 @@ export interface HttpClientOptions {
   baseUrl: string;
   /** Bearer token getter (returns null if signed out). */
   getToken?: () => Promise<string | null>;
+  /**
+   * Active UI locale getter (e.g. `'ar'`). When it returns a non-English
+   * locale, catalog reads append `?locale=<loc>` so the API resolves
+   * translated content (English remains the per-field fallback). Read on
+   * every call so a language change is picked up without re-creating the
+   * client.
+   */
+  getLocale?: () => string;
 }
 
 // ─── Wire shapes ──────────────────────────────────────────────────
@@ -273,7 +290,11 @@ function aspectFromDimensions(width: number, height: number): string {
  * tightly scoped to one file.
  */
 function mapTemplate(m: MobileTemplate & { isFavorited?: boolean }): CatalogTemplate {
-  const sdkKind: SdkTemplateKind = m.kind === 'image_set' ? 'set' : (m.kind as 'image' | 'video');
+  // `kindExact` carries the true kind (incl. `video_image`); the legacy
+  // `kind` field is down-mapped server-side for old installed builds.
+  const rawKind = m.kindExact ?? m.kind;
+  const sdkKind: SdkTemplateKind =
+    rawKind === 'image_set' ? 'set' : (rawKind as SdkTemplateKind);
   return {
     id: m.id,
     title: m.title,
@@ -297,7 +318,20 @@ function mapTemplate(m: MobileTemplate & { isFavorited?: boolean }): CatalogTemp
 // ─── Client factory ───────────────────────────────────────────────
 
 export function createHttpClient(options: HttpClientOptions): SDKClient {
-  const { baseUrl, getToken } = options;
+  const { baseUrl, getToken, getLocale } = options;
+
+  /**
+   * Append `?locale=<loc>` to a catalog path when the active locale is a
+   * non-English language. English is the canonical content, so we leave
+   * those requests untouched (identical URL + edge-cache entry as before).
+   * Merges cleanly with any existing query string.
+   */
+  function withLocale(path: string): string {
+    const loc = getLocale?.();
+    if (!loc || loc === 'en') return path;
+    const sep = path.includes('?') ? '&' : '?';
+    return `${path}${sep}locale=${encodeURIComponent(loc)}`;
+  }
 
   async function get<T>(path: string, init?: { auth?: boolean }): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
@@ -313,10 +347,27 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
     return (await res.json()) as T;
   }
 
+  // Bodyless authed mutation (POST/DELETE with no request body). Used by
+  // simple state toggles like the notification read/clear endpoints.
+  async function mutate(method: 'POST' | 'DELETE', path: string): Promise<void> {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (getToken) {
+      const token = await getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    const res = await fetch(`${baseUrl}${path}`, { method, headers });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`${method} ${path} ${res.status}: ${body.slice(0, 200)}`);
+    }
+  }
+
   return {
     catalog: {
       async listCategories(): Promise<CatalogCategory[]> {
-        const json = await get<ApiEnvelope<ApiCategoryRow[]>>('/v1/categories');
+        const json = await get<ApiEnvelope<ApiCategoryRow[]>>(
+          withLocale('/v1/categories'),
+        );
         return json.data.map(mapCategory);
       },
 
@@ -338,7 +389,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         if (opts?.cursor) params.set('cursor', opts.cursor);
         const qs = params.toString();
         const json = await get<ApiTemplatesEnvelope>(
-          `/v1/catalog/templates${qs ? `?${qs}` : ''}`,
+          withLocale(`/v1/catalog/templates${qs ? `?${qs}` : ''}`),
         );
         return {
           data: json.data.map(mapTemplate),
@@ -354,7 +405,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         // one means the result page heart can render correctly on
         // first paint.
         const json = await get<ApiEnvelope<MobileTemplate & { isFavorited?: boolean }>>(
-          `/v1/catalog/templates/${id}`,
+          withLocale(`/v1/catalog/templates/${id}`),
           { auth: true },
         );
         return mapTemplate(json.data);
@@ -404,7 +455,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         }
         const qs = params.toString();
         const json = await get<ApiSectionsEnvelope>(
-          `/v1/catalog/sections${qs ? `?${qs}` : ''}`,
+          withLocale(`/v1/catalog/sections${qs ? `?${qs}` : ''}`),
         );
         return json.sections.map((s) => ({
           key: s.key,
@@ -420,7 +471,9 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         // filtered by `is_active` + schedule window, so the mobile
         // renderer can iterate the response directly without
         // re-checking timestamps.
-        const json = await get<ApiEnvelope<MobileHomeBanner[]>>('/v1/catalog/banners');
+        const json = await get<ApiEnvelope<MobileHomeBanner[]>>(
+          withLocale('/v1/catalog/banners'),
+        );
         return json.data;
       },
     },
@@ -497,6 +550,75 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         const json = (await res.json()) as {
           data: JobSubmissionResponse;
         };
+        return json.data;
+      },
+
+      // Prompt-first "create from scratch" — POST /v1/jobs/create.
+      // Same envelope + error handling as `submit`, but the body carries
+      // the model + prompt + optional attachments instead of a template.
+      async createGenerate(input): Promise<JobSubmissionResponse> {
+        const headers: Record<string, string> = {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        };
+        if (getToken) {
+          const token = await getToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+        if (input.idempotencyKey) {
+          headers['Idempotency-Key'] = input.idempotencyKey;
+        }
+
+        let res: Response;
+        try {
+          res = await fetch(`${baseUrl}/v1/jobs/create`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              modelKey: input.modelKey,
+              prompt: input.prompt,
+              aspectRatio: input.aspectRatio,
+              duration: input.duration,
+              sound: input.sound,
+              startFrame: input.startFrame,
+              endFrame: input.endFrame,
+              references: input.references ?? [],
+            }),
+          });
+        } catch (err) {
+          throw new JobSubmissionError(
+            'network_error',
+            err instanceof Error ? err.message : 'Network error',
+          );
+        }
+
+        if (!res.ok) {
+          let parsed: unknown = null;
+          try {
+            parsed = await res.json();
+          } catch {
+            /* ignore — fall through to a generic error below */
+          }
+          const errObj = (parsed as { error?: unknown })?.error;
+          if (errObj && typeof errObj === 'object') {
+            const e = errObj as {
+              code?: string;
+              message?: string;
+              fieldKey?: string;
+              details?: Record<string, unknown>;
+            };
+            throw new JobSubmissionError(
+              (e.code as JobSubmissionError['code']) ?? 'network_error',
+              e.message ?? `Request failed (${res.status})`,
+              { fieldKey: e.fieldKey, details: e.details, httpStatus: res.status },
+            );
+          }
+          throw new JobSubmissionError('network_error', `POST /v1/jobs/create ${res.status}`, {
+            httpStatus: res.status,
+          });
+        }
+
+        const json = (await res.json()) as { data: JobSubmissionResponse };
         return json.data;
       },
 
@@ -662,7 +784,9 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         const seen = new Set<string>();
         const out: UserProject[] = [];
         for (const p of items) {
-          if (seen.has(p.templateId)) continue;
+          // Skip prompt-first "create" jobs — they have no template, so
+          // they don't belong in the "recent templates" rail.
+          if (!p.templateId || seen.has(p.templateId)) continue;
           seen.add(p.templateId);
           out.push(p);
           if (out.length >= limit) break;
@@ -715,6 +839,66 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           const text = await res.text().catch(() => '');
           throw new Error(`library.deleteProject failed (${res.status}): ${text.slice(0, 200)}`);
         }
+      },
+    },
+
+    credits: {
+      // `GET /v1/credits/me` — the signed-in user's bucket breakdown
+      // (promo / subscription / topup) plus the spendability flag the
+      // credit menu needs. Total mirrors `MeResponse.creditsBalance`.
+      async getSummary(): Promise<CreditsSummary> {
+        const json = await get<ApiEnvelope<CreditsSummary>>('/v1/credits/me', { auth: true });
+        return json.data;
+      },
+    },
+
+    store: {
+      // `GET /v1/store` — DB catalog for the paywall + top-up screen
+      // (which products exist + how many credits each grants). Prices come
+      // from RevenueCat, not here. Auth is optional server-side; we attach
+      // the token when present so subscribers also receive top-up packs and
+      // `currentEntitlement` is populated.
+      async getCatalog(): Promise<StoreCatalog> {
+        const json = await get<ApiEnvelope<StoreCatalog>>('/v1/store', { auth: true });
+        return json.data;
+      },
+    },
+
+    models: {
+      // `GET /v1/models` — create-eligible model roster (name, cost, prompt
+      // cap, aspect ratios, durations, attachment shape) for the create
+      // screen. Auth required.
+      async listModels(): Promise<GenModel[]> {
+        const json = await get<ApiEnvelope<{ models: GenModel[] }>>('/v1/models', {
+          auth: true,
+        });
+        return json.data.models;
+      },
+    },
+
+    notifications: {
+      // `GET /v1/notifications` — the user's inbox (≤30) + unread count.
+      // `whenLabel` is formatted client-side so it stays fresh on re-render.
+      async list(): Promise<NotificationList> {
+        const json = await get<
+          ApiEnvelope<{ items: Omit<AppNotification, 'whenLabel'>[]; unreadCount: number }>
+        >('/v1/notifications', { auth: true });
+        return {
+          items: json.data.items.map((n) => ({
+            ...n,
+            whenLabel: formatWhenLabel(n.createdAt),
+          })),
+          unreadCount: json.data.unreadCount,
+        };
+      },
+      async markAllRead(): Promise<void> {
+        await mutate('POST', '/v1/notifications/read-all');
+      },
+      async markRead(id: string): Promise<void> {
+        await mutate('POST', `/v1/notifications/${id}/read`);
+      },
+      async clearAll(): Promise<void> {
+        await mutate('DELETE', '/v1/notifications');
       },
     },
 
@@ -804,12 +988,13 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
             };
             xhr.onerror = () => reject(new Error('upload.put: network error'));
             xhr.ontimeout = () => reject(new Error('upload.put: timed out'));
-            // React Native accepts `{ uri }` as a body and streams the
-            // file from disk; on web/Node this would need a Blob, but
-            // the SDK ships exclusively to RN today.
+            // Web callers pass a real `Blob`/`File`; React Native passes
+            // `{ uri }`, which RN's XHR accepts as a body and streams the
+            // file from disk (not assignable to the DOM body type, hence
+            // the cast).
             //
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            xhr.send({ uri: source.uri } as any);
+            xhr.send(source.file ?? ({ uri: source.uri } as any));
           });
 
           const finalizeRes = await fetch(`${baseUrl}/v1/uploads/user/finalize`, {
@@ -828,16 +1013,21 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
 
         // ── Multipart fallback (no size known) ──────────────────────
         const body = new FormData();
-        // React Native's `FormData` accepts the `{ uri, name, type }`
-        // triple — the bridge converts it into a multipart part with
-        // the file streamed off-disk. Casting through `any` because
-        // the DOM TS types don't model this RN-specific form.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (body as any).append('file', {
-          uri: source.uri,
-          name: source.name,
-          type: source.type,
-        } as unknown as Blob);
+        if (source.file) {
+          // Web: a real Blob/File appends natively.
+          body.append('file', source.file, source.name);
+        } else {
+          // React Native's `FormData` accepts the `{ uri, name, type }`
+          // triple — the bridge converts it into a multipart part with
+          // the file streamed off-disk. Casting through `any` because
+          // the DOM TS types don't model this RN-specific form.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (body as any).append('file', {
+            uri: source.uri,
+            name: source.name,
+            type: source.type,
+          } as unknown as Blob);
+        }
 
         const url = `${baseUrl}/v1/uploads/user`;
 
@@ -973,16 +1163,21 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           const token = await getToken();
           if (token) headers.Authorization = `Bearer ${token}`;
         }
-        // React Native's `FormData` accepts the `{ uri, name, type }`
-        // triple; the bridge streams the file off-disk. Don't set
-        // Content-Type — `fetch` fills in the multipart boundary.
+        // Web callers pass a real Blob/File; React Native passes the
+        // `{ uri, name, type }` triple, which RN's `FormData` streams
+        // off-disk. Don't set Content-Type — `fetch` fills in the
+        // multipart boundary.
         const body = new FormData();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (body as any).append('file', {
-          uri: file.uri,
-          name: file.name,
-          type: file.type,
-        } as unknown as Blob);
+        if (file.file) {
+          body.append('file', file.file, file.name);
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (body as any).append('file', {
+            uri: file.uri,
+            name: file.name,
+            type: file.type,
+          } as unknown as Blob);
+        }
         const res = await fetch(`${baseUrl}/v1/users/me/avatar`, {
           method: 'POST',
           headers,

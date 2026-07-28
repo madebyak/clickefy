@@ -34,15 +34,22 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 
-import { jobs, templates, users as usersTable } from '@clickfy/db';
-import { findCapabilities } from '@clickfy/providers';
+import { jobs, providerModels, templates, users as usersTable } from '@clickfy/db';
+import {
+  CREATE_END_FRAME_KEY,
+  CREATE_PROMPT_KEY,
+  CREATE_START_FRAME_KEY,
+  createReferenceKey,
+  findCapabilities,
+} from '@clickfy/providers';
 
 import type { AppEnv } from '../types';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
-import { createJobSchema } from '../lib/job-schemas';
-import { validateJobSubmission } from '../lib/job-validation';
-import { createJobAtomically } from '../lib/job-create';
+import { createJobSchema, createUserJobSchema, type JobInputValueParsed } from '../lib/job-schemas';
+import { validateCreateSubmission, validateJobSubmission } from '../lib/job-validation';
+import { createJobAtomically, createUserJobAtomically } from '../lib/job-create';
+import { getCreateModelDef, isCreateEligible } from '../lib/create-models';
 import { dispatchJob } from '../lib/dispatch-job';
 import { resolveOwnMediaUrl } from '../lib/template-dto';
 
@@ -100,6 +107,22 @@ jobsRoute.post(
       return c.json(
         { error: { code: 'template_not_found', message: 'Template not found.' } },
         404,
+      );
+    }
+
+    // A zero/negative cost means the template's pipeline references
+    // unpriced models (seed default is 0 until an admin prices them).
+    // Refuse rather than run a free generation with no ledger trail —
+    // the create path has the same guard (`model_unpriced`).
+    if (template.costCredits <= 0) {
+      return c.json(
+        {
+          error: {
+            code: 'template_unpriced',
+            message: 'This template is temporarily unavailable.',
+          },
+        },
+        422,
       );
     }
 
@@ -166,6 +189,26 @@ jobsRoute.post(
         idempotencyKey,
       });
     } catch (err) {
+      // Unique-violation on (user_id, idempotency_key): a concurrent
+      // retry with the same key already created this job. The whole CTE
+      // is one atomic statement, so the losing side's debit rolled back
+      // with the failed INSERT — no double charge. Return the winner.
+      if (idempotencyKey && isUniqueViolation(err)) {
+        const existing = await c.var.db.query.jobs.findFirst({
+          where: and(eq(jobs.userId, user.id), eq(jobs.idempotencyKey, idempotencyKey)),
+          columns: { id: true, status: true },
+        });
+        if (existing) {
+          return c.json({
+            data: {
+              jobId: existing.id,
+              status: existing.status,
+              creditsRemaining: user.creditsBalance,
+              idempotent: true,
+            },
+          });
+        }
+      }
       console.error('createJobAtomically failed:', err);
       return c.json(
         {
@@ -230,6 +273,210 @@ jobsRoute.post(
     }
 
     // 201 Created — clients (mobile + SDK) treat any 2xx as success.
+    return c.json(
+      {
+        data: {
+          jobId: result.jobId,
+          status: 'queued' as const,
+          creditsRemaining: result.creditsRemaining,
+        },
+      },
+      201,
+    );
+  },
+);
+
+// ─── POST /v1/jobs/create ───────────────────────────────────────────
+//
+// Prompt-first "create from scratch" generation. Fully isolated from the
+// template path above: its own schema, validation, and atomic debit. A
+// create job has no template — it carries the user's model + prompt +
+// attachments and is billed at the model's flat `cost_credits`.
+jobsRoute.post(
+  '/create',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_JOB, byClerkUserId),
+  withCurrentUser(),
+  zValidator('json', createUserJobSchema),
+  async (c) => {
+    const user = c.var.user;
+    if (!user) {
+      return c.json(
+        { error: { code: 'unauthenticated', message: 'Sign in required.' } },
+        401,
+      );
+    }
+
+    const body = c.req.valid('json');
+    const idempotencyKey = c.req.header('Idempotency-Key') ?? null;
+
+    // ── Idempotency short-circuit ──────────────────────────────────
+    if (idempotencyKey) {
+      const existing = await c.var.db.query.jobs.findFirst({
+        where: and(eq(jobs.userId, user.id), eq(jobs.idempotencyKey, idempotencyKey)),
+        columns: { id: true, status: true },
+      });
+      if (existing) {
+        return c.json({
+          data: {
+            jobId: existing.id,
+            status: existing.status,
+            creditsRemaining: user.creditsBalance,
+            idempotent: true,
+          },
+        });
+      }
+    }
+
+    // ── Resolve model + create-eligibility ─────────────────────────
+    const caps = findCapabilities(body.modelKey);
+    const def = getCreateModelDef(body.modelKey);
+    if (!caps || !def || !isCreateEligible(body.modelKey)) {
+      return c.json(
+        { error: { code: 'unknown_model', message: 'That model is not available.' } },
+        404,
+      );
+    }
+
+    // ── Price (flat per-model cost from provider_models) ───────────
+    const priceRows = await c.var.db
+      .select({ costCredits: providerModels.costCredits, status: providerModels.status })
+      .from(providerModels)
+      .where(
+        and(
+          eq(providerModels.provider, caps.provider),
+          eq(providerModels.modelKey, body.modelKey),
+        ),
+      )
+      .limit(1);
+    const cost = priceRows[0]?.costCredits ?? 0;
+    if (!priceRows[0] || cost <= 0) {
+      return c.json(
+        { error: { code: 'model_unpriced', message: 'That model is not available right now.' } },
+        422,
+      );
+    }
+
+    // ── R2 bucket binding ──────────────────────────────────────────
+    const uploads = c.env.UPLOADS;
+    if (!uploads) {
+      return c.json(
+        { error: { code: 'r2_not_configured', message: 'Uploads bucket binding missing.' } },
+        503,
+      );
+    }
+
+    // ── Semantic validation (model-adaptive) ───────────────────────
+    const allowedAspectRatios = caps.sizing.mode === 'aspect' ? [...caps.sizing.values] : [];
+    const allowedDurations =
+      caps.kind === 'video' && caps.duration ? [...caps.duration.values] : [];
+    const validationError = await validateCreateSubmission(body, {
+      userId: user.id,
+      uploadsBucket: uploads,
+      model: {
+        modelKey: body.modelKey,
+        kind: caps.kind,
+        maxImagesTotal: caps.maxImagesTotal,
+        maxPromptChars: caps.maxPromptChars,
+        allowedAspectRatios,
+        allowedDurations,
+        requiresStartFrame: def.requiresStartFrame,
+        acceptsStartEndImage: caps.acceptsStartEndImage ?? false,
+        cost,
+      },
+      currentCreditsBalance: user.creditsBalance,
+    });
+    if (validationError) {
+      const status = validationError.code === 'insufficient_credits' ? 402 : 422;
+      return c.json({ error: validationError }, status);
+    }
+
+    // ── Assemble jobs.inputs with canonical create field keys ──────
+    const inputs: Record<string, JobInputValueParsed> = {
+      [CREATE_PROMPT_KEY]: { kind: 'text', value: body.prompt },
+    };
+    if (body.startFrame) inputs[CREATE_START_FRAME_KEY] = body.startFrame;
+    if (body.endFrame) inputs[CREATE_END_FRAME_KEY] = body.endFrame;
+    body.references.forEach((ref, i) => {
+      inputs[createReferenceKey(i)] = ref;
+    });
+
+    const options = { aspectRatio: body.aspectRatio, duration: body.duration, sound: body.sound };
+
+    // ── Atomic debit + insert (isolated create CTE) ────────────────
+    let result;
+    try {
+      result = await createUserJobAtomically(c.var.db, {
+        userId: user.id,
+        cost,
+        modelKey: body.modelKey,
+        inputs,
+        options,
+        idempotencyKey,
+      });
+    } catch (err) {
+      // Same idempotency-conflict handling as the template path: the
+      // losing concurrent retry's debit rolled back with its INSERT.
+      if (idempotencyKey && isUniqueViolation(err)) {
+        const existing = await c.var.db.query.jobs.findFirst({
+          where: and(eq(jobs.userId, user.id), eq(jobs.idempotencyKey, idempotencyKey)),
+          columns: { id: true, status: true },
+        });
+        if (existing) {
+          return c.json({
+            data: {
+              jobId: existing.id,
+              status: existing.status,
+              creditsRemaining: user.creditsBalance,
+              idempotent: true,
+            },
+          });
+        }
+      }
+      console.error('createUserJobAtomically failed:', err);
+      return c.json(
+        {
+          error: {
+            code: 'internal_error',
+            message: 'We could not start your generation. Please try again in a moment.',
+          },
+        },
+        500,
+      );
+    }
+
+    if (!result) {
+      return c.json(
+        {
+          error: {
+            code: 'insufficient_credits',
+            message: 'Credits changed during submission. Try again.',
+          },
+        },
+        402,
+      );
+    }
+
+    // ── Dispatch to Trigger.dev (same path as the template flow) ───
+    if (c.env.TRIGGER_SECRET_KEY) {
+      const dispatch = await dispatchJob({
+        jobId: result.jobId,
+        triggerSecretKey: c.env.TRIGGER_SECRET_KEY,
+      });
+      if (dispatch.ok) {
+        await c.var.db
+          .update(jobs)
+          .set({ triggerRunId: dispatch.runId })
+          .where(eq(jobs.id, result.jobId));
+      } else {
+        console.error('dispatchJob (create) failed:', dispatch.status, dispatch.message);
+      }
+    } else {
+      console.warn(
+        '[jobs] TRIGGER_SECRET_KEY missing — create job queued but not dispatched.',
+      );
+    }
+
     return c.json(
       {
         data: {
@@ -330,6 +577,10 @@ jobsRoute.get(
         status: true,
         result: true,
         createdAt: true,
+        // Create-flow provenance + fields for the "Custom" badge / title.
+        source: true,
+        modelKey: true,
+        inputs: true,
       },
       with: {
         template: {
@@ -374,6 +625,12 @@ jobsRoute.get(
         ...finalVideos.map((v) => ({
           url: `${origin}/v1/outputs/${v.streamId}`,
           kind: 'video' as const,
+          // Dims/ratio persisted by the worker (probed or requested-ratio
+          // fallback) so mobile lays videos out at their true shape.
+          width: v.width || undefined,
+          height: v.height || undefined,
+          aspectRatio:
+            v.aspectRatio ?? (v.width && v.height ? v.width / v.height : undefined),
         })),
       ];
 
@@ -382,22 +639,57 @@ jobsRoute.get(
       const sdkStatus: 'queued' | 'processing' | 'ready' | 'failed' =
         j.status === 'completed' ? 'ready' : (j.status as 'queued' | 'processing' | 'failed');
 
-      // Template can be null in theory if it was hard-deleted; we
-      // never delete in practice (status='archived' instead) but
-      // guarding here keeps the response sane no matter what.
-      const tpl = j.template;
-      const coverRef = tpl?.coverMedia;
-      const coverUrl = coverRef ? resolveOwnMediaUrl(coverRef, origin) : '';
-      // SDK's `kind` enum uses 'set' but DB uses 'image_set' — translate.
-      const sdkKind: 'image' | 'video' | 'set' =
-        tpl?.kind === 'image_set' ? 'set' : ((tpl?.kind ?? 'image') as 'image' | 'video');
+      // A `source='user'` job has no template — its display fields come
+      // from the chosen model + the user's prompt instead. Template jobs
+      // keep the existing template-embed behavior unchanged.
+      const isUserJob = j.source === 'user';
+      let templateName: string;
+      let templateKind: 'image' | 'video' | 'set';
+      let title: string;
+      let coverUrl: string;
+
+      if (isUserJob) {
+        const modelCaps = j.modelKey ? findCapabilities(j.modelKey) : undefined;
+        const promptVal = j.inputs?.[CREATE_PROMPT_KEY];
+        const promptText = promptVal?.kind === 'text' ? promptVal.value.trim() : '';
+        templateName =
+          (j.modelKey ? getCreateModelDef(j.modelKey)?.name : undefined) ??
+          modelCaps?.displayName ??
+          'Custom';
+        templateKind = modelCaps?.kind === 'video' ? 'video' : 'image';
+        // The prompt is the natural title for a user creation; the client
+        // renders `outputs[0]` as the thumbnail (no template cover).
+        title = promptText.length > 0 ? promptText : 'Custom generation';
+        coverUrl = '';
+      } else {
+        // Template can be null in theory if it was hard-deleted; we
+        // never delete in practice (status='archived' instead) but
+        // guarding here keeps the response sane no matter what.
+        const tpl = j.template;
+        const coverRef = tpl?.coverMedia;
+        coverUrl = coverRef ? resolveOwnMediaUrl(coverRef, origin) : '';
+        // SDK's `kind` enum uses 'set' but DB uses 'image_set' — translate.
+        // `video_image` down-maps to 'video' (old installed builds don't
+        // know the new kind; the project row's primary asset is the video).
+        templateKind =
+          tpl?.kind === 'image_set'
+            ? 'set'
+            : tpl?.kind === 'video_image'
+              ? 'video'
+              : ((tpl?.kind ?? 'image') as 'image' | 'video');
+        templateName = tpl?.title ?? 'Unknown template';
+        title = tpl?.title ?? 'Untitled';
+      }
+
       return {
         id: j.id,
         templateId: j.templateId,
-        templateName: tpl?.title ?? 'Unknown template',
+        templateName,
         templateCoverImage: coverUrl,
-        templateKind: sdkKind,
-        title: tpl?.title ?? 'Untitled',
+        templateKind,
+        title,
+        // Provenance — drives the mobile "Custom" badge.
+        source: isUserJob ? ('user' as const) : ('template' as const),
         createdAt: j.createdAt.toISOString(),
         whenLabel: '', // formatted by the SDK on the client
         status: sdkStatus,
@@ -535,7 +827,14 @@ jobsRoute.get(
         });
       }
       for (const vid of job.result.videos ?? []) {
-        outputs.push({ url: `${origin}/v1/outputs/${vid.streamId}`, kind: 'video' });
+        outputs.push({
+          url: `${origin}/v1/outputs/${vid.streamId}`,
+          kind: 'video',
+          width: vid.width || undefined,
+          height: vid.height || undefined,
+          aspectRatio:
+            vid.aspectRatio ?? (vid.width && vid.height ? vid.width / vid.height : undefined),
+        });
       }
     }
 
@@ -625,4 +924,14 @@ jobsRoute.delete(
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isUuid(s: string): boolean {
   return UUID_RE.test(s);
+}
+
+/**
+ * Postgres unique-violation (SQLSTATE 23505). Neon's driver surfaces
+ * `.code`; the message check is a belt-and-suspenders fallback for
+ * wrapped errors.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  return e?.code === '23505' || /duplicate key value/i.test(e?.message ?? '');
 }

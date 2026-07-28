@@ -42,6 +42,16 @@ export interface StreamRef {
   durationSec: number;
   /** Poster frame stored in R2 (for thumbs / first-frame on mobile). */
   posterR2Key: string;
+  /** Pixel dimensions when known (parsed or provider-reported). */
+  width?: number;
+  height?: number;
+  /**
+   * Width/height ratio the video was generated at. Falls back to the
+   * REQUESTED `stage.config.aspectRatio` when real dimensions aren't
+   * parseable — good enough for layout (the whole point is that mobile
+   * renders the true shape instead of guessing 9:16).
+   */
+  aspectRatio?: number;
 }
 
 // ── User input schema (per template) ────────────────────────────────

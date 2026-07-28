@@ -54,6 +54,9 @@ export const templateKindEnum = pgEnum('template_kind', [
   'image',
   'video',
   'image_set',
+  // Video + still image from one pipeline (mode `image_then_video`).
+  // Added in migration 0023.
+  'video_image',
 ]);
 
 export const templateStatusEnum = pgEnum('template_status', [

@@ -211,7 +211,7 @@ export interface PromoteStaffInput {
 export interface MonitoringPublishedTemplate {
   id: string;
   title: string;
-  kind: 'image' | 'video' | 'image_set';
+  kind: 'image' | 'video' | 'image_set' | 'video_image';
   publishedAt: string | null;
   versionCount: number;
   /** Null when the publisher row was hard-deleted (`Unattributed`). */

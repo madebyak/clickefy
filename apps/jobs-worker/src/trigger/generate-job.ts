@@ -29,7 +29,7 @@
  */
 
 import { logger, task } from '@trigger.dev/sdk';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import {
   jobs,
@@ -42,7 +42,11 @@ import {
   type Template,
 } from '@clickfy/db';
 import {
+  buildCreateStage,
   compile,
+  CREATE_END_FRAME_KEY,
+  CREATE_PROMPT_KEY,
+  CREATE_START_FRAME_KEY,
   executeStage,
   findCapabilities,
   pollAsyncTask,
@@ -54,12 +58,14 @@ import {
   type RuntimeInputValue,
   type StageOutputRef,
 } from '@clickfy/providers';
+import type { GenerationStage, TemplateInputField } from '@clickfy/types';
 
 import { env } from '../env';
 import { getDb } from '../lib/db';
 import { resolveJobInputs } from '../lib/input-resolver';
 import { reportStage, updateJobProgress } from '../lib/progress';
 import { pushUser } from '../lib/push';
+import { aspectRatioToNumber, probeImageDimensions } from '../lib/media-dimensions';
 import { writeOutputObject } from '../lib/r2';
 import { isRefundable, refundForJob } from '../lib/refund';
 
@@ -114,32 +120,9 @@ export const generateJob = task({
       .set({ status: 'processing', startedAt, progress: emptyProgress() })
       .where(eq(jobs.id, jobId));
 
-    // Read from `template_versions.snapshot` (not the live `templates`
-    // row) so a published edit between job submit and worker pickup
-    // can never retroactively change what the user actually paid for.
-    // `jobRow.templateVersionId` is set by the atomic CTE in
-    // `apps/api/src/lib/job-create.ts` from `version_lookup.id`, so
-    // it's always populated for jobs that made it past debit.
-    //
-    // The snapshot column is typed `jsonb` (unknown) because older
-    // snapshots may carry columns we've since renamed. At runtime the
-    // shape matches `Template` because every snapshot is written from
-    // a `Template` row at publish time — the cast below documents that
-    // assumption and lets the rest of this task stay strongly typed.
-    const versionRow = await db.query.templateVersions.findFirst({
-      where: eq(templateVersions.id, jobRow.templateVersionId),
-    });
-    if (!versionRow) {
-      return failJob(jobId, {
-        code: 'template_missing',
-        message: 'Template version no longer exists.',
-        stage: 0,
-        retryCount: 0,
-      });
-    }
-    const template = versionRow.snapshot as Template;
-
     // ── Resolve inputs (R2 reads in parallel) ────────────────────
+    // Shared by both paths — hydrates every image/text value in
+    // `jobs.inputs` (bytes + url) for the compiler and adapters.
     let inputs: Record<string, RuntimeInputValue>;
     try {
       inputs = await resolveJobInputs(jobRow.inputs as Record<string, JobInputValue>);
@@ -153,8 +136,90 @@ export const generateJob = task({
       });
     }
 
+    // ── Build the pipeline (template snapshot OR synthetic create stage) ─
+    // Template jobs read frozen stages from a template-version snapshot.
+    // Create jobs (source='user') have no template — we synthesize a
+    // single stage from the stored model + prompt + attachments via
+    // `buildCreateStage`, then run the SAME stage loop / engine.
+    let stages: GenerationStage[];
+    let stageTemplateInputs: TemplateInputField[];
+    let jobCostCredits: number;
+    let notifyTitle: string;
+
+    if (jobRow.source === 'user') {
+      if (!jobRow.modelKey) {
+        return failJob(jobId, {
+          code: 'unknown_model',
+          message: 'Create job is missing its model.',
+          stage: 0,
+          retryCount: 0,
+        });
+      }
+      const promptValue = inputs[CREATE_PROMPT_KEY];
+      const prompt = promptValue?.kind === 'text' ? promptValue.value : '';
+      const opts = (jobRow.options ?? {}) as {
+        aspectRatio?: string;
+        duration?: number;
+        sound?: boolean;
+      };
+      const rawInputKeys = Object.keys(jobRow.inputs as Record<string, unknown>);
+      const referenceCount = rawInputKeys.filter((k) => k.startsWith('ref_')).length;
+      try {
+        const built = buildCreateStage({
+          modelKey: jobRow.modelKey,
+          prompt,
+          aspectRatio: opts.aspectRatio,
+          duration: opts.duration,
+          sound: opts.sound,
+          hasStartFrame: rawInputKeys.includes(CREATE_START_FRAME_KEY),
+          hasEndFrame: rawInputKeys.includes(CREATE_END_FRAME_KEY),
+          referenceCount,
+        });
+        stages = [built.stage];
+        stageTemplateInputs = built.templateInputs;
+      } catch (err) {
+        logger.error('generate-job:create-build-failed', { jobId, err: String(err) });
+        return failJob(jobId, {
+          code: 'unknown_model',
+          message: `Model "${jobRow.modelKey}" is not registered.`,
+          stage: 0,
+          retryCount: 0,
+        });
+      }
+      jobCostCredits = jobRow.costCredits ?? 0;
+      notifyTitle = 'Your creation';
+    } else {
+      // Read from `template_versions.snapshot` (not the live `templates`
+      // row) so a published edit between submit and pickup can't change
+      // what the user paid for. The jsonb column is typed `unknown`; the
+      // cast documents that every snapshot is a `Template` at publish time.
+      if (!jobRow.templateVersionId) {
+        return failJob(jobId, {
+          code: 'template_missing',
+          message: 'Template version reference is missing.',
+          stage: 0,
+          retryCount: 0,
+        });
+      }
+      const versionRow = await db.query.templateVersions.findFirst({
+        where: eq(templateVersions.id, jobRow.templateVersionId),
+      });
+      if (!versionRow) {
+        return failJob(jobId, {
+          code: 'template_missing',
+          message: 'Template version no longer exists.',
+          stage: 0,
+          retryCount: 0,
+        });
+      }
+      const template = versionRow.snapshot as Template;
+      stages = [...template.generation.stages].sort((a, b) => a.order - b.order);
+      stageTemplateInputs = template.userInputs;
+      jobCostCredits = template.costCredits;
+      notifyTitle = template.title;
+    }
+
     // ── Walk the stages ──────────────────────────────────────────
-    const stages = [...template.generation.stages].sort((a, b) => a.order - b.order);
     const totalStages = stages.length;
     const previousOutputs: StageOutputRef[] = [];
     const allOutputKeys: Array<{
@@ -162,6 +227,13 @@ export const generateJob = task({
       r2Key: string;
       mimeType: string;
       kind: 'image' | 'video';
+      /** Probed from the bytes (images). */
+      width?: number;
+      height?: number;
+      /** Real provider-reported duration (videos). */
+      durationSec?: number;
+      /** Probed (images) or requested `stage.config.aspectRatio` fallback. */
+      aspectRatio?: number;
     }> = [];
 
     const providerEnv = buildProviderEnv();
@@ -193,7 +265,7 @@ export const generateJob = task({
       // because aborting here would charge the user for nothing).
       const ctx: CompileContext = {
         stage,
-        templateInputs: template.userInputs,
+        templateInputs: stageTemplateInputs,
         inputValues: inputs,
         previousOutputs,
         capabilities,
@@ -271,11 +343,22 @@ export const generateJob = task({
           mimeType: mime,
           url: out.url,
         });
+        // Capture real dimensions while the bytes are in memory: images
+        // are header-probed (PNG/JPEG/WebP, no decode); videos fall back
+        // to the ratio the stage REQUESTED (`stage.config.aspectRatio`) —
+        // good enough for true-shape layout on mobile. Without this the
+        // result screen guessed 4:5/9:16 and cropped everything else.
+        const probed = out.type === 'image' ? probeImageDimensions(bytes) : null;
+        const requestedRatio = aspectRatioToNumber(stage.config?.aspectRatio);
         allOutputKeys.push({
           stageIndex: stageNumber,
           r2Key: persisted.r2Key,
           mimeType: mime,
           kind: out.type,
+          width: probed?.width,
+          height: probed?.height,
+          durationSec: out.durationSec,
+          aspectRatio: probed ? probed.width / probed.height : (requestedRatio ?? undefined),
         });
       }
     }
@@ -324,34 +407,40 @@ export const generateJob = task({
       .filter((k) => k.kind === 'image')
       .map((k) => ({
         r2Key: k.r2Key,
-        // We don't measure width/height here — that's a downstream
-        // optimisation (sharp / imagemagick in a follow-up). Mobile
-        // works fine with 0/0 because we hand back the URL and let
-        // Cloudflare Images / native layout figure it out.
-        width: 0,
-        height: 0,
+        // Header-probed at persist time (PNG/JPEG/WebP). 0 only when the
+        // probe couldn't recognise the format — mobile then letterboxes
+        // via its contain fallback instead of cropping.
+        width: k.width ?? 0,
+        height: k.height ?? 0,
         blurhash: '',
       }));
     const videos: StreamRef[] = userVisibleKeys
       .filter((k) => k.kind === 'video')
       .map((k) => ({
         // For now Kling URLs aren't fronted by Cloudflare Stream, so
-        // we slot the R2 key into `streamId` and set duration to 0.
-        // Once Stream is wired (post-launch), this populates from
-        // the Stream API response.
+        // we slot the R2 key into `streamId`. Once Stream is wired
+        // (post-launch), this populates from the Stream API response.
         streamId: k.r2Key,
-        durationSec: 0,
+        durationSec: k.durationSec ?? 0,
         posterR2Key: k.r2Key,
+        width: k.width,
+        height: k.height,
+        // Requested-ratio fallback — lets mobile render the true shape.
+        aspectRatio: k.aspectRatio,
       }));
 
     const jobResult: JobResult = {
       images,
       videos,
       durationMs,
-      costCredits: template.costCredits,
+      costCredits: jobCostCredits,
     };
 
-    await db
+    // Gated on `status = 'processing'`: if the stuck-job sweeper already
+    // declared this run dead (marked failed + refunded), completing now
+    // would hand the user both the refund AND the finished output. When
+    // the guard misses we keep the sweeper's verdict and skip the push.
+    const completedRows = await db
       .update(jobs)
       .set({
         status: 'completed',
@@ -359,7 +448,16 @@ export const generateJob = task({
         completedAt,
         progress: { stage: totalStages, totalStages, message: 'Done' },
       })
-      .where(eq(jobs.id, jobId));
+      .where(and(eq(jobs.id, jobId), eq(jobs.status, 'processing')))
+      .returning();
+
+    if (completedRows.length === 0) {
+      logger.warn('generate-job:finalize-skipped', {
+        jobId,
+        reason: 'row no longer processing (sweeper likely refunded it)',
+      });
+      return { status: 'superseded' as const, durationMs };
+    }
 
     logger.info('generate-job:done', { jobId, durationMs, outputCount: userVisibleKeys.length });
 
@@ -371,8 +469,8 @@ export const generateJob = task({
       userId: jobRow.userId,
       title: 'Your creation is ready',
       body:
-        template.title.length > 0
-          ? `${template.title} is done. Tap to view.`
+        notifyTitle.length > 0
+          ? `${notifyTitle} is done. Tap to view.`
           : 'Tap to view your latest generation.',
       // Payload the mobile handler uses to deep-link straight into
       // the result screen instead of the home tab.

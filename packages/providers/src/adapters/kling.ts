@@ -193,6 +193,10 @@ function buildOmniBody(request: KlingCompiledRequest): Record<string, unknown> {
   if (request.aspectRatio) body.aspect_ratio = request.aspectRatio;
   if (imageList.length > 0) body.image_list = imageList;
   if (request.negativePrompt) body.negative_prompt = request.negativePrompt;
+  // Native audio — omni-only `sound: "on" | "off"` (defaults to off
+  // API-side; we only send the field when the compiler opted in, so
+  // sound-incapable models never see an unknown field).
+  if (request.soundEnabled !== undefined) body.sound = request.soundEnabled ? 'on' : 'off';
   return body;
 }
 

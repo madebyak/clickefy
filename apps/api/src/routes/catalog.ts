@@ -86,7 +86,7 @@ function resolveLocale(raw: string | undefined): UserLocale {
  */
 const listQuerySchema = z.object({
   search: z.string().max(120).optional(),
-  kind: z.enum(['image', 'video', 'image_set']).optional(),
+  kind: z.enum(['image', 'video', 'image_set', 'video_image']).optional(),
   categoryId: z.string().uuid().optional(),
   featured: z
     .union([z.boolean(), z.literal('true'), z.literal('false')])

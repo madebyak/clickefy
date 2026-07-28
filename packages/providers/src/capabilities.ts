@@ -96,6 +96,26 @@ export interface ModelCapabilities {
   /** Does this model accept start/end frame pairs? (Kling) */
   acceptsStartEndImage?: boolean;
 
+  /**
+   * Can the model generate native audio (sfx / ambient / dialogue) via
+   * an on/off switch? (Kling v3 Omni `sound`; Seedance uses its own
+   * `generateAudio` config path.) Drives the create-flow sound toggle.
+   */
+  supportsSound?: boolean;
+
+  /**
+   * Max prompt length in CHARACTERS for the user-facing "create" flow.
+   *
+   * Optional because it's only meaningful where the app lets an end-user
+   * type a raw prompt (the mobile create screen). Values reflect provider
+   * limits: Kling caps the API at 2 500 chars; Gemini image models are
+   * token-based and effectively unbounded for a mobile box, so we set a
+   * comfortable soft cap; Seedance's exact cap is unpublished so we use a
+   * safe 2 500. When omitted, the client falls back to a conservative
+   * default. Templates ignore this (their prompts are admin-authored).
+   */
+  maxPromptChars?: number;
+
   /** Admin-facing description shown next to the model picker. */
   notes?: string;
 }
@@ -187,6 +207,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxReferences: 14,
     maxSubjects: 14,
     maxImagesTotal: 14,
+    // Token-based limit is huge (~131K input tokens); comfortable mobile cap.
+    maxPromptChars: 5000,
     notes: 'Fast tier of Gemini 3 image. Best for high-volume generation.',
   },
   'gemini-3-pro-image-preview': {
@@ -206,6 +228,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxReferences: 14,
     maxSubjects: 14,
     maxImagesTotal: 14,
+    // Token-based limit is huge (~65K input tokens); comfortable mobile cap.
+    maxPromptChars: 5000,
     notes: 'Highest quality. Slower & more expensive. Up to 4K outputs.',
   },
 
@@ -258,6 +282,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 1,
     maxImagesTotal: 1,
     acceptsStartEndImage: true,
+    // Kling API hard-caps the prompt at 2 500 characters.
+    maxPromptChars: 2500,
     notes: 'First v2 model to honor aspect_ratio. Supports 16:9, 9:16, 1:1.',
   },
   'kling-v2-5-turbo': {
@@ -309,13 +335,48 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     duration: { values: KLING_OMNI_DURATIONS, default: 5 },
     negativePrompt: true,
     refAddressing: 'angle',
-    // Up to 7 reference images, plus start/end subject frames.
+    // The omni endpoint caps `image_list` at 7 entries TOTAL (start/end
+    // frames included; drops to 4 when a reference video is attached —
+    // video refs not wired yet). Was 9 before the 2026 docs pass.
     maxReferences: 7,
     maxSubjects: 2,
-    maxImagesTotal: 9,
+    maxImagesTotal: 7,
     acceptsStartEndImage: true,
+    // Native audio via the `sound: on|off` request field.
+    supportsSound: true,
+    // Kling API hard-caps the prompt at 2 500 characters.
+    maxPromptChars: 2500,
     notes:
-      'Unified text-to-video + image-to-video + multi-reference. Prompt addresses references as <<<image_1>>>, <<<image_2>>>, …',
+      'Unified text-to-video + image-to-video + multi-reference with optional native audio. Modes std (720p) / pro (1080p) / 4k. Prompt addresses references as <<<image_1>>>, <<<image_2>>>, …',
+  },
+
+  // ── Kling v3 (base) ─────────────────────────────────────────────────
+  // Drop-in tier upgrade on the classic text2video/image2video
+  // endpoints — same request shape as the v2 family with `model_name:
+  // "kling-v3"`. Conservative capability set: the 3-ratio /5|10s config
+  // is the cross-source-verified subset (mirrors conflict on wider
+  // ratio/duration claims; widen only after a live check). Audio on the
+  // base endpoints has a conflicting field name across mirrors — NOT
+  // wired (Omni is the sound-capable pick).
+  'kling-v3': {
+    provider: 'kling',
+    modelKey: 'kling-v3',
+    displayName: 'Kling 3',
+    status: 'preview',
+    kind: 'video',
+    sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
+    outputs: { min: 1, max: 1, default: 1 },
+    duration: { values: KLING_DURATIONS, default: 5 },
+    negativePrompt: true,
+    refAddressing: 'none',
+    maxReferences: 0,
+    maxSubjects: 1,
+    maxImagesTotal: 1,
+    acceptsStartEndImage: true,
+    // Kling API hard-caps the prompt at 2 500 characters.
+    maxPromptChars: 2500,
+    notes:
+      'Kling 3.0 on the classic t2v/i2v endpoints. Modes std (720p) / pro (1080p) / 4k. Text-to-video works with no input image.',
   },
 
   // ── Seedance 2.0 (BytePlus ModelArk, dreamina-seedance family) ──────
@@ -350,6 +411,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 2, // first_frame + optional last_frame
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
+    // Exact cap unpublished; safe default matching the video peers.
+    maxPromptChars: 2500,
     notes:
       'BytePlus Seedance 2.0. Supports T2V, I2V, first/last frame, multi-reference, native audio (lip-sync). Up to 1080p / 10s. ~$0.93 per 5s at 1080p.',
   },

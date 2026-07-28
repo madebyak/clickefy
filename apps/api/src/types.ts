@@ -38,6 +38,15 @@ export interface Bindings {
 
   // ─── Payments ─────────────────────────────────────────────────
   REVENUECAT_WEBHOOK_SECRET?: string;
+  /** DeepSeek API key for admin EN→AR content translation. */
+  DEEPSEEK_API_KEY?: string;
+  /**
+   * "true" during the TestFlight phase so sandbox purchases exercise the
+   * full grant path. MUST be flipped off ("false" or removed) at public
+   * launch — otherwise sandbox purchases (which are free and renew on an
+   * accelerated clock) grant real credits. See LAUNCH-CHECKLIST.md.
+   */
+  RC_ALLOW_SANDBOX?: string;
 
   // ─── Observability (Sentry) ───────────────────────────────────
   /**

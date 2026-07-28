@@ -64,7 +64,9 @@ const geminiModels = [
 ];
 
 const klingModels = [
-  { value: 'kling-v2-6', label: 'Kling V2.6 (Latest)' },
+  { value: 'kling-v3-omni', label: 'Kling 3 Omni (Latest)' },
+  { value: 'kling-v3', label: 'Kling 3' },
+  { value: 'kling-v2-6', label: 'Kling V2.6' },
   { value: 'kling-v2-5-turbo', label: 'Kling V2.5 Turbo (Fast)' },
   { value: 'kling-v2-master', label: 'Kling V2 Master' },
 ];
@@ -764,25 +766,109 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                               </div>
                             )}
 
-                            {(stage.provider === 'kling' || stage.provider === 'seedance') && (
-                              <div className="space-y-2">
-                                <Label className="text-xs text-muted-foreground">Duration (sec)</Label>
-                                <Select
-                                  value={String(stage.config.duration || 5)}
-                                  onValueChange={(value) =>
-                                    handleUpdateStage(stage.id, { config: { ...stage.config, duration: parseInt(value ?? '5') || 5 } })
-                                  }
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="5">5 seconds</SelectItem>
-                                    <SelectItem value="10">10 seconds</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
+                            {(stage.provider === 'kling' || stage.provider === 'seedance') && (() => {
+                              // Duration options come from the model's capability
+                              // declaration (e.g. Kling 3 Omni: 3/5/8/10/15s).
+                              // Models without a declared list keep the classic
+                              // 5/10 pair — identical to the previous hardcoded
+                              // options, so existing templates are unaffected.
+                              const caps = findCapabilities(stage.model);
+                              const durations = caps?.duration?.values ?? [5, 10];
+                              return (
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Duration (sec)</Label>
+                                  <Select
+                                    value={String(stage.config.duration || caps?.duration?.default || 5)}
+                                    onValueChange={(value) =>
+                                      handleUpdateStage(stage.id, { config: { ...stage.config, duration: parseInt(value ?? '5') || 5 } })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {durations.map((d) => (
+                                        <SelectItem key={d} value={String(d)}>{d} seconds</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Kling v3 family: quality tier (std=720p / pro=1080p / 4k).
+                                Written to `stage.config.mode`; the compiler passes it to
+                                the API and template costing bills the tier's credits.
+                                Only rendered for models that declare `modes` — v2 rows
+                                and existing templates see nothing new. */}
+                            {stage.provider === 'kling' && (() => {
+                              const caps = findCapabilities(stage.model);
+                              if (!caps?.modes) return null;
+                              const tierLabel: Record<string, string> = {
+                                std: 'Standard (720p)',
+                                pro: 'Pro (1080p)',
+                                '4k': '4K',
+                              };
+                              const cfgMode = stage.config.mode as string | undefined;
+                              const selected =
+                                cfgMode && (caps.modes.values as readonly string[]).includes(cfgMode)
+                                  ? cfgMode
+                                  : caps.modes.default;
+                              return (
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Quality</Label>
+                                  <Select
+                                    value={selected}
+                                    onValueChange={(value) =>
+                                      handleUpdateStage(stage.id, {
+                                        config: { ...stage.config, mode: value || caps.modes!.default },
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {caps.modes.values.map((m) => (
+                                        <SelectItem key={m} value={m}>{tierLabel[m] ?? m}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    Quality changes this stage&apos;s credit price.
+                                  </p>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Kling 3 Omni: native audio (`sound: on|off`). Mirrors the
+                                Seedance Generate Audio control; only rendered for
+                                sound-capable models. */}
+                            {stage.provider === 'kling' && (() => {
+                              const caps = findCapabilities(stage.model);
+                              if (!caps?.supportsSound) return null;
+                              return (
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Generate Audio</Label>
+                                  <Select
+                                    value={(stage.config.sound as boolean | string | undefined) === true || stage.config.sound === 'on' ? 'on' : 'off'}
+                                    onValueChange={(value) =>
+                                      handleUpdateStage(stage.id, {
+                                        config: { ...stage.config, sound: value === 'on' },
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="off">Off</SelectItem>
+                                      <SelectItem value="on">On (sfx + ambience + speech)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              );
+                            })()}
 
                             {/* Seedance: resolution picker. Defaults to 720p per
                                 spec — the cheapest tier above 480p, and the

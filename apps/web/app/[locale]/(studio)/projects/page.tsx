@@ -3,36 +3,57 @@
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { FolderSimple, FolderPlus, Plus, DotsThree } from "@phosphor-icons/react";
-import { useStudio, type Project } from "@/components/studio/studio-context";
+import { useStudio, type StudioProject } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/menu";
+import { useTimeLabel } from "@/lib/time-label";
 
-function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: string) => void }) {
+function ProjectCover({ project }: { project: StudioProject }) {
+  if (!project.cover) return null;
+  if (project.cover.kind === "video") {
+    return (
+      <video
+        src={project.cover.url}
+        muted
+        playsInline
+        preload="metadata"
+        className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+      />
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={project.cover.url}
+      alt=""
+      className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+    />
+  );
+}
+
+function ProjectCard({
+  project,
+  onOpen,
+}: {
+  project: StudioProject;
+  onOpen: (id: string) => void;
+}) {
   const t = useTranslations("projects");
-  const tt = useTranslations("time");
   const { folders, moveProjectToFolder } = useStudio();
-  const cover = project.assets[0];
-  const timeLabel =
-    project.time === "Just now"
-      ? tt("justNow")
-      : project.time === "Yesterday"
-        ? tt("yesterday")
-        : project.time;
+  const timeLabel = useTimeLabel();
   return (
     <div className="group relative overflow-hidden rounded-xl bg-surface-2">
-      <button type="button" onClick={() => onOpen(project.id)} className="block w-full text-start outline-none">
+      <button
+        type="button"
+        onClick={() => onOpen(project.id)}
+        className="block w-full text-start outline-none"
+      >
         <div className="aspect-[4/3] overflow-hidden bg-surface-3">
-          {cover &&
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={cover.poster ?? cover.src}
-              alt=""
-              className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-            />}
+          <ProjectCover project={project} />
         </div>
         <div className="p-3">
           <p className="truncate text-sm font-medium">{project.name}</p>
           <p className="text-xs text-muted-foreground">
-            {t("assets", { count: project.assets.length })} · {timeLabel}
+            {t("assets", { count: project.assetCount })} · {timeLabel(project.updatedAt)}
           </p>
         </div>
       </button>
@@ -86,16 +107,17 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
 export default function ProjectsPage() {
   const t = useTranslations("projects");
   const router = useRouter();
-  const { folders, projects, setActiveProject, createProject, createFolder } = useStudio();
+  const { folders, projects, projectsLoading, setActiveProject, createProject, createFolder } =
+    useStudio();
 
   const openProject = (id: string) => {
     setActiveProject(id);
     router.push("/create");
   };
 
-  const newProject = () => {
-    createProject(null);
+  const newProject = async () => {
     router.push("/create");
+    await createProject(null);
   };
 
   const unfiled = projects.filter((p) => p.folderId === null);
@@ -111,20 +133,28 @@ export default function ProjectsPage() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => createFolder("New folder")}
+              onClick={() => void createFolder("New folder")}
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-surface-3 px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
             >
               <FolderPlus className="size-4" /> {t("newFolder")}
             </button>
             <button
               type="button"
-              onClick={newProject}
+              onClick={() => void newProject()}
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
               <Plus className="size-4" weight="bold" /> {t("newProject")}
             </button>
           </div>
         </div>
+
+        {projectsLoading && (
+          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="aspect-[4/3] animate-pulse rounded-xl bg-surface-2" />
+            ))}
+          </div>
+        )}
 
         <div className="mt-8 space-y-10">
           {folders.map((f) => {

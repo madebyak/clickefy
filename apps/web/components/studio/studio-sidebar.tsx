@@ -5,16 +5,18 @@ import { useRouter, usePathname } from "@/i18n/navigation";
 import { Plus, FolderSimple, Heart, CaretUpDown } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { useSession } from "@/lib/use-session";
+import { useTimeLabel } from "@/lib/time-label";
 import { cn } from "@/lib/utils";
 
 export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useTranslations("studio");
-  const tt = useTranslations("time");
   const ta = useTranslations("account");
   const router = useRouter();
   const pathname = usePathname();
-  const { projects, activeProjectId, setActiveProject, createProject } = useStudio();
+  const { projects, projectsLoading, activeProjectId, setActiveProject, createProject } =
+    useStudio();
   const { user, plan } = useSession();
+  const timeLabel = useTimeLabel();
 
   const displayName = user?.name?.trim() || user?.email.split("@")[0] || "…";
   const initials =
@@ -26,8 +28,6 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
       .toUpperCase() || "?";
 
   const inBrowser = pathname === "/projects";
-  const timeLabel = (raw: string) =>
-    raw === "Just now" ? tt("justNow") : raw === "Yesterday" ? tt("yesterday") : raw;
 
   const openProject = (id: string) => {
     setActiveProject(id);
@@ -35,10 +35,10 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
     onClose();
   };
 
-  const newProject = () => {
-    createProject(null);
+  const newProject = async () => {
     router.push("/create");
     onClose();
+    await createProject(null);
   };
 
   return (
@@ -96,8 +96,14 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
           {t("recentProjects")}
         </p>
         <div className="mt-2 flex-1 space-y-1 overflow-y-auto">
+          {projectsLoading &&
+            Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-lg p-2">
+                <span className="size-9 shrink-0 animate-pulse rounded-md bg-surface-3" />
+                <span className="h-3.5 w-28 animate-pulse rounded bg-surface-3" />
+              </div>
+            ))}
           {projects.map((p) => {
-            const cover = p.assets[0];
             const active = !inBrowser && activeProjectId === p.id;
             return (
               <button
@@ -110,14 +116,26 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
                 )}
               >
                 <span className="size-9 shrink-0 overflow-hidden rounded-md bg-surface-3">
-                  {cover &&
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={cover.poster ?? cover.src} alt="" className="size-full object-cover" />}
+                  {p.cover &&
+                    (p.cover.kind === "video" ? (
+                      // First frame via preload — video posters aren't
+                      // generated yet (worker uses the video key itself).
+                      <video
+                        src={p.cover.url}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="size-full object-cover"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.cover.url} alt="" className="size-full object-cover" />
+                    ))}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{p.name}</span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {t("assets", { count: p.assets.length })} · {timeLabel(p.time)}
+                    {t("assets", { count: p.assetCount })} · {timeLabel(p.updatedAt)}
                   </span>
                 </span>
               </button>

@@ -24,6 +24,7 @@ import type {
   JobProgress,
   JobResult,
 } from './json-types';
+import { projects } from './projects';
 import { templates } from './templates';
 import { templateVersions } from './template-versions';
 import { users } from './users';
@@ -45,6 +46,12 @@ export const jobs = pgTable(
     templateVersionId: uuid('template_version_id').references(() => templateVersions.id, {
       onDelete: 'restrict',
     }),
+
+    // Where this generation should be filed (web studio projects).
+    // NULL for mobile-created jobs — mobile keeps its flat history and
+    // is untouched by the projects feature. Project deleted ⇒ the job
+    // row survives unfiled (history + ledger context stay intact).
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
 
     // Provenance discriminator. 'template' (default) = a normal template
     // generation; 'user' = a prompt-first "create" generation. Drives the
@@ -94,6 +101,7 @@ export const jobs = pgTable(
     index('jobs_template_completed_idx').on(t.templateId, t.completedAt),
     index('jobs_purge_idx').on(t.purgeAt),
     index('jobs_idempotency_idx').on(t.userId, t.idempotencyKey),
+    index('jobs_project_idx').on(t.projectId),
   ],
 );
 

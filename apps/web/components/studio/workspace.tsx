@@ -1,12 +1,25 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { Sparkle, ShareNetwork, DownloadSimple } from "@phosphor-icons/react";
+import {
+  Sparkle,
+  ShareNetwork,
+  DownloadSimple,
+  CircleNotch,
+  Warning,
+  X,
+} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { useStudio, type Asset, type Project } from "@/components/studio/studio-context";
+import {
+  useStudio,
+  type Asset,
+  type PendingGeneration,
+  type StudioProject,
+} from "@/components/studio/studio-context";
 import { Masonry } from "@/components/studio/masonry";
 import { SelectionBar } from "@/components/studio/selection-bar";
 import { PromptBar } from "@/components/generate/prompt-bar";
+import { useTimeLabel } from "@/lib/time-label";
 
 function downloadAsset(a: Asset) {
   const el = document.createElement("a");
@@ -32,25 +45,86 @@ function EmptyState({ kind }: { kind: "image" | "video" }) {
   );
 }
 
+/** In-flight / failed generation placeholders, docked above the masonry. */
+function PendingStrip({
+  pending,
+  onDismiss,
+}: {
+  pending: PendingGeneration[];
+  onDismiss: (jobId: string) => void;
+}) {
+  const t = useTranslations("studio");
+  if (pending.length === 0) return null;
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {pending.map((p) => (
+        <div
+          key={p.jobId}
+          className={cn(
+            "relative flex aspect-square flex-col items-center justify-center gap-2 overflow-hidden rounded-xl bg-surface-2 p-3 text-center",
+            p.status !== "failed" && "animate-pulse",
+          )}
+        >
+          {p.status === "failed" ? (
+            <>
+              <Warning weight="fill" className="size-6 text-status-red" />
+              <p className="text-xs font-medium text-foreground">{t("generationFailed")}</p>
+              {p.error && (
+                <p className="line-clamp-2 text-[11px] text-muted-foreground">{p.error}</p>
+              )}
+              <button
+                type="button"
+                aria-label={t("dismiss")}
+                onClick={() => onDismiss(p.jobId)}
+                className="absolute end-2 top-2 grid size-6 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-black"
+              >
+                <X className="size-3.5" weight="bold" />
+              </button>
+            </>
+          ) : (
+            <>
+              <CircleNotch className="size-6 animate-spin text-primary" />
+              <p className="text-xs font-medium text-foreground">
+                {p.status === "queued" ? t("queued") : t("generating")}
+              </p>
+              {p.stageLabel && (
+                <p className="line-clamp-1 text-[11px] text-muted-foreground">{p.stageLabel}</p>
+              )}
+              {p.status === "processing" && typeof p.stageProgress === "number" && (
+                <div className="absolute inset-x-3 bottom-3 h-1 overflow-hidden rounded-full bg-black/40">
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width]"
+                    style={{ width: `${Math.round(p.stageProgress * 100)}%` }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ProjectView({
   project,
+  assets,
+  pending,
+  onDismissPending,
   onAttach,
   selectedIds,
   onToggleSelect,
 }: {
-  project: Project;
+  project: StudioProject;
+  assets: Asset[];
+  pending: PendingGeneration[];
+  onDismissPending: (jobId: string) => void;
   onAttach: (a: Asset) => void;
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
 }) {
   const t = useTranslations("studio");
-  const tt = useTranslations("time");
-  const timeLabel =
-    project.time === "Just now"
-      ? tt("justNow")
-      : project.time === "Yesterday"
-        ? tt("yesterday")
-        : project.time;
+  const timeLabel = useTimeLabel();
   return (
     <div>
       <div className="flex flex-col items-center py-8 text-center">
@@ -60,11 +134,12 @@ function ProjectView({
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">{project.name}</h1>
         <p className="mt-1 max-w-md text-sm text-muted-foreground">{t("projectHint")}</p>
         <p className="mt-3 text-xs text-muted-foreground">
-          {t("assetsUpdated", { count: project.assets.length, time: timeLabel })}
+          {t("assetsUpdated", { count: assets.length, time: timeLabel(project.updatedAt) })}
         </p>
       </div>
+      <PendingStrip pending={pending} onDismiss={onDismissPending} />
       <Masonry
-        assets={project.assets}
+        assets={assets}
         onAssetClick={onAttach}
         selectedIds={selectedIds}
         onToggleSelect={onToggleSelect}
@@ -76,26 +151,42 @@ function ProjectView({
 export function Workspace({ kind }: { kind: "image" | "video" }) {
   const t = useTranslations("studio");
   const {
+    folders,
     activeProject,
-    attachments,
+    activeAssets,
+    activeAssetsLoading,
     addAttachment,
-    removeAttachment,
+    pending,
+    dismissPending,
     selectedAssetIds,
     toggleAssetSelection,
   } = useStudio();
 
-  const isEmpty = !activeProject || activeProject.assets.length === 0;
+  const projectPending = activeProject
+    ? pending.filter((p) => p.projectId === activeProject.id)
+    : [];
+  const isEmpty =
+    !activeProject ||
+    (!activeAssetsLoading && activeAssets.length === 0 && projectPending.length === 0);
+
+  const folderName = activeProject?.folderId
+    ? folders.find((f) => f.id === activeProject.folderId)?.name
+    : null;
 
   const downloadAll = () =>
-    activeProject?.assets.forEach((a, i) => setTimeout(() => downloadAsset(a), i * 250));
+    activeAssets.forEach((a, i) => setTimeout(() => downloadAsset(a), i * 250));
 
   return (
     <main className="relative flex min-w-0 flex-1 flex-col">
       {/* content header */}
       <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-center gap-2 text-sm">
-          <span className="hidden truncate text-muted-foreground sm:inline">Moonwhale Campaigns</span>
-          <span className="hidden text-muted-foreground sm:inline">/</span>
+          {folderName && (
+            <>
+              <span className="hidden truncate text-muted-foreground sm:inline">{folderName}</span>
+              <span className="hidden text-muted-foreground sm:inline">/</span>
+            </>
+          )}
           <span className="truncate font-medium">
             {activeProject ? activeProject.name : t("newProject")}
           </span>
@@ -131,10 +222,19 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
       >
         {isEmpty ? (
           <EmptyState kind={kind} />
+        ) : activeProject && activeAssetsLoading && activeAssets.length === 0 ? (
+          <div className="grid grid-cols-2 gap-3 pt-6 sm:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="aspect-square animate-pulse rounded-xl bg-surface-2" />
+            ))}
+          </div>
         ) : (
           activeProject && (
             <ProjectView
               project={activeProject}
+              assets={activeAssets}
+              pending={projectPending}
+              onDismissPending={dismissPending}
               onAttach={addAttachment}
               selectedIds={selectedAssetIds}
               onToggleSelect={toggleAssetSelection}
@@ -147,7 +247,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background to-transparent px-4 pb-4 pt-12 sm:px-6">
         <div className="pointer-events-auto mx-auto max-w-4xl">
           <SelectionBar />
-          <PromptBar kind={kind} attachments={attachments} onRemoveAttachment={removeAttachment} />
+          <PromptBar kind={kind} />
         </div>
       </div>
     </main>

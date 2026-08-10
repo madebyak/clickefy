@@ -15,7 +15,10 @@ import { relations } from 'drizzle-orm';
 
 import { categories } from './categories';
 import { creditLedger } from './credit-ledger';
+import { folders } from './folders';
 import { jobs } from './jobs';
+import { projectAssets } from './project-assets';
+import { projects } from './projects';
 import { savedTemplates } from './saved-templates';
 import { templateCategories } from './template-categories';
 import { templateVersions } from './template-versions';
@@ -89,7 +92,29 @@ export const jobsRelations = relations(jobs, ({ one, many }) => ({
     fields: [jobs.templateVersionId],
     references: [templateVersions.id],
   }),
+  project: one(projects, { fields: [jobs.projectId], references: [projects.id] }),
   creditEntries: many(creditLedger),
+}));
+
+export const foldersRelations = relations(folders, ({ one, many }) => ({
+  user: one(users, { fields: [folders.userId], references: [users.id] }),
+  projects: many(projects),
+}));
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  user: one(users, { fields: [projects.userId], references: [users.id] }),
+  folder: one(folders, { fields: [projects.folderId], references: [folders.id] }),
+  assets: many(projectAssets),
+  jobs: many(jobs),
+}));
+
+export const projectAssetsRelations = relations(projectAssets, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectAssets.projectId],
+    references: [projects.id],
+  }),
+  user: one(users, { fields: [projectAssets.userId], references: [users.id] }),
+  job: one(jobs, { fields: [projectAssets.jobId], references: [jobs.id] }),
 }));
 
 export const creditLedgerRelations = relations(creditLedger, ({ one }) => ({

@@ -403,6 +403,8 @@ export interface CreateGenerationInput {
   endFrame?: Extract<JobInputValue, { kind: 'image' }>;
   references?: Array<Extract<JobInputValue, { kind: 'image' }>>;
   idempotencyKey?: string;
+  /** Web-studio project to file the outputs into (omitted on mobile). */
+  projectId?: string;
 }
 
 /**

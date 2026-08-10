@@ -35,8 +35,12 @@ import type {
 import { JobSubmissionError, RateLimitedError } from '../types';
 import type {
   CreditsSummary,
+  ProjectAssetsResponse,
+  ProjectsListResponse,
   SDKClient,
   StoreCatalog,
+  StudioFolder,
+  StudioProject,
   UploadSource,
   UploadedAssetRef,
 } from './contract';
@@ -347,6 +351,34 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
     return (await res.json()) as T;
   }
 
+  // Authed mutation with a JSON body. Returns the parsed envelope `data`
+  // (or undefined for 204s). Used by the projects/folders CRUD surface.
+  async function mutateJson<T>(
+    method: 'POST' | 'PATCH' | 'DELETE',
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (getToken) {
+      const token = await getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    const res = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    await throwIfRateLimited(res, `${method} ${path}`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`${method} ${path} ${res.status}: ${text.slice(0, 200)}`);
+    }
+    if (res.status === 204) return undefined as T;
+    const json = (await res.json()) as { data: T };
+    return json.data;
+  }
+
   // Bodyless authed mutation (POST/DELETE with no request body). Used by
   // simple state toggles like the notification read/clear endpoints.
   async function mutate(method: 'POST' | 'DELETE', path: string): Promise<void> {
@@ -584,6 +616,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
               startFrame: input.startFrame,
               endFrame: input.endFrame,
               references: input.references ?? [],
+              projectId: input.projectId,
             }),
           });
         } catch (err) {
@@ -850,6 +883,62 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
       async getSummary(): Promise<CreditsSummary> {
         const json = await get<ApiEnvelope<CreditsSummary>>('/v1/credits/me', { auth: true });
         return json.data;
+      },
+    },
+
+    projects: {
+      // The web studio's persistent projects layer. Thin wrappers over
+      // /v1/projects + /v1/folders + /v1/assets; all server-scoped to
+      // the caller, so no client-side ownership logic lives here.
+      async list(opts) {
+        const params = new URLSearchParams();
+        if (opts?.limit) params.set('limit', String(opts.limit));
+        if (opts?.cursor) params.set('cursor', opts.cursor);
+        const qs = params.size > 0 ? `?${params}` : '';
+        const json = await get<ApiEnvelope<ProjectsListResponse>>(`/v1/projects${qs}`, {
+          auth: true,
+        });
+        return json.data;
+      },
+      async create(input) {
+        return mutateJson<StudioProject>('POST', '/v1/projects', input ?? {});
+      },
+      async update(projectId, input) {
+        return mutateJson('PATCH', `/v1/projects/${projectId}`, input);
+      },
+      async delete(projectId) {
+        await mutateJson<void>('DELETE', `/v1/projects/${projectId}`);
+      },
+      async listAssets(projectId, opts) {
+        const params = new URLSearchParams();
+        if (opts?.limit) params.set('limit', String(opts.limit));
+        if (opts?.cursor) params.set('cursor', opts.cursor);
+        const qs = params.size > 0 ? `?${params}` : '';
+        const json = await get<ApiEnvelope<ProjectAssetsResponse>>(
+          `/v1/projects/${projectId}/assets${qs}`,
+          { auth: true },
+        );
+        return json.data;
+      },
+      async copyAssets(projectId, assetIds) {
+        return mutateJson<{ copied: number }>('POST', `/v1/projects/${projectId}/assets`, {
+          assetIds,
+        });
+      },
+      async moveAssets(assetIds, projectId) {
+        return mutateJson<{ moved: number }>('PATCH', '/v1/assets', { assetIds, projectId });
+      },
+      async deleteAssets(assetIds) {
+        await mutateJson<void>('DELETE', '/v1/assets', { assetIds });
+      },
+      async createFolder(name) {
+        return mutateJson<StudioFolder>('POST', '/v1/folders', { name });
+      },
+      async renameFolder(folderId, name) {
+        return mutateJson('PATCH', `/v1/folders/${folderId}`, { name });
+      },
+      async deleteFolder(folderId) {
+        await mutateJson<void>('DELETE', `/v1/folders/${folderId}`);
       },
     },
 

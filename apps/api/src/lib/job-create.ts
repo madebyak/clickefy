@@ -260,6 +260,12 @@ export interface CreateUserJobInput {
   inputs: Record<string, JobInputValueParsed>;
   options: { aspectRatio?: string; duration?: number };
   idempotencyKey: string | null;
+  /**
+   * Web-studio project to file the outputs into. Ownership is verified
+   * by the route BEFORE the debit; NULL (mobile / unfiled) leaves the
+   * flat-history behavior untouched.
+   */
+  projectId?: string | null;
 }
 
 /**
@@ -343,12 +349,12 @@ export async function createUserJobAtomically(
       ),
       new_job AS (
         INSERT INTO jobs (
-          user_id, template_id, template_version_id,
+          user_id, template_id, template_version_id, project_id,
           source, model_key, cost_credits,
           status, inputs, options, idempotency_key
         )
         SELECT
-          ${args.userId}::uuid, NULL, NULL,
+          ${args.userId}::uuid, NULL, NULL, ${args.projectId ?? null}::uuid,
           'user', ${args.modelKey}, ${cost}::int,
           'queued', ${inputsJson}::jsonb, ${optionsJson}::jsonb, ${args.idempotencyKey}
         FROM user_debit

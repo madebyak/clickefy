@@ -90,6 +90,9 @@ export const createUserJobSchema = z.object({
   // Reference / subject images. Hard ceiling matches the largest model
   // budget (Gemini = 14); per-model caps are enforced in validation.
   references: z.array(jobInputImageSchema).max(16).optional().default([]),
+  // Web-studio project to file the outputs into. Ownership is verified
+  // in the handler; omitted (mobile) keeps the flat-history behavior.
+  projectId: z.string().uuid().optional(),
 });
 
 export type CreateUserJobBody = z.infer<typeof createUserJobSchema>;

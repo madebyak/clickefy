@@ -6,6 +6,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@clickfy/web", "dev"],
       "port": 3001
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@clickfy/api", "dev"],
+      "port": 8787
     }
   ]
 }

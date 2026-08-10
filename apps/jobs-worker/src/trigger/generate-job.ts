@@ -33,6 +33,8 @@ import { and, eq } from 'drizzle-orm';
 
 import {
   jobs,
+  projectAssets,
+  projects,
   templateVersions,
   type JobError,
   type JobInputValue,
@@ -459,6 +461,62 @@ export const generateJob = task({
         reason: 'row no longer processing (sweeper likely refunded it)',
       });
       return { status: 'superseded' as const, durationMs };
+    }
+
+    // ── Materialize project assets (web studio) ────────────────────
+    // Only when the job is filed into a project (`project_id` set by
+    // POST /v1/jobs/create; NULL for all mobile jobs). Runs inside the
+    // finalize-winner branch so a sweeper-refunded run never files
+    // assets, and `onConflictDoNothing` on the unique
+    // (project_id, job_id, output_index) makes Trigger.dev retries
+    // idempotent. Ordering matches the client-visible outputs array
+    // (images first, then videos).
+    const completedProjectId = completedRows[0]!.projectId;
+    if (completedProjectId) {
+      try {
+        const assetRows = [
+          ...images.map((img, i) => ({
+            projectId: completedProjectId,
+            userId: jobRow.userId,
+            jobId,
+            outputIndex: i,
+            kind: 'image' as const,
+            r2Key: img.r2Key,
+            width: img.width || null,
+            height: img.height || null,
+          })),
+          ...videos.map((vid, i) => ({
+            projectId: completedProjectId,
+            userId: jobRow.userId,
+            jobId,
+            outputIndex: images.length + i,
+            kind: 'video' as const,
+            r2Key: vid.streamId,
+            width: vid.width ?? null,
+            height: vid.height ?? null,
+            durationSec: vid.durationSec || null,
+            posterR2Key: vid.posterR2Key,
+          })),
+        ];
+        if (assetRows.length > 0) {
+          await db.insert(projectAssets).values(assetRows).onConflictDoNothing();
+          // Bump the project's recency so it surfaces at the top of the
+          // studio sidebar the moment its new assets land.
+          await db
+            .update(projects)
+            .set({ updatedAt: new Date() })
+            .where(eq(projects.id, completedProjectId));
+        }
+      } catch (err) {
+        // Filing must never flip a completed job's status — the outputs
+        // exist and the user paid; the web app also falls back to job
+        // history. Log loudly and move on.
+        logger.error('generate-job:project-assets-failed', {
+          jobId,
+          projectId: completedProjectId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     logger.info('generate-job:done', { jobId, durationMs, outputCount: userVisibleKeys.length });

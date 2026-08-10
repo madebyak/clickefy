@@ -34,7 +34,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 
-import { jobs, providerModels, templates, users as usersTable } from '@clickfy/db';
+import { jobs, projects, providerModels, templates, users as usersTable } from '@clickfy/db';
 import {
   CREATE_END_FRAME_KEY,
   CREATE_PROMPT_KEY,
@@ -428,6 +428,23 @@ jobsRoute.post(
       return c.json({ error: validationError }, status);
     }
 
+    // ── Project ownership (web studio) ─────────────────────────────
+    // Verified BEFORE the debit so a bad id can never cost credits. A
+    // foreign/unknown project 404s (no existence leak — same compound
+    // (id, user_id) scoping as everywhere else).
+    if (body.projectId) {
+      const ownedProject = await c.var.db.query.projects.findFirst({
+        where: and(eq(projects.id, body.projectId), eq(projects.userId, user.id)),
+        columns: { id: true },
+      });
+      if (!ownedProject) {
+        return c.json(
+          { error: { code: 'project_not_found', message: 'Project not found.' } },
+          404,
+        );
+      }
+    }
+
     // ── Assemble jobs.inputs with canonical create field keys ──────
     const inputs: Record<string, JobInputValueParsed> = {
       [CREATE_PROMPT_KEY]: { kind: 'text', value: body.prompt },
@@ -457,6 +474,7 @@ jobsRoute.post(
         inputs,
         options,
         idempotencyKey,
+        projectId: body.projectId ?? null,
       });
     } catch (err) {
       // Same idempotency-conflict handling as the template path: the

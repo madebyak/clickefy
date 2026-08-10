@@ -150,7 +150,17 @@
     "more": "More",
     "removeAttachment": "Remove attachment",
     "image": "Image",
-    "video": "Video"
+    "video": "Video",
+    "auto": "Auto",
+    "sound": "Sound",
+    "generating": "Generating…",
+    "generationStarted": "{count, plural, =1 {Generation started} other {# generations started}}",
+    "insufficientCredits": "Not enough credits — top up or upgrade to continue",
+    "rateLimited": "Too many requests — try again in {seconds}s",
+    "submitFailed": "Couldn't start the generation — try again",
+    "signInToGenerate": "Sign in to generate",
+    "startFrameNeeded": "This model animates an image — add a start frame to continue",
+    "maxAttachments": "This model accepts up to {max} images"
   },
   "account": {
     "availableCredits": "Available credits",
@@ -197,7 +207,11 @@
     "selected": "{count, plural, other {# selected}}",
     "clearSelection": "Clear selection",
     "downloadSelected": "Download selected",
-    "deleteSelected": "Delete selected"
+    "deleteSelected": "Delete selected",
+    "queued": "Queued",
+    "generating": "Generating…",
+    "generationFailed": "Generation failed",
+    "dismiss": "Dismiss"
   },
   "projects": {
     "heading": "My Projects",

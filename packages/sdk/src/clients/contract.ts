@@ -363,6 +363,82 @@ export interface CreditsClient {
   getSummary(): Promise<CreditsSummary>;
 }
 
+// ─── Projects (web studio) ───────────────────────────────────────────
+
+export interface StudioFolder {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface StudioProjectCover {
+  kind: 'image' | 'video';
+  url: string;
+  posterUrl: string | null;
+}
+
+export interface StudioProject {
+  id: string;
+  name: string;
+  folderId: string | null;
+  assetCount: number;
+  cover: StudioProjectCover | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudioAsset {
+  id: string;
+  projectId: string;
+  jobId: string | null;
+  kind: 'image' | 'video';
+  url: string;
+  posterUrl: string | null;
+  width: number | null;
+  height: number | null;
+  durationSec: number | null;
+  createdAt: string;
+}
+
+export interface ProjectsListResponse {
+  folders: StudioFolder[];
+  projects: StudioProject[];
+  nextCursor: string | null;
+}
+
+export interface ProjectAssetsResponse {
+  items: StudioAsset[];
+  nextCursor: string | null;
+}
+
+/**
+ * `/v1/projects` + `/v1/folders` + `/v1/assets` — the web studio's
+ * persistent projects layer. All methods require auth and are scoped
+ * to the caller server-side.
+ */
+export interface ProjectsClient {
+  list(opts?: { limit?: number; cursor?: string }): Promise<ProjectsListResponse>;
+  create(input?: { name?: string; folderId?: string | null }): Promise<StudioProject>;
+  update(
+    projectId: string,
+    input: { name?: string; folderId?: string | null },
+  ): Promise<Pick<StudioProject, 'id' | 'name' | 'folderId' | 'updatedAt'>>;
+  delete(projectId: string): Promise<void>;
+  listAssets(
+    projectId: string,
+    opts?: { limit?: number; cursor?: string },
+  ): Promise<ProjectAssetsResponse>;
+  /** Copy assets (caller-owned) into a project. Duplicates dedupe silently. */
+  copyAssets(projectId: string, assetIds: string[]): Promise<{ copied: number }>;
+  /** Move assets to another project (rows are re-created; ids change). */
+  moveAssets(assetIds: string[], projectId: string): Promise<{ moved: number }>;
+  deleteAssets(assetIds: string[]): Promise<void>;
+  createFolder(name: string): Promise<StudioFolder>;
+  renameFolder(folderId: string, name: string): Promise<Pick<StudioFolder, 'id' | 'name'>>;
+  /** Projects inside fall back to "unfiled" — never deleted. */
+  deleteFolder(folderId: string): Promise<void>;
+}
+
 export interface ModelsClient {
   /**
    * Create-eligible models for the "create from scratch" screen, in
@@ -400,6 +476,7 @@ export interface SDKClient {
   catalog: CatalogClient;
   credits: CreditsClient;
   generation: GenerationClient;
+  projects: ProjectsClient;
   library: LibraryClient;
   models: ModelsClient;
   notifications: NotificationsClient;

@@ -150,7 +150,17 @@
     "more": "أكثر",
     "removeAttachment": "إزالة المرفق",
     "image": "صورة",
-    "video": "فيديو"
+    "video": "فيديو",
+    "auto": "تلقائي",
+    "sound": "الصوت",
+    "generating": "جارٍ الإنشاء…",
+    "generationStarted": "{count, plural, =1 {بدأ الإنشاء} other {بدأ # إنشاءات}}",
+    "insufficientCredits": "رصيدك غير كافٍ — اشحن رصيدك أو قم بالترقية للمتابعة",
+    "rateLimited": "طلبات كثيرة — حاول مجددًا بعد {seconds} ثانية",
+    "submitFailed": "تعذّر بدء الإنشاء — حاول مرة أخرى",
+    "signInToGenerate": "سجّل الدخول للإنشاء",
+    "startFrameNeeded": "هذا النموذج يحرّك صورة — أضف الإطار الأول للمتابعة",
+    "maxAttachments": "هذا النموذج يقبل حتى {max} صور"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",
@@ -197,7 +207,11 @@
     "selected": "{count, plural, other {# محدد}}",
     "clearSelection": "إلغاء التحديد",
     "downloadSelected": "تنزيل المحدد",
-    "deleteSelected": "حذف المحدد"
+    "deleteSelected": "حذف المحدد",
+    "queued": "في الانتظار",
+    "generating": "جارٍ الإنشاء…",
+    "generationFailed": "فشل الإنشاء",
+    "dismiss": "إغلاق"
   },
   "projects": {
     "heading": "مشاريعي",

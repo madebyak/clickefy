@@ -48,13 +48,19 @@ function ProjectPicker({
                 }}
               >
                 <span className="size-6 shrink-0 overflow-hidden rounded bg-surface-2">
-                  {p.assets[0] &&
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.assets[0].poster ?? p.assets[0].src}
-                      alt=""
-                      className="size-full object-cover"
-                    />}
+                  {p.cover &&
+                    (p.cover.kind === "video" ? (
+                      <video
+                        src={p.cover.url}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="size-full object-cover"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.cover.url} alt="" className="size-full object-cover" />
+                    ))}
                 </span>
                 <span className="truncate">{p.name}</span>
               </MenuItem>
@@ -75,6 +81,7 @@ export function SelectionBar() {
     clearSelection,
     activeProject,
     activeProjectId,
+    activeAssets,
     copyAssets,
     moveAssets,
     deleteAssets,
@@ -83,7 +90,7 @@ export function SelectionBar() {
   if (selectedAssetIds.length === 0 || !activeProject || !activeProjectId) return null;
 
   const downloadSelected = () => {
-    const chosen = activeProject.assets.filter((a) => selectedAssetIds.includes(a.id));
+    const chosen = activeAssets.filter((a) => selectedAssetIds.includes(a.id));
     chosen.forEach((a, i) =>
       setTimeout(() => {
         const el = document.createElement("a");

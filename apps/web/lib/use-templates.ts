@@ -28,14 +28,26 @@ export function useTemplateCategories() {
   });
 }
 
-export function useTemplates(opts: { categoryId?: string; search?: string }) {
+export function useTemplates(opts: {
+  categoryId?: string;
+  search?: string;
+  kind?: "image" | "video" | "image_set" | "video_image";
+}) {
   const locale = useLocale();
   return useQuery({
-    queryKey: ["catalog", "templates", locale, opts.categoryId ?? "all", opts.search ?? ""],
+    queryKey: [
+      "catalog",
+      "templates",
+      locale,
+      opts.categoryId ?? "all",
+      opts.search ?? "",
+      opts.kind ?? "all",
+    ],
     queryFn: async () => {
       const page = await getSDK().catalog.listTemplates({
         categoryId: opts.categoryId,
         search: opts.search || undefined,
+        kind: opts.kind,
         limit: 50,
       });
       return { ...page, items: page.data.map(rebaseTemplate) };

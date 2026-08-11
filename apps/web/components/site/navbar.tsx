@@ -17,7 +17,7 @@ const NAV_LINKS = [
   { key: "storyboard", href: "#" },
   { key: "cinemaStudio", href: "#" },
   { key: "aiUgc", href: "#" },
-  { key: "templates", href: "/#templates" },
+  { key: "templates", href: "/templates" },
   { key: "pricing", href: "/#pricing" },
 ] as const;
 

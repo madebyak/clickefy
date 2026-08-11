@@ -674,14 +674,22 @@ async function failJob(jobId: string, error: JobError): Promise<{ status: 'faile
   // Refund credits for infra-class failures only. User-fault codes
   // (bad inputs, unknown_model) stay debited so the user has to
   // correct their submission rather than retrying for free.
-  const refunded = isRefundable(error.code);
-  if (refunded) {
+  //
+  // `refunded` reflects the ACTUAL outcome, not eligibility — the push
+  // copy below must never claim a refund that didn't happen. A return
+  // of 0 from refundForJob means the refund already applied on an
+  // earlier attempt (idempotent re-call), which still counts: the user
+  // has their credits either way. Only a throw leaves refunded=false.
+  let refunded = false;
+  if (isRefundable(error.code)) {
     try {
       await refundForJob(jobId);
+      refunded = true;
     } catch (refundErr) {
-      // A refund failure shouldn't mask the original job failure —
-      // log loudly and continue. The recovery cron picks up missed
-      // refunds on its next sweep.
+      // A refund failure shouldn't mask the original job failure — log
+      // loudly and continue. NOTE: nothing retries a missed refund
+      // automatically (the stuck-job sweeper only touches `processing`
+      // rows, never `failed` ones), so this log line is the only trace.
       logger.error('generate-job:refund-failed', {
         jobId,
         err: String(refundErr),

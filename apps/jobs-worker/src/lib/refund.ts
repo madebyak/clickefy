@@ -86,8 +86,10 @@ async function runRefund(db: ReturnType<typeof getDb>, jobId: string): Promise<n
         WHERE job_id = ${jobId}::uuid AND reason = 'job_charge'
       ),
       totals AS (
+        -- Postgres has no max(uuid); all charge rows for one job share
+        -- one user_id, so any row's value works.
         SELECT
-          MAX(user_id) AS user_id,
+          (SELECT user_id FROM charges LIMIT 1) AS user_id,
           COALESCE(SUM(CASE WHEN bucket = 'promo'        THEN refund_amount END), 0)::int AS r_promo,
           COALESCE(SUM(CASE WHEN bucket = 'subscription' THEN refund_amount END), 0)::int AS r_sub,
           COALESCE(SUM(CASE WHEN bucket = 'topup'        THEN refund_amount END), 0)::int AS r_topup,
@@ -116,17 +118,21 @@ async function runRefund(db: ReturnType<typeof getDb>, jobId: string): Promise<n
         INSERT INTO credit_ledger (
           user_id, delta, reason, job_id, balance_after, bucket, metadata
         )
-        SELECT uc.user_id, uc.r_promo, 'refund', ${jobId}::uuid,
+        -- The ::credit_reason casts are load-bearing (same as the charge
+        -- CTE in apps/api/src/lib/job-create.ts): UNION ALL resolves the
+        -- bare literals to text, and Postgres refuses text -> enum on
+        -- INSERT ... SELECT.
+        SELECT uc.user_id, uc.r_promo, 'refund'::credit_reason, ${jobId}::uuid,
                uc.new_balance, 'promo',
                jsonb_build_object('rPromo', uc.r_promo, 'rSub', uc.r_sub, 'rTopup', uc.r_topup)
         FROM user_credit uc WHERE uc.r_promo > 0
         UNION ALL
-        SELECT uc.user_id, uc.r_sub, 'refund', ${jobId}::uuid,
+        SELECT uc.user_id, uc.r_sub, 'refund'::credit_reason, ${jobId}::uuid,
                uc.new_balance, 'subscription',
                jsonb_build_object('rPromo', uc.r_promo, 'rSub', uc.r_sub, 'rTopup', uc.r_topup)
         FROM user_credit uc WHERE uc.r_sub > 0
         UNION ALL
-        SELECT uc.user_id, uc.r_topup, 'refund', ${jobId}::uuid,
+        SELECT uc.user_id, uc.r_topup, 'refund'::credit_reason, ${jobId}::uuid,
                uc.new_balance, 'topup',
                jsonb_build_object('rPromo', uc.r_promo, 'rSub', uc.r_sub, 'rTopup', uc.r_topup)
         FROM user_credit uc WHERE uc.r_topup > 0

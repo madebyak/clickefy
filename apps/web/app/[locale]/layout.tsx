@@ -24,6 +24,30 @@ export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
 }
 
+/**
+ * Production Clerk keys encode the frontend-API host (base64 between
+ * `pk_live_` and a trailing `$`). Passing it as ClerkProvider's `domain`
+ * pins the SDK to direct frontend-API mode and disables its .vercel.app
+ * auto-proxy heuristic. Without this, a custom domain fronting a Vercel
+ * deployment whose baked VERCEL_PROJECT_PRODUCTION_URL still names the
+ * *.vercel.app host half-engages the proxy — the page loads clerk-js
+ * from /__clerk while the middleware (request-host-based) declines to
+ * serve it → HTML 404 under nosniff → blank sign-in. Dev keys return
+ * undefined and keep the default dev-instance behavior.
+ */
+function liveClerkDomain(): string | undefined {
+  const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
+  if (!pk.startsWith("pk_live_")) return undefined;
+  try {
+    const host = Buffer.from(pk.slice("pk_live_".length), "base64")
+      .toString("utf8")
+      .replace(/\$$/, "");
+    return host || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://clickefy-webb.vercel.app"),
   title: "Clickefy — AI Creator Studio",
@@ -60,6 +84,7 @@ export default async function LocaleLayout({
           localization={locale === "ar" ? arSA : undefined}
           signInUrl={locale === "ar" ? "/ar/sign-in" : "/sign-in"}
           signUpUrl={locale === "ar" ? "/ar/sign-up" : "/sign-up"}
+          domain={liveClerkDomain()}
         >
           <NextIntlClientProvider>
             <Providers>{children}</Providers>

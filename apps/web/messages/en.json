@@ -91,7 +91,8 @@
     "runStarted": "Generation started — watch it in your project",
     "runFailed": "Couldn't start the generation — try again",
     "insufficientCredits": "Not enough credits — top up or upgrade to continue",
-    "rateLimited": "Too many requests — try again in {seconds}s"
+    "rateLimited": "Too many requests — try again in {seconds}s",
+    "unsupportedRequired": "This template needs an input the web app can't provide yet — run it in the mobile app."
   },
   "pricing": {
     "heading": "Simple, credit-based pricing",
@@ -244,7 +245,32 @@
     "removeFromFolder": "Remove from folder",
     "projectOptions": "Project options",
     "emptyFolder": "Empty — move a project here from its ··· menu.",
-    "assets": "{count, plural, one {# asset} other {# assets}}"
+    "assets": "{count, plural, one {# asset} other {# assets}}",
+    "defaultFolderName": "New folder",
+    "folderOptions": "Folder options",
+    "renameAction": "Rename",
+    "deleteFolderAction": "Delete folder",
+    "renameProjectAction": "Rename project",
+    "deleteProjectAction": "Delete project",
+    "renamePlaceholder": "Name",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirmDelete": "Delete",
+    "confirmDeleteFolderTitle": "Delete this folder?",
+    "confirmDeleteFolderBody": "The projects inside move to Unfiled — they won't be deleted.",
+    "confirmDeleteProjectTitle": "Delete this project?",
+    "confirmDeleteProjectBody": "This permanently deletes the project and its generated assets.",
+    "toastFolderDeleted": "Folder deleted",
+    "toastProjectDeleted": "Project deleted",
+    "toastMoveFailed": "Couldn't move the project — try again.",
+    "toastRenameFailed": "Couldn't rename — try again.",
+    "toastCopyFailed": "Couldn't copy — try again.",
+    "toastMoveAssetsFailed": "Couldn't move — try again.",
+    "toastDeleteAssetsFailed": "Couldn't delete — try again.",
+    "toastCreateFolderFailed": "Couldn't create the folder — try again.",
+    "toastDeleteFolderFailed": "Couldn't delete the folder — try again.",
+    "toastCreateProjectFailed": "Couldn't create the project — try again.",
+    "toastDeleteProjectFailed": "Couldn't delete the project — try again."
   },
   "auth": {
     "panelBadge": "Clickefy Studio",
@@ -271,5 +297,13 @@
     "avatarFailed": "Couldn't upload the photo — try again",
     "profileSaved": "Profile saved",
     "profileFailed": "Couldn't save — try again"
+  },
+  "errors": {
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "The page you're looking for doesn't exist or has moved.",
+    "errorTitle": "Something went wrong",
+    "errorBody": "An unexpected error occurred. Please try again.",
+    "retry": "Try again",
+    "goHome": "Back to home"
   }
 }

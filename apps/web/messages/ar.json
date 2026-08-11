@@ -91,7 +91,8 @@
     "runStarted": "بدأ الإنشاء — تابعه داخل مشروعك",
     "runFailed": "تعذّر بدء الإنشاء — حاول مرة أخرى",
     "insufficientCredits": "رصيدك غير كافٍ — اشحن رصيدك أو قم بالترقية للمتابعة",
-    "rateLimited": "طلبات كثيرة — حاول مجددًا بعد {seconds} ثانية"
+    "rateLimited": "طلبات كثيرة — حاول مجددًا بعد {seconds} ثانية",
+    "unsupportedRequired": "يحتاج هذا القالب إلى مدخل لا يدعمه تطبيق الويب بعد — شغّله من تطبيق الجوال."
   },
   "pricing": {
     "heading": "أسعار بسيطة قائمة على النقاط",
@@ -244,7 +245,32 @@
     "removeFromFolder": "إزالة من المجلد",
     "projectOptions": "خيارات المشروع",
     "emptyFolder": "فارغ — انقل مشروعًا إلى هنا من قائمة ··· الخاصة به.",
-    "assets": "{count, plural, =0 {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}"
+    "assets": "{count, plural, =0 {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}",
+    "defaultFolderName": "مجلد جديد",
+    "folderOptions": "خيارات المجلد",
+    "renameAction": "إعادة تسمية",
+    "deleteFolderAction": "حذف المجلد",
+    "renameProjectAction": "إعادة تسمية المشروع",
+    "deleteProjectAction": "حذف المشروع",
+    "renamePlaceholder": "الاسم",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "confirmDelete": "حذف",
+    "confirmDeleteFolderTitle": "حذف هذا المجلد؟",
+    "confirmDeleteFolderBody": "ستنتقل المشاريع بداخله إلى «غير مصنّف» — لن تُحذف.",
+    "confirmDeleteProjectTitle": "حذف هذا المشروع؟",
+    "confirmDeleteProjectBody": "سيؤدي هذا إلى حذف المشروع وأصوله المُنشأة نهائيًا.",
+    "toastFolderDeleted": "تم حذف المجلد",
+    "toastProjectDeleted": "تم حذف المشروع",
+    "toastMoveFailed": "تعذّر نقل المشروع — حاول مجددًا.",
+    "toastRenameFailed": "تعذّرت إعادة التسمية — حاول مجددًا.",
+    "toastCopyFailed": "تعذّر النسخ — حاول مجددًا.",
+    "toastMoveAssetsFailed": "تعذّر النقل — حاول مجددًا.",
+    "toastDeleteAssetsFailed": "تعذّر الحذف — حاول مجددًا.",
+    "toastCreateFolderFailed": "تعذّر إنشاء المجلد — حاول مجددًا.",
+    "toastDeleteFolderFailed": "تعذّر حذف المجلد — حاول مجددًا.",
+    "toastCreateProjectFailed": "تعذّر إنشاء المشروع — حاول مجددًا.",
+    "toastDeleteProjectFailed": "تعذّر حذف المشروع — حاول مجددًا."
   },
   "auth": {
     "panelBadge": "استوديو كليكفاي",
@@ -271,5 +297,13 @@
     "avatarFailed": "تعذّر رفع الصورة — حاول مرة أخرى",
     "profileSaved": "تم حفظ الملف الشخصي",
     "profileFailed": "تعذّر الحفظ — حاول مرة أخرى"
+  },
+  "errors": {
+    "notFoundTitle": "الصفحة غير موجودة",
+    "notFoundBody": "الصفحة التي تبحث عنها غير موجودة أو تم نقلها.",
+    "errorTitle": "حدث خطأ ما",
+    "errorBody": "حدث خطأ غير متوقع. يُرجى المحاولة مرة أخرى.",
+    "retry": "حاول مرة أخرى",
+    "goHome": "العودة إلى الرئيسية"
   }
 }

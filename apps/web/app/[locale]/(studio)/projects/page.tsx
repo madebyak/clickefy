@@ -1,11 +1,81 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
-import { FolderSimple, FolderPlus, Plus, DotsThree } from "@phosphor-icons/react";
-import { useStudio, type StudioProject } from "@/components/studio/studio-context";
+import {
+  FolderSimple,
+  FolderPlus,
+  Plus,
+  DotsThree,
+  PencilSimple,
+  Trash,
+  Check,
+  X,
+} from "@phosphor-icons/react";
+import { useStudio, type StudioFolder, type StudioProject } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Input } from "@/components/ui/input";
 import { useTimeLabel } from "@/lib/time-label";
+
+/* ------------------------------------------------------------- inline rename */
+
+function InlineRename({
+  initial,
+  ariaLabel,
+  onSubmit,
+  onCancel,
+}: {
+  initial: string;
+  ariaLabel: string;
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const t = useTranslations("projects");
+  const [value, setValue] = useState(initial);
+  const commit = () => {
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== initial) onSubmit(trimmed);
+    else onCancel();
+  };
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        autoFocus
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") onCancel();
+        }}
+        onBlur={commit}
+        className="h-8 py-1 text-sm"
+      />
+      <button
+        type="button"
+        aria-label={t("save")}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={commit}
+        className="grid size-7 shrink-0 place-items-center rounded-md text-status-green hover:bg-surface-3"
+      >
+        <Check weight="bold" className="size-4" />
+      </button>
+      <button
+        type="button"
+        aria-label={t("cancel")}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onCancel}
+        className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-surface-3"
+      >
+        <X weight="bold" className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- covers */
 
 function ProjectCover({ project }: { project: StudioProject }) {
   if (!project.cover) return null;
@@ -30,16 +100,22 @@ function ProjectCover({ project }: { project: StudioProject }) {
   );
 }
 
+/* -------------------------------------------------------------- project card */
+
 function ProjectCard({
   project,
   onOpen,
+  onRequestDelete,
 }: {
   project: StudioProject;
   onOpen: (id: string) => void;
+  onRequestDelete: (project: StudioProject) => void;
 }) {
   const t = useTranslations("projects");
-  const { folders, moveProjectToFolder } = useStudio();
+  const { folders, moveProjectToFolder, renameProject } = useStudio();
   const timeLabel = useTimeLabel();
+  const [renaming, setRenaming] = useState(false);
+
   return (
     <div className="group relative overflow-hidden rounded-xl bg-surface-2">
       <button
@@ -50,14 +126,32 @@ function ProjectCard({
         <div className="aspect-[4/3] overflow-hidden bg-surface-3">
           <ProjectCover project={project} />
         </div>
-        <div className="p-3">
-          <p className="truncate text-sm font-medium">{project.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {t("assets", { count: project.assetCount })} · {timeLabel(project.updatedAt)}
-          </p>
-        </div>
       </button>
-      <div className="absolute end-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="p-3">
+        {renaming ? (
+          <InlineRename
+            initial={project.name}
+            ariaLabel={t("renameProjectAction")}
+            onSubmit={(name) => {
+              renameProject(project.id, name);
+              setRenaming(false);
+            }}
+            onCancel={() => setRenaming(false)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => onOpen(project.id)}
+            className="block w-full text-start outline-none"
+          >
+            <p className="truncate text-sm font-medium">{project.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("assets", { count: project.assetCount })} · {timeLabel(project.updatedAt)}
+            </p>
+          </button>
+        )}
+      </div>
+      <div className="absolute end-2 top-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         <Menu
           align="end"
           panelClassName="w-52"
@@ -74,6 +168,16 @@ function ProjectCard({
         >
           {({ close }) => (
             <>
+              <MenuItem
+                onClick={() => {
+                  setRenaming(true);
+                  close();
+                }}
+              >
+                <PencilSimple className="size-4 text-muted-foreground" />
+                {t("renameProjectAction")}
+              </MenuItem>
+              <MenuSeparator />
               <MenuLabel>{t("moveToFolder")}</MenuLabel>
               {folders.map((f) => (
                 <MenuItem
@@ -87,14 +191,26 @@ function ProjectCard({
                   {f.name}
                 </MenuItem>
               ))}
+              {project.folderId !== null && (
+                <MenuItem
+                  onClick={() => {
+                    moveProjectToFolder(project.id, null);
+                    close();
+                  }}
+                >
+                  {t("removeFromFolder")}
+                </MenuItem>
+              )}
               <MenuSeparator />
               <MenuItem
+                destructive
                 onClick={() => {
-                  moveProjectToFolder(project.id, null);
+                  onRequestDelete(project);
                   close();
                 }}
               >
-                {t("removeFromFolder")}
+                <Trash className="size-4" />
+                {t("deleteProjectAction")}
               </MenuItem>
             </>
           )}
@@ -104,11 +220,100 @@ function ProjectCard({
   );
 }
 
+/* --------------------------------------------------------------- folder head */
+
+function FolderHeader({
+  folder,
+  count,
+  onRequestDelete,
+}: {
+  folder: StudioFolder;
+  count: number;
+  onRequestDelete: (folder: StudioFolder) => void;
+}) {
+  const t = useTranslations("projects");
+  const { renameFolder } = useStudio();
+  const [renaming, setRenaming] = useState(false);
+
+  return (
+    <div className="mb-4 flex items-center gap-2">
+      <FolderSimple weight="fill" className="size-4 shrink-0 text-muted-foreground" />
+      {renaming ? (
+        <InlineRename
+          initial={folder.name}
+          ariaLabel={t("renameAction")}
+          onSubmit={(name) => {
+            renameFolder(folder.id, name);
+            setRenaming(false);
+          }}
+          onCancel={() => setRenaming(false)}
+        />
+      ) : (
+        <>
+          <h2 className="text-sm font-medium">{folder.name}</h2>
+          <span className="text-xs text-muted-foreground">{count}</span>
+          <Menu
+            align="start"
+            panelClassName="w-44"
+            trigger={({ toggle }) => (
+              <button
+                type="button"
+                aria-label={t("folderOptions")}
+                onClick={toggle}
+                className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+              >
+                <DotsThree weight="bold" className="size-4" />
+              </button>
+            )}
+          >
+            {({ close }) => (
+              <>
+                <MenuItem
+                  onClick={() => {
+                    setRenaming(true);
+                    close();
+                  }}
+                >
+                  <PencilSimple className="size-4 text-muted-foreground" />
+                  {t("renameAction")}
+                </MenuItem>
+                <MenuItem
+                  destructive
+                  onClick={() => {
+                    onRequestDelete(folder);
+                    close();
+                  }}
+                >
+                  <Trash className="size-4" />
+                  {t("deleteFolderAction")}
+                </MenuItem>
+              </>
+            )}
+          </Menu>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- page */
+
 export default function ProjectsPage() {
   const t = useTranslations("projects");
   const router = useRouter();
-  const { folders, projects, projectsLoading, setActiveProject, createProject, createFolder } =
-    useStudio();
+  const {
+    folders,
+    projects,
+    projectsLoading,
+    setActiveProject,
+    createProject,
+    createFolder,
+    deleteFolder,
+    deleteProject,
+  } = useStudio();
+
+  const [pendingFolderDelete, setPendingFolderDelete] = useState<StudioFolder | null>(null);
+  const [pendingProjectDelete, setPendingProjectDelete] = useState<StudioProject | null>(null);
 
   const openProject = (id: string) => {
     setActiveProject(id);
@@ -133,7 +338,7 @@ export default function ProjectsPage() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => void createFolder("New folder")}
+              onClick={() => void createFolder(t("defaultFolderName"))}
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-surface-3 px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
             >
               <FolderPlus className="size-4" /> {t("newFolder")}
@@ -161,15 +366,16 @@ export default function ProjectsPage() {
             const items = projects.filter((p) => p.folderId === f.id);
             return (
               <section key={f.id}>
-                <div className="mb-4 flex items-center gap-2">
-                  <FolderSimple weight="fill" className="size-4 text-muted-foreground" />
-                  <h2 className="text-sm font-medium">{f.name}</h2>
-                  <span className="text-xs text-muted-foreground">{items.length}</span>
-                </div>
+                <FolderHeader folder={f} count={items.length} onRequestDelete={setPendingFolderDelete} />
                 {items.length ? (
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                     {items.map((p) => (
-                      <ProjectCard key={p.id} project={p} onOpen={openProject} />
+                      <ProjectCard
+                        key={p.id}
+                        project={p}
+                        onOpen={openProject}
+                        onRequestDelete={setPendingProjectDelete}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -190,13 +396,43 @@ export default function ProjectsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {unfiled.map((p) => (
-                  <ProjectCard key={p.id} project={p} onOpen={openProject} />
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    onOpen={openProject}
+                    onRequestDelete={setPendingProjectDelete}
+                  />
                 ))}
               </div>
             </section>
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingFolderDelete !== null}
+        title={t("confirmDeleteFolderTitle")}
+        body={t("confirmDeleteFolderBody")}
+        confirmLabel={t("confirmDelete")}
+        cancelLabel={t("cancel")}
+        onConfirm={() => {
+          if (pendingFolderDelete) void deleteFolder(pendingFolderDelete.id);
+          setPendingFolderDelete(null);
+        }}
+        onCancel={() => setPendingFolderDelete(null)}
+      />
+      <ConfirmDialog
+        open={pendingProjectDelete !== null}
+        title={t("confirmDeleteProjectTitle")}
+        body={t("confirmDeleteProjectBody")}
+        confirmLabel={t("confirmDelete")}
+        cancelLabel={t("cancel")}
+        onConfirm={() => {
+          if (pendingProjectDelete) void deleteProject(pendingProjectDelete.id);
+          setPendingProjectDelete(null);
+        }}
+        onCancel={() => setPendingProjectDelete(null)}
+      />
     </main>
   );
 }

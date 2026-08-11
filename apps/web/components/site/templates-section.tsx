@@ -91,7 +91,7 @@ export function TemplatesSection() {
   const categoriesQuery = useTemplateCategories();
   const templatesQuery = useTemplates({ categoryId });
 
-  const categories = categoriesQuery.data ?? [];
+  const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
   const roots = categories.filter((c) => !c.parentId);
   const labelById = useMemo(
     () => new Map(categories.map((c) => [c.id, c.label] as const)),

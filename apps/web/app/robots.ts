@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { config } from "@/lib/config";
 
 /**
  * Robots policy. Defaults to NOINDEX-everything: the site is in its
@@ -13,5 +14,8 @@ export default function robots(): MetadataRoute.Robots {
     rules: allow
       ? { userAgent: "*", allow: "/", disallow: ["/create", "/create-video", "/projects", "/settings"] }
       : { userAgent: "*", disallow: "/" },
+    // Only advertise the sitemap once the site is indexable.
+    sitemap: allow ? `${config.siteUrl}/sitemap.xml` : undefined,
+    host: allow ? config.siteUrl : undefined,
   };
 }

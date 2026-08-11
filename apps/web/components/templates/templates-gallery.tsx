@@ -24,6 +24,7 @@ import type { MobileHomeBanner } from "@clickfy/types";
 import { Input } from "@/components/ui/input";
 import { useTemplateCategories, useTemplates } from "@/lib/use-templates";
 import { useBanners } from "@/lib/use-banners";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
 
 type KindFilter = "image" | "image_set" | "video" | "video_image";
@@ -157,8 +158,10 @@ export function TemplatesGallery() {
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [kind, setKind] = useState<KindFilter | undefined>(undefined);
 
+  // Debounce so each keystroke doesn't spawn a request / query key.
+  const debouncedSearch = useDebouncedValue(search, 300);
   const categoriesQuery = useTemplateCategories();
-  const templatesQuery = useTemplates({ categoryId, search, kind });
+  const templatesQuery = useTemplates({ categoryId, search: debouncedSearch, kind });
 
   const roots = useMemo(
     () => (categoriesQuery.data ?? []).filter((c) => !c.parentId),

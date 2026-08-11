@@ -16,7 +16,16 @@ if (!apiUrl) {
   throw new Error("NEXT_PUBLIC_API_URL is not set");
 }
 
+/**
+ * Public origin the app is served from — drives `metadataBase`, canonical
+ * URLs, and the sitemap. Override per-environment with NEXT_PUBLIC_SITE_URL
+ * (e.g. a preview deploy); defaults to the production domain.
+ */
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.clickefy.ai").replace(/\/$/, "");
+
 export const config = {
   /** Base URL of the Clickefy Worker API (no trailing slash). */
   apiUrl,
+  /** Public origin this web app is served from (no trailing slash). */
+  siteUrl,
 } as const;

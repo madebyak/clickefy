@@ -42,7 +42,12 @@ export default function TemplateRunPage() {
     (f) =>
       f.required && SUPPORTED.has(f.type) && fieldState(f.fieldKey).status !== "ready",
   );
-  const canGenerate = !!template && !submitting && !uploadsInFlight && !missingRequired;
+  // A required field whose type the web form can't render (image_multi,
+  // toggle, color) can never be satisfied here — block submit rather than
+  // sending an incomplete job the pipeline will reject after charging.
+  const hasUnsupportedRequired = inputs.some((f) => f.required && !SUPPORTED.has(f.type));
+  const canGenerate =
+    !!template && !submitting && !uploadsInFlight && !missingRequired && !hasUnsupportedRequired;
 
   const onGenerate = async () => {
     if (!template || !canGenerate) return;
@@ -148,6 +153,12 @@ export default function TemplateRunPage() {
                 <p className="text-sm text-muted-foreground">{t("noInputsNeeded")}</p>
               )}
             </div>
+
+            {hasUnsupportedRequired && (
+              <p className="mt-6 rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm text-muted-foreground">
+                {t("unsupportedRequired")}
+              </p>
+            )}
 
             <button
               type="button"

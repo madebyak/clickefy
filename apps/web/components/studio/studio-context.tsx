@@ -25,6 +25,8 @@ import {
 } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import type {
   CreateGenerationInput,
   GenerationProgress,
@@ -35,9 +37,24 @@ import type {
 } from "@clickfy/sdk";
 import type { JobInputValue } from "@clickfy/types";
 import { getSDK } from "@/lib/api";
-import { config } from "@/lib/config";
+import { rebaseAssetUrl } from "@/lib/rebase-url";
 import { ME_QUERY_KEY } from "@/lib/use-session";
 import { CREDITS_QUERY_KEY } from "@/lib/use-credits";
+
+/**
+ * Upper bound on paged fetches for one collection. The API caps `limit`
+ * at 50, so this covers 500 projects / 500 assets — well beyond any real
+ * studio — while guaranteeing the cursor loop can never spin forever.
+ */
+const MAX_PAGES = 10;
+const PAGE_SIZE = 50;
+
+/** Stable empty arrays so the memoized context value doesn't churn while
+ *  server state is still loading (a fresh `[]` each render would break the
+ *  memo and re-render every `useStudio()` consumer). */
+const EMPTY_ASSETS: Asset[] = [];
+const EMPTY_FOLDERS: StudioFolder[] = [];
+const EMPTY_PROJECTS: StudioProject[] = [];
 
 /* ------------------------------------------------------------------ model */
 
@@ -72,30 +89,6 @@ export type PendingGeneration = {
   stageProgress?: number;
   error?: string;
 };
-
-/**
- * The API mints asset URLs from its request origin — but under
- * `wrangler dev` the Worker sees the production route host
- * (api.clickefy.ai) even though it serves on localhost, so local URLs
- * point at prod and 404. Rebase any own-API host onto the origin this
- * app is configured to call. In production both match → no-op.
- */
-const OWN_API_HOSTS = ["api.clickefy.ai"];
-function rebaseAssetUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    const api = new URL(config.apiUrl);
-    if (
-      u.origin !== api.origin &&
-      (OWN_API_HOSTS.includes(u.hostname) || u.hostname.endsWith(".workers.dev"))
-    ) {
-      return `${api.origin}${u.pathname}${u.search}`;
-    }
-  } catch {
-    // Not an absolute URL — leave untouched.
-  }
-  return url;
-}
 
 const toAsset = (a: StudioAsset): Asset => ({
   id: a.id,
@@ -136,8 +129,11 @@ type StudioValue = {
   setActiveProject: (id: string | null) => void;
   createProject: (folderId?: string | null) => Promise<string>;
   createFolder: (name: string) => Promise<void>;
+  renameFolder: (folderId: string, name: string) => void;
+  deleteFolder: (folderId: string) => Promise<void>;
   moveProjectToFolder: (projectId: string, folderId: string | null) => void;
   renameProject: (projectId: string, name: string) => void;
+  deleteProject: (projectId: string) => Promise<void>;
 
   // assets
   copyAssets: (assetIds: string[], targetProjectId: string) => void;
@@ -182,6 +178,7 @@ const assetsKey = (projectId: string) => ["projects", projectId, "assets"] as co
 export function StudioProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const { isLoaded, isSignedIn } = useAuth();
+  const t = useTranslations("projects");
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PromptAttachment[]>([]);
   const [pending, setPending] = useState<PendingGeneration[]>([]);
@@ -203,10 +200,21 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const projectsQuery = useQuery({
     queryKey: PROJECTS_KEY,
     queryFn: async () => {
-      const data = await getSDK().projects.list({ limit: 100 });
+      const sdk = getSDK();
+      // Page through the cursor so studios with >50 projects aren't
+      // silently truncated. Folders arrive whole on the first page.
+      const first = await sdk.projects.list({ limit: PAGE_SIZE });
+      const projects = [...first.projects];
+      let cursor = first.nextCursor;
+      for (let page = 1; cursor && page < MAX_PAGES; page++) {
+        const next = await sdk.projects.list({ limit: PAGE_SIZE, cursor });
+        projects.push(...next.projects);
+        cursor = next.nextCursor;
+      }
       return {
-        ...data,
-        projects: data.projects.map((p) => ({
+        ...first,
+        nextCursor: cursor,
+        projects: projects.map((p) => ({
           ...p,
           cover: p.cover
             ? {
@@ -222,8 +230,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     staleTime: 15_000,
   });
 
-  const folders = projectsQuery.data?.folders ?? [];
-  const projects = useMemo(() => projectsQuery.data?.projects ?? [], [projectsQuery.data]);
+  const folders = useMemo(() => projectsQuery.data?.folders ?? EMPTY_FOLDERS, [projectsQuery.data]);
+  const projects = useMemo(() => projectsQuery.data?.projects ?? EMPTY_PROJECTS, [projectsQuery.data]);
 
   const activeProject = useMemo(
     () => projects.find((p) => p.id === activeProjectId) ?? null,
@@ -233,8 +241,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const assetsQuery = useQuery({
     queryKey: assetsKey(activeProjectId ?? "none"),
     queryFn: async () => {
-      const data = await getSDK().projects.listAssets(activeProjectId!, { limit: 100 });
-      return data.items.map(toAsset);
+      const sdk = getSDK();
+      const projectId = activeProjectId!;
+      // Page through so large projects show every asset, not the first 50.
+      const first = await sdk.projects.listAssets(projectId, { limit: PAGE_SIZE });
+      const items = [...first.items];
+      let cursor = first.nextCursor;
+      for (let page = 1; cursor && page < MAX_PAGES; page++) {
+        const next = await sdk.projects.listAssets(projectId, { limit: PAGE_SIZE, cursor });
+        items.push(...next.items);
+        cursor = next.nextCursor;
+      }
+      return items.map(toAsset);
     },
     enabled: isLoaded && !!isSignedIn && !!activeProjectId,
     staleTime: 5_000,
@@ -270,7 +288,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const createProject = useCallback(
     async (folderId: string | null = null) => {
-      const project = await getSDK().projects.create({ folderId });
+      let project;
+      try {
+        project = await getSDK().projects.create({ folderId });
+      } catch (err) {
+        toast.error(t("toastCreateProjectFailed"));
+        throw err;
+      }
       // Seed the cache so the new project is selectable immediately.
       queryClient.setQueryData(
         PROJECTS_KEY,
@@ -284,15 +308,70 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       invalidateProjects();
       return project.id;
     },
-    [queryClient, invalidateProjects],
+    [queryClient, invalidateProjects, t],
   );
 
   const createFolder = useCallback(
     async (name: string) => {
-      await getSDK().projects.createFolder(name);
+      try {
+        await getSDK().projects.createFolder(name);
+      } catch {
+        toast.error(t("toastCreateFolderFailed"));
+        return;
+      }
       invalidateProjects();
     },
-    [invalidateProjects],
+    [invalidateProjects, t],
+  );
+
+  const renameFolder = useCallback(
+    (folderId: string, name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      // Optimistic: reflect the new name instantly, reconcile on settle.
+      queryClient.setQueryData(PROJECTS_KEY, (prev: ProjectsCache) =>
+        prev
+          ? {
+              ...prev,
+              folders: prev.folders.map((f) =>
+                f.id === folderId ? { ...f, name: trimmed } : f,
+              ),
+            }
+          : prev,
+      );
+      getSDK()
+        .projects.renameFolder(folderId, trimmed)
+        .catch(() => toast.error(t("toastRenameFailed")))
+        .finally(invalidateProjects);
+    },
+    [queryClient, invalidateProjects, t],
+  );
+
+  const deleteFolder = useCallback(
+    async (folderId: string) => {
+      // Optimistic: drop the folder and unfile its projects (server does
+      // the same via ON DELETE SET NULL — no projects are lost).
+      queryClient.setQueryData(PROJECTS_KEY, (prev: ProjectsCache) =>
+        prev
+          ? {
+              ...prev,
+              folders: prev.folders.filter((f) => f.id !== folderId),
+              projects: prev.projects.map((p) =>
+                p.folderId === folderId ? { ...p, folderId: null } : p,
+              ),
+            }
+          : prev,
+      );
+      try {
+        await getSDK().projects.deleteFolder(folderId);
+        toast.success(t("toastFolderDeleted"));
+      } catch {
+        toast.error(t("toastDeleteFolderFailed"));
+      } finally {
+        invalidateProjects();
+      }
+    },
+    [queryClient, invalidateProjects, t],
   );
 
   const moveProjectToFolder = useCallback(
@@ -308,10 +387,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       );
       getSDK()
         .projects.update(projectId, { folderId })
-        .catch(() => undefined)
+        .catch(() => toast.error(t("toastMoveFailed")))
         .finally(invalidateProjects);
     },
-    [queryClient, invalidateProjects],
+    [queryClient, invalidateProjects, t],
   );
 
   const renameProject = useCallback(
@@ -330,10 +409,29 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       );
       getSDK()
         .projects.update(projectId, { name: trimmed })
-        .catch(() => undefined)
+        .catch(() => toast.error(t("toastRenameFailed")))
         .finally(invalidateProjects);
     },
-    [queryClient, invalidateProjects],
+    [queryClient, invalidateProjects, t],
+  );
+
+  const deleteProject = useCallback(
+    async (projectId: string) => {
+      // Optimistic removal; clear the active selection if it was open.
+      queryClient.setQueryData(PROJECTS_KEY, (prev: ProjectsCache) =>
+        prev ? { ...prev, projects: prev.projects.filter((p) => p.id !== projectId) } : prev,
+      );
+      setActiveProjectId((cur) => (cur === projectId ? null : cur));
+      try {
+        await getSDK().projects.delete(projectId);
+        toast.success(t("toastProjectDeleted"));
+      } catch {
+        toast.error(t("toastDeleteProjectFailed"));
+      } finally {
+        invalidateProjects();
+      }
+    },
+    [queryClient, invalidateProjects, t],
   );
 
   /* ---------------------------------------------------------- assets */
@@ -342,14 +440,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     (assetIds: string[], targetProjectId: string) => {
       getSDK()
         .projects.copyAssets(targetProjectId, assetIds)
-        .catch(() => undefined)
+        .catch(() => toast.error(t("toastCopyFailed")))
         .finally(() => {
           invalidateAssets(targetProjectId);
           invalidateProjects();
         });
       setSelectedAssetIds([]);
     },
-    [invalidateAssets, invalidateProjects],
+    [invalidateAssets, invalidateProjects, t],
   );
 
   const moveAssets = useCallback(
@@ -357,7 +455,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       if (fromProjectId === targetProjectId) return;
       getSDK()
         .projects.moveAssets(assetIds, targetProjectId)
-        .catch(() => undefined)
+        .catch(() => toast.error(t("toastMoveAssetsFailed")))
         .finally(() => {
           invalidateAssets(fromProjectId);
           invalidateAssets(targetProjectId);
@@ -365,7 +463,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         });
       setSelectedAssetIds([]);
     },
-    [invalidateAssets, invalidateProjects],
+    [invalidateAssets, invalidateProjects, t],
   );
 
   const deleteAssets = useCallback(
@@ -376,14 +474,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       );
       getSDK()
         .projects.deleteAssets(assetIds)
-        .catch(() => undefined)
+        .catch(() => toast.error(t("toastDeleteAssetsFailed")))
         .finally(() => {
           invalidateAssets(projectId);
           invalidateProjects();
         });
       setSelectedAssetIds([]);
     },
-    [queryClient, invalidateAssets, invalidateProjects],
+    [queryClient, invalidateAssets, invalidateProjects, t],
   );
 
   /* ------------------------------------------------------- attachments */
@@ -577,35 +675,76 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const value: StudioValue = {
-    folders,
-    projects,
-    projectsLoading: projectsQuery.isLoading,
-    activeProjectId,
-    activeProject,
-    activeAssets: assetsQuery.data ?? [],
-    activeAssetsLoading: assetsQuery.isLoading,
-    setActiveProject,
-    createProject,
-    createFolder,
-    moveProjectToFolder,
-    renameProject,
-    copyAssets,
-    moveAssets,
-    deleteAssets,
-    selectedAssetIds,
-    toggleAssetSelection,
-    clearSelection,
-    attachments,
-    attachFile,
-    addAttachment,
-    removeAttachment,
-    clearAttachments,
-    pending,
-    startGeneration,
-    startTemplateJob,
-    dismissPending,
-  };
+  const activeAssets = assetsQuery.data ?? EMPTY_ASSETS;
+
+  // Memoized so `useStudio()` consumers only re-render when something they
+  // read actually changes, not on every provider render.
+  const value = useMemo<StudioValue>(
+    () => ({
+      folders,
+      projects,
+      projectsLoading: projectsQuery.isLoading,
+      activeProjectId,
+      activeProject,
+      activeAssets,
+      activeAssetsLoading: assetsQuery.isLoading,
+      setActiveProject,
+      createProject,
+      createFolder,
+      renameFolder,
+      deleteFolder,
+      moveProjectToFolder,
+      renameProject,
+      deleteProject,
+      copyAssets,
+      moveAssets,
+      deleteAssets,
+      selectedAssetIds,
+      toggleAssetSelection,
+      clearSelection,
+      attachments,
+      attachFile,
+      addAttachment,
+      removeAttachment,
+      clearAttachments,
+      pending,
+      startGeneration,
+      startTemplateJob,
+      dismissPending,
+    }),
+    [
+      folders,
+      projects,
+      projectsQuery.isLoading,
+      activeProjectId,
+      activeProject,
+      activeAssets,
+      assetsQuery.isLoading,
+      setActiveProject,
+      createProject,
+      createFolder,
+      renameFolder,
+      deleteFolder,
+      moveProjectToFolder,
+      renameProject,
+      deleteProject,
+      copyAssets,
+      moveAssets,
+      deleteAssets,
+      selectedAssetIds,
+      toggleAssetSelection,
+      clearSelection,
+      attachments,
+      attachFile,
+      addAttachment,
+      removeAttachment,
+      clearAttachments,
+      pending,
+      startGeneration,
+      startTemplateJob,
+      dismissPending,
+    ],
+  );
 
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;
 }

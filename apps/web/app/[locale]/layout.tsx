@@ -4,9 +4,10 @@ import { Geist, Geist_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { arSA } from "@clerk/localizations";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
-import { setRequestLocale } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Toaster } from "sonner";
 import { routing } from "@/i18n/routing";
+import { config } from "@/lib/config";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { Providers } from "@/components/providers";
 import "../globals.css";
@@ -48,13 +49,37 @@ function liveClerkDomain(): string | undefined {
   }
 }
 
-export const metadata: Metadata = {
-  metadataBase: new URL("https://clickefy-webb.vercel.app"),
-  title: "Clickefy — AI Creator Studio",
-  description:
-    "Professional AI image and video generation. Create with Nano Banana, Kling, Seedance and more.",
-  alternates: { languages: { en: "/", ar: "/ar" } },
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "meta" });
+  const canonical = locale === "ar" ? "/ar" : "/";
+  return {
+    metadataBase: new URL(config.siteUrl),
+    title: t("title"),
+    description: t("description"),
+    alternates: {
+      canonical,
+      languages: { en: "/", ar: "/ar" },
+    },
+    openGraph: {
+      title: t("title"),
+      description: t("description"),
+      url: canonical,
+      siteName: "Clickefy",
+      locale: locale === "ar" ? "ar_AR" : "en_US",
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: t("title"),
+      description: t("description"),
+    },
+  };
+}
 
 export default async function LocaleLayout({
   children,

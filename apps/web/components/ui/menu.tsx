@@ -61,17 +61,21 @@ export function MenuItem({
   children,
   onClick,
   className,
+  destructive = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
   className?: string;
+  /** Red text for delete/remove actions. */
+  destructive?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-start text-sm text-foreground outline-none transition-colors hover:bg-white/5 focus-visible:bg-white/5",
+        "flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-start text-sm outline-none transition-colors hover:bg-white/5 focus-visible:bg-white/5",
+        destructive ? "text-status-red" : "text-foreground",
         className,
       )}
     >

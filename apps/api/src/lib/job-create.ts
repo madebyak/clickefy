@@ -43,6 +43,13 @@ export interface CreateJobInput {
   options: { aspectRatio?: string };
   // null when the client didn't supply an `Idempotency-Key` header.
   idempotencyKey: string | null;
+  /**
+   * Web-studio project to file the outputs into. Ownership is verified
+   * by the route BEFORE the debit; NULL (mobile / unfiled) leaves the
+   * flat-history behavior untouched. Purely additive to the INSERT —
+   * the debit/allocation logic is byte-for-byte unchanged.
+   */
+  projectId?: string | null;
 }
 
 export interface CreateJobResult {
@@ -146,13 +153,14 @@ export async function createJobAtomically(
       ),
       new_job AS (
         INSERT INTO jobs (
-          user_id, template_id, template_version_id,
+          user_id, template_id, template_version_id, project_id,
           status, inputs, options, idempotency_key
         )
         SELECT
           ${args.userId}::uuid,
           ${args.templateId}::uuid,
           version_lookup.id,
+          ${args.projectId ?? null}::uuid,
           'queued',
           ${inputsJson}::jsonb,
           ${optionsJson}::jsonb,

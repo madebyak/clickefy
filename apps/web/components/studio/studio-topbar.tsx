@@ -14,7 +14,7 @@ const NAV = [
   { key: "createVideo", href: "/create-video" },
   { key: "storyboard", href: "#" },
   { key: "cameraAngles", href: "#" },
-  { key: "templates", href: "/#templates" },
+  { key: "templates", href: "/templates" },
 ] as const;
 
 export function StudioTopbar({ onMenu }: { onMenu: () => void }) {

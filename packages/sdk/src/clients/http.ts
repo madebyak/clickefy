@@ -538,6 +538,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
               templateId: submission.templateId,
               inputs: submission.inputs,
               options: submission.options ?? {},
+              projectId: submission.projectId,
             }),
           });
         } catch (err) {

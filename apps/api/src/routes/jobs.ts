@@ -172,6 +172,22 @@ jobsRoute.post(
       return c.json({ error: validationError }, status);
     }
 
+    // ── Project ownership (web studio) ─────────────────────────────
+    // Verified BEFORE the debit so a bad id can never cost credits.
+    // Same compound (id, user_id) scoping as the create-flow path.
+    if (body.projectId) {
+      const ownedProject = await c.var.db.query.projects.findFirst({
+        where: and(eq(projects.id, body.projectId), eq(projects.userId, user.id)),
+        columns: { id: true },
+      });
+      if (!ownedProject) {
+        return c.json(
+          { error: { code: 'project_not_found', message: 'Project not found.' } },
+          404,
+        );
+      }
+    }
+
     // ── Atomic debit + insert ──────────────────────────────────────
     // Wrap in try/catch so a future schema regression or Postgres
     // error surfaces as a structured `internal_error` to the client
@@ -187,6 +203,7 @@ jobsRoute.post(
         inputs: body.inputs,
         options: body.options ?? {},
         idempotencyKey,
+        projectId: body.projectId ?? null,
       });
     } catch (err) {
       // Unique-violation on (user_id, idempotency_key): a concurrent

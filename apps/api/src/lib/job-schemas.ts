@@ -57,6 +57,9 @@ export const createJobSchema = z.object({
     })
     .optional()
     .default({}),
+  // Web-studio project to file the outputs into. Ownership is verified
+  // in the handler; omitted (mobile) keeps the flat-history behavior.
+  projectId: z.string().uuid().optional(),
 });
 
 export type CreateJobBody = z.infer<typeof createJobSchema>;

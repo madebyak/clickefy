@@ -33,6 +33,7 @@ import type {
   StudioFolder,
   StudioProject,
 } from "@clickfy/sdk";
+import type { JobInputValue } from "@clickfy/types";
 import { getSDK } from "@/lib/api";
 import { config } from "@/lib/config";
 import { ME_QUERY_KEY } from "@/lib/use-session";
@@ -113,6 +114,14 @@ export type StartGenerationOptions = {
   kind: AssetType;
 };
 
+export type StartTemplateJobOptions = {
+  templateId: string;
+  inputs: Record<string, JobInputValue>;
+  aspectRatio?: string;
+  /** Drives the pending-tile icon; 'set' templates render as image. */
+  kind: AssetType;
+};
+
 type StudioValue = {
   folders: StudioFolder[];
   projects: StudioProject[];
@@ -158,6 +167,8 @@ type StudioValue = {
    * can surface precise copy; successfully submitted jobs keep polling.
    */
   startGeneration: (opts: StartGenerationOptions) => Promise<void>;
+  /** Run a template job filed into the active project (same tile flow). */
+  startTemplateJob: (opts: StartTemplateJobOptions) => Promise<void>;
   dismissPending: (jobId: string) => void;
 };
 
@@ -545,6 +556,22 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [activeProjectId, createProject, trackJob, invalidateBalances],
   );
 
+  const startTemplateJob = useCallback(
+    async ({ templateId, inputs, aspectRatio, kind }: StartTemplateJobOptions) => {
+      const projectId = activeProjectId ?? (await createProject(null));
+      const res = await getSDK().generation.submit({
+        templateId,
+        inputs,
+        options: aspectRatio ? { aspectRatio } : {},
+        idempotencyKey: crypto.randomUUID(),
+        projectId,
+      });
+      trackJob(res.jobId, projectId, kind);
+      invalidateBalances();
+    },
+    [activeProjectId, createProject, trackJob, invalidateBalances],
+  );
+
   const dismissPending = useCallback(
     (jobId: string) => setPending((prev) => prev.filter((p) => p.jobId !== jobId)),
     [],
@@ -576,6 +603,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     clearAttachments,
     pending,
     startGeneration,
+    startTemplateJob,
     dismissPending,
   };
 

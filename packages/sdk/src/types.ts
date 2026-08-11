@@ -316,6 +316,8 @@ export interface JobSubmission {
    * original job without re-charging credits.
    */
   idempotencyKey?: string;
+  /** Web-studio project to file the outputs into (omitted on mobile). */
+  projectId?: string;
 }
 
 export interface JobSubmissionResponse {

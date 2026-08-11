@@ -5,6 +5,22 @@ const withNextIntl = createNextIntlPlugin();
 
 // Deployed to Vercel from the feat/web branch (root: apps/web).
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          // Clickjacking: nothing on this site is meant to be framed.
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // We use none of these sensors; deny by default.
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+    ];
+  },
   images: {
     // Whitelist the Worker origins that serve R2 assets (uploads, outputs,
     // avatars). Mirrors apps/admin/next.config.ts: local wrangler dev plus

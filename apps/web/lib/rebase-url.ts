@@ -15,7 +15,11 @@ export function rebaseAssetUrl(url: string): string {
     const api = new URL(config.apiUrl);
     if (
       u.origin !== api.origin &&
-      (OWN_API_HOSTS.includes(u.hostname) || u.hostname.endsWith(".workers.dev"))
+      (OWN_API_HOSTS.includes(u.hostname) || u.hostname.endsWith(".workers.dev")) &&
+      // Only generated outputs exist in the local dev bucket; catalog
+      // media (/v1/uploads — template covers, previews) lives in the
+      // real R2 bucket, so it must keep the production origin in dev.
+      u.pathname.startsWith("/v1/outputs/")
     ) {
       return `${api.origin}${u.pathname}${u.search}`;
     }

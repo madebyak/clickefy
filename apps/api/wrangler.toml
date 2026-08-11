@@ -60,13 +60,20 @@ RC_ALLOW_SANDBOX = "true"
 # after `wrangler deploy`. The orchestrator (apps/jobs-worker) reads
 # user inputs via the Worker's HTTP route rather than S3, so the
 # local/cloud split is invisible to it.
+# `remote = true` affects LOCAL DEV ONLY (`wrangler dev` binds to the
+# real buckets instead of empty Miniflare storage). Deployed workers
+# always use the real buckets regardless. Without this, local dev has a
+# split-brain: presigned browser PUTs land in real R2 while the local
+# worker's finalize/reads hit the empty emulator and 404.
 [[r2_buckets]]
 binding = "UPLOADS"
 bucket_name = "clickfy-uploads"
+remote = true
 
 [[r2_buckets]]
 binding = "OUTPUTS"
 bucket_name = "clickfy-outputs"
+remote = true
 
 # ── Retention cron ───────────────────────────────────────────────
 # Daily at 03:00 UTC: the `scheduled` handler purges R2 assets of users

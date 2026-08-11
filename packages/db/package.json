@@ -12,10 +12,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push",
+    "db:generate": "node scripts/guard-drizzle.mjs generate",
+    "db:push": "node scripts/guard-drizzle.mjs push",
     "db:studio": "drizzle-kit studio",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node scripts/guard-drizzle.mjs migrate",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed-models": "tsx scripts/seed-provider-models.ts",
     "db:seed-category-translations": "tsx scripts/seed-category-translations.ts",

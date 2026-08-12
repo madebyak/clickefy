@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useRouter } from "@/i18n/navigation";
 import { toast } from "sonner";
-import { Camera, Lightning, LockSimple, SignOut } from "@phosphor-icons/react";
+import { Camera, Lightning, LockSimple, SignOut, Trash } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { getSDK } from "@/lib/api";
 import { useSession } from "@/lib/use-session";
 import { useCredits } from "@/lib/use-credits";
 import { cn } from "@/lib/utils";
@@ -31,9 +33,24 @@ export default function SettingsPage() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   useEffect(() => {
     if (user?.name != null) setName(user.name);
   }, [user?.name]);
+
+  const onDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      // Server soft-deletes + anonymises immediately and schedules the
+      // 30-day asset purge; Clerk-side deletion cascades from the API.
+      await getSDK().user.deleteAccount();
+      await signOut();
+    } catch {
+      toast.error(t("deleteFailed"));
+      setDeleting(false);
+    }
+  };
 
   if (!user) {
     return (
@@ -239,7 +256,33 @@ export default function SettingsPage() {
             <SignOut className="size-4 rtl:-scale-x-100" /> {ta("signOut")}
           </Button>
         </Section>
+
+        {/* Danger zone — account deletion (Apple 5.1.1(v) / Play parity) */}
+        <Section title={t("dangerZone")}>
+          <p className="text-sm text-muted-foreground">{t("dangerBody")}</p>
+          <Button
+            variant="ghost"
+            disabled={deleting}
+            className="mt-4 border border-status-red/40 text-status-red hover:bg-status-red/10 hover:text-status-red"
+            onClick={() => setConfirmingDelete(true)}
+          >
+            <Trash className="size-4" /> {deleting ? t("deleting") : t("deleteAccount")}
+          </Button>
+        </Section>
       </div>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        title={t("confirmDeleteTitle")}
+        body={t("confirmDeleteBody")}
+        confirmLabel={t("confirmDeleteAction")}
+        cancelLabel={t("cancel")}
+        onConfirm={() => {
+          setConfirmingDelete(false);
+          void onDeleteAccount();
+        }}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </main>
   );
 }

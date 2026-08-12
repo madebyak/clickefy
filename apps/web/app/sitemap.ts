@@ -9,7 +9,16 @@ import { routing } from "@/i18n/routing";
  * emitted per-locale with hreflang alternates (English unprefixed,
  * Arabic under /ar, matching `localePrefix: "as-needed"`).
  */
-const PUBLIC_PATHS = ["", "/templates"] as const;
+const PUBLIC_PATHS = [
+  "",
+  "/templates",
+  "/privacy",
+  "/terms",
+  "/account-deletion",
+  "/content-policy",
+  "/ai-disclosure",
+  "/dmca",
+] as const;
 
 function localizedUrl(path: string, locale: string): string {
   const prefix = locale === routing.defaultLocale ? "" : `/${locale}`;

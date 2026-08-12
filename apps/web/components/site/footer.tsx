@@ -9,8 +9,35 @@ const COLUMNS = [
   },
   { titleKey: "explore", links: ["linkTemplates", "linkModels", "linkPricing"] },
   { titleKey: "company", links: ["linkAbout", "linkBlog", "linkCareers", "linkContact"] },
-  { titleKey: "legal", links: ["linkPrivacy", "linkTerms", "linkAccountDeletion", "linkContentPolicy"] },
+  {
+    titleKey: "legal",
+    links: [
+      "linkPrivacy",
+      "linkTerms",
+      "linkAccountDeletion",
+      "linkContentPolicy",
+      "linkAiDisclosure",
+      "linkDmca",
+    ],
+  },
 ] as const;
+
+/**
+ * Real destinations per link key. Keys without a built page yet stay on
+ * "#" until their feature ships (storyboard, company pages, …).
+ */
+const HREFS: Record<string, string> = {
+  linkCreateImage: "/create",
+  linkCreateVideo: "/create-video",
+  linkTemplates: "/templates",
+  linkPricing: "/#pricing",
+  linkPrivacy: "/privacy",
+  linkTerms: "/terms",
+  linkAccountDeletion: "/account-deletion",
+  linkContentPolicy: "/content-policy",
+  linkAiDisclosure: "/ai-disclosure",
+  linkDmca: "/dmca",
+};
 
 const SOCIALS = [
   { Icon: XLogo, label: "X" },
@@ -50,7 +77,10 @@ export async function Footer() {
               <ul className="mt-4 space-y-3">
                 {col.links.map((l) => (
                   <li key={l}>
-                    <Link href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+                    <Link
+                      href={HREFS[l] ?? "#"}
+                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    >
                       {t(l)}
                     </Link>
                   </li>

@@ -145,7 +145,9 @@
     "linkPrivacy": "سياسة الخصوصية",
     "linkTerms": "شروط الخدمة",
     "linkAccountDeletion": "حذف الحساب",
-    "linkContentPolicy": "سياسة المحتوى"
+    "linkContentPolicy": "سياسة المحتوى",
+    "linkAiDisclosure": "الإفصاح عن الذكاء الاصطناعي",
+    "linkDmca": "حقوق النشر وDMCA"
   },
   "promptbar": {
     "placeholderImage": "صف المشهد الذي تتخيله",
@@ -296,7 +298,16 @@
     "avatarUpdated": "تم تحديث صورة الملف الشخصي",
     "avatarFailed": "تعذّر رفع الصورة — حاول مرة أخرى",
     "profileSaved": "تم حفظ الملف الشخصي",
-    "profileFailed": "تعذّر الحفظ — حاول مرة أخرى"
+    "profileFailed": "تعذّر الحفظ — حاول مرة أخرى",
+    "dangerZone": "حذف الحساب",
+    "dangerBody": "احذف حسابك وملفاتك المرفوعة وإنشاءاتك ورصيدك المتبقي نهائيًا. لا يمكن التراجع عن هذا الإجراء. تُمسح الأصول من الأنظمة النشطة خلال 30 يومًا.",
+    "deleteAccount": "حذف حسابي",
+    "deleting": "جارٍ الحذف…",
+    "confirmDeleteTitle": "حذف حسابك؟",
+    "confirmDeleteBody": "هذا الإجراء نهائي: سيُحذف ملفك الشخصي وملفاتك المرفوعة وإنشاءاتك ورصيدك المتبقي. سيتم تسجيل خروجك فورًا.",
+    "confirmDeleteAction": "حذف نهائي",
+    "cancel": "إلغاء",
+    "deleteFailed": "تعذّر حذف الحساب — حاول مجددًا أو تواصل مع support@clickefy.ai."
   },
   "errors": {
     "notFoundTitle": "الصفحة غير موجودة",
@@ -305,5 +316,11 @@
     "errorBody": "حدث خطأ غير متوقع. يُرجى المحاولة مرة أخرى.",
     "retry": "حاول مرة أخرى",
     "goHome": "العودة إلى الرئيسية"
+  },
+  "legal": {
+    "kicker": "الشؤون القانونية",
+    "effective": "تاريخ السريان: {date}",
+    "otherDocs": "المزيد من الوثائق القانونية",
+    "accountDeletionTitle": "حذف الحساب والبيانات"
   }
 }

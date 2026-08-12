@@ -145,7 +145,9 @@
     "linkPrivacy": "Privacy Policy",
     "linkTerms": "Terms of Service",
     "linkAccountDeletion": "Account Deletion",
-    "linkContentPolicy": "Content Policy"
+    "linkContentPolicy": "Content Policy",
+    "linkAiDisclosure": "AI Disclosure",
+    "linkDmca": "Copyright & DMCA"
   },
   "promptbar": {
     "placeholderImage": "Describe the scene you imagine",
@@ -296,7 +298,16 @@
     "avatarUpdated": "Profile photo updated",
     "avatarFailed": "Couldn't upload the photo — try again",
     "profileSaved": "Profile saved",
-    "profileFailed": "Couldn't save — try again"
+    "profileFailed": "Couldn't save — try again",
+    "dangerZone": "Delete account",
+    "dangerBody": "Permanently delete your account, uploads, generations, and remaining credits. This cannot be undone. Assets are purged from active systems within 30 days.",
+    "deleteAccount": "Delete my account",
+    "deleting": "Deleting…",
+    "confirmDeleteTitle": "Delete your account?",
+    "confirmDeleteBody": "This is permanent: your profile, uploads, generations, and remaining credits will be deleted. You'll be signed out immediately.",
+    "confirmDeleteAction": "Delete forever",
+    "cancel": "Cancel",
+    "deleteFailed": "Couldn't delete the account — try again or contact support@clickefy.ai."
   },
   "errors": {
     "notFoundTitle": "Page not found",
@@ -305,5 +316,11 @@
     "errorBody": "An unexpected error occurred. Please try again.",
     "retry": "Try again",
     "goHome": "Back to home"
+  },
+  "legal": {
+    "kicker": "Legal",
+    "effective": "Effective date: {date}",
+    "otherDocs": "More from the legal pack",
+    "accountDeletionTitle": "Account & Data Deletion"
   }
 }

@@ -113,9 +113,14 @@ function PromoBanner({ onSelectCategory }: { onSelectCategory: (id: string) => v
 
   const hasCta = banner.cta.kind !== "none" && banner.cta.target;
 
+  // <video src> can't play HLS manifests outside Safari; the pipeline
+  // currently delivers progressive MP4s, but if an .m3u8 ever ships we
+  // degrade to the poster image instead of a broken player.
+  const isHls = banner.kind === "video" && /\.m3u8(\?|$)/.test(banner.video.hlsUrl);
+
   return (
     <div className="relative mb-8 h-36 overflow-hidden rounded-2xl bg-surface-2 sm:h-44">
-      {banner.kind === "video" ? (
+      {banner.kind === "video" && !isHls ? (
         <video
           src={banner.video.hlsUrl}
           poster={banner.video.posterUrl}

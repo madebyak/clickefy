@@ -38,7 +38,10 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
   const newProject = async () => {
     router.push("/create");
     onClose();
-    await createProject(null);
+    // createProject re-throws so generation flows can abort; here the
+    // failure toast already fired, so swallow to avoid an unhandled
+    // rejection.
+    await createProject(null).catch(() => undefined);
   };
 
   return (

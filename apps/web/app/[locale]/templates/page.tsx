@@ -6,10 +6,26 @@
  * client component.
  */
 
-import { setRequestLocale } from "next-intl/server";
+import type { Metadata } from "next";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Navbar } from "@/components/site/navbar";
 import { Footer } from "@/components/site/footer";
 import { TemplatesGallery } from "@/components/templates/templates-gallery";
+import { localizedPageMetadata } from "@/lib/page-metadata";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "templates" });
+  return {
+    title: `${t("galleryHeading")} — Clickefy`,
+    description: t("gallerySub"),
+    ...localizedPageMetadata(locale, "/templates"),
+  };
+}
 
 export default async function TemplatesPage({
   params,

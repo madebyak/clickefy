@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Minimal accessible confirm dialog — no external dependency. Renders a
- * centered modal with a scrim, focuses the confirm button, closes on
- * Escape or scrim click, and restores focus on close. Used for
- * destructive actions (delete folder / project).
+ * Confirm dialog on the native <dialog> element via showModal(): the
+ * browser provides the real focus trap (rest of the document becomes
+ * inert), Escape-to-close, top-layer stacking, and focus restoration
+ * to the invoking element on close — the parts a hand-rolled div modal
+ * gets wrong. Used for destructive actions (delete folder / project).
  */
 
 import { useEffect, useRef } from "react";
@@ -29,60 +30,61 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const confirmRef = useRef<HTMLButtonElement>(null);
+  const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    confirmRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    else if (!open && dialog.open) dialog.close();
+  }, [open]);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <dialog
+      ref={ref}
+      aria-labelledby="confirm-dialog-title"
+      aria-describedby={body ? "confirm-dialog-body" : undefined}
+      // `cancel` fires on Escape; `click` on the element itself means the
+      // backdrop was hit (clicks inside land on descendants).
+      onCancel={(e) => {
+        e.preventDefault();
+        onCancel();
+      }}
+      onClick={(e) => {
+        if (e.target === ref.current) onCancel();
+      }}
+      className="m-auto w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-5 text-foreground shadow-xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
     >
-      <button
-        type="button"
-        aria-hidden
-        tabIndex={-1}
-        onClick={onCancel}
-        className="absolute inset-0 cursor-default bg-black/60 backdrop-blur-sm"
-      />
-      <div className="relative w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-5 shadow-xl">
-        <h2 className="text-base font-semibold">{title}</h2>
-        {body ? <p className="mt-2 text-sm text-muted-foreground">{body}</p> : null}
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="inline-flex h-9 items-center rounded-lg bg-surface-3 px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
-          >
-            {cancelLabel}
-          </button>
-          <button
-            ref={confirmRef}
-            type="button"
-            onClick={onConfirm}
-            className={cn(
-              "inline-flex h-9 items-center rounded-lg px-4 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-              destructive
-                ? "bg-status-red text-white hover:bg-status-red/90 focus-visible:ring-status-red"
-                : "bg-primary text-primary-foreground hover:opacity-90 focus-visible:ring-primary",
-            )}
-          >
-            {confirmLabel}
-          </button>
-        </div>
+      <h2 id="confirm-dialog-title" className="text-base font-semibold">
+        {title}
+      </h2>
+      {body ? (
+        <p id="confirm-dialog-body" className="mt-2 text-sm text-muted-foreground">
+          {body}
+        </p>
+      ) : null}
+      <div className="mt-5 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex h-9 items-center rounded-lg bg-surface-3 px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
+        >
+          {cancelLabel}
+        </button>
+        <button
+          type="button"
+          autoFocus
+          onClick={onConfirm}
+          className={cn(
+            "inline-flex h-9 items-center rounded-lg px-4 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+            destructive
+              ? "bg-status-red text-white hover:bg-status-red/90 focus-visible:ring-status-red"
+              : "bg-primary text-primary-foreground hover:opacity-90 focus-visible:ring-primary",
+          )}
+        >
+          {confirmLabel}
+        </button>
       </div>
-    </div>
+    </dialog>
   );
 }

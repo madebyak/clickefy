@@ -324,10 +324,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [invalidateProjects, t],
   );
 
+  // Cancel any in-flight projects refetch so its (stale) response can't
+  // land after an optimistic write and revert/resurrect what we changed.
+  const cancelProjects = useCallback(
+    () => void queryClient.cancelQueries({ queryKey: PROJECTS_KEY }),
+    [queryClient],
+  );
+
   const renameFolder = useCallback(
     (folderId: string, name: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
+      cancelProjects();
       // Optimistic: reflect the new name instantly, reconcile on settle.
       queryClient.setQueryData(PROJECTS_KEY, (prev: ProjectsCache) =>
         prev
@@ -344,11 +352,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         .catch(() => toast.error(t("toastRenameFailed")))
         .finally(invalidateProjects);
     },
-    [queryClient, invalidateProjects, t],
+    [queryClient, cancelProjects, invalidateProjects, t],
   );
 
   const deleteFolder = useCallback(
     async (folderId: string) => {
+      cancelProjects();
       // Optimistic: drop the folder and unfile its projects (server does
       // the same via ON DELETE SET NULL — no projects are lost).
       queryClient.setQueryData(PROJECTS_KEY, (prev: ProjectsCache) =>
@@ -371,11 +380,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         invalidateProjects();
       }
     },
-    [queryClient, invalidateProjects, t],
+    [queryClient, cancelProjects, invalidateProjects, t],
   );
 
   const moveProjectToFolder = useCallback(
     (projectId: string, folderId: string | null) => {
+      cancelProjects();
       // Optimistic: reflect the move instantly, reconcile on settle.
       queryClient.setQueryData(PROJECTS_KEY, (prev: ProjectsCache) =>
         prev
@@ -390,13 +400,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         .catch(() => toast.error(t("toastMoveFailed")))
         .finally(invalidateProjects);
     },
-    [queryClient, invalidateProjects, t],
+    [queryClient, cancelProjects, invalidateProjects, t],
   );
 
   const renameProject = useCallback(
     (projectId: string, name: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
+      cancelProjects();
       queryClient.setQueryData(PROJECTS_KEY, (prev: ProjectsCache) =>
         prev
           ? {
@@ -412,11 +423,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         .catch(() => toast.error(t("toastRenameFailed")))
         .finally(invalidateProjects);
     },
-    [queryClient, invalidateProjects, t],
+    [queryClient, cancelProjects, invalidateProjects, t],
   );
 
   const deleteProject = useCallback(
     async (projectId: string) => {
+      cancelProjects();
       // Optimistic removal; clear the active selection if it was open.
       queryClient.setQueryData(PROJECTS_KEY, (prev: ProjectsCache) =>
         prev ? { ...prev, projects: prev.projects.filter((p) => p.id !== projectId) } : prev,
@@ -431,7 +443,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         invalidateProjects();
       }
     },
-    [queryClient, invalidateProjects, t],
+    [queryClient, cancelProjects, invalidateProjects, t],
   );
 
   /* ---------------------------------------------------------- assets */
@@ -468,6 +480,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const deleteAssets = useCallback(
     (projectId: string, assetIds: string[]) => {
+      // Cancel an in-flight assets refetch so it can't re-add the rows we
+      // optimistically remove below.
+      void queryClient.cancelQueries({ queryKey: assetsKey(projectId) });
       // Optimistic removal from the visible grid.
       queryClient.setQueryData(assetsKey(projectId), (prev: Asset[] | undefined) =>
         prev ? prev.filter((a) => !assetIds.includes(a.id)) : prev,

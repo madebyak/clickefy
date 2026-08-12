@@ -22,7 +22,7 @@
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, inArray, lt, or, sql as dsql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql as dsql } from 'drizzle-orm';
 
 import { folders, jobs, projectAssets, projects } from '@clickfy/db';
 
@@ -45,6 +45,25 @@ export const assetsRoute = new Hono<AppEnv>();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (s: string) => UUID_RE.test(s);
+
+/**
+ * Parse a `<timestamptz-text>|<uuid>` keyset cursor. The timestamp is
+ * kept as its raw string (full microsecond precision) and compared as
+ * `::timestamptz` in SQL — never round-tripped through a JS Date, which
+ * would truncate to milliseconds and skip rows sharing a microsecond.
+ * Returns null for absent/malformed cursors (→ first page).
+ */
+function parseKeysetCursor(cursor: string | undefined): { ts: string; id: string } | null {
+  if (!cursor) return null;
+  const idx = cursor.indexOf('|');
+  if (idx <= 0) return null;
+  const ts = cursor.slice(0, idx);
+  const id = cursor.slice(idx + 1);
+  // `id` must be a uuid; `ts` must parse as a real instant (guards against
+  // a client sending junk, without trusting it into the SQL as a Date).
+  if (!isUuid(id) || Number.isNaN(new Date(ts).getTime())) return null;
+  return { ts, id };
+}
 
 /** Mint a delivery URL for an asset r2Key against the live origin. */
 const assetUrl = (origin: string, r2Key: string) => `${origin}/v1/outputs/${r2Key}`;
@@ -71,21 +90,7 @@ projectsRoute.get('/', ...readChain, async (c) => {
 
   const limitRaw = Number(c.req.query('limit') ?? '50');
   const limit = Math.min(100, Math.max(1, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 50));
-  const cursor = c.req.query('cursor');
-
-  let cursorTs: Date | null = null;
-  let cursorId: string | null = null;
-  if (cursor) {
-    const idx = cursor.indexOf('|');
-    if (idx > 0) {
-      const ts = new Date(cursor.slice(0, idx));
-      const id = cursor.slice(idx + 1);
-      if (!Number.isNaN(ts.getTime()) && id) {
-        cursorTs = ts;
-        cursorId = id;
-      }
-    }
-  }
+  const keyset = parseKeysetCursor(c.req.query('cursor'));
 
   const folderRows = await c.var.db
     .select()
@@ -94,16 +99,18 @@ projectsRoute.get('/', ...readChain, async (c) => {
     .orderBy(desc(folders.createdAt));
 
   const projectRows = await c.var.db
-    .select()
+    .select({
+      row: projects,
+      // Full-precision cursor timestamp — see the assets endpoint for why
+      // a Date-built cursor loses microseconds and drops boundary rows.
+      cursorTs: dsql<string>`${projects.updatedAt}::text`,
+    })
     .from(projects)
     .where(
-      cursorTs && cursorId
+      keyset
         ? and(
             eq(projects.userId, user.id),
-            or(
-              lt(projects.updatedAt, cursorTs),
-              and(eq(projects.updatedAt, cursorTs), lt(projects.id, cursorId)),
-            ),
+            dsql`(${projects.updatedAt} < ${keyset.ts}::timestamptz OR (${projects.updatedAt} = ${keyset.ts}::timestamptz AND ${projects.id} < ${keyset.id}))`,
           )
         : eq(projects.userId, user.id),
     )
@@ -111,9 +118,10 @@ projectsRoute.get('/', ...readChain, async (c) => {
     .limit(limit + 1);
 
   const hasMore = projectRows.length > limit;
-  const page = hasMore ? projectRows.slice(0, limit) : projectRows;
+  const pageRows = hasMore ? projectRows.slice(0, limit) : projectRows;
+  const page = pageRows.map((r) => r.row);
   const nextCursor = hasMore
-    ? `${page[page.length - 1]!.updatedAt.toISOString()}|${page[page.length - 1]!.id}`
+    ? `${pageRows[pageRows.length - 1]!.cursorTs}|${pageRows[pageRows.length - 1]!.row.id}`
     : null;
 
   const ids = page.map((p) => p.id);
@@ -307,32 +315,25 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
 
   const limitRaw = Number(c.req.query('limit') ?? '50');
   const limit = Math.min(100, Math.max(1, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 50));
-  const cursor = c.req.query('cursor');
-  let cursorTs: Date | null = null;
-  let cursorId: string | null = null;
-  if (cursor) {
-    const idx = cursor.indexOf('|');
-    if (idx > 0) {
-      const ts = new Date(cursor.slice(0, idx));
-      const id = cursor.slice(idx + 1);
-      if (!Number.isNaN(ts.getTime()) && id) {
-        cursorTs = ts;
-        cursorId = id;
-      }
-    }
-  }
+  const keyset = parseKeysetCursor(c.req.query('cursor'));
 
   const rows = await c.var.db
-    .select()
+    .select({
+      row: projectAssets,
+      // Full-precision cursor timestamp. A JS Date (what Drizzle parses
+      // created_at into) truncates to milliseconds, but the column holds
+      // microseconds — so a Date-built cursor's `= cursorTs` tie-break can
+      // never match rows that share a microsecond (e.g. a bulk copyAssets
+      // INSERT), silently dropping them at the page boundary. Emit the raw
+      // text and compare against it as timestamptz to preserve precision.
+      cursorTs: dsql<string>`${projectAssets.createdAt}::text`,
+    })
     .from(projectAssets)
     .where(
-      cursorTs && cursorId
+      keyset
         ? and(
             eq(projectAssets.projectId, projectId),
-            or(
-              lt(projectAssets.createdAt, cursorTs),
-              and(eq(projectAssets.createdAt, cursorTs), lt(projectAssets.id, cursorId)),
-            ),
+            dsql`(${projectAssets.createdAt} < ${keyset.ts}::timestamptz OR (${projectAssets.createdAt} = ${keyset.ts}::timestamptz AND ${projectAssets.id} < ${keyset.id}))`,
           )
         : eq(projectAssets.projectId, projectId),
     )
@@ -340,9 +341,10 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
-  const page = hasMore ? rows.slice(0, limit) : rows;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const page = pageRows.map((r) => r.row);
   const nextCursor = hasMore
-    ? `${page[page.length - 1]!.createdAt.toISOString()}|${page[page.length - 1]!.id}`
+    ? `${pageRows[pageRows.length - 1]!.cursorTs}|${pageRows[pageRows.length - 1]!.row.id}`
     : null;
 
   c.header('Cache-Control', 'private, max-age=5');

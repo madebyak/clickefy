@@ -322,7 +322,9 @@ export default function ProjectsPage() {
 
   const newProject = async () => {
     router.push("/create");
-    await createProject(null);
+    // createProject re-throws for generation flows; the failure toast
+    // already fired here, so swallow to avoid an unhandled rejection.
+    await createProject(null).catch(() => undefined);
   };
 
   const unfiled = projects.filter((p) => p.folderId === null);

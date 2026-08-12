@@ -17,14 +17,21 @@ function localizedUrl(path: string, locale: string): string {
 }
 
 export default function sitemap(): MetadataRoute.Sitemap {
+  // Build/regeneration time — the marketing pages change with deploys,
+  // and lastModified is the one freshness signal crawlers actually use.
+  const lastModified = new Date();
   return PUBLIC_PATHS.map((path) => ({
     url: localizedUrl(path, routing.defaultLocale),
+    lastModified,
     changeFrequency: "weekly",
     priority: path === "" ? 1 : 0.8,
     alternates: {
-      languages: Object.fromEntries(
-        routing.locales.map((locale) => [locale, localizedUrl(path, locale)]),
-      ),
+      languages: {
+        ...Object.fromEntries(
+          routing.locales.map((locale) => [locale, localizedUrl(path, locale)]),
+        ),
+        "x-default": localizedUrl(path, routing.defaultLocale),
+      },
     },
   }));
 }

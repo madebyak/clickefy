@@ -49,6 +49,14 @@ function liveClerkDomain(): string | undefined {
   }
 }
 
+/**
+ * Layout metadata carries only path-independent fields. Canonical,
+ * hreflang alternates, and og:url are deliberately NOT set here —
+ * Next merges metadata shallowly and pages inherit the layout's values
+ * verbatim, so a layout-level canonical would make every page (e.g.
+ * /templates) declare itself a duplicate of the homepage. Pages that
+ * should rank set their own via `localizedPageMetadata()`.
+ */
 export async function generateMetadata({
   params,
 }: {
@@ -56,19 +64,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "meta" });
-  const canonical = locale === "ar" ? "/ar" : "/";
   return {
     metadataBase: new URL(config.siteUrl),
     title: t("title"),
     description: t("description"),
-    alternates: {
-      canonical,
-      languages: { en: "/", ar: "/ar" },
-    },
     openGraph: {
       title: t("title"),
       description: t("description"),
-      url: canonical,
       siteName: "Clickefy",
       locale: locale === "ar" ? "ar_AR" : "en_US",
       type: "website",

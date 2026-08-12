@@ -1,4 +1,7 @@
 import Link from "next/link";
+// The root layout is a passthrough and never imports the global styles —
+// without this import the page would render completely unstyled.
+import "./globals.css";
 
 /**
  * Root 404 — renders for paths outside the [locale] tree, and for the

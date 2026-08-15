@@ -6,7 +6,7 @@
  *
  *   - `omni` (Kling V3 Omni): unified multimodal route. Carries an
  *     `image_list[]` of refs + first/end frames, with the prompt
- *     addressing them via `<<<image_N>>>` notation. POST →
+ *     addressing them via `@image_N` notation. POST →
  *     `/v1/videos/omni-video`.
  *
  * Both are async — submit returns a `task_id` we poll until

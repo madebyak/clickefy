@@ -24,7 +24,7 @@
  *     `referenceSlots`. BytePlus forbids mixing, so it's one or the other.
  *
  * NOT covered in v1: Kling Omni's dedicated multi-reference grid
- * (`stage.references` / `<<<image_N>>>`). Those references are NOT
+ * (`stage.references` / `@image_N`). Those references are NOT
  * hydrated by `resolveJobInputs()` (they carry only an `r2Key`), so
  * wiring them needs a separate reference-hydration step. Kling Omni here
  * supports text-to-video plus start/end frame; multi-reference is a

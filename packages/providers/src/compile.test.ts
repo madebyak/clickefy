@@ -193,16 +193,16 @@ describe('compile() — Imagen text-to-image', () => {
   });
 });
 
-// ─── Kling Omni: angle bracket addressing ───────────────────────────
+// ─── Kling Omni: @image_N addressing ────────────────────────────────
 
 describe('compile() — Kling 3 Omni', () => {
-  it('produces <<<image_N>>> in the prompt and a referenceImages list', () => {
+  it('produces @image_N in the prompt and a referenceImages list', () => {
     const product = imageField('product', 'Product');
     const stage = makeStage({
       provider: 'kling',
       model: 'kling-v3-omni',
       prompt:
-        'Animate <<<image_1>>> walking through a forest matching the mood of {{ref:mood}}.',
+        'Animate @image_1 walking through a forest matching the mood of {{ref:mood}}.',
       references: [
         { id: 'r', key: 'mood', role: 'lighting', r2Key: 'refs/m.png', mimeType: 'image/png' },
       ],
@@ -221,7 +221,7 @@ describe('compile() — Kling 3 Omni', () => {
     const kling = request as KlingCompiledRequest;
     expect(kling.variant).toBe('omni');
     // {{ref:mood}} sits at slot 2 (subject is slot 1).
-    expect(kling.prompt).toContain('<<<image_2>>>');
+    expect(kling.prompt).toContain('@image_2');
     expect(kling.prompt).not.toContain('{{ref:mood}}');
     expect(kling.aspectRatio).toBe('9:16');
     expect(kling.duration).toBe(8);
@@ -290,7 +290,7 @@ describe('compile() — stage chaining', () => {
     );
 
     const kling = request as KlingCompiledRequest;
-    expect(kling.prompt).toContain('<<<image_1>>>');
+    expect(kling.prompt).toContain('@image_1');
     expect(kling.startImage?.role).toBe('stage-output');
   });
 
@@ -370,6 +370,87 @@ describe('compile() — legacy bare-key syntax', () => {
 });
 
 // ─── Seedance 2.0: BytePlus multimodal video ────────────────────────
+
+describe('compile() — Seedance audio + exclusivity guards', () => {
+  // `generate_audio` defaults to TRUE upstream and audio output is
+  // billed, so an omitted field silently buys audio on every job.
+  it('sends generate_audio explicitly false when the stage does not ask for sound', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'A silent drift across a frozen lake.',
+      config: { aspectRatio: '16:9', duration: 5 },
+    });
+    const { request } = compile(makeCtx({ stage }));
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.generateAudio).toBe(false);
+  });
+
+  it('still honours an explicit request for sound', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Waves crashing, with sound.',
+      config: { aspectRatio: '16:9', duration: 5, generateAudio: true },
+    });
+    const sd = compile(makeCtx({ stage })).request as SeedanceCompiledRequest;
+    expect(sd.generateAudio).toBe(true);
+  });
+
+  // Start frames and references are mutually exclusive upstream, but
+  // that is already enforced by the explicit `seedanceMode` selector
+  // rather than by a capability flag: in first_last_frame mode the admin
+  // references are dropped, and in reference mode the frame slots are.
+  it('drops admin references when the stage is in first_last_frame mode', () => {
+    const product = imageField('product', 'Product');
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'Animate {{input:product}} in the style of {{ref:mood}}.',
+      references: [
+        { id: 'r', key: 'mood', role: 'lighting', r2Key: 'refs/m.png', mimeType: 'image/png' },
+      ],
+      config: { aspectRatio: '16:9', duration: 5, seedanceMode: 'first_last_frame' },
+    });
+    const { request, warnings } = compile(
+      makeCtx({
+        stage,
+        templateInputs: [product],
+        inputValues: { product: imageValue('uploads/p.png') },
+      }),
+    );
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage).toBeDefined();
+    expect(sd.referenceImages ?? []).toHaveLength(0);
+    expect(warnings.some((w) => w.code === 'reference_dropped')).toBe(true);
+  });
+
+  // Fast tops out at 720p; 1080p used to be offered and rejected upstream.
+  it('clamps an unsupported resolution on the Fast tier instead of sending it', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-fast-260128',
+      prompt: 'A quick pan across a market.',
+      config: { aspectRatio: '16:9', resolution: '1080p', duration: 5 },
+    });
+    const { request, warnings } = compile(makeCtx({ stage }));
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.resolution).toBeUndefined();
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+
+  it('exposes the corrected duration and resolution ranges', () => {
+    expect(getCapabilities('dreamina-seedance-2-0-260128').duration?.values).toContain(15);
+    expect(getCapabilities('dreamina-seedance-2-0-fast-260128').sizing).toMatchObject({
+      resolutions: ['480p', '720p'],
+    });
+    // Kling 3.0 accepts every whole second in 3..15, not just 5 and 10.
+    expect(getCapabilities('kling-v3').duration?.values).toContain(7);
+    expect(getCapabilities('kling-v3-omni').duration?.values).toContain(12);
+    // 2.6 gained native audio.
+    expect(getCapabilities('kling-v2-6').supportsSound).toBe(true);
+  });
+});
 
 describe('compile() — Seedance 2.0', () => {
   it('compiles a T2V stage with prompt + config flow-through', () => {

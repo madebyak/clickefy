@@ -143,7 +143,7 @@ const generationReferenceSchema = z.object({
   // Slug-style identifier referenced from the prompt as `{{ref:<key>}}`.
   // Must be unique within a stage. Constrained to a safe character set
   // so the substitution regex stays simple and the key is safe to embed
-  // in provider payloads (e.g. `<<<image_<key>>>` for Kling Omni).
+  // in provider payloads (e.g. `@image_N` for Kling Omni).
   key: z
     .string()
     .min(1)

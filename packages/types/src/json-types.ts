@@ -206,7 +206,7 @@ export type ReferenceImageRole =
  * It must be unique within a stage. The prompt-compiler maps each
  * `{{ref:<key>}}` token to the matching reference and emits the
  * provider-specific addressing (ordinal text part for Gemini,
- * `<<<image_N>>>` for Kling Omni).
+ * `@image_N` for Kling Omni).
  *
  * `r2Key` is the persisted pointer in Cloudflare R2. The admin form
  * keeps a transient `base64` working copy until the upload completes;

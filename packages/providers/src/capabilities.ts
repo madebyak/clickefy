@@ -6,7 +6,7 @@
  * video models; how many references the model accepts). The
  * prompt-compiler reads from it to validate stage configs and to pick
  * the right image-addressing strategy (`ordinal` text-part labels for
- * Gemini, `<<<image_N>>>` for Kling Omni, etc.).
+ * Gemini, `@image_N` for Kling Omni, etc.).
  *
  * Adding a new model is a one-file change:
  *   1. Add an entry below.
@@ -46,11 +46,16 @@ export type SizingMode =
  *                  preamble; the prompt can also embed `{{ref:<key>}}`
  *                  tokens which we substitute with "the Nth image"
  *                  textually for clarity.
- *  - `angle`     → `<<<image_N>>>` literal embedded in the prompt
- *                  string itself — Kling Omni.
+ *  - `at`        → `@image_N` literal embedded in the prompt string
+ *                  itself — Kling Omni / O1.
+ *                  Kling's own docs give the form `@image_1`, `@Zhang`,
+ *                  `@video_1`. An earlier `<<<image_N>>>` spelling here
+ *                  came from third-party API mirrors, not Kuaishou, and
+ *                  the model does not recognise it — references written
+ *                  that way were silently ignored.
  *  - `none`      → model does not accept reference images (Imagen).
  */
-export type RefAddressingStyle = 'ordinal' | 'angle' | 'none';
+export type RefAddressingStyle = 'ordinal' | 'at' | 'none';
 
 export type ModelStatus = 'active' | 'preview' | 'deprecated';
 
@@ -200,8 +205,14 @@ const KLING_ASPECT_RATIOS = ['16:9', '9:16', '1:1'] as const;
  * row instead of pretending you can pick.
  */
 const KLING_FIXED_ASPECT = ['16:9'] as const;
+/** v2 family (2.5-turbo, 2.6, v2-master): only 5s and 10s. */
 const KLING_DURATIONS = [5, 10] as const;
-const KLING_OMNI_DURATIONS = [3, 5, 8, 10, 15] as const;
+/**
+ * Kling 3.0 family (3.0, 3.0 Omni, 3.0 Turbo): every whole second from
+ * 3 to 15. The previous `[3, 5, 8, 10, 15]` list was a guess from a
+ * third-party mirror and made 8 of the 13 legal values unreachable.
+ */
+const KLING_3_DURATIONS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
 
 /**
  * Seedance 2.0 (BytePlus ModelArk) constants.
@@ -210,26 +221,35 @@ const KLING_OMNI_DURATIONS = [3, 5, 8, 10, 15] as const;
  * the named ratios in the admin UI; templates that want "match the
  * input image's aspect" use `'adaptive'`.
  *
- * Resolutions: 480p / 720p / 1080p / 2K. 720p is the documented
- * default and the cheapest above 480p — admin form will default here.
+ * Resolutions are NOT uniform across the line, and getting this wrong
+ * costs real money: an unsupported resolution is rejected by the API
+ * *after* we have already debited credits. Only Seedance 2.0 Standard
+ * goes above 720p. (`2K` was never a valid value — the top tier is
+ * `4k`.)
  *
- * Durations: 5 / 10s are the canonical menu values (the API technically
- * accepts any integer 4–15, but 5 and 10 cover virtually every template
- * pattern and keep the picker tidy).
+ * Durations: every whole second in the model's range, plus `-1` meaning
+ * "let the model choose". Previously fixed at 5/10 to keep the picker
+ * tidy, which silently hid most of the range.
  *
- * Reference limits per BytePlus docs:
+ * Reference limits per BytePlus docs (2.0 series):
  *   - up to 9 image references per request
  *   - up to 3 video references per request
  *   - up to 3 audio references per request
- *   We expose 9 in `maxReferences` (the dominant case — the admin form
- *   widens to videos/audio in a follow-up PR; the compiler already
- *   handles all three).
  */
 const SEEDANCE_ASPECT_RATIOS = [
   '16:9', '9:16', '4:3', '3:4', '21:9', '1:1', 'adaptive',
 ] as const;
-const SEEDANCE_RESOLUTIONS = ['480p', '720p', '1080p', '2K'] as const;
-const SEEDANCE_DURATIONS = [5, 10] as const;
+/** Seedance 2.0 Standard only. */
+const SEEDANCE_RESOLUTIONS_FULL = ['480p', '720p', '1080p', '4k'] as const;
+/** Seedance 2.5, 2.0 Fast and 2.0 Mini all cap at 720p. */
+const SEEDANCE_RESOLUTIONS_SD = ['480p', '720p'] as const;
+/** Seedance 2.0 series: [4, 15]. */
+const SEEDANCE_DURATIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
+/** Seedance 2.5: [4, 30]. */
+const SEEDANCE_25_DURATIONS = [
+  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+] as const;
 
 /**
  * Seedream — the IMAGE line on the same BytePlus ModelArk account.
@@ -465,9 +485,14 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 1,
     maxImagesTotal: 1,
     acceptsStartEndImage: true,
+    // 2.6 is the release that added native audio (`settings.audio`).
+    // Two upstream constraints ride along and are enforced in compile:
+    // audio=native forces 1080p, and so does using both frames.
+    supportsSound: true,
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
-    notes: 'First v2 model to honor aspect_ratio. Supports 16:9, 9:16, 1:1.',
+    notes:
+      'First v2 model to honor aspect_ratio (16:9, 9:16, 1:1) and the first with native audio. Native audio and first+last-frame both require 1080p.',
   },
   'kling-v2-5-turbo': {
     provider: 'kling',
@@ -515,9 +540,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     kind: 'video',
     sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
     outputs: { min: 1, max: 1, default: 1 },
-    duration: { values: KLING_OMNI_DURATIONS, default: 5 },
+    duration: { values: KLING_3_DURATIONS, default: 5 },
     negativePrompt: true,
-    refAddressing: 'angle',
+    refAddressing: 'at',
     // The omni endpoint caps `image_list` at 7 entries TOTAL (start/end
     // frames included; drops to 4 when a reference video is attached —
     // video refs not wired yet). Was 9 before the 2026 docs pass.
@@ -537,7 +562,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
     notes:
-      'Unified text-to-video + image-to-video + multi-reference with optional native audio. Modes std (720p) / pro (1080p) / 4k. Prompt addresses references as <<<image_1>>>, <<<image_2>>>, …',
+      'Unified text-to-video + image-to-video + multi-reference with optional native audio. Modes std (720p) / pro (1080p) / 4k. Prompt addresses references as @image_1, @image_2, …',
   },
 
   // ── Kling v3 (base) ─────────────────────────────────────────────────
@@ -556,7 +581,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     kind: 'video',
     sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
     outputs: { min: 1, max: 1, default: 1 },
-    duration: { values: KLING_DURATIONS, default: 5 },
+    duration: { values: KLING_3_DURATIONS, default: 5 },
     negativePrompt: true,
     refAddressing: 'none',
     maxReferences: 0,
@@ -584,11 +609,17 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   // determines first_frame vs last_frame vs reference_image when
   // combined with the per-item `role` field.
   //
-  // `refAddressing: 'ordinal'` because Seedance prompts naturally
-  // address images as "the first image" / "[image 1]" rather than
-  // requiring a positional `@Image1` literal. Role tags on the
-  // content array carry the structural meaning; the prompt language
-  // describes intent.
+  // `refAddressing: 'ordinal'` — role tags on the content array carry the
+  // structural meaning and ordinal prose ("the first image") is what the
+  // compiler emits. BytePlus's own examples DO use a positional `@Image1`
+  // / `@Video1` token, which is a different spelling from Kling's
+  // `@image_1`; switching to it is a behaviour change we have no evidence
+  // is an improvement, so it stays a documented option rather than a
+  // silent swap. (Unlike Kling, the ordinal form here was never broken.)
+  //
+  // Note `generate_audio` defaults to TRUE upstream. We always send it
+  // explicitly so a silent default cannot bill us for audio nobody asked
+  // for; `supportsSound` is what exposes the toggle to users.
   'dreamina-seedance-2-0-260128': {
     provider: 'seedance',
     modelKey: 'dreamina-seedance-2-0-260128',
@@ -598,7 +629,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     sizing: {
       mode: 'aspect',
       values: SEEDANCE_ASPECT_RATIOS,
-      resolutions: SEEDANCE_RESOLUTIONS,
+      resolutions: SEEDANCE_RESOLUTIONS_FULL,
     },
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: SEEDANCE_DURATIONS, default: 5 },
@@ -607,10 +638,11 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 2, // first_frame + optional last_frame
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
+    supportsSound: true,
     // Exact cap unpublished; safe default matching the video peers.
     maxPromptChars: 2500,
     notes:
-      'BytePlus Seedance 2.0. Supports T2V, I2V, first/last frame, multi-reference, native audio (lip-sync). Up to 1080p / 10s. ~$0.93 per 5s at 1080p.',
+      'BytePlus Seedance 2.0 Standard — the only model in the line above 720p (480p/720p/1080p/4k). T2V, I2V, first/last frame, up to 9 references, native audio with lip-sync. 4–15s. Reference images and start/end frames cannot be combined.',
   },
   'dreamina-seedance-2-0-fast-260128': {
     provider: 'seedance',
@@ -621,7 +653,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     sizing: {
       mode: 'aspect',
       values: SEEDANCE_ASPECT_RATIOS,
-      resolutions: SEEDANCE_RESOLUTIONS,
+      // NOT the same ladder as Standard: Fast tops out at 720p. Offering
+      // 1080p/4k here produced a provider rejection *after* the debit.
+      resolutions: SEEDANCE_RESOLUTIONS_SD,
     },
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: SEEDANCE_DURATIONS, default: 5 },
@@ -630,8 +664,10 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 2,
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
+    supportsSound: true,
+    maxPromptChars: 2500,
     notes:
-      'Fast tier of Seedance 2.0 — ~20% cheaper, slightly lower fidelity. Same parameter surface as Standard.',
+      'Fast tier of Seedance 2.0 — ~20% cheaper, slightly lower fidelity. 480p/720p only, unlike Standard. Otherwise the same parameter surface.',
   },
 
   // ── Seedream (BytePlus ModelArk — image line) ───────────────────────

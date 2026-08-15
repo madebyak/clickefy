@@ -19,7 +19,7 @@
  *   │              │ warning so the prompt still reads naturally.    │
  *   │ Kling v2     │ Single subject image only. {{ref:k}} is         │
  *   │              │ unsupported — surfaced as a warning.            │
- *   │ Kling Omni   │ Native `<<<image_N>>>` notation. Subjects and   │
+ *   │ Kling Omni   │ Native `@image_N` notation. Subjects and        │
  *   │              │ references occupy distinct slots                │
  *   │              │ (`start_image` + `reference_images[]`).         │
  *   └──────────────┴─────────────────────────────────────────────────┘
@@ -271,7 +271,7 @@ function bytesToBase64(bytes: Uint8Array): string {
  * differs per provider style:
  *
  *   - `ordinal`  → "the first image" / "the second image" (Gemini).
- *   - `angle`    → `<<<image_N>>>` (Kling Omni).
+ *   - `at`       → `@image_N` (Kling Omni / O1).
  *   - `none`     → image tokens are stripped entirely; only text input
  *                  tokens are substituted (Imagen).
  *
@@ -289,7 +289,7 @@ function substituteTokens(args: {
   references: GenerationReference[];
   previousOutputs: StageOutputRef[];
   imageParts: ImagePart[];
-  style: 'ordinal' | 'angle' | 'none';
+  style: 'ordinal' | 'at' | 'none';
   warnings: CompileWarning[];
 }): string {
   const {
@@ -398,9 +398,9 @@ function substituteTokens(args: {
               token: token.raw,
             });
             replacement = '';
-          } else if (style === 'angle') {
+          } else if (style === 'at') {
             const idx = partIndexBySubjectField.get(token.key);
-            replacement = idx ? `<<<image_${idx}>>>` : '';
+            replacement = idx ? `@image_${idx}` : '';
           } else {
             const idx = partIndexBySubjectField.get(token.key);
             replacement = idx ? ordinalPhrase(idx) : '';
@@ -430,9 +430,9 @@ function substituteTokens(args: {
             token: token.raw,
           });
           replacement = '';
-        } else if (style === 'angle') {
+        } else if (style === 'at') {
           const idx = partIndexByRefKey.get(token.key);
-          replacement = idx ? `<<<image_${idx}>>>` : '';
+          replacement = idx ? `@image_${idx}` : '';
         } else {
           const idx = partIndexByRefKey.get(token.key);
           replacement = idx ? ordinalPhrase(idx) : '';
@@ -464,9 +464,9 @@ function substituteTokens(args: {
             token: token.raw,
           });
           replacement = '';
-        } else if (style === 'angle') {
+        } else if (style === 'at') {
           const idx = partIndexByStage.get(stageIndex);
-          replacement = idx ? `<<<image_${idx}>>>` : '';
+          replacement = idx ? `@image_${idx}` : '';
         } else {
           const idx = partIndexByStage.get(stageIndex);
           replacement = idx ? ordinalPhrase(idx) : '';
@@ -744,7 +744,7 @@ function compileKling(
     references: stage.references,
     previousOutputs: ctx.previousOutputs,
     imageParts,
-    style: isOmni ? 'angle' : 'ordinal',
+    style: isOmni ? 'at' : 'ordinal',
     warnings,
   });
 
@@ -1487,8 +1487,16 @@ function compileSeedance(
     duration = capabilities.duration?.default;
   }
 
-  const generateAudio =
-    typeof stage.config.generateAudio === 'boolean' ? stage.config.generateAudio : undefined;
+  // `generate_audio` defaults to TRUE on ModelArk, and audio output is
+  // billed. Leaving it unset therefore buys audio on every generation
+  // whether or not the product offers a sound toggle, so we always send
+  // an explicit boolean and default it OFF. A model that cannot do audio
+  // at all never gets the field.
+  const generateAudio = capabilities.supportsSound
+    ? typeof stage.config.generateAudio === 'boolean'
+      ? stage.config.generateAudio
+      : false
+    : undefined;
   const returnLastFrame =
     typeof stage.config.returnLastFrame === 'boolean'
       ? stage.config.returnLastFrame

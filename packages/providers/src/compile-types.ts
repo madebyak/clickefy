@@ -153,7 +153,7 @@ export interface KlingCompiledRequest {
    */
   variant: 'text2video' | 'image2video' | 'omni';
   model: string;
-  /** Final prompt — for Omni, contains `<<<image_N>>>` references. */
+  /** Final prompt — for Omni, contains `@image_N` references. */
   prompt: string;
   negativePrompt?: string;
   aspectRatio?: string;

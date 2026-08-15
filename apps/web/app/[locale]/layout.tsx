@@ -14,11 +14,23 @@ import "../globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"], display: "swap" });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"], display: "swap" });
+// All four weights are genuinely used by the UI (500 and 600 heavily), so
+// none can be dropped.
+//
+// `preload: false` is deliberate. Both locales share this layout, so Next
+// emits <link rel=preload> for every font here on EVERY page — which on a
+// Latin page force-downloads ~121 KB of Arabic faces that are never drawn.
+// The generated @font-face already carries a `unicode-range` limited to
+// Arabic codepoints, so without the preload tag the browser fetches these
+// files only when Arabic glyphs are actually present: skipped entirely on
+// /en, fetched during first layout on /ar. Removing the preload restores
+// that built-in optimisation rather than trading it away.
 const ibmArabic = IBM_Plex_Sans_Arabic({
   variable: "--font-ibm-arabic",
   subsets: ["arabic"],
   weight: ["400", "500", "600", "700"],
   display: "swap",
+  preload: false,
 });
 
 export function generateStaticParams() {

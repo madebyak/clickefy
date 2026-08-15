@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { ArrowsOutSimple, DownloadSimple, X, Play, Check } from "@phosphor-icons/react";
+import { Info, DownloadSimple, X, Play, Check, ImageSquare } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import type { Asset } from "@/components/studio/studio-context";
 
@@ -39,21 +39,32 @@ function OverlayButton({
 /**
  * Pinterest-style masonry of typed assets (images + auto-looping videos).
  * Tiles have hover actions (expand / download); expand opens a lightbox.
- * onAssetClick lets a parent do something (e.g. attach to the prompt).
+ * onAssetClick attaches the asset to the prompt (the "Add as reference"
+ * action); onAssetInfo opens the details panel. A plain tile click opens
+ * the lightbox and is handled here.
  */
 export function Masonry({
   assets,
   onAssetClick,
+  onAssetInfo,
   selectedIds,
   onToggleSelect,
 }: {
   assets: Asset[];
   onAssetClick?: (asset: Asset) => void;
+  /** Opens the details slide-over for one asset. */
+  onAssetInfo?: (asset: Asset) => void;
   selectedIds?: string[];
   onToggleSelect?: (id: string) => void;
 }) {
   const t = useTranslations("studio");
   const [lightbox, setLightbox] = useState<Asset | null>(null);
+  // Reset per open so a second, slower image doesn't flash the previous one.
+  const [loaded, setLoaded] = useState(false);
+  const openLightbox = (a: Asset) => {
+    setLoaded(false);
+    setLightbox(a);
+  };
 
   return (
     <>
@@ -68,9 +79,9 @@ export function Masonry({
           >
             <button
               type="button"
-              onClick={() => onAssetClick?.(a)}
+              onClick={() => openLightbox(a)}
               className="block w-full cursor-pointer outline-none"
-              aria-label={t("useAsset")}
+              aria-label={t("expand")}
             >
               {a.type === "video" ? (
                 <video
@@ -118,13 +129,13 @@ export function Masonry({
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
             <div className="absolute end-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
               <OverlayButton
-                label={t("expand")}
+                label={t("assetInfo")}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setLightbox(a);
+                  onAssetInfo?.(a);
                 }}
               >
-                <ArrowsOutSimple className="size-4" />
+                <Info className="size-4" />
               </OverlayButton>
               <OverlayButton
                 label={t("download")}
@@ -136,6 +147,24 @@ export function Masonry({
                 <DownloadSimple className="size-4" />
               </OverlayButton>
             </div>
+
+            {/* Attaching used to be what a tile click did. Now the click
+                opens the asset, so the action needs its own affordance. */}
+            {onAssetClick && (
+              <div className="absolute inset-x-2 bottom-2 opacity-0 transition-opacity group-hover:opacity-100">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssetClick(a);
+                  }}
+                  className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-black/70 px-2 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85"
+                >
+                  <ImageSquare className="size-3.5" />
+                  {t("addAsReference")}
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -172,17 +201,32 @@ export function Masonry({
               controls
               autoPlay
               loop
+              playsInline
               className="max-h-[88vh] max-w-full rounded-lg"
+              // Video keeps swallowing the click: the transport controls
+              // live inside this box, so closing on it would make the
+              // scrubber unusable.
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={lightbox.src}
-              alt=""
-              className="max-h-[88vh] max-w-full rounded-lg object-contain"
-              onClick={(e) => e.stopPropagation()}
-            />
+            <>
+              {/* Full-resolution originals are large. Show the frame
+                  immediately and swap it for the image once decoded,
+                  rather than leaving the viewport empty. */}
+              {!loaded && (
+                <div className="size-64 animate-pulse rounded-lg bg-surface-2 sm:size-96" />
+              )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={lightbox.src}
+                alt=""
+                onLoad={() => setLoaded(true)}
+                className={cn(
+                  "max-h-[88vh] max-w-full rounded-lg object-contain",
+                  loaded ? "block" : "hidden",
+                )}
+              />
+            </>
           )}
         </div>
       )}

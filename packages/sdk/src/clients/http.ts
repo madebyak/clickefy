@@ -35,6 +35,7 @@ import type {
 import { JobSubmissionError, RateLimitedError } from '../types';
 import type {
   CreditsSummary,
+  AssetDetail,
   ProjectAssetsResponse,
   ProjectsListResponse,
   SDKClient,
@@ -909,6 +910,13 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
       },
       async delete(projectId) {
         await mutateJson<void>('DELETE', `/v1/projects/${projectId}`);
+      },
+      async getAsset(projectId, assetId) {
+        const json = await get<ApiEnvelope<AssetDetail>>(
+          `/v1/projects/${projectId}/assets/${assetId}`,
+          { auth: true },
+        );
+        return json.data;
       },
       async listAssets(projectId, opts) {
         const params = new URLSearchParams();

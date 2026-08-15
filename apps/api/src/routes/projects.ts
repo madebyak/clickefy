@@ -24,8 +24,16 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, inArray, sql as dsql } from 'drizzle-orm';
 
-import { folders, jobs, projectAssets, projects } from '@clickfy/db';
+import { folders, jobs, projectAssets, projects, templates } from '@clickfy/db';
 
+import type { JobInputValue } from '@clickfy/types';
+import {
+  CREATE_PROMPT_KEY,
+  CREATE_START_FRAME_KEY,
+  CREATE_END_FRAME_KEY,
+  createReferenceKey,
+  findCapabilities,
+} from '@clickfy/providers';
 import type { AppEnv } from '../types';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
@@ -67,6 +75,34 @@ function parseKeysetCursor(cursor: string | undefined): { ts: string; id: string
 
 /** Mint a delivery URL for an asset r2Key against the live origin. */
 const assetUrl = (origin: string, r2Key: string) => `${origin}/v1/outputs/${r2Key}`;
+
+/**
+ * Reference slots to look for on a create job. `buildCreateStage` emits
+ * `ref_0…ref_N`; the API caps submissions well below this, so scanning a
+ * fixed window is cheaper than parsing every key.
+ */
+const MAX_LISTED_REFERENCES = 16;
+
+/** File extension from the stored R2 key — we persist no MIME type. */
+function formatFromKey(r2Key: string): string | null {
+  const ext = r2Key.split('.').pop();
+  return ext && ext.length <= 5 && !ext.includes('/') ? ext.toLowerCase() : null;
+}
+
+/** Provenance block on the asset-detail response. */
+interface AssetGeneration {
+  source: 'template' | 'user';
+  /** User-typed prompt. Always null for template jobs — see the route. */
+  prompt: string | null;
+  templateTitle: string | null;
+  modelKey: string | null;
+  modelName: string | null;
+  aspectRatio: string | null;
+  quality: string | null;
+  duration: number | null;
+  sound: boolean | null;
+  references: Array<{ role: 'start_frame' | 'end_frame' | 'reference'; url: string }>;
+}
 
 const readChain = [
   withAuth({ required: true }),
@@ -245,6 +281,143 @@ projectsRoute.post('/', ...writeChain, zValidator('json', createProjectSchema), 
     },
     201,
   );
+});
+
+// ─── GET /v1/projects/:id/assets/:assetId ───────────────────────────
+//
+// Everything the studio's info panel shows about one asset. The asset
+// row carries only its own dimensions and timestamps; how it was made
+// lives on the originating job, so this joins across and flattens.
+//
+// `jobId` is nullable (ON DELETE SET NULL) and assets can be copied
+// between projects, so `generation` is optional rather than assumed —
+// an asset whose job has been pruned still renders, just without the
+// provenance block.
+projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
+  const user = c.var.user!;
+  const projectId = c.req.param('id');
+  const assetId = c.req.param('assetId');
+  if (!isUuid(projectId) || !isUuid(assetId)) {
+    return c.json({ error: { code: 'invalid_id', message: 'Malformed id.' } }, 400);
+  }
+
+  // Scoped by (asset, project, owner) in one predicate — a valid asset
+  // id from another user's project must 404, not leak.
+  const [row] = await c.var.db
+    .select({
+      id: projectAssets.id,
+      kind: projectAssets.kind,
+      r2Key: projectAssets.r2Key,
+      posterR2Key: projectAssets.posterR2Key,
+      width: projectAssets.width,
+      height: projectAssets.height,
+      durationSec: projectAssets.durationSec,
+      createdAt: projectAssets.createdAt,
+      jobId: projectAssets.jobId,
+    })
+    .from(projectAssets)
+    .where(
+      and(
+        eq(projectAssets.id, assetId),
+        eq(projectAssets.projectId, projectId),
+        eq(projectAssets.userId, user.id),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    return c.json({ error: { code: 'asset_not_found', message: 'Asset not found.' } }, 404);
+  }
+
+  const origin = new URL(c.req.url).origin;
+  let generation: AssetGeneration | null = null;
+
+  if (row.jobId) {
+    const [job] = await c.var.db
+      .select({
+        source: jobs.source,
+        modelKey: jobs.modelKey,
+        inputs: jobs.inputs,
+        options: jobs.options,
+        templateId: jobs.templateId,
+      })
+      .from(jobs)
+      .where(and(eq(jobs.id, row.jobId), eq(jobs.userId, user.id)))
+      .limit(1);
+
+    if (job) {
+      // `options` is wider on the wire than its column annotation: the
+      // create flow also persists the resolved quality tier and the
+      // sound toggle.
+      const opts = (job.options ?? {}) as {
+        aspectRatio?: string;
+        duration?: number;
+        sound?: boolean;
+        mode?: string;
+      };
+      const inputs = (job.inputs ?? {}) as Record<string, JobInputValue>;
+
+      // Template prompts are ours, not the user's — surface the template
+      // by name and withhold the prompt text itself.
+      const isTemplate = job.source === 'template';
+      let templateTitle: string | null = null;
+      if (isTemplate && job.templateId) {
+        const [tpl] = await c.var.db
+          .select({ title: templates.title })
+          .from(templates)
+          .where(eq(templates.id, job.templateId))
+          .limit(1);
+        templateTitle = tpl?.title ?? null;
+      }
+
+      const promptInput = inputs[CREATE_PROMPT_KEY];
+      const caps = job.modelKey ? findCapabilities(job.modelKey) : undefined;
+
+      // Every image the user supplied, in the order the model saw it.
+      const refs: AssetGeneration['references'] = [];
+      const pushRef = (key: string, role: 'start_frame' | 'end_frame' | 'reference') => {
+        const v = inputs[key];
+        if (v && (v.kind === 'image' || v.kind === 'video') && v.r2Key) {
+          refs.push({ role, url: assetUrl(origin, v.r2Key) });
+        }
+      };
+      pushRef(CREATE_START_FRAME_KEY, 'start_frame');
+      pushRef(CREATE_END_FRAME_KEY, 'end_frame');
+      for (let i = 0; i < MAX_LISTED_REFERENCES; i += 1) {
+        pushRef(createReferenceKey(i), 'reference');
+      }
+
+      generation = {
+        source: job.source,
+        prompt:
+          !isTemplate && promptInput?.kind === 'text' ? (promptInput.value ?? null) : null,
+        templateTitle,
+        modelKey: job.modelKey,
+        modelName: caps?.displayName ?? job.modelKey,
+        aspectRatio: opts.aspectRatio ?? null,
+        quality: opts.mode ?? null,
+        duration: opts.duration ?? null,
+        sound: typeof opts.sound === 'boolean' ? opts.sound : null,
+        references: refs,
+      };
+    }
+  }
+
+  return c.json({
+    data: {
+      id: row.id,
+      kind: row.kind,
+      url: assetUrl(origin, row.r2Key),
+      posterUrl: row.posterR2Key ? assetUrl(origin, row.posterR2Key) : null,
+      width: row.width,
+      height: row.height,
+      durationSec: row.durationSec,
+      createdAt: row.createdAt.toISOString(),
+      // No MIME column exists; the stored key keeps its extension.
+      format: formatFromKey(row.r2Key),
+      generation,
+    },
+  });
 });
 
 // ─── PATCH /v1/projects/:id ─────────────────────────────────────────

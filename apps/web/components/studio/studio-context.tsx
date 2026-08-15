@@ -28,6 +28,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import type {
+  AssetDetail,
   CreateGenerationInput,
   GenerationProgress,
   ProjectsListResponse,
@@ -60,6 +61,15 @@ const EMPTY_PROJECTS: StudioProject[] = [];
 export type AssetType = "image" | "video";
 /** The masonry's render unit — mapped from `StudioAsset`. */
 export type Asset = { id: string; type: AssetType; src: string; poster?: string };
+
+/** A past generation's settings, handed to the composer to restore. */
+export type ReuseSetup = {
+  prompt: string;
+  modelKey: string | null;
+  aspectRatio: string | null;
+  quality: string | null;
+  referenceUrls: string[];
+};
 export type { StudioAsset, StudioFolder, StudioProject };
 
 /**
@@ -152,6 +162,14 @@ type StudioValue = {
   attachFile: (file: File) => void;
   /** Attach an existing canvas asset as a reference (fetch → re-upload). */
   addAttachment: (asset: Asset) => void;
+  /**
+   * Restore a past generation's setup into the composer — prompt, model,
+   * tier, aspect ratio and its reference images — WITHOUT generating.
+   * The prompt bar consumes `pendingSetup` and clears it once applied.
+   */
+  reuseSetup: (detail: AssetDetail) => void;
+  pendingSetup: ReuseSetup | null;
+  clearPendingSetup: () => void;
   removeAttachment: (attachmentId: string) => void;
   clearAttachments: () => void;
 
@@ -560,6 +578,34 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [uploadAttachment],
   );
 
+  /**
+   * Handed to the prompt bar rather than applied here: model, tier and
+   * ratio are the composer's own state, and the studio has no business
+   * reaching into it. This is a one-shot baton — set on re-use, cleared
+   * by the consumer.
+   */
+  const [pendingSetup, setPendingSetup] = useState<ReuseSetup | null>(null);
+  const clearPendingSetup = useCallback(() => setPendingSetup(null), []);
+
+  const reuseSetup = useCallback(
+    (detail: AssetDetail) => {
+      const gen = detail.generation;
+      if (!gen) return;
+      // References first: the composer clears attachments when the model
+      // changes, so they have to land after the model is applied. The
+      // prompt bar owns that ordering; we only carry the payload.
+      setPendingSetup({
+        prompt: gen.prompt ?? "",
+        modelKey: gen.modelKey,
+        aspectRatio: gen.aspectRatio,
+        quality: gen.quality,
+        referenceUrls: gen.references.map((r) => r.url),
+      });
+      toast.success(t("reuseApplied"));
+    },
+    [t],
+  );
+
   const addAttachment = useCallback(
     (asset: Asset) => {
       if (asset.type !== "image") return; // only images can be references/frames
@@ -737,6 +783,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       attachments,
       attachFile,
       addAttachment,
+      reuseSetup,
+      pendingSetup,
+      clearPendingSetup,
       removeAttachment,
       clearAttachments,
       pending,
@@ -770,6 +819,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       attachments,
       attachFile,
       addAttachment,
+      reuseSetup,
+      pendingSetup,
+      clearPendingSetup,
       removeAttachment,
       clearAttachments,
       pending,

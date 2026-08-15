@@ -518,6 +518,41 @@ export function PromptBar({
   }, [activeModelKey]);
 
   const [prompt, setPrompt] = useState("");
+
+  // ── Re-use: restore a past generation's setup ────────────────────
+  //
+  // Ordering matters. Selecting a model resets the dependent knobs
+  // (aspect, tier, attachments) via the effect above, so the model is
+  // applied first and everything else on the following commit — writing
+  // them together would let that reset wipe what we just restored.
+  const pendingSetup = studio?.pendingSetup ?? null;
+  const clearPendingSetup = studio?.clearPendingSetup;
+  const [setupStage, setSetupStage] = useState<"idle" | "applyModel" | "applyRest">("idle");
+
+  useEffect(() => {
+    if (pendingSetup && setupStage === "idle") setSetupStage("applyModel");
+  }, [pendingSetup, setupStage]);
+
+  useEffect(() => {
+    if (!pendingSetup || setupStage !== "applyModel") return;
+    setPrompt(pendingSetup.prompt);
+    if (pendingSetup.modelKey && models.some((m) => m.modelKey === pendingSetup.modelKey)) {
+      setModelKey(pendingSetup.modelKey);
+    }
+    setSetupStage("applyRest");
+  }, [pendingSetup, setupStage, models]);
+
+  useEffect(() => {
+    if (!pendingSetup || setupStage !== "applyRest") return;
+    if (pendingSetup.aspectRatio) setAspect(pendingSetup.aspectRatio);
+    if (pendingSetup.quality) setTier(pendingSetup.quality);
+    for (const url of pendingSetup.referenceUrls) {
+      studio?.addAttachment({ id: `reuse-${url}`, type: "image", src: url });
+    }
+    setSetupStage("idle");
+    clearPendingSetup?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per restore
+  }, [pendingSetup, setupStage]);
   const [focused, setFocused] = useState(false);
   const basePlaceholder = t(isVideo ? "placeholderVideo" : "placeholderImage");
   const examples = useMemo(

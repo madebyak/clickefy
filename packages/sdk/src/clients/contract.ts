@@ -406,6 +406,29 @@ export interface ProjectsListResponse {
   nextCursor: string | null;
 }
 
+/** How an asset was generated. Null when the originating job is gone. */
+export interface AssetGeneration {
+  source: 'template' | 'user';
+  /** User-typed prompt. Null for template jobs — the template's own
+   *  prompt is not exposed. */
+  prompt: string | null;
+  templateTitle: string | null;
+  modelKey: string | null;
+  modelName: string | null;
+  aspectRatio: string | null;
+  quality: string | null;
+  duration: number | null;
+  sound: boolean | null;
+  references: Array<{ role: 'start_frame' | 'end_frame' | 'reference'; url: string }>;
+}
+
+/** Everything the studio info panel shows about one asset. */
+export interface AssetDetail extends StudioAsset {
+  /** File extension derived from the stored key; no MIME is persisted. */
+  format: string | null;
+  generation: AssetGeneration | null;
+}
+
 export interface ProjectAssetsResponse {
   items: StudioAsset[];
   nextCursor: string | null;
@@ -437,6 +460,8 @@ export interface ProjectsClient {
     projectId: string,
     opts?: { limit?: number; cursor?: string },
   ): Promise<ProjectAssetsResponse>;
+  /** One asset plus how it was generated — powers the info panel. */
+  getAsset(projectId: string, assetId: string): Promise<AssetDetail>;
   /** Copy assets (caller-owned) into a project. Duplicates dedupe silently. */
   copyAssets(projectId: string, assetIds: string[]): Promise<{ copied: number }>;
   /** Move assets to another project (rows are re-created; ids change). */

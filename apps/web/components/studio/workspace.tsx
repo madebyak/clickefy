@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Sparkle,
@@ -17,6 +18,7 @@ import {
   type StudioProject,
 } from "@/components/studio/studio-context";
 import { Masonry } from "@/components/studio/masonry";
+import { AssetInfoPanel } from "@/components/studio/asset-info-panel";
 import { SelectionBar } from "@/components/studio/selection-bar";
 import { PromptBar } from "@/components/generate/prompt-bar";
 import { useTimeLabel } from "@/lib/time-label";
@@ -112,6 +114,7 @@ function ProjectView({
   pending,
   onDismissPending,
   onAttach,
+  onAssetInfo,
   selectedIds,
   onToggleSelect,
 }: {
@@ -120,6 +123,7 @@ function ProjectView({
   pending: PendingGeneration[];
   onDismissPending: (jobId: string) => void;
   onAttach: (a: Asset) => void;
+  onAssetInfo: (a: Asset) => void;
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
 }) {
@@ -149,6 +153,7 @@ function ProjectView({
       <Masonry
         assets={assets}
         onAssetClick={onAttach}
+        onAssetInfo={onAssetInfo}
         selectedIds={selectedIds}
         onToggleSelect={onToggleSelect}
       />
@@ -168,7 +173,12 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
     dismissPending,
     selectedAssetIds,
     toggleAssetSelection,
+    reuseSetup,
   } = useStudio();
+
+  // Which asset the details slide-over is showing, if any.
+  const [infoAssetId, setInfoAssetId] = useState<string | null>(null);
+  const infoAsset = infoAssetId ? activeAssets.find((a) => a.id === infoAssetId) : undefined;
 
   const projectPending = activeProject
     ? pending.filter((p) => p.projectId === activeProject.id)
@@ -244,6 +254,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
               pending={projectPending}
               onDismissPending={dismissPending}
               onAttach={addAttachment}
+              onAssetInfo={(a) => setInfoAssetId(a.id)}
               selectedIds={selectedAssetIds}
               onToggleSelect={toggleAssetSelection}
             />
@@ -258,6 +269,18 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
           <PromptBar kind={kind} />
         </div>
       </div>
+      {activeProject && infoAssetId && (
+        <AssetInfoPanel
+          projectId={activeProject.id}
+          assetId={infoAssetId}
+          onClose={() => setInfoAssetId(null)}
+          onDownload={() => infoAsset && downloadAsset(infoAsset)}
+          onReuse={(detail) => {
+            reuseSetup(detail);
+            setInfoAssetId(null);
+          }}
+        />
+      )}
     </main>
   );
 }

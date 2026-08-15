@@ -16,7 +16,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import type { Template, GenerationStage, TemplateInput, ReferenceImageRole, GenerationReference } from '@clickfy/types';
-import { findCapabilities } from '@clickfy/providers';
+import { findCapabilities, listActiveModels } from '@clickfy/providers';
 import { cn } from '@/lib/utils';
 import { uploadImageAsset, ApiError } from '@/lib/api/uploads';
 import type { TokenGetter } from '@/lib/api';
@@ -55,39 +55,118 @@ interface GenerationTabProps {
   getToken: TokenGetter;
 }
 
-// GA model keys only. The `-preview` keys and Imagen 4 are deliberately
-// absent: existing templates that reference them keep working (they stay
-// registered as deprecated in MODEL_CAPABILITIES), but new stages should
-// never be authored against a retiring id.
-const geminiModels = [
-  { value: 'gemini-3-pro-image', label: 'Nano Banana Pro (Best Quality)' },
-  { value: 'gemini-3.1-flash-image', label: 'Nano Banana 2 (Balanced)' },
-  { value: 'gemini-3.1-flash-lite-image', label: 'Nano Banana 2 Lite (Fastest)' },
-];
-
-const klingModels = [
-  { value: 'kling-v3-omni', label: 'Kling 3 Omni (Latest)' },
-  { value: 'kling-v3', label: 'Kling 3' },
-  { value: 'kling-v2-6', label: 'Kling V2.6' },
-  { value: 'kling-v2-5-turbo', label: 'Kling V2.5 Turbo (Fast)' },
-  { value: 'kling-v2-master', label: 'Kling V2 Master' },
-];
-
-const openaiModels = [
-  { value: 'gpt-image-2', label: 'GPT Image 2 (best text)' },
-];
-
-// One BytePlus ModelArk provider, two product lines: Seedream generates
-// images (synchronous), Seedance generates video (async task). The stage's
-// model choice is what selects between them.
-const seedanceModels = [
-  { value: 'seedream-4-0-250828', label: 'Seedream 4 — image (cheapest)' },
-  { value: 'seedream-5-0-260128', label: 'Seedream 5 Lite — image (best)' },
-  { value: 'dreamina-seedance-2-0-260128', label: 'Seedance 2.0 — video' },
-  { value: 'dreamina-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast — video' },
-];
-
 type AdminProvider = 'gemini' | 'kling' | 'seedance' | 'openai';
+
+/**
+ * Short authoring hints appended to a model's registry `displayName`.
+ * Guidance for whoever is picking a model, not identity — the registry
+ * owns the names, so nothing here has to be kept in sync with it.
+ *
+ * One BytePlus ModelArk provider covers two product lines: Seedream
+ * generates images (synchronous), Seedance generates video (async task).
+ * The stage's model choice is what selects between them.
+ */
+const MODEL_HINTS: Record<string, string> = {
+  'gemini-3-pro-image': 'best quality',
+  'gemini-3.1-flash-image': 'balanced',
+  'gemini-3.1-flash-lite-image': 'fastest',
+  'kling-v3-omni': 'latest',
+  'kling-v2-5-turbo': 'fast',
+  'gpt-image-2': 'best text',
+  'seedream-4-0-250828': 'image, cheapest',
+  'seedream-5-0-260128': 'image, best',
+  'dreamina-seedance-2-0-260128': 'video',
+  'dreamina-seedance-2-0-fast-260128': 'video, fast',
+};
+
+/**
+ * Preferred order within each provider's group — best/latest first, which
+ * is not the order the registry declares them in. Unlisted models sort to
+ * the end rather than disappearing, so this never gates availability.
+ */
+const MODEL_ORDER: string[] = [
+  'gemini-3-pro-image',
+  'gemini-3.1-flash-image',
+  'gemini-3.1-flash-lite-image',
+  'kling-v3-omni',
+  'kling-v3',
+  'kling-v2-6',
+  'kling-v2-5-turbo',
+  'kling-v2-master',
+  'gpt-image-2',
+  'seedream-4-0-250828',
+  'seedream-5-0-260128',
+  'dreamina-seedance-2-0-260128',
+  'dreamina-seedance-2-0-fast-260128',
+];
+
+/**
+ * Authorable models per provider, derived from the capability registry
+ * rather than hand-maintained here.
+ *
+ * `listActiveModels` excludes deprecated keys, which is exactly the policy
+ * this list needs: the `-preview` Gemini ids and Imagen 4 stay registered
+ * so existing templates keep resolving, but no new stage can be authored
+ * against a retiring id. This used to be three literal arrays, so every
+ * model added to the registry had to be copied here by hand — one missed
+ * copy left the model unauthorable with nothing to signal it.
+ */
+const MODELS_BY_PROVIDER: Record<AdminProvider, Array<{ value: string; label: string }>> = (() => {
+  const out: Record<AdminProvider, Array<{ value: string; label: string }>> = {
+    gemini: [],
+    kling: [],
+    seedance: [],
+    openai: [],
+  };
+  for (const caps of listActiveModels()) {
+    const bucket = out[caps.provider as AdminProvider];
+    if (!bucket) continue;
+    const hint = MODEL_HINTS[caps.modelKey];
+    bucket.push({
+      value: caps.modelKey,
+      label: hint ? `${caps.displayName} — ${hint}` : caps.displayName,
+    });
+  }
+  // The registry is in declaration order, which is not presentation
+  // order (it lists Kling V2.6 before Kling 3, and Seedance video before
+  // Seedream images). Sort by the curated order above; anything not
+  // listed there still appears, at the end of its provider's group.
+  for (const list of Object.values(out)) {
+    list.sort((a, b) => {
+      const ia = MODEL_ORDER.indexOf(a.value);
+      const ib = MODEL_ORDER.indexOf(b.value);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.label.localeCompare(b.label);
+    });
+  }
+  return out;
+})();
+
+/**
+ * Default model picked when an admin switches a stage to a given provider.
+ * Pinned per provider rather than "first in the list" so that adding a
+ * flashier model to the registry doesn't silently change what new stages
+ * are authored against. Falls back to the first available key if a pin
+ * is ever retired.
+ */
+const PROVIDER_DEFAULTS: Record<AdminProvider, string> = {
+  gemini: 'gemini-3.1-flash-image',
+  kling: 'kling-v2-6',
+  openai: 'gpt-image-2',
+  seedance: 'dreamina-seedance-2-0-fast-260128',
+};
+
+function modelsFor(provider: AdminProvider) {
+  return MODELS_BY_PROVIDER[provider];
+}
+
+function defaultModelFor(provider: AdminProvider): string {
+  const pinned = PROVIDER_DEFAULTS[provider];
+  const list = MODELS_BY_PROVIDER[provider];
+  return list.some((m) => m.value === pinned) ? pinned : (list[0]?.value ?? pinned);
+}
 
 const providerConfig: Record<AdminProvider, { label: string; icon: typeof Sparkles; color: string; bgColor: string; borderColor: string }> = {
   gemini: { label: 'Google Gemini', icon: Sparkles, color: 'text-blue-400', bgColor: 'bg-blue-400/10', borderColor: 'border-blue-400/20' },
@@ -95,25 +174,6 @@ const providerConfig: Record<AdminProvider, { label: string; icon: typeof Sparkl
   seedance: { label: 'BytePlus (Seedream / Seedance)', icon: Film, color: 'text-orange-400', bgColor: 'bg-orange-400/10', borderColor: 'border-orange-400/20' },
   openai: { label: 'OpenAI', icon: Sparkles, color: 'text-emerald-400', bgColor: 'bg-emerald-400/10', borderColor: 'border-emerald-400/20' },
 };
-
-/**
- * Default model picked when an admin switches a stage to a given provider.
- * Mirrors `geminiModels[0]` / `klingModels[0]` / `seedanceModels[0]` so the
- * onValueChange handler doesn't have to inline the literal strings.
- */
-function defaultModelFor(provider: AdminProvider): string {
-  if (provider === 'gemini') return 'gemini-3.1-flash-image';
-  if (provider === 'kling') return 'kling-v2-6';
-  if (provider === 'openai') return 'gpt-image-2';
-  return 'dreamina-seedance-2-0-fast-260128';
-}
-
-function modelsFor(provider: AdminProvider) {
-  if (provider === 'gemini') return geminiModels;
-  if (provider === 'kling') return klingModels;
-  if (provider === 'openai') return openaiModels;
-  return seedanceModels;
-}
 
 const referenceRoles: { value: ReferenceImageRole; label: string; icon: typeof Palette }[] = [
   { value: 'style', label: 'Style', icon: Palette },

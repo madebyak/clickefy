@@ -347,7 +347,9 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
     [model],
   );
 
-  // When the mode flips, fall back to that roster's first model.
+  // When the mode flips, fall back to that roster's first model and clear
+  // image-only toggles — Draw is hidden in video, so leaving it on would
+  // strand an invisible active state that reappears on the way back.
   const firstRun = useRef(true);
   useEffect(() => {
     if (firstRun.current) {
@@ -355,6 +357,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
       return;
     }
     setModelKey(null);
+    setDraw(false);
   }, [isVideo]);
 
   // Snap dependent knobs to the selected model's capabilities.
@@ -796,11 +799,13 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
               </button>
             </div>
 
-            {/* draw */}
-            <Pill active={draw} onClick={() => setDraw((d) => !d)}>
-              <PencilSimple className="size-4" />
-              {t("draw")}
-            </Pill>
+            {/* draw — image-only; there's no draw surface for video */}
+            {!isVideo && (
+              <Pill active={draw} onClick={() => setDraw((d) => !d)}>
+                <PencilSimple className="size-4" />
+                {t("draw")}
+              </Pill>
+            )}
           </div>
         </div>
 

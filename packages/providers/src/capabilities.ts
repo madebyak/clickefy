@@ -133,12 +133,33 @@ export interface ModelCapabilities {
   supportsSound?: boolean;
 
   /**
-   * Selectable quality tiers (Kling `mode`: std=720p / pro=1080p / 4k).
-   * Absent = the model has one fixed quality. Per-tier pricing lives in
-   * `provider_models.tier_pricing`; the default tier is what old clients
-   * (which never send a quality) are charged and served.
+   * Selectable, separately-priced tiers. Absent = one fixed quality.
+   *
+   * The tier KEY is provider-specific and is what the user is billed on
+   * (`provider_models.tier_pricing[key]`, absolute credits) and what the
+   * compiler turns into the provider's own parameter:
+   *
+   *   Kling      std | pro | 4k        → `mode` (720p / 1080p / 4K)
+   *   Gemini     1K | 2K | 4K | 512    → `imageConfig.imageSize`
+   *   OpenAI     low | medium | high   → `quality`
+   *
+   * `labels` supplies the user-facing text; without it the key is shown
+   * verbatim. Kling's keys are opaque (`std`) so they need labels;
+   * Gemini's resolutions read fine as-is.
+   *
+   * `default` is what pre-tier clients — which never send a quality —
+   * are both charged and served, so changing it changes a price.
+   *
+   * ⚠️ For Kling ONLY, the mere PRESENCE of this field also marks the
+   * model text-to-video capable (compile.ts). Adding tiers to a Kling
+   * model therefore changes endpoint selection; for every other provider
+   * it is purely a pricing/UI concern.
    */
-  modes?: { values: readonly ('std' | 'pro' | '4k')[]; default: 'std' | 'pro' | '4k' };
+  modes?: {
+    values: readonly string[];
+    default: string;
+    labels?: Readonly<Record<string, string>>;
+  };
 
   /**
    * Max prompt length in CHARACTERS for the user-facing "create" flow.
@@ -257,6 +278,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 14,
     maxImagesTotal: 14,
     maxPromptChars: 5000,
+    // 1K and 2K are the same price upstream ($0.134); 4K nearly doubles
+    // it ($0.24), so resolution has to be a priced choice.
+    modes: { values: ['1K', '2K', '4K'], default: '1K' },
     notes: 'Highest quality: best text rendering, style references, up to 4K.',
   },
   'gemini-3.1-flash-image': {
@@ -278,6 +302,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 14,
     maxImagesTotal: 14,
     maxPromptChars: 5000,
+    // Every tier is a different price: $0.045 / $0.067 / $0.101 / $0.151.
+    modes: {
+      values: ['512', '1K', '2K', '4K'],
+      default: '1K',
+      labels: { '512': '0.5K' },
+    },
     notes: 'Balanced default: widest aspect + resolution range, 0.5K–4K.',
   },
   'gemini-3.1-flash-lite-image': {
@@ -499,7 +529,11 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     supportsSound: true,
     // Quality tiers — default `pro` matches what the adapter has always
     // sent, so pre-tier clients keep exactly their old behavior + price.
-    modes: { values: ['std', 'pro', '4k'], default: 'pro' },
+    modes: {
+      values: ['std', 'pro', '4k'],
+      default: 'pro',
+      labels: { std: '720p', pro: '1080p', '4k': '4K' },
+    },
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
     notes:
@@ -530,7 +564,11 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 1,
     acceptsStartEndImage: true,
     // Quality tiers — default `pro` (1080p) anchors the sell price.
-    modes: { values: ['std', 'pro', '4k'], default: 'pro' },
+    modes: {
+      values: ['std', 'pro', '4k'],
+      default: 'pro',
+      labels: { std: '720p', pro: '1080p', '4k': '4K' },
+    },
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
     notes:
@@ -676,6 +714,13 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 16,
     // Docs say 32,000 characters; keep the roster's comfortable cap.
     maxPromptChars: 5000,
+    // $0.006 / $0.053 / $0.211 — a 35x span, so this must be user-visible.
+    // Mirrors `quality.values`; `modes` is the priced/billable view of it.
+    modes: {
+      values: ['low', 'medium', 'high'],
+      default: 'medium',
+      labels: { low: 'Draft', medium: 'Standard', high: 'High' },
+    },
     notes: 'Strongest text rendering. Quality tier drives a 35x price swing.',
   },
 };

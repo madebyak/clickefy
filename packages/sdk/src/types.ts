@@ -361,12 +361,13 @@ export interface GenModel {
   /** Native-audio toggle available (Kling 3 Omni). */
   supportsSound: boolean;
   /**
-   * Selectable quality tiers with per-tier prices (Kling std=720p /
-   * pro=1080p / 4k). Absent = fixed quality at `costCredits`.
+   * Selectable quality tiers with per-tier prices — Kling resolution
+   * (std=720p / pro=1080p / 4k), Gemini output resolution, OpenAI
+   * render quality. Absent = fixed quality at `costCredits`.
    */
-  tiers?: { mode: 'std' | 'pro' | '4k'; label: string; costCredits: number }[];
+  tiers?: { mode: string; label: string; costCredits: number }[];
   /** Pre-selected tier (what `costCredits` reflects). */
-  defaultTier?: 'std' | 'pro' | '4k';
+  defaultTier?: string;
 }
 
 // ─── Notifications (in-app inbox) ────────────────────────────────────
@@ -399,8 +400,16 @@ export interface CreateGenerationInput {
   duration?: number;
   /** Generate native audio (models with `supportsSound` only). */
   sound?: boolean;
-  /** Quality tier (models with `tiers` only). Charged per tier. */
-  quality?: 'std' | 'pro' | '4k';
+  /**
+   * Quality tier (models with `tiers` only). Charged per tier.
+   *
+   * Deliberately an open string: the key vocabulary belongs to the
+   * provider, not to this type. Kling uses std/pro/4k, Gemini uses
+   * 512/1K/2K/4K, GPT Image uses low/medium/high. The server validates
+   * the key against the model's own tier map and rejects unknown ones,
+   * so narrowing here would only break every new provider on arrival.
+   */
+  quality?: string;
   startFrame?: Extract<JobInputValue, { kind: 'image' }>;
   endFrame?: Extract<JobInputValue, { kind: 'image' }>;
   references?: Array<Extract<JobInputValue, { kind: 'image' }>>;

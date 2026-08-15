@@ -813,7 +813,12 @@ describe('compile() — OpenAI GPT Image 2', () => {
         stage: openaiStage(),
         templateInputs: [field],
         inputValues: {
-          src: { kind: 'image', bytes: new Uint8Array([1, 2, 3]), mimeType: 'image/png' },
+          src: {
+            kind: 'image',
+            r2Key: 'user-uploads/u/src.png',
+            bytes: new Uint8Array([1, 2, 3]),
+            mimeType: 'image/png',
+          },
         },
       }),
     );
@@ -840,5 +845,51 @@ describe('compile() — OpenAI GPT Image 2', () => {
     const { request, warnings } = compile(makeCtx({ stage: openaiStage({ quality: 'ultra' }) }));
     expect((request as { quality: string }).quality).toBe('medium');
     expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+});
+
+// ─── Priced tiers → provider parameters ─────────────────────────────
+//
+// The tier the user is BILLED for must be the tier they are SERVED.
+// Each provider spends it on a different parameter, so these guard the
+// translation: a mistake here charges for 4K and delivers 1K.
+
+describe('compile() — priced tier translation', () => {
+  it('Gemini: the tier becomes imageSize', () => {
+    const stage = makeStage({ model: 'gemini-3-pro-image', prompt: 'x', config: { mode: '4K' } });
+    const { request } = compile(makeCtx({ stage }));
+    expect((request as { imageConfig?: { imageSize?: string } }).imageConfig?.imageSize).toBe('4K');
+  });
+
+  it('Gemini: a billed tier overrides a stage-authored imageSize', () => {
+    // The user paid for 4K; a template default must not downgrade them.
+    const stage = makeStage({
+      model: 'gemini-3-pro-image',
+      prompt: 'x',
+      config: { mode: '4K', imageSize: '1K' },
+    });
+    const { request } = compile(makeCtx({ stage }));
+    expect((request as { imageConfig?: { imageSize?: string } }).imageConfig?.imageSize).toBe('4K');
+  });
+
+  it('Gemini: an unknown tier is ignored rather than sent upstream', () => {
+    const stage = makeStage({ model: 'gemini-3-pro-image', prompt: 'x', config: { mode: '8K' } });
+    const { request } = compile(makeCtx({ stage }));
+    expect((request as { imageConfig?: { imageSize?: string } }).imageConfig?.imageSize).toBeUndefined();
+  });
+
+  it('OpenAI: the tier becomes quality', () => {
+    const stage = makeStage({
+      provider: 'openai',
+      model: 'gpt-image-2',
+      prompt: 'x',
+      config: { mode: 'high' },
+    });
+    const { request } = compile(makeCtx({ stage }));
+    expect((request as { quality: string }).quality).toBe('high');
+  });
+
+  it('Nano Banana 2 Lite has no tiers — it is 1K only, so nothing to price', () => {
+    expect(getCapabilities('gemini-3.1-flash-lite-image').modes).toBeUndefined();
   });
 });

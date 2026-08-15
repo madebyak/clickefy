@@ -84,10 +84,12 @@ export const createUserJobSchema = z.object({
   // Native audio (models with `supportsSound`; others ignore it with a
   // compile warning rather than a hard error).
   sound: z.boolean().optional(),
-  // Quality tier for models with selectable modes (Kling std/pro/4k).
-  // Validated against the model's capability list in the handler; the
-  // charge uses `provider_models.tier_pricing[quality]`.
-  quality: z.enum(['std', 'pro', '4k']).optional(),
+  // Quality tier for models with selectable modes. The key vocabulary is
+  // per-provider — Kling std/pro/4k, Gemini 512/1K/2K/4K, OpenAI
+  // low/medium/high — so this is bounded but not enumerated, matching
+  // `aspectRatio` above. The handler rejects any key the selected model
+  // does not declare; the charge uses `provider_models.tier_pricing[quality]`.
+  quality: z.string().min(1).max(16).optional(),
   startFrame: jobInputImageSchema.optional(),
   endFrame: jobInputImageSchema.optional(),
   // Reference / subject images. Hard ceiling matches the largest model

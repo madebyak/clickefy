@@ -150,8 +150,10 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
     // Native audio — the compiler drops it (with a warning) on models
     // without `supportsSound`, so setting it here is always safe.
     if (!isImage && input.sound) config.sound = true;
-    // Quality tier — the user was charged for this exact tier upstream.
-    if (!isImage && input.mode) config.mode = input.mode;
+    // Quality tier — the user was charged for this exact tier upstream,
+    // so it must reach the compiler for images (Gemini resolution, GPT
+    // Image quality) as well as video (Kling mode).
+    if (input.mode) config.mode = input.mode;
     if (isImage) config.numberOfOutputs = 1;
   }
 

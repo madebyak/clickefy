@@ -148,16 +148,20 @@ export interface CreateModelDTO {
    * modes only — Kling std=720p / pro=1080p / 4k). Absent = fixed
    * quality at `costCredits`.
    */
-  tiers?: { mode: 'std' | 'pro' | '4k'; label: string; costCredits: number }[];
+  tiers?: { mode: string; label: string; costCredits: number }[];
   /** The pre-selected tier (what `costCredits` reflects). */
-  defaultTier?: 'std' | 'pro' | '4k';
+  defaultTier?: string;
 }
 
-const TIER_LABELS: Record<'std' | 'pro' | '4k', string> = {
-  std: '720p',
-  pro: '1080p',
-  '4k': '4K',
-};
+/**
+ * Tier labels now live on the capability entry (different providers mean
+ * different things by a tier — Kling resolution, Gemini image size,
+ * OpenAI quality). Fall back to the key itself, which reads fine for the
+ * resolution-style keys.
+ */
+function tierLabel(caps: { modes?: { labels?: Readonly<Record<string, string>> } }, key: string) {
+  return caps.modes?.labels?.[key] ?? key;
+}
 
 /**
  * Build the client DTO for a create-eligible model by merging its roster
@@ -181,7 +185,7 @@ export function buildCreateModelDTO(
   const tiers = caps.modes
     ? caps.modes.values.map((m) => ({
         mode: m,
-        label: TIER_LABELS[m],
+        label: tierLabel(caps, m),
         costCredits: tierPricing?.[m] ?? costCredits,
       }))
     : undefined;

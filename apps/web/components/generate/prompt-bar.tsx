@@ -328,7 +328,10 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
 
   const [aspect, setAspect] = useState("Auto");
   const [duration, setDuration] = useState<number | null>(null);
-  const [tier, setTier] = useState<"std" | "pro" | "4k" | null>(null);
+  // Tier keys are provider vocabulary, not a fixed set: Kling speaks
+  // std/pro/4k, Gemini speaks 512/1K/2K/4K, GPT Image speaks low/medium/high.
+  // The roster is the authority on which keys are valid for a model.
+  const [tier, setTier] = useState<string | null>(null);
   const [sound, setSound] = useState(false);
   const [count, setCount] = useState(1);
   const [draw, setDraw] = useState(false);

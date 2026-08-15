@@ -68,6 +68,47 @@ const PRICES: Array<{
   },
 ];
 
+/**
+ * Per-tier prices, in ABSOLUTE credits (not multipliers).
+ *
+ * The tier key is what the client sends as `quality` and what the
+ * compiler spends on the provider's own parameter — Gemini resolution,
+ * OpenAI quality. `cost_credits` above stays as the price of each
+ * model's DEFAULT tier, because that is what pre-tier clients (which
+ * never send a quality) are charged.
+ *
+ * Keeping ~3x on every tier rather than a flat markup matters most at
+ * the extremes: GPT Image spans 35x between draft and high, so a single
+ * blended price would either lose money at the top or be absurd at the
+ * bottom.
+ */
+const TIER_PRICES: Array<{
+  provider: string;
+  modelKey: string;
+  tiers: Record<string, number>;
+  why: string;
+}> = [
+  {
+    provider: 'gemini',
+    modelKey: 'gemini-3-pro-image',
+    // 1K and 2K are the same upstream price; 4K nearly doubles.
+    tiers: { '1K': 40, '2K': 40, '4K': 72 },
+    why: '$0.134 / $0.134 / $0.24',
+  },
+  {
+    provider: 'gemini',
+    modelKey: 'gemini-3.1-flash-image',
+    tiers: { '512': 14, '1K': 20, '2K': 30, '4K': 45 },
+    why: '$0.045 / $0.067 / $0.101 / $0.151',
+  },
+  {
+    provider: 'openai',
+    modelKey: 'gpt-image-2',
+    tiers: { low: 2, medium: 16, high: 64 },
+    why: '$0.006 / $0.053 / $0.211',
+  },
+];
+
 type Row = { model_key: string; cost_credits: number; status: string; cost_per_call_usd: string };
 
 async function read(provider: string, modelKey: string): Promise<Row | null> {
@@ -125,6 +166,50 @@ async function main() {
   }
 
   console.log(`\n${apply ? 'Applied' : 'Would change'} ${changed} row(s).`);
+
+  // ── Per-tier prices ─────────────────────────────────────────────
+  console.log('\nTier pricing:');
+  for (const t of TIER_PRICES) {
+    const row = (await sql(
+      `select tier_pricing from provider_models where provider = $1 and model_key = $2`,
+      [t.provider, t.modelKey],
+    )) as unknown as Array<{ tier_pricing: Record<string, number> | null }>;
+    if (row.length === 0) {
+      console.log(`  ?  ${t.modelKey} — row missing, skipped`);
+      continue;
+    }
+    // Compare by VALUE, not by serialization: Postgres normalises jsonb
+    // key order, so a string compare reports a false mismatch on a write
+    // that actually succeeded.
+    const sameTiers = (a: Record<string, number> | null | undefined) => {
+      if (!a) return false;
+      const keys = Object.keys(t.tiers);
+      return (
+        Object.keys(a).length === keys.length && keys.every((k) => a[k] === t.tiers[k])
+      );
+    };
+    const before = JSON.stringify(row[0]!.tier_pricing ?? null);
+    const want = JSON.stringify(t.tiers);
+    if (sameTiers(row[0]!.tier_pricing)) {
+      console.log(`  =  ${t.modelKey.padEnd(30)} already ${want}`);
+      continue;
+    }
+    if (apply) {
+      await sql(
+        `update provider_models set tier_pricing = $1::jsonb, updated_at = now()
+           where provider = $2 and model_key = $3`,
+        [want, t.provider, t.modelKey],
+      );
+      const after = (await sql(
+        `select tier_pricing from provider_models where provider = $1 and model_key = $2`,
+        [t.provider, t.modelKey],
+      )) as unknown as Array<{ tier_pricing: Record<string, number> | null }>;
+      const ok = sameTiers(after[0]!.tier_pricing);
+      console.log(`  ${ok ? '✓' : '✗ MISMATCH'}  ${t.modelKey.padEnd(30)} ${want}   (${t.why})`);
+    } else {
+      console.log(`  ·  ${t.modelKey.padEnd(30)} ${before} → ${want}   (${t.why})`);
+    }
+  }
 
   // Any active, create-eligible model left at 0 credits is invisible in
   // the picker — worth surfacing rather than discovering in the UI.

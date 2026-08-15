@@ -377,7 +377,7 @@ jobsRoute.post(
     // pre-tier clients get, at exactly the pre-tier price). A `quality`
     // sent for a fixed-quality model is a 422, not a silent ignore —
     // otherwise a user could believe they bought 4K they didn't get.
-    let mode: 'std' | 'pro' | '4k' | undefined;
+    let mode: string | undefined;
     if (caps.modes) {
       if (body.quality && !caps.modes.values.includes(body.quality)) {
         return c.json(

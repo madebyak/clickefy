@@ -843,7 +843,14 @@ function extractAspect(
   if (capabilities.sizing.mode !== 'aspect') return undefined;
   const cfg = stage.config;
   const aspect = typeof cfg.aspectRatio === 'string' ? cfg.aspectRatio : undefined;
-  const imageSize = typeof cfg.imageSize === 'string' ? cfg.imageSize : undefined;
+  // For Gemini the priced tier IS the resolution, so `mode` wins over a
+  // stage-authored `imageSize`: the user was billed for that exact tier
+  // and must be served it.
+  const tier =
+    capabilities.modes && typeof cfg.mode === 'string' && capabilities.modes.values.includes(cfg.mode)
+      ? cfg.mode
+      : undefined;
+  const imageSize = tier ?? (typeof cfg.imageSize === 'string' ? cfg.imageSize : undefined);
   if (!aspect && !imageSize) return undefined;
   return { aspectRatio: aspect, imageSize };
 }
@@ -964,7 +971,11 @@ function compileOpenAI(
   // rather than trusting the stage config — an unknown value is a 400.
   const allowed = capabilities.quality?.values ?? ['low', 'medium', 'high'];
   const fallbackQuality = (capabilities.quality?.default ?? 'medium') as 'low' | 'medium' | 'high';
-  const requested = typeof cfg.quality === 'string' ? cfg.quality : undefined;
+  // `mode` is the billed tier and takes precedence over a stage-authored
+  // `quality` for the same reason as Gemini's resolution above.
+  const requested =
+    (typeof cfg.mode === 'string' ? cfg.mode : undefined) ??
+    (typeof cfg.quality === 'string' ? cfg.quality : undefined);
   let quality = fallbackQuality;
   if (requested) {
     if (allowed.includes(requested)) {

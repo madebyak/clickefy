@@ -430,6 +430,17 @@ export function PromptBar({
   const [mode, setMode] = useState<"image" | "video">(kind);
   const isVideo = mode === "video";
 
+  // `useState(kind)` only seeds the FIRST render. /create and
+  // /create-video share this component at the same position in the tree,
+  // so a client-side nav between them re-renders rather than remounts —
+  // the composer would stay on whichever mode it was opened with, and
+  // "Create Video" in the navbar would land on the image composer.
+  // Syncing on the prop fixes that without fighting the user's own
+  // toggle, since `kind` only ever changes on a route change.
+  useEffect(() => {
+    setMode(kind);
+  }, [kind]);
+
   const { models, isLoading: modelsLoading } = useModels(mode);
   // Null on the marketing page (no StudioProvider) — the bar then acts
   // as a CTA into the studio instead of generating in place.

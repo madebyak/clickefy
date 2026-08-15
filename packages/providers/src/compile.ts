@@ -901,6 +901,40 @@ function extractNumberOfOutputs(
  *      template authored against ratio-based models still works;
  *   3. the model's first preset.
  */
+/**
+ * Largest valid `WIDTHxHEIGHT` for a target ratio, or null when the
+ * ratio cannot be expressed at all.
+ *
+ * Both edges must land on the provider's multiple, stay inside the edge
+ * cap, and keep total pixels within range. We walk candidate heights and
+ * keep the one with the smallest ratio error, breaking ties toward a
+ * target area chosen to match the model's own presets — so output size
+ * stays consistent whichever shape is picked.
+ */
+function solvePixelSize(
+  ratio: number,
+  sizing: Extract<ModelCapabilities['sizing'], { mode: 'pixels' }>,
+): string | null {
+  // OpenAI rejects anything beyond 1:3–3:1 regardless of pixel count.
+  if (ratio > 3 || ratio < 1 / 3) return null;
+  const { divisibleBy: step, maxEdge, minPixels, maxPixels } = sizing;
+  const TARGET_PIXELS = 1_600_000;
+
+  let best: { size: string; err: number; areaGap: number } | null = null;
+  for (let h = step; h <= maxEdge; h += step) {
+    const w = Math.round((ratio * h) / step) * step;
+    if (w < step || w > maxEdge) continue;
+    const pixels = w * h;
+    if (pixels < minPixels || pixels > maxPixels) continue;
+    const err = Math.abs(w / h - ratio) / ratio;
+    const areaGap = Math.abs(pixels - TARGET_PIXELS);
+    if (!best || err < best.err - 1e-9 || (Math.abs(err - best.err) < 1e-9 && areaGap < best.areaGap)) {
+      best = { size: `${w}x${h}`, err, areaGap };
+    }
+  }
+  return best?.size ?? null;
+}
+
 function resolvePixelSize(
   stage: GenerationStage,
   capabilities: ModelCapabilities,
@@ -942,20 +976,17 @@ function resolvePixelSize(
     const parts = aspect.split(':').map(Number);
     const [aw, ah] = parts;
     if (aw && ah) {
-      // Pick the preset whose ratio is closest to the requested one.
-      const want = aw / ah;
-      let best = fallback;
-      let bestDelta = Number.POSITIVE_INFINITY;
-      for (const preset of sizing.presets) {
-        const pm = /^(\d+)x(\d+)$/.exec(preset);
-        if (!pm) continue;
-        const delta = Math.abs(Number(pm[1]) / Number(pm[2]) - want);
-        if (delta < bestDelta) {
-          bestDelta = delta;
-          best = preset;
-        }
-      }
-      return best;
+      // Solve the ratio into exact dimensions rather than snapping to the
+      // nearest preset. With only three presets (1:1, 3:2, 2:3), a 16:9
+      // request used to come back as 3:2 — visibly the wrong shape, with
+      // nothing to tell the user it had been substituted.
+      const solved = solvePixelSize(aw / ah, sizing);
+      if (solved) return solved;
+      warnings.push({
+        code: 'config_clamped',
+        message: `Aspect ratio "${aspect}" cannot be expressed within ${stage.model}'s pixel limits; using "${fallback}".`,
+      });
+      return fallback;
     }
   }
 

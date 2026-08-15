@@ -14,6 +14,7 @@
 
 export {
   MODEL_CAPABILITIES,
+  aspectRatiosFor,
   findCapabilities,
   getCapabilities,
   listActiveModels,

@@ -14,7 +14,7 @@ import type {
   TemplateInputField,
 } from '@clickfy/types';
 
-import { getCapabilities } from './capabilities';
+import { aspectRatiosFor, getCapabilities } from './capabilities';
 import { compile } from './compile';
 import type {
   CompileContext,
@@ -23,6 +23,7 @@ import type {
   RuntimeInputValue,
   SeedanceCompiledRequest,
   StageOutputRef,
+  GptImageCompiledRequest,
 } from './compile-types';
 
 // ─── Tiny builders ──────────────────────────────────────────────────
@@ -370,6 +371,76 @@ describe('compile() — legacy bare-key syntax', () => {
 });
 
 // ─── Seedance 2.0: BytePlus multimodal video ────────────────────────
+
+describe('compile() — GPT Image aspect ratios', () => {
+  const SIZING = getCapabilities('gpt-image-2').sizing as Extract<
+    ReturnType<typeof getCapabilities>['sizing'],
+    { mode: 'pixels' }
+  >;
+
+  it('offers ratios even though the model is pixel-sized', () => {
+    // Without this the picker renders no ratio control at all, because
+    // the roster only ever read `sizing.values` from aspect-mode models.
+    expect(aspectRatiosFor(getCapabilities('gpt-image-2')).length).toBeGreaterThan(10);
+  });
+
+  it('resolves every offered ratio to a size the API will accept', () => {
+    for (const ratio of aspectRatiosFor(getCapabilities('gpt-image-2'))) {
+      const stage = makeStage({
+        provider: 'openai',
+        model: 'gpt-image-2',
+        prompt: 'A parrot.',
+        config: { aspectRatio: ratio },
+      });
+      const { request, warnings } = compile(makeCtx({ stage }));
+      const size = (request as GptImageCompiledRequest).size;
+      const m = /^(\d+)x(\d+)$/.exec(size!);
+      expect(m, `${ratio} produced "${size}"`).toBeTruthy();
+      const w = Number(m![1]);
+      const h = Number(m![2]);
+      const [aw, ah] = ratio.split(':').map(Number);
+
+      // Every OpenAI constraint, asserted per ratio.
+      expect(w % SIZING.divisibleBy, `${ratio} width`).toBe(0);
+      expect(h % SIZING.divisibleBy, `${ratio} height`).toBe(0);
+      expect(Math.max(w, h)).toBeLessThanOrEqual(SIZING.maxEdge);
+      expect(w * h).toBeGreaterThanOrEqual(SIZING.minPixels);
+      expect(w * h).toBeLessThanOrEqual(SIZING.maxPixels);
+      expect(w / h).toBeLessThanOrEqual(3.0001);
+      expect(w / h).toBeGreaterThanOrEqual(1 / 3 - 0.0001);
+
+      // And it is actually the requested SHAPE, not a nearby preset.
+      expect(Math.abs(w / h - aw! / ah!) / (aw! / ah!)).toBeLessThan(0.01);
+      expect(warnings.filter((x) => x.code === 'config_clamped')).toHaveLength(0);
+    }
+  });
+
+  it('gives 16:9 a true widescreen size, not the 3:2 preset', () => {
+    const stage = makeStage({
+      provider: 'openai',
+      model: 'gpt-image-2',
+      prompt: 'A parrot.',
+      config: { aspectRatio: '16:9' },
+    });
+    const size = (compile(makeCtx({ stage })).request as GptImageCompiledRequest).size;
+    // The old closest-preset logic returned 1536x1024 (3:2) here.
+    expect(size).not.toBe('1536x1024');
+    const [w, h] = size!.split('x').map(Number);
+    expect(w! / h!).toBeCloseTo(16 / 9, 2);
+  });
+
+  it('still rejects a ratio outside the 1:3–3:1 window', () => {
+    const stage = makeStage({
+      provider: 'openai',
+      model: 'gpt-image-2',
+      prompt: 'A parrot.',
+      config: { aspectRatio: '8:1' },
+    });
+    const { request, warnings } = compile(makeCtx({ stage }));
+    expect((request as GptImageCompiledRequest).size).toBe('1024x1024');
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+});
 
 describe('compile() — Seedance priced resolution tiers', () => {
   // Resolution is what the user is BILLED on, so the tier has to reach

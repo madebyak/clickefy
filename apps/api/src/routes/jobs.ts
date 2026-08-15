@@ -36,6 +36,7 @@ import { and, desc, eq, lt, or } from 'drizzle-orm';
 
 import { jobs, projects, providerModels, templates } from '@clickfy/db';
 import {
+  aspectRatiosFor,
   CREATE_END_FRAME_KEY,
   CREATE_PROMPT_KEY,
   CREATE_START_FRAME_KEY,
@@ -432,7 +433,9 @@ jobsRoute.post(
     }
 
     // ── Semantic validation (model-adaptive) ───────────────────────
-    const allowedAspectRatios = caps.sizing.mode === 'aspect' ? [...caps.sizing.values] : [];
+    // Same accessor the roster uses — otherwise the picker can offer a
+    // ratio that validation then rejects.
+    const allowedAspectRatios = aspectRatiosFor(caps);
     const allowedDurations =
       caps.kind === 'video' && caps.duration ? [...caps.duration.values] : [];
     const validationError = await validateCreateSubmission(body, {

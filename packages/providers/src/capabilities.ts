@@ -31,6 +31,14 @@ export type SizingMode =
   | {
       mode: 'pixels';
       presets: readonly string[];
+      /**
+       * Aspect ratios offered in the picker. Pixel-sized models still
+       * need these: users choose a shape, not a pixel count, and the
+       * compiler solves each ratio into exact dimensions that satisfy
+       * the constraints below. Without it the model shows no ratio
+       * control at all.
+       */
+      aspectRatios?: readonly string[];
       /** Constraint: every edge divisible by this multiple. */
       divisibleBy: number;
       maxEdge: number;
@@ -222,6 +230,16 @@ const GEMINI_RESOLUTIONS = ['1K', '2K', '4K'] as const;
 const GEMINI_31_RESOLUTIONS = ['512', '1K', '2K', '4K'] as const;
 
 const IMAGEN_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'] as const;
+
+/**
+ * GPT Image 2 ratios. Ordered widest-portrait → widest-landscape so the
+ * picker reads as a spectrum. Bounded by OpenAI's 1:3–3:1 constraint.
+ */
+const OPENAI_ASPECT_RATIOS = [
+  '1:3', '9:21', '9:16', '2:3', '3:4', '4:5',
+  '1:1',
+  '5:4', '4:3', '3:2', '16:9', '21:9', '3:1',
+] as const;
 
 const KLING_ASPECT_RATIOS = ['16:9', '9:16', '1:1'] as const;
 /**
@@ -855,6 +873,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     sizing: {
       mode: 'pixels',
       presets: ['1024x1024', '1536x1024', '1024x1536'],
+      // Every ratio inside OpenAI's 1:3–3:1 window. Each solves to exact
+      // dimensions with 0% ratio error (see `resolvePixelSize`), so these
+      // are true shapes rather than approximations. 1:4/4:1 and beyond
+      // are deliberately absent — they are outside the limit and would be
+      // rejected after the credits were spent.
+      aspectRatios: OPENAI_ASPECT_RATIOS,
       divisibleBy: 16,
       maxEdge: 3840,
       minPixels: 655_360,
@@ -904,6 +928,19 @@ export function findCapabilities(modelKey: string): ModelCapabilities | undefine
 }
 
 /** All currently-active models, filtered by provider. */
+/**
+ * Aspect ratios a model offers, regardless of how it sizes internally.
+ *
+ * Aspect-mode models list them directly; pixel-mode models (GPT Image)
+ * carry them alongside their pixel constraints. Three call sites need
+ * this — the roster DTO, submission validation and the compiler — and
+ * they must agree, or the picker offers a ratio the API then rejects.
+ */
+export function aspectRatiosFor(caps: ModelCapabilities): string[] {
+  if (caps.sizing.mode === 'aspect') return [...caps.sizing.values];
+  return [...(caps.sizing.aspectRatios ?? [])];
+}
+
 export function listActiveModels(provider?: Provider): ModelCapabilities[] {
   return Object.values(MODEL_CAPABILITIES).filter(
     (m) => m.status !== 'deprecated' && (!provider || m.provider === provider),

@@ -13,7 +13,7 @@
  * Adding a model = one entry here (plus a priced `provider_models` row).
  */
 
-import { findCapabilities } from '@clickfy/providers';
+import { aspectRatiosFor, findCapabilities } from '@clickfy/providers';
 
 /**
  * How the mobile create screen renders image attachments for a model:
@@ -191,7 +191,9 @@ export function buildCreateModelDTO(
   const caps = findCapabilities(modelKey);
   if (!def || !caps) return null;
 
-  const aspectRatios = caps.sizing.mode === 'aspect' ? [...caps.sizing.values] : [];
+  // Shared accessor: pixel-sized models (GPT Image) carry their ratios
+  // too, and the picker must show them.
+  const aspectRatios = aspectRatiosFor(caps);
   const durations = caps.kind === 'video' && caps.duration ? [...caps.duration.values] : [];
 
   // Per-tier prices: absolute credits from `tier_pricing`, falling back

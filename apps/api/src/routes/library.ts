@@ -14,12 +14,12 @@
 import { Hono } from 'hono';
 import { and, desc, eq } from 'drizzle-orm';
 
-import { savedTemplates, templates, users } from '@clickfy/db';
+import { savedTemplates, templates } from '@clickfy/db';
 
 import type { AppEnv } from '../types';
 import { templateToMobileDTO } from '../lib/template-dto';
 import { loadTemplateCategoriesMap } from '../lib/template-categories';
-import { withAuth } from '../middleware/with-auth';
+import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 
 export const libraryRoute = new Hono<AppEnv>();
@@ -39,18 +39,9 @@ libraryRoute.get(
   '/saved',
   withAuth({ required: true }),
   withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  withCurrentUser(),
   async (c) => {
-    const clerkUserId = c.var.clerkUserId!;
-    const userRow = await c.var.db.query.users.findFirst({
-      where: eq(users.clerkUserId, clerkUserId),
-      columns: { id: true },
-    });
-    if (!userRow) {
-      return c.json(
-        { error: { code: 'user_not_provisioned', message: 'Account not provisioned.' } },
-        401,
-      );
-    }
+    const userRow = c.var.user!;
 
     const limitRaw = Number(c.req.query('limit') ?? '30');
     const limit = Number.isFinite(limitRaw)

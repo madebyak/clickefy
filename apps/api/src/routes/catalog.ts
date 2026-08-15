@@ -30,7 +30,7 @@ import {
   templateInCategoryTree,
 } from '../lib/template-categories';
 import { buildHomeSections } from '../lib/section-builder';
-import { withAuth } from '../middleware/with-auth';
+import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { withEdgeCache } from '../middleware/with-edge-cache';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
 
@@ -533,30 +533,22 @@ catalog.get(
 // POST   /v1/catalog/templates/:id/favorite   — save (idempotent)
 // DELETE /v1/catalog/templates/:id/favorite   — unsave (idempotent)
 //
-// Both endpoints are auth-required and resolve the user via the
-// Clerk subject. The composite PK on `saved_templates` makes both
-// operations idempotent at the SQL layer (`ON CONFLICT DO NOTHING`
-// for insert; row-not-found for delete is a 204 not an error).
+// Both endpoints are auth-required and resolve the user through
+// `withCurrentUser()` — the one place that also rejects soft-deleted
+// accounts (a Clerk session can outlive the delete). The composite PK
+// on `saved_templates` makes both operations idempotent at the SQL
+// layer (`ON CONFLICT DO NOTHING` for insert; row-not-found for
+// delete is a 204 not an error).
 
 catalog.post(
   '/templates/:id/favorite',
   withAuth({ required: true }),
   withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const clerkUserId = c.var.clerkUserId!;
-
-    const userRow = await c.var.db.query.users.findFirst({
-      where: eq(users.clerkUserId, clerkUserId),
-      columns: { id: true },
-    });
-    if (!userRow) {
-      return c.json(
-        { error: { code: 'user_not_provisioned', message: 'Account not provisioned.' } },
-        401,
-      );
-    }
+    const userRow = c.var.user!;
 
     // Verify the template exists + is published before recording the
     // save — keeps the table clean of orphan references.
@@ -581,21 +573,11 @@ catalog.delete(
   '/templates/:id/favorite',
   withAuth({ required: true }),
   withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
   zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const clerkUserId = c.var.clerkUserId!;
-
-    const userRow = await c.var.db.query.users.findFirst({
-      where: eq(users.clerkUserId, clerkUserId),
-      columns: { id: true },
-    });
-    if (!userRow) {
-      return c.json(
-        { error: { code: 'user_not_provisioned', message: 'Account not provisioned.' } },
-        401,
-      );
-    }
+    const userRow = c.var.user!;
 
     await c.var.db
       .delete(savedTemplates)

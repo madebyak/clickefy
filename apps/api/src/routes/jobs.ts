@@ -34,7 +34,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 
-import { jobs, projects, providerModels, templates, users as usersTable } from '@clickfy/db';
+import { jobs, projects, providerModels, templates } from '@clickfy/db';
 import {
   CREATE_END_FRAME_KEY,
   CREATE_PROMPT_KEY,
@@ -590,25 +590,9 @@ jobsRoute.get(
   '/',
   withAuth({ required: true }),
   withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  withCurrentUser(),
   async (c) => {
-    const clerkUserId = c.var.clerkUserId;
-    if (!clerkUserId) {
-      return c.json(
-        { error: { code: 'unauthenticated', message: 'Sign in required.' } },
-        401,
-      );
-    }
-
-    const userRow = await c.var.db.query.users.findFirst({
-      where: eq(usersTable.clerkUserId, clerkUserId),
-      columns: { id: true },
-    });
-    if (!userRow) {
-      return c.json(
-        { error: { code: 'user_not_provisioned', message: 'Account not provisioned.' } },
-        401,
-      );
-    }
+    const userRow = c.var.user!;
 
     const limitRaw = Number(c.req.query('limit') ?? '20');
     const limit = Number.isFinite(limitRaw) ? Math.min(50, Math.max(1, Math.floor(limitRaw))) : 20;
@@ -821,15 +805,8 @@ jobsRoute.get(
   '/:id',
   withAuth({ required: true }),
   withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  withCurrentUser(),
   async (c) => {
-    const clerkUserId = c.var.clerkUserId;
-    if (!clerkUserId) {
-      return c.json(
-        { error: { code: 'unauthenticated', message: 'Sign in required.' } },
-        401,
-      );
-    }
-
     const jobId = c.req.param('id');
 
     // Quick UUID sanity check — Hono's path-matcher accepts anything,
@@ -843,18 +820,7 @@ jobsRoute.get(
       );
     }
 
-    // Resolve Clerk subject → users.id. We don't need the full row
-    // here (no credit operations), just the FK to scope the lookup.
-    const userRow = await c.var.db.query.users.findFirst({
-      where: eq(usersTable.clerkUserId, clerkUserId),
-      columns: { id: true },
-    });
-    if (!userRow) {
-      return c.json(
-        { error: { code: 'user_not_provisioned', message: 'Account not provisioned.' } },
-        401,
-      );
-    }
+    const userRow = c.var.user!;
 
     const job = await c.var.db.query.jobs.findFirst({
       where: and(eq(jobs.id, jobId), eq(jobs.userId, userRow.id)),
@@ -961,15 +927,8 @@ jobsRoute.delete(
   '/:id',
   withAuth({ required: true }),
   withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
   async (c) => {
-    const clerkUserId = c.var.clerkUserId;
-    if (!clerkUserId) {
-      return c.json(
-        { error: { code: 'unauthenticated', message: 'Sign in required.' } },
-        401,
-      );
-    }
-
     const jobId = c.req.param('id');
     if (!isUuid(jobId)) {
       return c.json(
@@ -978,16 +937,7 @@ jobsRoute.delete(
       );
     }
 
-    const userRow = await c.var.db.query.users.findFirst({
-      where: eq(usersTable.clerkUserId, clerkUserId),
-      columns: { id: true },
-    });
-    if (!userRow) {
-      return c.json(
-        { error: { code: 'user_not_provisioned', message: 'Account not provisioned.' } },
-        401,
-      );
-    }
+    const userRow = c.var.user!;
 
     // Compound WHERE clause is the security boundary: an attacker
     // who guesses a job-id from another user gets a no-op delete

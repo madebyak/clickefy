@@ -24,7 +24,7 @@ import { inArray } from 'drizzle-orm';
 import { providerModels } from '@clickfy/db';
 
 import type { AppEnv } from '../types';
-import { withAuth } from '../middleware/with-auth';
+import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 import { buildCreateModelDTO, CREATE_MODEL_DEFS } from '../lib/create-models';
 
@@ -34,6 +34,10 @@ modelsRoute.get(
   '/',
   withAuth({ required: true }),
   withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  // No user data is returned here, but a deleted account must not keep
+  // using ANY authenticated surface — one indexed lookup buys a uniform,
+  // auditable rule instead of a per-route judgement call.
+  withCurrentUser(),
   async (c) => {
     const rosterKeys = CREATE_MODEL_DEFS.map((d) => d.modelKey);
 

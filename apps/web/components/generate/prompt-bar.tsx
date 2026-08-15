@@ -26,6 +26,7 @@ import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
 import { cn } from "@/lib/utils";
 import { useModels } from "@/lib/use-models";
 import { useStudioMaybe, type PromptAttachment } from "@/components/studio/studio-context";
+import { modelLogo } from "@/lib/model-logos";
 
 /* ------------------------------------------------------------------ atoms */
 
@@ -35,7 +36,32 @@ const PROVIDER_STYLE: Record<string, string> = {
   seedance: "bg-accent-pink/20 text-accent-pink",
 };
 
-function ProviderBadge({ provider, className }: { provider: string; className?: string }) {
+/**
+ * Brand mark for a model. Falls back to the old tinted initial when we
+ * have no logo for the provider (e.g. a model added server-side before
+ * its asset ships) — the picker must never render an empty square.
+ */
+function ProviderBadge({
+  provider,
+  modelKey,
+  className,
+}: {
+  provider: string;
+  modelKey?: string;
+  className?: string;
+}) {
+  const logo = modelLogo({ provider, modelKey });
+  if (logo) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logo}
+        alt=""
+        aria-hidden
+        className={cn("size-4 shrink-0 object-contain text-foreground", className)}
+      />
+    );
+  }
   return (
     <span
       className={cn(
@@ -530,7 +556,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
                 <Pill onClick={toggle} disabled={modelsLoading && !model}>
                   {model ? (
                     <>
-                      <ProviderBadge provider={model.provider} />
+                      <ProviderBadge provider={model.provider} modelKey={model.modelKey} />
                       {model.name}
                     </>
                   ) : (
@@ -552,7 +578,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
                         close();
                       }}
                     >
-                      <ProviderBadge provider={m.provider} />
+                      <ProviderBadge provider={m.provider} modelKey={m.modelKey} />
                       <span className="min-w-0 flex-1 truncate text-start">{m.name}</span>
                       <span className="ms-2 text-xs tabular-nums text-muted-foreground">
                         {m.costCredits}

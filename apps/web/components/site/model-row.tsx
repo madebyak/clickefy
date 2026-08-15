@@ -1,35 +1,41 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { Check, ArrowRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { modelLogo } from "@/lib/model-logos";
 
-type Model = { id: string; name: string; company: string; tagKey: string };
+/** `provider`/`modelKey` feed the shared logo map (see lib/model-logos). */
+type Model = {
+  id: string;
+  name: string;
+  company: string;
+  tagKey: string;
+  provider: string;
+  modelKey?: string;
+};
 
 const MODELS: Model[] = [
-  { id: "gpt-image", name: "GPT Image", company: "OpenAI", tagKey: "tagBestText" },
-  { id: "nano-banana-pro", name: "Nano Banana Pro", company: "Google", tagKey: "tagQuality" },
-  { id: "nano-banana-2", name: "Nano Banana 2", company: "Google", tagKey: "tagFast" },
-  { id: "seedream", name: "Seedream 5", company: "ByteDance", tagKey: "tag4k" },
-  { id: "imagen", name: "Imagen 4", company: "Google", tagKey: "tagDetail" },
+  { id: "gpt-image", name: "GPT Image", company: "OpenAI", tagKey: "tagBestText", provider: "openai", modelKey: "gpt-image" },
+  { id: "nano-banana-pro", name: "Nano Banana Pro", company: "Google", tagKey: "tagQuality", provider: "gemini" },
+  { id: "nano-banana-2", name: "Nano Banana 2", company: "Google", tagKey: "tagFast", provider: "gemini" },
+  { id: "seedream", name: "Seedream 5", company: "ByteDance", tagKey: "tag4k", provider: "seedance", modelKey: "seedream" },
+  { id: "imagen", name: "Imagen 4", company: "Google", tagKey: "tagDetail", provider: "gemini" },
 ];
 
 function ModelLogo({ model }: { model: Model }) {
+  const logo = modelLogo({ provider: model.provider, modelKey: model.modelKey });
   const [ok, setOk] = useState(true);
-  const ref = useRef<HTMLImageElement>(null);
-  useEffect(() => {
-    if (ref.current?.complete && ref.current.naturalWidth === 0) setOk(false);
-  }, []);
   return (
     <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-3 text-sm font-bold text-foreground">
-      {ok ? (
+      {logo && ok ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          ref={ref}
-          src={`/models/${model.id}.svg`}
+          src={logo}
           alt=""
+          aria-hidden
           className="size-5 object-contain"
           onError={() => setOk(false)}
         />

@@ -186,7 +186,20 @@
     "startFrameNeeded": "This model animates an image — add a start frame to continue",
     "maxAttachments": "This model accepts up to {max} images",
     "dropToAttach": "Drop images to attach",
-    "unsupportedFileType": "Only JPEG, PNG and WebP images can be attached"
+    "unsupportedFileType": "Only JPEG, PNG and WebP images can be attached",
+    "attachMode": "Input mode",
+    "modeFrames": "Start & end frame",
+    "modeFramesHint": "Animate between two images",
+    "modeReferences": "Reference images",
+    "modeReferencesHint": "Guide style, subject and composition",
+    "modeElements": "Elements",
+    "modeElementsHint": "Reusable saved characters — coming soon",
+    "startFrame": "Start frame",
+    "endFrame": "End frame",
+    "optional": "Optional",
+    "addImage": "Add image",
+    "referencesLabel": "References",
+    "referencesCount": "{count} of {max}"
   },
   "account": {
     "availableCredits": "Available credits",

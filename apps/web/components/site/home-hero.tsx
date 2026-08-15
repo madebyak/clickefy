@@ -80,7 +80,9 @@ export function HomeHero() {
 
             <div className="flex-1" />
 
-            <PromptBar />
+            {/* Same composer as the studio, one size down — see PromptBar's
+                `size` prop for why this is a variant rather than a fork. */}
+            <PromptBar size="compact" />
           </div>
         </MediaCard>
 

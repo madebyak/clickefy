@@ -186,7 +186,20 @@
     "startFrameNeeded": "هذا النموذج يحرّك صورة — أضف الإطار الأول للمتابعة",
     "maxAttachments": "هذا النموذج يقبل حتى {max} صور",
     "dropToAttach": "أفلِت الصور لإرفاقها",
-    "unsupportedFileType": "يمكن إرفاق صور JPEG وPNG وWebP فقط"
+    "unsupportedFileType": "يمكن إرفاق صور JPEG وPNG وWebP فقط",
+    "attachMode": "نوع الإدخال",
+    "modeFrames": "الإطار الأول والأخير",
+    "modeFramesHint": "حرّك الصورة بين لقطتين",
+    "modeReferences": "صور مرجعية",
+    "modeReferencesHint": "وجّه الأسلوب والعنصر والتكوين",
+    "modeElements": "العناصر",
+    "modeElementsHint": "شخصيات محفوظة قابلة لإعادة الاستخدام — قريباً",
+    "startFrame": "الإطار الأول",
+    "endFrame": "الإطار الأخير",
+    "optional": "اختياري",
+    "addImage": "أضف صورة",
+    "referencesLabel": "المراجع",
+    "referencesCount": "{count} من {max}"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",

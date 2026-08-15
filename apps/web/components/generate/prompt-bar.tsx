@@ -20,6 +20,8 @@ import {
   SpeakerSlash,
   Warning,
   X,
+  FilmStrip,
+  ImagesSquare,
 } from "@phosphor-icons/react";
 import type { GenModel } from "@clickfy/sdk";
 import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
@@ -260,17 +262,114 @@ function useTypewriterPlaceholder(phrases: string[], active: boolean) {
 
 /* ------------------------------------------------------------ attachment */
 
+/**
+ * A single labelled frame slot (start / end).
+ *
+ * Frames are positional on every provider that supports them, so the UI
+ * has to say which is which — dropping two images into an unlabelled
+ * strip and hoping the order is right is how you get a video that runs
+ * backwards.
+ */
+function FrameSlot({
+  label,
+  hint,
+  attachment,
+  onPick,
+  onRemove,
+  removeLabel,
+  disabled,
+  compact,
+}: {
+  label: string;
+  hint?: string;
+  attachment?: PromptAttachment;
+  onPick: () => void;
+  onRemove: () => void;
+  removeLabel: string;
+  disabled?: boolean;
+  /** Tighter box for narrow viewports. */
+  compact?: boolean;
+}) {
+  const box = compact ? "size-16" : "size-20";
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-xs font-medium text-foreground">{label}</span>
+        {hint && <span className="text-[10px] text-muted-foreground">{hint}</span>}
+      </div>
+      {attachment ? (
+        <div
+          className={cn(
+            "group/att relative overflow-hidden rounded-xl border border-border bg-surface-3",
+            box,
+          )}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={attachment.previewUrl}
+            alt=""
+            className={cn(
+              "size-full object-cover transition-opacity",
+              attachment.status !== "ready" && "opacity-40",
+            )}
+          />
+          {attachment.status === "uploading" && (
+            <div className="absolute inset-x-1.5 bottom-1.5 h-1 overflow-hidden rounded-full bg-black/50">
+              <div
+                className="h-full rounded-full bg-primary transition-[width]"
+                style={{ width: `${Math.round(attachment.progress * 100)}%` }}
+              />
+            </div>
+          )}
+          {attachment.status === "error" && (
+            <div className="absolute inset-0 grid place-items-center bg-black/50">
+              <Warning weight="fill" className="size-4 text-status-red" />
+            </div>
+          )}
+          <button
+            type="button"
+            aria-label={removeLabel}
+            onClick={onRemove}
+            className="absolute end-1 top-1 grid size-5 place-items-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover/att:opacity-100 focus-visible:opacity-100"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onPick}
+          disabled={disabled}
+          className={cn(
+            "grid place-items-center rounded-xl border border-dashed border-border bg-surface-3/50 text-muted-foreground outline-none transition-colors hover:border-primary/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-30 disabled:hover:border-border",
+            box,
+          )}
+        >
+          <Plus className={compact ? "size-4" : "size-5"} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function AttachmentThumb({
   attachment,
   onRemove,
   removeLabel,
+  compact,
 }: {
   attachment: PromptAttachment;
   onRemove: () => void;
   removeLabel: string;
+  compact?: boolean;
 }) {
   return (
-    <div className="group/att relative size-14 overflow-hidden rounded-lg bg-surface-3">
+    <div
+      className={cn(
+        "group/att relative overflow-hidden rounded-lg bg-surface-3",
+        compact ? "size-11" : "size-14",
+      )}
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={attachment.previewUrl}
@@ -307,8 +406,24 @@ function AttachmentThumb({
 
 /* --------------------------------------------------------------- component */
 
-export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {}) {
+/**
+ * `size` scales the composer without forking it — the marketing hero and
+ * the studio render THE SAME component so the two can never drift apart
+ * visually or behaviourally. `compact` steps every control down one notch
+ * (pills 36→32px, generate 44→36px, thumbs 56→44px) for the hero card,
+ * where the bar sits under a headline rather than being the primary
+ * surface. Everything else — controls, model roster, behaviour — is
+ * identical.
+ */
+export function PromptBar({
+  kind = "image",
+  size = "default",
+}: { kind?: "image" | "video"; size?: "default" | "compact" } = {}) {
   const t = useTranslations("promptbar");
+  const compact = size === "compact";
+  // Class overrides rather than conditional markup: `cn` runs tailwind-merge,
+  // so these reliably beat the base utilities they conflict with.
+  const pillCls = compact ? "h-8 gap-1.5 px-2.5 text-xs" : undefined;
   const router = useRouter();
   const localeDir = useLocale() === "ar" ? "rtl" : "ltr";
   const { isLoaded, isSignedIn } = useAuth();
@@ -338,6 +453,14 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
   const [submitting, setSubmitting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  /**
+   * Which kind of image input the user is supplying.
+   *
+   * Some models accept only one kind; Seedance accepts both but forbids
+   * mixing them in a single request, so this is a choice rather than two
+   * coexisting affordances.
+   */
+  const [attachMode, setAttachMode] = useState<"frames" | "references">("references");
 
   const MAX_OUTPUTS = 4;
   // Video providers (Kling) REQUIRE an explicit aspect ratio for
@@ -386,6 +509,11 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
     );
     setTier(model.tiers?.length ? (model.defaultTier ?? model.tiers[0].mode) : null);
     setSound(false);
+    // Snap to the mode this model actually supports. "seedance" means it
+    // offers both, in which case frames is the safer default: it is what
+    // the previous build always sent, so behaviour is unchanged until the
+    // user deliberately switches.
+    setAttachMode(model.attachments === "references" ? "references" : "frames");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the model identity, not the object
   }, [activeModelKey]);
 
@@ -427,8 +555,8 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
     if (images.length < incoming.length) toast.error(t("unsupportedFileType"));
     if (images.length === 0) return;
 
-    const room = Math.max(0, maxImages - attachments.length);
-    if (images.length > room) toast.error(t("maxAttachments", { max: maxImages }));
+    const room = Math.max(0, attachCeiling - attachments.length);
+    if (images.length > room) toast.error(t("maxAttachments", { max: attachCeiling }));
     images.slice(0, room).forEach((f) => studio.attachFile(f));
   };
 
@@ -441,7 +569,13 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
   // Enter/leave fire for every child element the pointer crosses, so a
   // plain boolean flickers. Track depth and only clear at zero.
   const dragDepth = useRef(0);
-  const canAttach = !!model && !!studio && attachments.length < maxImages;
+  // A model offering "seedance" accepts either kind, so the user picks;
+  // the others are fixed and the dropdown is hidden.
+  const modeIsChoosable = model?.attachments === "seedance";
+  const isFrames = model ? (modeIsChoosable ? attachMode === "frames" : model.attachments !== "references") : false;
+  // Frames take at most two images regardless of the model's total budget.
+  const attachCeiling = isFrames ? (model?.supportsEndFrame ? 2 : 1) : maxImages;
+  const canAttach = !!model && !!studio && attachments.length < attachCeiling;
   // Only react to actual file drags — ignore text/link drags.
   const isFileDrag = (e: React.DragEvent) => e.dataTransfer?.types?.includes("Files");
 
@@ -485,7 +619,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
     if (!model || !canGenerate) return;
 
     const media = readyAttachments.map((a) => ({ kind: "image" as const, ...a.media! }));
-    const frames = model.attachments !== "references";
+    const frames = isFrames;
     setSubmitting(true);
     try {
       await studio.startGeneration({
@@ -521,7 +655,8 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
     <div
       {...dragHandlers}
       className={cn(
-        "relative rounded-2xl bg-surface-1 p-3 transition-colors",
+        "relative rounded-2xl bg-surface-1 transition-colors",
+        compact ? "p-2.5" : "p-3",
         dragActive && "ring-2 ring-primary",
       )}
     >
@@ -537,7 +672,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
       )}
 
       {/* image / video mode toggle */}
-      <div className="mb-3 inline-flex items-center gap-1 rounded-xl bg-surface-3 p-1">
+      <div className={cn("inline-flex items-center gap-1 rounded-xl bg-surface-3 p-1", compact ? "mb-2" : "mb-3")}>
         {(["image", "video"] as const).map((m) => {
           const active = mode === m;
           const Icon = m === "video" ? VideoCamera : ImageSquare;
@@ -548,7 +683,8 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
               onClick={() => setMode(m)}
               aria-pressed={active}
               className={cn(
-                "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-3",
+                "inline-flex items-center gap-1.5 rounded-lg font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-3",
+                compact ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-sm",
                 active
                   ? m === "video"
                     ? "bg-brand-purple text-white"
@@ -563,18 +699,52 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
         })}
       </div>
 
-      {/* attachments strip */}
-      {attachments.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          {attachments.map((a) => (
-            <AttachmentThumb
-              key={a.id}
-              attachment={a}
-              onRemove={() => studio?.removeAttachment(a.id)}
+      {/* ── image inputs ────────────────────────────────────────────
+          Frames mode renders two labelled slots because frame order is
+          semantic; references mode renders a flat grid because order
+          there is not. Only one is ever shown: every provider that
+          supports both forbids mixing them in one request. */}
+      {isFrames ? (
+        <div className="mb-3 flex flex-wrap items-start gap-3">
+          <FrameSlot
+            compact={compact}
+            label={t("startFrame")}
+            attachment={attachments[0]}
+            onPick={() => fileInput.current?.click()}
+            onRemove={() => attachments[0] && studio?.removeAttachment(attachments[0].id)}
+            removeLabel={t("removeAttachment")}
+            disabled={!canAttach}
+          />
+          {model?.supportsEndFrame && (
+            <FrameSlot
+              compact={compact}
+              label={t("endFrame")}
+              hint={t("optional")}
+              attachment={attachments[1]}
+              onPick={() => fileInput.current?.click()}
+              onRemove={() => attachments[1] && studio?.removeAttachment(attachments[1].id)}
               removeLabel={t("removeAttachment")}
+              // An end frame without a start frame is not supported by any
+              // provider we target, so the second slot stays shut until the
+              // first is filled.
+              disabled={!canAttach || !attachments[0]}
             />
-          ))}
+          )}
         </div>
+      ) : (
+        attachments.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {attachments.map((a) => (
+              <AttachmentThumb
+                compact={compact}
+                key={a.id}
+                attachment={a}
+                onRemove={() => studio?.removeAttachment(a.id)}
+                removeLabel={t("removeAttachment")}
+              />
+            ))}
+          </div>
+        )
       )}
 
       {/* start-frame hint (image-to-video models) */}
@@ -582,7 +752,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
         <p className="mb-2 text-xs text-muted-foreground">{t("startFrameNeeded")}</p>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className={cn("flex flex-col sm:flex-row", compact ? "gap-2" : "gap-3")}>
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           {/* prompt row */}
           <div className="flex items-start gap-2">
@@ -590,7 +760,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
               ref={fileInput}
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              multiple={model?.attachments === "references"}
+              multiple={!isFrames}
               className="hidden"
               onChange={(e) => {
                 onPickFiles(e.target.files);
@@ -600,11 +770,17 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
             <button
               type="button"
               aria-label={t("addReference")}
-              disabled={!model || attachments.length >= maxImages}
+              // Frames mode has its own labelled slots; a second, unlabelled
+              // entry point there would just reintroduce the ambiguity.
+              hidden={isFrames}
+              disabled={!model || attachments.length >= attachCeiling}
               onClick={() => fileInput.current?.click()}
-              className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-30"
+              className={cn(
+                "grid shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-30",
+                compact ? "size-8" : "size-9",
+              )}
             >
-              <Plus className="size-5" />
+              <Plus className={compact ? "size-4" : "size-5"} />
             </button>
             <textarea
               value={prompt}
@@ -618,24 +794,79 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
               // in the site language, so follow the locale direction.
               dir={prompt.length > 0 ? "auto" : localeDir}
               rows={1}
-              className="mt-1.5 max-h-40 w-full resize-none bg-transparent text-start text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
+              className={cn("w-full resize-none bg-transparent text-start text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground", compact ? "mt-1 max-h-28" : "mt-1.5 max-h-40")}
             />
           </div>
 
           {/* controls row */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* input mode — only for models that accept both kinds and
+                forbid mixing them (Seedance). Fixed-mode models get no
+                control, because there is nothing to decide. */}
+            {modeIsChoosable && (
+              <Dropdown
+                panelClassName="min-w-72"
+                trigger={({ toggle }) => (
+                  <Pill onClick={toggle} active className={pillCls}>
+                    {isFrames ? <FilmStrip className="size-4" /> : <ImagesSquare className="size-4" />}
+                    {t(isFrames ? "modeFrames" : "modeReferences")}
+                    <CaretDown className="size-3.5 text-muted-foreground" />
+                  </Pill>
+                )}
+              >
+                {({ close }) => (
+                  <>
+                    <MenuLabel>{t("attachMode")}</MenuLabel>
+                    {(
+                      [
+                        ["frames", "modeFrames", "modeFramesHint", FilmStrip],
+                        ["references", "modeReferences", "modeReferencesHint", ImagesSquare],
+                      ] as const
+                    ).map(([mode, label, hint, Icon]) => (
+                      <MenuItem
+                        key={mode}
+                        selected={isFrames === (mode === "frames")}
+                        onClick={() => {
+                          // The two modes are mutually exclusive upstream,
+                          // so anything already attached belongs to the old
+                          // one and cannot carry over.
+                          if (isFrames !== (mode === "frames")) {
+                            for (const a of attachments) studio?.removeAttachment(a.id);
+                          }
+                          setAttachMode(mode);
+                          close();
+                        }}
+                      >
+                        <Icon className="size-4 shrink-0" />
+                        <span className="flex flex-col items-start text-start">
+                          <span>{t(label)}</span>
+                          <span className="text-xs text-muted-foreground">{t(hint)}</span>
+                        </span>
+                      </MenuItem>
+                    ))}
+                  </>
+                )}
+              </Dropdown>
+            )}
+
             {/* model */}
             <Dropdown
               panelClassName="min-w-64"
               trigger={({ toggle }) => (
-                <Pill onClick={toggle} disabled={modelsLoading && !model}>
+                <Pill onClick={toggle} disabled={modelsLoading && !model} className={pillCls}>
                   {model ? (
                     <>
                       <ProviderBadge provider={model.provider} modelKey={model.modelKey} />
                       {model.name}
                     </>
-                  ) : (
+                  ) : modelsLoading || isSignedIn ? (
                     <span className="h-3.5 w-24 animate-pulse rounded bg-surface-2" />
+                  ) : (
+                    // Signed out, the roster query is disabled (it needs a
+                    // token), so `modelsLoading` is false and no model will
+                    // ever arrive. Pulsing forever reads as a broken widget
+                    // on the marketing page — say what's actually true.
+                    <span className="text-muted-foreground">{t("signInToGenerate")}</span>
                   )}
                   <CaretDown className="size-3.5 text-muted-foreground" />
                 </Pill>
@@ -673,7 +904,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
             <Dropdown
               panelClassName="max-h-80 min-w-44 overflow-y-auto"
               trigger={({ toggle }) => (
-                <Pill onClick={toggle}>
+                <Pill onClick={toggle} className={pillCls}>
                   <RatioGlyph ratio={aspect} className="text-muted-foreground" />
                   {aspect === "Auto" ? t("auto") : aspect}
                 </Pill>
@@ -706,7 +937,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
               <Dropdown
                 panelClassName="min-w-52"
                 trigger={({ toggle }) => (
-                  <Pill onClick={toggle}>
+                  <Pill onClick={toggle} className={pillCls}>
                     <Diamond weight="fill" className="size-3.5 text-accent-turquoise" />
                     {selectedTier?.label ?? tier}
                   </Pill>
@@ -740,7 +971,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
               <Dropdown
                 panelClassName="min-w-40"
                 trigger={({ toggle }) => (
-                  <Pill onClick={toggle}>
+                  <Pill onClick={toggle} className={pillCls}>
                     <Timer weight="bold" className="size-3.5 text-accent-turquoise" />
                     {duration != null ? `${duration}s` : "—"}
                   </Pill>
@@ -768,7 +999,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
 
             {/* native audio (Kling 3 Omni) */}
             {model?.supportsSound && (
-              <Pill active={sound} onClick={() => setSound((s) => !s)}>
+              <Pill active={sound} onClick={() => setSound((s) => !s)} className={pillCls}>
                 {sound ? (
                   <SpeakerHigh weight="fill" className="size-4 text-accent-turquoise" />
                 ) : (
@@ -779,17 +1010,17 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
             )}
 
             {/* output count */}
-            <div className="inline-flex h-9 items-center rounded-lg bg-surface-3 px-1">
+            <div className={cn("inline-flex items-center rounded-lg bg-surface-3 px-1", compact ? "h-8" : "h-9")}>
               <button
                 type="button"
                 aria-label={t("fewer")}
                 onClick={() => setCount((c) => Math.max(1, c - 1))}
                 disabled={count <= 1}
-                className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
+                className={cn("grid place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30", compact ? "size-6" : "size-7")}
               >
-                <Minus className="size-4" />
+                <Minus className={compact ? "size-3.5" : "size-4"} />
               </button>
-              <span className="min-w-11 text-center text-sm tabular-nums text-muted-foreground">
+              <span className={cn("text-center tabular-nums text-muted-foreground", compact ? "min-w-9 text-xs" : "min-w-11 text-sm")}>
                 {count}/{MAX_OUTPUTS}
               </span>
               <button
@@ -797,7 +1028,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
                 aria-label={t("more")}
                 onClick={() => setCount((c) => Math.min(MAX_OUTPUTS, c + 1))}
                 disabled={count >= MAX_OUTPUTS}
-                className="grid size-7 place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30"
+                className={cn("grid place-items-center rounded-md text-foreground outline-none transition-colors hover:bg-white/5 disabled:opacity-30", compact ? "size-6" : "size-7")}
               >
                 <Plus className="size-4" />
               </button>
@@ -805,7 +1036,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
 
             {/* draw — image-only; there's no draw surface for video */}
             {!isVideo && (
-              <Pill active={draw} onClick={() => setDraw((d) => !d)}>
+              <Pill active={draw} onClick={() => setDraw((d) => !d)} className={pillCls}>
                 <PencilSimple className="size-4" />
                 {t("draw")}
               </Pill>
@@ -821,11 +1052,13 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
           // inside, it gates on prompt/attachment/upload readiness.
           disabled={!isLoaded || (!!studio && !!isSignedIn && !canGenerate)}
           className={cn(
-            // Fixed 44px height on desktop instead of self-stretching to the
+            // A fixed height on desktop rather than self-stretching to the
             // full prompt-bar height, which made it read as an oversized
-            // block. Sits a step above the 36px control pills, and aligns to
-            // the bottom of the column so it lines up with that row.
-            "flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl px-6 font-semibold outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-40 sm:w-auto sm:self-end",
+            // block. It sits one step above the control pills (44/36px at
+            // default, 36/32px compact) and aligns to the bottom of the
+            // column so it lines up with that row.
+            "flex w-full shrink-0 items-center justify-center gap-2 rounded-xl font-semibold outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-40 sm:w-auto sm:self-end",
+            compact ? "h-9 px-4 text-sm" : "h-11 px-6",
             isVideo ? "bg-brand-purple text-white" : "bg-primary text-primary-foreground",
           )}
         >

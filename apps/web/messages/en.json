@@ -253,7 +253,6 @@
     "noFolder": "No folder",
     "deleteProject": "Delete project",
     "confirmDeleteProject": "Delete — are you sure?",
-    "toastCoverFailed": "Couldn't update the thumbnail",
     "back": "Back",
     "assetInfo": "Details",
     "addAsReference": "Add as reference",
@@ -269,7 +268,6 @@
     "copyPrompt": "Copy prompt",
     "promptCopied": "Prompt copied",
     "reuse": "Re-use setup",
-    "reuseApplied": "Setup restored — tweak and generate",
     "madeWithTemplate": "Made with template",
     "detailsUnavailable": "Generation details are no longer available",
     "startFrameRole": "Start frame",
@@ -314,7 +312,9 @@
     "toastCreateFolderFailed": "Couldn't create the folder — try again.",
     "toastDeleteFolderFailed": "Couldn't delete the folder — try again.",
     "toastCreateProjectFailed": "Couldn't create the project — try again.",
-    "toastDeleteProjectFailed": "Couldn't delete the project — try again."
+    "toastDeleteProjectFailed": "Couldn't delete the project — try again.",
+    "reuseApplied": "Setup restored — tweak and generate",
+    "toastCoverFailed": "Couldn't update the thumbnail"
   },
   "auth": {
     "panelBadge": "Clickefy Studio",

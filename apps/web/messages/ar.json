@@ -253,7 +253,6 @@
     "noFolder": "بدون مجلد",
     "deleteProject": "حذف المشروع",
     "confirmDeleteProject": "حذف — هل أنت متأكد؟",
-    "toastCoverFailed": "تعذّر تحديث الصورة المصغّرة",
     "back": "رجوع",
     "assetInfo": "التفاصيل",
     "addAsReference": "أضف كمرجع",
@@ -269,7 +268,6 @@
     "copyPrompt": "نسخ النص",
     "promptCopied": "تم نسخ النص",
     "reuse": "إعادة استخدام الإعدادات",
-    "reuseApplied": "تمت استعادة الإعدادات — عدّلها ثم أنشئ",
     "madeWithTemplate": "أُنشئ بقالب",
     "detailsUnavailable": "تفاصيل الإنشاء لم تعد متاحة",
     "startFrameRole": "الإطار الأول",
@@ -314,7 +312,9 @@
     "toastCreateFolderFailed": "تعذّر إنشاء المجلد — حاول مجددًا.",
     "toastDeleteFolderFailed": "تعذّر حذف المجلد — حاول مجددًا.",
     "toastCreateProjectFailed": "تعذّر إنشاء المشروع — حاول مجددًا.",
-    "toastDeleteProjectFailed": "تعذّر حذف المشروع — حاول مجددًا."
+    "toastDeleteProjectFailed": "تعذّر حذف المشروع — حاول مجددًا.",
+    "reuseApplied": "تمت استعادة الإعدادات — عدّلها ثم أنشئ",
+    "toastCoverFailed": "تعذّر تحديث الصورة المصغّرة"
   },
   "auth": {
     "panelBadge": "استوديو كليكفاي",

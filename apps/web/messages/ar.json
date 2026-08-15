@@ -184,7 +184,9 @@
     "submitFailed": "تعذّر بدء الإنشاء — حاول مرة أخرى",
     "signInToGenerate": "سجّل الدخول للإنشاء",
     "startFrameNeeded": "هذا النموذج يحرّك صورة — أضف الإطار الأول للمتابعة",
-    "maxAttachments": "هذا النموذج يقبل حتى {max} صور"
+    "maxAttachments": "هذا النموذج يقبل حتى {max} صور",
+    "dropToAttach": "أفلِت الصور لإرفاقها",
+    "unsupportedFileType": "يمكن إرفاق صور JPEG وPNG وWebP فقط"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",

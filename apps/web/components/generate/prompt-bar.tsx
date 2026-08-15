@@ -30,6 +30,9 @@ import { modelLogo } from "@/lib/model-logos";
 
 /* ------------------------------------------------------------------ atoms */
 
+/** Mirrors the file input's `accept`; also enforced on drop. */
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
 const PROVIDER_STYLE: Record<string, string> = {
   gemini: "bg-accent-turquoise/20 text-accent-turquoise",
   kling: "bg-brand-purple/25 text-[#b98aff]",
@@ -329,6 +332,7 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
   const [count, setCount] = useState(1);
   const [draw, setDraw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const MAX_OUTPUTS = 4;
@@ -404,13 +408,60 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
     !uploadsInFlight &&
     !needsStartFrame;
 
-  const onPickFiles = (files: FileList | null) => {
-    if (!files || !model || !studio) return;
+  /**
+   * Single validated entry point for attachments — used by both the file
+   * picker and drag-and-drop. Drops can carry anything (PDFs, folders,
+   * dragged page images), so the MIME filter lives here rather than
+   * relying on the input's `accept`, which only constrains the picker.
+   */
+  const addFiles = (incoming: File[]) => {
+    if (!model || !studio || incoming.length === 0) return;
+    const images = incoming.filter((f) => ACCEPTED_IMAGE_TYPES.includes(f.type));
+    if (images.length < incoming.length) toast.error(t("unsupportedFileType"));
+    if (images.length === 0) return;
+
     const room = Math.max(0, maxImages - attachments.length);
-    if (files.length > room) toast.error(t("maxAttachments", { max: maxImages }));
-    Array.from(files)
-      .slice(0, room)
-      .forEach((f) => studio.attachFile(f));
+    if (images.length > room) toast.error(t("maxAttachments", { max: maxImages }));
+    images.slice(0, room).forEach((f) => studio.attachFile(f));
+  };
+
+  const onPickFiles = (files: FileList | null) => {
+    if (files) addFiles(Array.from(files));
+  };
+
+  /* ------------------------------------------------------- drag & drop */
+
+  // Enter/leave fire for every child element the pointer crosses, so a
+  // plain boolean flickers. Track depth and only clear at zero.
+  const dragDepth = useRef(0);
+  const canAttach = !!model && !!studio && attachments.length < maxImages;
+  // Only react to actual file drags — ignore text/link drags.
+  const isFileDrag = (e: React.DragEvent) => e.dataTransfer?.types?.includes("Files");
+
+  const dragHandlers = {
+    onDragEnter: (e: React.DragEvent) => {
+      if (!canAttach || !isFileDrag(e)) return;
+      e.preventDefault();
+      dragDepth.current += 1;
+      setDragActive(true);
+    },
+    onDragOver: (e: React.DragEvent) => {
+      if (!canAttach || !isFileDrag(e)) return;
+      e.preventDefault(); // required, or the browser opens the file instead
+      e.dataTransfer.dropEffect = "copy";
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!isFileDrag(e)) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDragActive(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      if (!canAttach || !isFileDrag(e)) return;
+      e.preventDefault();
+      dragDepth.current = 0;
+      setDragActive(false);
+      addFiles(Array.from(e.dataTransfer.files));
+    },
   };
 
   const onGenerate = async () => {
@@ -460,7 +511,24 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
   };
 
   return (
-    <div className="rounded-2xl bg-surface-1 p-3">
+    <div
+      {...dragHandlers}
+      className={cn(
+        "relative rounded-2xl bg-surface-1 p-3 transition-colors",
+        dragActive && "ring-2 ring-primary",
+      )}
+    >
+      {/* Drop affordance. pointer-events-none so it can't swallow the drop
+          event from the container underneath. */}
+      {dragActive && (
+        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-2xl border-2 border-dashed border-primary bg-background/80 backdrop-blur-[1px]">
+          <p className="flex items-center gap-2 text-sm font-medium text-primary">
+            <ImageSquare weight="fill" className="size-4" />
+            {t("dropToAttach")}
+          </p>
+        </div>
+      )}
+
       {/* image / video mode toggle */}
       <div className="mb-3 inline-flex items-center gap-1 rounded-xl bg-surface-3 p-1">
         {(["image", "video"] as const).map((m) => {
@@ -744,7 +812,11 @@ export function PromptBar({ kind = "image" }: { kind?: "image" | "video" } = {})
           // inside, it gates on prompt/attachment/upload readiness.
           disabled={!isLoaded || (!!studio && !!isSignedIn && !canGenerate)}
           className={cn(
-            "flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl px-6 font-semibold outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-40 sm:h-auto sm:w-auto sm:self-stretch",
+            // Fixed 44px height on desktop instead of self-stretching to the
+            // full prompt-bar height, which made it read as an oversized
+            // block. Sits a step above the 36px control pills, and aligns to
+            // the bottom of the column so it lines up with that row.
+            "flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl px-6 font-semibold outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-40 sm:w-auto sm:self-end",
             isVideo ? "bg-brand-purple text-white" : "bg-primary text-primary-foreground",
           )}
         >

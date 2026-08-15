@@ -79,7 +79,7 @@ const SURFACES: Swatch[] = [
   { name: "Surface 3", token: "--surface-3", hex: "#1C1C22", cls: "bg-surface-3" },
 ];
 const BRAND: Swatch[] = [
-  { name: "Yellow — Primary", token: "--brand-yellow", hex: "#EBF81A", cls: "bg-brand-yellow" },
+  { name: "Yellow — Primary", token: "--brand-yellow", hex: "#F2E20B", cls: "bg-brand-yellow" },
   { name: "Purple — Secondary", token: "--brand-purple", hex: "#6303E0", cls: "bg-brand-purple" },
 ];
 const ACCENTS: Swatch[] = [

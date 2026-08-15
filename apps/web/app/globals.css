@@ -102,12 +102,20 @@
   --secondary: var(--surface-2);
   --secondary-foreground: #fafafa;
 
-  /* Actions — yellow primary (dark text), purple secondary brand */
-  --primary: #ebf81a;
+  /* Actions — yellow primary (dark text), purple secondary brand.
+     `--brand-yellow` below is the single source of truth; --primary and
+     --ring derive from it so the brand colour can never half-change. */
+  --primary: var(--brand-yellow);
   --primary-foreground: #000000;
 
   /* Brand palette */
-  --brand-yellow: #ebf81a;
+  /* Citron: a warmer, golden volt. Deliberately off the yellow-green
+     "acid" hue (63°) that reads as generic AI-tool chrome; 55° keeps the
+     same punch on black while feeling less borrowed. Black text on it
+     stays comfortably above WCAG AA. Duplicated (by necessity) in
+     lib/clerk-appearance.ts and the brand SVGs — grep the hex when
+     changing it. */
+  --brand-yellow: #f2e20b;
   --brand-purple: #6303e0;
   --accent-turquoise: #00dcae;
   --accent-pink: #db0078;
@@ -121,7 +129,7 @@
   /* Lines & focus */
   --border: #26262d;
   --input: #26262d;
-  --ring: #ebf81a;
+  --ring: var(--brand-yellow);
 }
 
 /*

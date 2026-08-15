@@ -184,7 +184,9 @@
     "submitFailed": "Couldn't start the generation — try again",
     "signInToGenerate": "Sign in to generate",
     "startFrameNeeded": "This model animates an image — add a start frame to continue",
-    "maxAttachments": "This model accepts up to {max} images"
+    "maxAttachments": "This model accepts up to {max} images",
+    "dropToAttach": "Drop images to attach",
+    "unsupportedFileType": "Only JPEG, PNG and WebP images can be attached"
   },
   "account": {
     "availableCredits": "Available credits",

@@ -13,14 +13,14 @@
 | Surface 3 (elevated/popovers) | `--surface-3` | `#1C1C22` |
 | Foreground | `--foreground` | `#FAFAFA` |
 | Muted text | `--muted-foreground` | `#9B9BA4` |
-| **Yellow — primary** (buttons) | `--brand-yellow` | `#EBF81A` (black text on it) |
+| **Yellow — primary** (buttons) | `--brand-yellow` | `#F2E20B` (black text on it) |
 | **Purple — secondary** | `--brand-purple` | `#6303E0` |
 | Turquoise — accent | `--accent-turquoise` | `#00DCAE` |
 | Pink — accent | `--accent-pink` | `#DB0078` |
 | Red — status/destructive | `--status-red` | `#EF0744` |
 | Green — status/success | `--status-green` | `#07DD44` |
 | Border / input | `--border` / `--input` | `#26262D` |
-| Focus ring | `--ring` | `#EBF81A` |
+| Focus ring | `--ring` | `#F2E20B` |
 
 Utilities: `bg-background`, `bg-surface-2`, `bg-brand-yellow`, `text-accent-turquoise`, etc.
 shadcn semantic tokens (`--primary`, `--card`, `--muted`…) are wired so shadcn components inherit the theme. Light mode is deferred (theme is forced dark/black).

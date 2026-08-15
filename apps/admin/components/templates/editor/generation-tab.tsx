@@ -55,12 +55,14 @@ interface GenerationTabProps {
   getToken: TokenGetter;
 }
 
+// GA model keys only. The `-preview` keys and Imagen 4 are deliberately
+// absent: existing templates that reference them keep working (they stay
+// registered as deprecated in MODEL_CAPABILITIES), but new stages should
+// never be authored against a retiring id.
 const geminiModels = [
-  { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash (Fast)' },
-  { value: 'gemini-3.1-flash-image-preview', label: 'Gemini 3.1 Flash (Latest)' },
-  { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro (Best Quality)' },
-  { value: 'imagen-4.0-generate-001', label: 'Imagen 4.0' },
-  { value: 'imagen-4.0-fast-generate-001', label: 'Imagen 4.0 Fast' },
+  { value: 'gemini-3-pro-image', label: 'Nano Banana Pro (Best Quality)' },
+  { value: 'gemini-3.1-flash-image', label: 'Nano Banana 2 (Balanced)' },
+  { value: 'gemini-3.1-flash-lite-image', label: 'Nano Banana 2 Lite (Fastest)' },
 ];
 
 const klingModels = [
@@ -90,7 +92,7 @@ const providerConfig: Record<AdminProvider, { label: string; icon: typeof Sparkl
  * onValueChange handler doesn't have to inline the literal strings.
  */
 function defaultModelFor(provider: AdminProvider): string {
-  if (provider === 'gemini') return 'gemini-2.5-flash-image';
+  if (provider === 'gemini') return 'gemini-3.1-flash-image';
   if (provider === 'kling') return 'kling-v2-6';
   return 'dreamina-seedance-2-0-fast-260128';
 }

@@ -201,6 +201,79 @@ const SEEDANCE_DURATIONS = [5, 10] as const;
 
 export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   // ── Gemini (Nano Banana family) ─────────────────────────────────────
+  //
+  // Marketing names are aliases; the GA api ids are the `gemini-*-image`
+  // strings. Verified live 2026-08-15 against our AI Studio key.
+  //
+  // The two `-preview` keys further down are LEGACY: they stay registered
+  // because ~250 template snapshots have them frozen in, and they now
+  // re-point at these same GA endpoints via `apiModelId`. New templates
+  // and every create-flow pick should use the keys in this block.
+  'gemini-3-pro-image': {
+    provider: 'gemini',
+    modelKey: 'gemini-3-pro-image',
+    displayName: 'Nano Banana Pro',
+    status: 'active',
+    kind: 'image',
+    sizing: {
+      mode: 'aspect',
+      values: GEMINI_ASPECT_RATIOS,
+      resolutions: GEMINI_RESOLUTIONS,
+    },
+    outputs: { min: 1, max: 4, default: 1 },
+    refAddressing: 'ordinal',
+    // 6 object + 5 character + 3 style refs.
+    maxReferences: 14,
+    maxSubjects: 14,
+    maxImagesTotal: 14,
+    maxPromptChars: 5000,
+    notes: 'Highest quality: best text rendering, style references, up to 4K.',
+  },
+  'gemini-3.1-flash-image': {
+    provider: 'gemini',
+    modelKey: 'gemini-3.1-flash-image',
+    displayName: 'Nano Banana 2',
+    status: 'active',
+    kind: 'image',
+    sizing: {
+      mode: 'aspect',
+      // Only model in the family that accepts the ultra-wide/tall ratios.
+      values: [...GEMINI_ASPECT_RATIOS, ...GEMINI_31_FLASH_EXTRA],
+      resolutions: GEMINI_31_RESOLUTIONS,
+    },
+    outputs: { min: 1, max: 4, default: 1 },
+    refAddressing: 'ordinal',
+    // 10 object + 4 character refs.
+    maxReferences: 14,
+    maxSubjects: 14,
+    maxImagesTotal: 14,
+    maxPromptChars: 5000,
+    notes: 'Balanced default: widest aspect + resolution range, 0.5K–4K.',
+  },
+  'gemini-3.1-flash-lite-image': {
+    provider: 'gemini',
+    modelKey: 'gemini-3.1-flash-lite-image',
+    displayName: 'Nano Banana 2 Lite',
+    status: 'active',
+    kind: 'image',
+    sizing: {
+      mode: 'aspect',
+      // Lite is 1K-only and sticks to the 10 standard ratios — it does NOT
+      // take the ultra-wide set. Single-value `resolutions` renders the
+      // control read-only rather than offering a choice that would 400.
+      values: GEMINI_ASPECT_RATIOS,
+      resolutions: ['1K'],
+    },
+    outputs: { min: 1, max: 4, default: 1 },
+    refAddressing: 'ordinal',
+    // Highest object-reference budget in the family (14), no character refs.
+    maxReferences: 14,
+    maxSubjects: 14,
+    maxImagesTotal: 14,
+    maxPromptChars: 5000,
+    notes: 'Cheapest and fastest (sub-2s). 1K only, no search grounding.',
+  },
+
   'gemini-2.5-flash-image': {
     provider: 'gemini',
     modelKey: 'gemini-2.5-flash-image',
@@ -216,13 +289,18 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 3,
     notes: 'Older Nano Banana. Cheaper but lower fidelity than Nano Banana 2.',
   },
+  // ── LEGACY preview keys ─────────────────────────────────────────────
+  // Kept registered so the ~250 template snapshots that reference them
+  // still resolve; `apiModelId` re-points them at the GA endpoints above.
+  // `deprecated` hides them from new pickers without breaking old work —
+  // never delete a model entry (see the header note).
   'gemini-3.1-flash-image-preview': {
     provider: 'gemini',
     modelKey: 'gemini-3.1-flash-image-preview',
     // GA id is `gemini-3.1-flash-image` — same reasoning as Pro above.
     apiModelId: 'gemini-3.1-flash-image',
-    displayName: 'Nano Banana 2 Flash (Gemini 3.1)',
-    status: 'preview',
+    displayName: 'Nano Banana 2 (legacy preview key)',
+    status: 'deprecated',
     kind: 'image',
     sizing: {
       mode: 'aspect',
@@ -249,8 +327,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // Verified 2026-08-15: both ids return an identical response shape
     // (candidates[].content.parts[].inlineData, image/jpeg, finishReason STOP).
     apiModelId: 'gemini-3-pro-image',
-    displayName: 'Nano Banana Pro (Gemini 3 Pro Image)',
-    status: 'preview',
+    displayName: 'Nano Banana Pro (legacy preview key)',
+    status: 'deprecated',
     kind: 'image',
     sizing: {
       mode: 'aspect',
@@ -273,7 +351,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     provider: 'gemini',
     modelKey: 'imagen-4.0-generate-001',
     displayName: 'Imagen 4',
-    status: 'active',
+    // Google retires all Imagen 4 models 2026-08-17. Zero templates
+    // reference them and both were unpriced (0 credits), so this is a
+    // no-op for users — deprecated rather than deleted so any snapshot
+    // that ever named them still resolves instead of failing
+    // `unknown_model` (a non-refundable error code).
+    status: 'deprecated',
     kind: 'image',
     sizing: { mode: 'aspect', values: IMAGEN_ASPECT_RATIOS },
     outputs: { min: 1, max: 4, default: 1 },
@@ -287,7 +370,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     provider: 'gemini',
     modelKey: 'imagen-4.0-fast-generate-001',
     displayName: 'Imagen 4 Fast',
-    status: 'active',
+    // Google retires all Imagen 4 models 2026-08-17. Zero templates
+    // reference them and both were unpriced (0 credits), so this is a
+    // no-op for users — deprecated rather than deleted so any snapshot
+    // that ever named them still resolves instead of failing
+    // `unknown_model` (a non-refundable error code).
+    status: 'deprecated',
     kind: 'image',
     sizing: { mode: 'aspect', values: IMAGEN_ASPECT_RATIOS },
     outputs: { min: 1, max: 4, default: 1 },

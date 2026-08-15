@@ -82,10 +82,22 @@ const EXCLUDED_MODEL_KEYS = new Set<string>([
  * which this script intentionally does NOT set.
  */
 const COST_PER_CALL_USD: Record<string, string> = {
-  // Gemini image — Google AI Studio published prices.
+  // Gemini image — Google AI Studio published prices, re-checked
+  // 2026-08-15. Values are the model's CHEAPEST tier (1K, except Lite
+  // which is 1K-only and NB2 which also does 0.5K); higher resolutions
+  // cost more and are priced per tier in `tier_pricing`:
+  //   NB Pro  1K/2K $0.134 · 4K $0.24
+  //   NB2     0.5K $0.045 · 1K $0.067 · 2K $0.101 · 4K $0.151
+  //   Lite    1K $0.0336 (only tier)
+  'gemini/gemini-3-pro-image': '0.1340',
+  'gemini/gemini-3.1-flash-image': '0.0670',
+  'gemini/gemini-3.1-flash-lite-image': '0.0336',
+
+  // Legacy preview keys — same upstream models via `apiModelId`, so the
+  // same true cost. Kept for templates that still reference them.
   'gemini/gemini-2.5-flash-image': '0.0390',
-  'gemini/gemini-3.1-flash-image-preview': '0.0400',
-  'gemini/gemini-3-pro-image-preview': '0.1200',
+  'gemini/gemini-3.1-flash-image-preview': '0.0670',
+  'gemini/gemini-3-pro-image-preview': '0.1340',
 
   // Imagen 4 — Google AI Studio published prices.
   'gemini/imagen-4.0-generate-001': '0.0400',

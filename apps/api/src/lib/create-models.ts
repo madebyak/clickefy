@@ -36,16 +36,27 @@ interface CreateModelDef {
 
 /** The v1 roster, in dropdown display order (image first, then video). */
 export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
+  // Gemini image roster on the GA model keys. The `-preview` keys these
+  // replaced are still registered in MODEL_CAPABILITIES (deprecated) so
+  // existing template snapshots resolve, but they are deliberately absent
+  // here — the create flow only ever offers current models.
   {
-    modelKey: 'gemini-3-pro-image-preview',
+    modelKey: 'gemini-3-pro-image',
     name: 'Nano Banana Pro',
     attachments: 'references',
     requiresStartFrame: false,
     supportsEndFrame: false,
   },
   {
-    modelKey: 'gemini-3.1-flash-image-preview',
+    modelKey: 'gemini-3.1-flash-image',
     name: 'Nano Banana 2',
+    attachments: 'references',
+    requiresStartFrame: false,
+    supportsEndFrame: false,
+  },
+  {
+    modelKey: 'gemini-3.1-flash-lite-image',
+    name: 'Nano Banana 2 Lite',
     attachments: 'references',
     requiresStartFrame: false,
     supportsEndFrame: false,

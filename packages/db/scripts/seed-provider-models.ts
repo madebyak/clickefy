@@ -109,6 +109,12 @@ const COST_PER_CALL_USD: Record<string, string> = {
   'kling/kling-v2-master': '1.4000',
   'kling/kling-v3-omni': '0.4900',
 
+  // Seedream image (same ModelArk account and key as Seedance video).
+  // Flat per image across every resolution tier — only 5.0 pro, which we
+  // don't carry, is pixel-tiered.
+  'seedance/seedream-4-0-250828': '0.0300',
+  'seedance/seedream-5-0-260128': '0.0350',
+
   // Seedance 2.0 (BytePlus ModelArk) — published reference prices
   // for 5s clips at 720p. 1080p is ~2x; 2K higher still. These are
   // operator-facing reference values only — what the user pays in

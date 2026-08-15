@@ -73,9 +73,14 @@ const klingModels = [
   { value: 'kling-v2-master', label: 'Kling V2 Master' },
 ];
 
+// One BytePlus ModelArk provider, two product lines: Seedream generates
+// images (synchronous), Seedance generates video (async task). The stage's
+// model choice is what selects between them.
 const seedanceModels = [
-  { value: 'dreamina-seedance-2-0-260128', label: 'Seedance 2.0 (Standard)' },
-  { value: 'dreamina-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast' },
+  { value: 'seedream-4-0-250828', label: 'Seedream 4 — image (cheapest)' },
+  { value: 'seedream-5-0-260128', label: 'Seedream 5 Lite — image (best)' },
+  { value: 'dreamina-seedance-2-0-260128', label: 'Seedance 2.0 — video' },
+  { value: 'dreamina-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast — video' },
 ];
 
 type AdminProvider = 'gemini' | 'kling' | 'seedance';

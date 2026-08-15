@@ -115,6 +115,17 @@ export interface ModelCapabilities {
   acceptsStartEndImage?: boolean;
 
   /**
+   * Seedream: does the model accept an `output_format` parameter?
+   *
+   * Not "does it support png" — Seedream 4.x rejects the FIELD itself
+   * with `InvalidParameter: the parameter output_format is not supported
+   * by the current model`, even when set to its own default of jpeg.
+   * Only the 5.x line accepts it. Verified against the live API
+   * 2026-08-15.
+   */
+  supportsOutputFormat?: boolean;
+
+  /**
    * Can the model generate native audio (sfx / ambient / dialogue) via
    * an on/off switch? (Kling v3 Omni `sound`; Seedance uses its own
    * `generateAudio` config path.) Drives the create-flow sound toggle.
@@ -198,6 +209,25 @@ const SEEDANCE_ASPECT_RATIOS = [
 ] as const;
 const SEEDANCE_RESOLUTIONS = ['480p', '720p', '1080p', '2K'] as const;
 const SEEDANCE_DURATIONS = [5, 10] as const;
+
+/**
+ * Seedream — the IMAGE line on the same BytePlus ModelArk account.
+ *
+ * Ratios: Seedream has no `aspect_ratio` parameter at all. It infers the
+ * shape from the prompt and reports what it produced in `data[].size`
+ * (verified: asking for `1K` returned 1152x864, not a square). We still
+ * declare the standard ratio menu because the compiler embeds the chosen
+ * ratio into the prompt text — that is the only lever the API gives us.
+ *
+ * Resolutions differ per model and are NOT interchangeable:
+ *   4.0      1K / 2K / 4K   — the only model accepting ~1 MP
+ *   4.5      2K / 4K        — rejects anything under ~3.69 MP
+ *   5.0 lite 2K / 3K / 4K   — same floor as 4.5
+ *   5.0 pro  1K / 1.5K / 2K — cannot do 4K
+ */
+const SEEDREAM_ASPECT_RATIOS = [
+  '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9',
+] as const;
 
 export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   // ── Gemini (Nano Banana family) ─────────────────────────────────────
@@ -564,6 +594,52 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     notes:
       'Fast tier of Seedance 2.0 — ~20% cheaper, slightly lower fidelity. Same parameter surface as Standard.',
+  },
+
+  // ── Seedream (BytePlus ModelArk — image line) ───────────────────────
+  //
+  // Same provider tag, host and API key as Seedance video; only the path
+  // differs (`/images/generations`, synchronous). All ids live-probed
+  // 2026-08-15 and confirmed valid + activated on our account.
+  //
+  // Model ids MUST carry their date stamp — ModelArk documents no undated
+  // alias, and `dola-seedream-5-0-lite-260128` (the spelling on Google's,
+  // sorry, BytePlus's own deprecation page) returns NotFound. The `dola-`
+  // prefix belongs to 5.0 pro alone.
+  'seedream-4-0-250828': {
+    provider: 'seedance',
+    modelKey: 'seedream-4-0-250828',
+    displayName: 'Seedream 4.0',
+    status: 'active',
+    kind: 'image',
+    // The only Seedream that accepts ~1 MP; 4.5 and 5.0-lite floor at
+    // ~3.69 MP. Flat price across every tier.
+    sizing: { mode: 'aspect', values: SEEDREAM_ASPECT_RATIOS, resolutions: ['1K', '2K', '4K'] },
+    outputs: { min: 1, max: 15, default: 1 },
+    refAddressing: 'ordinal',
+    maxReferences: 14,
+    maxSubjects: 14,
+    maxImagesTotal: 14,
+    maxPromptChars: 2500,
+    // 4.x rejects the `output_format` field outright — see the flag's doc.
+    supportsOutputFormat: false,
+    notes: 'Cheapest Seedream. Only one accepting 1K. jpeg output only.',
+  },
+  'seedream-5-0-260128': {
+    provider: 'seedance',
+    modelKey: 'seedream-5-0-260128',
+    displayName: 'Seedream 5.0 Lite',
+    status: 'active',
+    kind: 'image',
+    sizing: { mode: 'aspect', values: SEEDREAM_ASPECT_RATIOS, resolutions: ['2K', '3K', '4K'] },
+    outputs: { min: 1, max: 15, default: 1 },
+    refAddressing: 'ordinal',
+    maxReferences: 14,
+    maxSubjects: 14,
+    maxImagesTotal: 14,
+    maxPromptChars: 2500,
+    supportsOutputFormat: true,
+    notes: 'Best all-round Seedream: png output, up to 4K, multi-image.',
   },
 
   // ── GPT Image 2 (forward-looking — not wired to an adapter yet) ─────

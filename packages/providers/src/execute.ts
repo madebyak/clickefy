@@ -24,6 +24,7 @@ import {
   pollSeedance,
   type SeedanceEnv,
 } from './adapters/seedance';
+import { executeSeedream } from './adapters/seedream';
 
 export interface ProviderEnv {
   gemini?: GeminiEnv;
@@ -87,6 +88,12 @@ export async function executeStage(
   if (request.provider === 'seedance') {
     if (!env.seedance) {
       throw new Error('executeStage(): missing `env.seedance` for a Seedance request.');
+    }
+    // Seedream (image) and Seedance (video) share the provider tag, the
+    // host and the key — but Seedream is synchronous, so it returns
+    // `completed` directly instead of a task to poll.
+    if ('variant' in request && request.variant === 'image') {
+      return executeSeedream(request, env.seedance);
     }
     return executeSeedance(request, env.seedance);
   }

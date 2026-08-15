@@ -236,7 +236,53 @@ export type CompiledRequest =
   | GeminiCompiledRequest
   | KlingCompiledRequest
   | SeedanceCompiledRequest
+  | SeedreamCompiledRequest
   | GptImageCompiledRequest;
+
+/**
+ * Seedream — BytePlus ModelArk's IMAGE line.
+ *
+ * Shares the `seedance` provider tag because it is the same vendor, the
+ * same host and the same API key; only the path differs. Crucially it is
+ * **synchronous** (`POST /images/generations` returns the images inline)
+ * where Seedance video is a submit-then-poll task, so this never produces
+ * a `pending` ExecuteResult.
+ *
+ * Discriminated from the video arm by `variant: 'image'`.
+ */
+export interface SeedreamCompiledRequest {
+  provider: 'seedance';
+  variant: 'image';
+  model: string;
+  prompt: string;
+  /**
+   * Either a resolution keyword (`1K`/`2K`/`4K`…) or an explicit
+   * `WIDTHxHEIGHT`. The API treats these as mutually exclusive, so this
+   * is one field rather than two.
+   *
+   * Note 4.5 and 5.0-lite reject anything under ~3.69 MP, so a bare
+   * `1024x1024` is an error on those models — the compiler resolves a
+   * keyword the model actually supports instead of passing pixels through.
+   */
+  size?: string;
+  /** 5.0 pro and 5.0 lite only; 4.x is jpeg-only. */
+  outputFormat?: 'png' | 'jpeg';
+  /**
+   * The API defaults this to TRUE and stamps an "AI generated" mark on the
+   * output, so we always send it explicitly.
+   */
+  watermark: boolean;
+  /**
+   * Multi-image generation. Seedream has no `n`: with `'auto'` the model
+   * decides how many images the prompt implies, capped by `maxImages`.
+   * Unsupported on 5.0 pro.
+   */
+  sequentialImageGeneration?: 'auto' | 'disabled';
+  /** 1–15, and inputs + outputs must together stay ≤ 15. */
+  maxImages?: number;
+  /** Reference / edit inputs. Empty ⇒ pure text-to-image. */
+  images?: ImagePart[];
+}
 
 // ─── Compile-time warnings ──────────────────────────────────────────
 

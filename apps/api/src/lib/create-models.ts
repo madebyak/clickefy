@@ -83,6 +83,20 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     supportsEndFrame: false,
   },
   {
+    modelKey: 'seedream-4-0-250828',
+    name: 'Seedream 4',
+    attachments: 'references',
+    requiresStartFrame: false,
+    supportsEndFrame: false,
+  },
+  {
+    modelKey: 'seedream-5-0-260128',
+    name: 'Seedream 5 Lite',
+    attachments: 'references',
+    requiresStartFrame: false,
+    supportsEndFrame: false,
+  },
+  {
     modelKey: 'dreamina-seedance-2-0-260128',
     name: 'Seedance 2',
     attachments: 'seedance',

@@ -71,3 +71,8 @@ export {
   pollSeedance,
   type SeedanceEnv,
 } from './adapters/seedance';
+export {
+  executeSeedream,
+  type SeedreamEnv,
+  type SeedreamResult,
+} from './adapters/seedream';

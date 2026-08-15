@@ -47,6 +47,7 @@ import type {
   KlingCompiledRequest,
   RuntimeInputValue,
   SeedanceCompiledRequest,
+  SeedreamCompiledRequest,
   StageOutputRef,
 } from './compile-types';
 
@@ -509,7 +510,13 @@ export function compile(ctx: CompileContext): CompileResult {
     return compileKling(ctx, tokens, warnings);
   }
   if (capabilities.provider === 'seedance') {
-    return compileSeedance(ctx, tokens, warnings);
+    // One vendor, two product lines: Seedream (image) is a synchronous
+    // `/images/generations` call, Seedance (video) is a submit-and-poll
+    // task. They share nothing but the host and key, so they get separate
+    // compilers rather than a forest of conditionals in one.
+    return capabilities.kind === 'image'
+      ? compileSeedream(ctx, tokens, warnings)
+      : compileSeedance(ctx, tokens, warnings);
   }
   throw new Error(`No compiler implementation for provider "${capabilities.provider}".`);
 }
@@ -847,6 +854,106 @@ function extractNumberOfOutputs(
     return Math.max(capabilities.outputs.min, Math.min(capabilities.outputs.max, Math.trunc(raw)));
   }
   return capabilities.outputs.default;
+}
+
+// ─── Seedream compiler (BytePlus ModelArk, image line) ──────────────
+
+/**
+ * Compile a Seedream image request.
+ *
+ * Two things make this unlike every other image compiler we have:
+ *
+ * 1. **There is no aspect-ratio parameter.** Seedream infers shape from
+ *    the prompt text and reports what it actually made in `data[].size`
+ *    (asking for `1K` returned 1152x864 in testing). So a chosen ratio has
+ *    to be *written into the prompt* — that is the only lever available.
+ *
+ * 2. **There is no `n`.** Multi-image comes from
+ *    `sequential_image_generation: 'auto'` plus a `max_images` cap, and the
+ *    model decides how many the prompt implies. Inputs + outputs ≤ 15.
+ */
+function compileSeedream(
+  ctx: CompileContext,
+  tokens: ParsedToken[],
+  warnings: CompileWarning[],
+): CompileResult {
+  const { stage, capabilities } = ctx;
+  const cfg = stage.config;
+
+  // Same ordering rule as Gemini (stage outputs → user inputs → admin
+  // refs); the helper is provider-agnostic despite its name.
+  const images = buildImagePartsForGemini(ctx, warnings);
+
+  let prompt = substituteTokens({
+    prompt: stage.prompt,
+    tokens,
+    templateInputs: ctx.templateInputs,
+    inputValues: ctx.inputValues,
+    references: stage.references,
+    previousOutputs: ctx.previousOutputs,
+    imageParts: images,
+    style: 'ordinal',
+    warnings,
+  });
+
+  // Fold the aspect ratio into the prompt, since the API has no field for
+  // it. Skipped for 'adaptive' (means "match the input").
+  const ratio = typeof cfg.aspectRatio === 'string' ? cfg.aspectRatio : undefined;
+  if (ratio && ratio !== 'adaptive') {
+    prompt = `${prompt}\n\nAspect ratio: ${ratio}.`;
+  }
+
+  // Resolution keyword. Never pass raw WxH: 4.5 and 5.0-lite reject
+  // anything under ~3.69 MP, so a plausible-looking 1024x1024 is a hard
+  // error there. Keywords are per-model and always valid.
+  const resolutions = capabilities.sizing.mode === 'aspect' ? capabilities.sizing.resolutions : undefined;
+  const requested = typeof cfg.imageSize === 'string' ? cfg.imageSize : undefined;
+  let size = requested;
+  if (size && resolutions && !resolutions.includes(size)) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `Model "${stage.model}" does not support resolution "${size}"; using "${resolutions[0]}".`,
+    });
+    size = resolutions[0];
+  }
+  if (!size && resolutions?.length) size = resolutions[0];
+
+  // Deliberately ONE image per call.
+  //
+  // Seedream has no `n`. Its only batching lever is
+  // `sequential_image_generation: 'auto'`, where the MODEL decides how
+  // many images the prompt implies — asking for 2 returned 1 in testing
+  // because the prompt described a single subject. We debit credits
+  // up-front per requested image, so a user paying for N and receiving
+  // fewer would be a billing defect. Multiple outputs are produced the
+  // same way as every other provider: N independent jobs, each debited
+  // and each returning exactly one image.
+  const wanted = extractNumberOfOutputs(stage, capabilities);
+  if (wanted > 1) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `Seedream cannot guarantee a fixed output count; generating 1 image (requested ${wanted}). Submit ${wanted} jobs instead.`,
+    });
+  }
+
+  const request: SeedreamCompiledRequest = {
+    provider: 'seedance',
+    variant: 'image',
+    model: apiModelFor(stage, capabilities),
+    prompt,
+    size,
+    // Omitted entirely unless the model accepts the field — 4.x errors on
+    // its mere presence, even set to that model's own default.
+    ...(capabilities.supportsOutputFormat
+      ? { outputFormat: cfg.outputFormat === 'png' ? ('png' as const) : ('jpeg' as const) }
+      : {}),
+    // API defaults this to true and burns a visible mark into the output.
+    watermark: false,
+    sequentialImageGeneration: 'disabled',
+    ...(images.length > 0 ? { images } : {}),
+  };
+
+  return { request, warnings };
 }
 
 // ─── Seedance compiler ──────────────────────────────────────────────

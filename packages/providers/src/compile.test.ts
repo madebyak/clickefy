@@ -734,3 +734,60 @@ describe('compile() — apiModelId indirection', () => {
     expect(request.model).toBe('kling-v2-6');
   });
 });
+
+// ─── Seedream (ModelArk image line) ─────────────────────────────────
+//
+// Each of these encodes a vendor behaviour discovered by calling the real
+// API — the docs either omitted or contradicted all three.
+
+describe('compile() — Seedream', () => {
+  const seedreamStage = (model: string, config: Record<string, unknown> = {}) =>
+    makeStage({
+      provider: 'seedance',
+      model,
+      prompt: 'A ripe banana on white',
+      config: { aspectRatio: '16:9', ...config },
+    });
+
+  it('omits output_format on 4.x, which rejects the field outright', () => {
+    const { request } = compile(makeCtx({ stage: seedreamStage('seedream-4-0-250828') }));
+    expect(request).not.toHaveProperty('outputFormat');
+  });
+
+  it('sends output_format on 5.x, which accepts it', () => {
+    const { request } = compile(makeCtx({ stage: seedreamStage('seedream-5-0-260128') }));
+    expect(request).toHaveProperty('outputFormat');
+  });
+
+  it('clamps a sub-minimum resolution rather than letting the API 400', () => {
+    // 5.0-lite rejects anything under ~3.69 MP, so 1K is not merely
+    // suboptimal — it is an error.
+    const { request, warnings } = compile(
+      makeCtx({ stage: seedreamStage('seedream-5-0-260128', { imageSize: '1K' }) }),
+    );
+    expect((request as { size?: string }).size).toBe('2K');
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+
+  it('always disables sequential generation so the output count is predictable', () => {
+    const { request, warnings } = compile(
+      makeCtx({ stage: seedreamStage('seedream-4-0-250828', { numberOfOutputs: 3 }) }),
+    );
+    expect((request as { sequentialImageGeneration?: string }).sequentialImageGeneration).toBe(
+      'disabled',
+    );
+    // Credits are debited up-front, so silently returning fewer images
+    // than requested would be a billing defect — warn instead.
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+
+  it('folds the aspect ratio into the prompt (the API has no such field)', () => {
+    const { request } = compile(makeCtx({ stage: seedreamStage('seedream-4-0-250828') }));
+    expect((request as { prompt: string }).prompt).toContain('16:9');
+  });
+
+  it('never sends watermark:true — the API default stamps the output', () => {
+    const { request } = compile(makeCtx({ stage: seedreamStage('seedream-4-0-250828') }));
+    expect((request as { watermark: boolean }).watermark).toBe(false);
+  });
+});

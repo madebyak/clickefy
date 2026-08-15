@@ -403,8 +403,18 @@ jobsRoute.post(
       );
     }
 
-    const cost = (mode ? priceRow?.tierPricing?.[mode] : undefined) ?? priceRow?.costCredits ?? 0;
-    if (!priceRow || cost <= 0) {
+    const baseCost = (mode ? priceRow?.tierPricing?.[mode] : undefined) ?? priceRow?.costCredits ?? 0;
+
+    // Video providers bill per SECOND of output, so a flat per-job price
+    // only breaks even at one length. Prices are quoted at the model's
+    // default duration; anything longer scales linearly from there.
+    // Without this a 15s job costs us 3x a 5s one and bills the same.
+    const refDuration = caps.kind === 'video' ? caps.duration?.default : undefined;
+    const chosenDuration = typeof body.duration === 'number' ? body.duration : refDuration;
+    const durationFactor =
+      refDuration && chosenDuration && refDuration > 0 ? chosenDuration / refDuration : 1;
+    const cost = Math.ceil(baseCost * durationFactor);
+    if (!priceRow || baseCost <= 0 || cost <= 0) {
       return c.json(
         { error: { code: 'model_unpriced', message: 'That model is not available right now.' } },
         422,

@@ -681,6 +681,15 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     supportsSound: true,
     // Exact cap unpublished; safe default matching the video peers.
+    // Resolution is a PRICED tier here, not a free-form config: BytePlus
+    // bills per second and the rate spans 11x between 480p and 4K, so a
+    // single flat price either loses money at the top or is absurd at
+    // the bottom. Keys are the resolution strings the API accepts.
+    modes: {
+      values: ['480p', '720p', '1080p', '4k'],
+      default: '720p',
+      labels: { '4k': '4K' },
+    },
     maxPromptChars: 2500,
     notes:
       'BytePlus Seedance 2.0 Standard — the only model in the line above 720p (480p/720p/1080p/4k). T2V, I2V, first/last frame, up to 9 references, native audio with lip-sync. 4–15s. Reference images and start/end frames cannot be combined.',
@@ -706,6 +715,10 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
     supportsSound: true,
+    modes: {
+      values: ['480p', '720p'],
+      default: '720p',
+    },
     maxPromptChars: 2500,
     notes:
       'Fast tier of Seedance 2.0 — ~20% cheaper, slightly lower fidelity. 480p/720p only, unlike Standard. Otherwise the same parameter surface.',
@@ -741,6 +754,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 30,
     acceptsStartEndImage: true,
     supportsSound: true,
+    // 1080p lands 2026-08-17 per BytePlus's own note; add it (and its
+    // tier price) on the day, not before.
+    modes: {
+      values: ['480p', '720p'],
+      default: '720p',
+    },
     maxPromptChars: 2500,
     notes:
       'BytePlus Seedance 2.5. Up to 30s and 30 reference images, plus reference video (<=10, <=30s total) and reference audio (<=10 clips, <=30s total). 480p/720p. Also supports edit and extend task types via omni_reference_task_type. Billed per second of output.',
@@ -765,6 +784,10 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
     supportsSound: true,
+    modes: {
+      values: ['480p', '720p'],
+      default: '720p',
+    },
     maxPromptChars: 2500,
     notes:
       'Cheapest tier of the Seedance 2.0 line. 480p/720p, 4-15s, up to 9 references. Same parameter surface as Fast.',

@@ -1480,8 +1480,17 @@ function compileSeedance(
     ratio = cfgRatio;
   }
 
+  // The billed tier wins over a stage-authored `resolution`: the user was
+  // charged for that exact tier and must be served it. Mirrors how Gemini
+  // resolves imageSize.
+  const billedTier =
+    capabilities.modes && typeof stage.config.mode === 'string'
+      && capabilities.modes.values.includes(stage.config.mode)
+      ? stage.config.mode
+      : undefined;
   const cfgResolution =
-    typeof stage.config.resolution === 'string' ? stage.config.resolution : undefined;
+    billedTier ??
+    (typeof stage.config.resolution === 'string' ? stage.config.resolution : undefined);
   const allowedResolutions = aspectSizing?.resolutions ?? [];
   let resolution: SeedanceCompiledRequest['resolution'];
   if (

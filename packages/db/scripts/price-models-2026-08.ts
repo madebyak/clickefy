@@ -55,6 +55,21 @@ const PRICES: Array<{
   { provider: 'seedance', modelKey: 'seedream-4-0-250828', credits: 10, why: '$0.030 flat → 3.3x' },
   { provider: 'seedance', modelKey: 'seedream-5-0-260128', credits: 12, why: '$0.035 flat → 3.4x' },
 
+  // ── Seedance VIDEO line — repriced against BytePlus's own rate card
+  // (docs.byteplus.com/en/docs/ModelArk/1544106, read 2026-08-15).
+  //
+  // 🔴 Seedance 2.0 was 100cr against a true cost of $0.76 at its own
+  // default (720p / 5s) — a 1.3x margin, and an outright LOSS above
+  // 720p: $1.87 at 1080p and $3.89 at 4K against $1.00 of revenue.
+  //
+  // `cost_credits` is the DEFAULT tier (720p @ 5s); every other
+  // resolution is priced in TIER_PRICES, and duration now scales the
+  // charge linearly (jobs.ts), so these hold at any length.
+  { provider: 'seedance', modelKey: 'dreamina-seedance-2-0-260128', credits: 228, why: '$0.76 @720p/5s → 3.0x (was 100cr = 1.3x, loss-making above 720p)' },
+  { provider: 'seedance', modelKey: 'dreamina-seedance-2-0-fast-260128', credits: 180, why: '$0.60 @720p/5s → 3.0x (was 88cr = 1.5x)' },
+  { provider: 'seedance', modelKey: 'dreamina-seedance-2-0-mini-260615', credits: 114, why: '$0.38 @720p/5s → 3.0x' },
+  { provider: 'seedance', modelKey: 'dreamina-seedance-2-5-260628', credits: 347, why: '$1.156 @720p/5s → 3.0x' },
+
   // ── Margin correction on the legacy preview key ───────────────────
   // 24 published templates still reference this key. Template prices are
   // frozen on the template row at publish time, so this does NOT change
@@ -106,6 +121,34 @@ const TIER_PRICES: Array<{
     modelKey: 'gpt-image-2',
     tiers: { low: 2, medium: 16, high: 64 },
     why: '$0.006 / $0.053 / $0.211',
+  },
+  // Seedance video — per-resolution, all at 5s output with no input
+  // video. An input video raises the upstream cost materially (720p on
+  // 2.0 runs $0.84-1.86 rather than $0.76); we do not send reference
+  // videos yet, and this needs revisiting when we do.
+  {
+    provider: 'seedance',
+    modelKey: 'dreamina-seedance-2-0-260128',
+    tiers: { '480p': 105, '720p': 228, '1080p': 561, '4k': 1167 },
+    why: '$0.35 / $0.76 / $1.87 / $3.89 per 5s',
+  },
+  {
+    provider: 'seedance',
+    modelKey: 'dreamina-seedance-2-0-fast-260128',
+    tiers: { '480p': 84, '720p': 180 },
+    why: '$0.28 / $0.60 per 5s',
+  },
+  {
+    provider: 'seedance',
+    modelKey: 'dreamina-seedance-2-0-mini-260615',
+    tiers: { '480p': 54, '720p': 114 },
+    why: '$0.18 / $0.38 per 5s',
+  },
+  {
+    provider: 'seedance',
+    modelKey: 'dreamina-seedance-2-5-260628',
+    tiers: { '480p': 154, '720p': 347 },
+    why: '$0.514 / $1.156 per 5s (1080p lands 2026-08-17 at $2.843)',
   },
 ];
 

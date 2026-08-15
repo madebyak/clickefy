@@ -115,12 +115,21 @@ const COST_PER_CALL_USD: Record<string, string> = {
   'seedance/seedream-4-0-250828': '0.0300',
   'seedance/seedream-5-0-260128': '0.0350',
 
-  // Seedance 2.0 (BytePlus ModelArk) — published reference prices
-  // for 5s clips at 720p. 1080p is ~2x; 2K higher still. These are
-  // operator-facing reference values only — what the user pays in
-  // credits is set via the admin "Model pricing" page.
-  'seedance/dreamina-seedance-2-0-260128': '0.4700',
-  'seedance/dreamina-seedance-2-0-fast-260128': '0.3700',
+  // Seedance video (BytePlus ModelArk) — each model's DEFAULT tier,
+  // i.e. 720p at 5s with no input video, taken from BytePlus's own rate
+  // card (docs.byteplus.com/en/docs/ModelArk/1544106, read 2026-08-15).
+  //
+  // The previous 2.0 figures ($0.47 / $0.37) were understated; the real
+  // rates are $0.76 and $0.60, which is how 2.0 ended up shipping at a
+  // 1.3x margin. Higher resolutions are separately priced tiers, and
+  // duration scales the charge linearly, so these hold at any length.
+  //
+  // Operator-facing reference values only — what a user pays is
+  // `cost_credits` / `tier_pricing`.
+  'seedance/dreamina-seedance-2-0-260128': '0.7600',
+  'seedance/dreamina-seedance-2-0-fast-260128': '0.6000',
+  'seedance/dreamina-seedance-2-0-mini-260615': '0.3800',
+  'seedance/dreamina-seedance-2-5-260628': '1.1560',
 };
 
 interface ModelRow {

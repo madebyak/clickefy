@@ -371,6 +371,47 @@ describe('compile() — legacy bare-key syntax', () => {
 
 // ─── Seedance 2.0: BytePlus multimodal video ────────────────────────
 
+describe('compile() — Seedance priced resolution tiers', () => {
+  // Resolution is what the user is BILLED on, so the tier has to reach
+  // the provider: serving 720p on a 4K charge is a silent overcharge.
+  it('sends the billed tier as the resolution', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'A drone shot over dunes.',
+      config: { aspectRatio: '16:9', duration: 5, mode: '4k' },
+    });
+    const sd = compile(makeCtx({ stage })).request as SeedanceCompiledRequest;
+    expect(sd.resolution).toBe('4k');
+  });
+
+  it('lets the billed tier override a stage-authored resolution', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-0-260128',
+      prompt: 'A drone shot over dunes.',
+      config: { aspectRatio: '16:9', duration: 5, resolution: '480p', mode: '1080p' },
+    });
+    const sd = compile(makeCtx({ stage })).request as SeedanceCompiledRequest;
+    expect(sd.resolution).toBe('1080p');
+  });
+
+  it('exposes only the tiers each model actually supports', () => {
+    expect(getCapabilities('dreamina-seedance-2-0-260128').modes?.values).toEqual([
+      '480p', '720p', '1080p', '4k',
+    ]);
+    // Fast, Mini and 2.5 all cap at 720p.
+    for (const key of [
+      'dreamina-seedance-2-0-fast-260128',
+      'dreamina-seedance-2-0-mini-260615',
+      'dreamina-seedance-2-5-260628',
+    ]) {
+      expect(getCapabilities(key).modes?.values).toEqual(['480p', '720p']);
+      expect(getCapabilities(key).modes?.default).toBe('720p');
+    }
+  });
+});
+
 describe('compile() — Seedance audio + exclusivity guards', () => {
   // `generate_audio` defaults to TRUE upstream and audio output is
   // billed, so an omitted field silently buys audio on every job.

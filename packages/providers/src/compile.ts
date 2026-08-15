@@ -514,6 +514,19 @@ export function compile(ctx: CompileContext): CompileResult {
   throw new Error(`No compiler implementation for provider "${capabilities.provider}".`);
 }
 
+/**
+ * The model id to put on the wire.
+ *
+ * `stage.model` is our internal key, frozen into template snapshots and
+ * job rows; it is deliberately never renamed. When the provider's own id
+ * for that model changes (a preview alias reaching GA, say), the registry
+ * carries `apiModelId` and we send that instead. Falls back to the stage's
+ * own value, which is the case for every model whose upstream id matches.
+ */
+function apiModelFor(stage: GenerationStage, capabilities: ModelCapabilities): string {
+  return capabilities.apiModelId ?? stage.model;
+}
+
 // ─── Gemini compiler ────────────────────────────────────────────────
 
 function compileGemini(
@@ -548,7 +561,7 @@ function compileGemini(
     const request: GeminiCompiledRequest = {
       provider: 'gemini',
       variant: 'generateImages',
-      model: stage.model,
+      model: apiModelFor(stage, capabilities),
       prompt,
       contents: [],
       imageConfig: extractAspect(stage, capabilities),
@@ -607,7 +620,7 @@ function compileGemini(
   const request: GeminiCompiledRequest = {
     provider: 'gemini',
     variant: 'generateContent',
-    model: stage.model,
+    model: apiModelFor(stage, capabilities),
     prompt,
     contents,
     imageConfig: extractAspect(stage, capabilities),
@@ -796,7 +809,7 @@ function compileKling(
       : !subjects[0] && supportsTextToVideo
         ? 'text2video'
         : 'image2video',
-    model: stage.model,
+    model: apiModelFor(stage, capabilities),
     prompt,
     negativePrompt,
     aspectRatio: aspectFromConfig,
@@ -1235,7 +1248,7 @@ function compileSeedance(
 
   const request: SeedanceCompiledRequest = {
     provider: 'seedance',
-    model: stage.model,
+    model: apiModelFor(stage, capabilities),
     prompt,
     ratio,
     duration,

@@ -63,6 +63,24 @@ export type ModelStatus = 'active' | 'preview' | 'deprecated';
 export interface ModelCapabilities {
   provider: Provider;
   modelKey: string;
+  /**
+   * The id actually sent to the provider, when it differs from `modelKey`.
+   *
+   * `modelKey` is our STABLE INTERNAL identifier: it is written into
+   * `jobs.model_key`, into every `template_versions.snapshot`, and into
+   * `provider_models` rows. Those are immutable history — renaming one
+   * would mean rewriting audit data, and any snapshot we missed would
+   * fail `findCapabilities()` with `unknown_model` (a non-refundable
+   * error code, so users would be charged for the outage).
+   *
+   * `apiModelId` decouples that from the provider's own naming, which is
+   * NOT stable — vendors retire preview aliases on their own schedule.
+   * Set it to re-point an existing key at a new upstream id without
+   * touching a single row.
+   *
+   * Defaults to `modelKey` when unset.
+   */
+  apiModelId?: string;
   displayName: string;
   status: ModelStatus;
   kind: ModelKind;
@@ -201,6 +219,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'gemini-3.1-flash-image-preview': {
     provider: 'gemini',
     modelKey: 'gemini-3.1-flash-image-preview',
+    // GA id is `gemini-3.1-flash-image` — same reasoning as Pro above.
+    apiModelId: 'gemini-3.1-flash-image',
     displayName: 'Nano Banana 2 Flash (Gemini 3.1)',
     status: 'preview',
     kind: 'image',
@@ -222,6 +242,13 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'gemini-3-pro-image-preview': {
     provider: 'gemini',
     modelKey: 'gemini-3-pro-image-preview',
+    // Google GA'd this model as `gemini-3-pro-image`; the `-preview`
+    // alias still resolves today but is on a vendor retirement path we
+    // don't control, and 221 published templates have it frozen into
+    // their version snapshots. Re-point the call, keep the key.
+    // Verified 2026-08-15: both ids return an identical response shape
+    // (candidates[].content.parts[].inlineData, image/jpeg, finishReason STOP).
+    apiModelId: 'gemini-3-pro-image',
     displayName: 'Nano Banana Pro (Gemini 3 Pro Image)',
     status: 'preview',
     kind: 'image',

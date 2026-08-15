@@ -698,3 +698,39 @@ describe('compile() — capability limits', () => {
     expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
   });
 });
+
+// ─── apiModelId indirection ─────────────────────────────────────────
+//
+// `stage.model` is our internal key and is frozen into template
+// snapshots; `apiModelId` is what the vendor is actually called today.
+// These assert the two can diverge, so re-pointing a model at a new
+// upstream id never requires rewriting stored snapshots.
+
+describe('compile() — apiModelId indirection', () => {
+  it('sends the capability apiModelId, not the snapshot key, when they differ', () => {
+    const stage = makeStage({ model: 'gemini-3-pro-image-preview', prompt: 'A banana.' });
+    const { request } = compile(makeCtx({ stage }));
+
+    // The stage (and every stored snapshot) keeps the preview key…
+    expect(stage.model).toBe('gemini-3-pro-image-preview');
+    // …but the wire request targets the GA id.
+    expect(request.model).toBe('gemini-3-pro-image');
+  });
+
+  it('maps the Nano Banana 2 preview key to its GA id too', () => {
+    const stage = makeStage({ model: 'gemini-3.1-flash-image-preview', prompt: 'A banana.' });
+    const { request } = compile(makeCtx({ stage }));
+    expect(request.model).toBe('gemini-3.1-flash-image');
+  });
+
+  it('falls back to stage.model for models whose upstream id already matches', () => {
+    const stage = makeStage({
+      provider: 'kling',
+      model: 'kling-v2-6',
+      prompt: 'A banana rotating.',
+      config: { aspectRatio: '16:9' },
+    });
+    const { request } = compile(makeCtx({ stage }));
+    expect(request.model).toBe('kling-v2-6');
+  });
+});

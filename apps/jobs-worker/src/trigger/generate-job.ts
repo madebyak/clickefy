@@ -60,7 +60,7 @@ import {
   type RuntimeInputValue,
   type StageOutputRef,
 } from '@clickfy/providers';
-import type { GenerationStage, TemplateInputField } from '@clickfy/types';
+import type { GenerationStage, Provider, TemplateInputField } from '@clickfy/types';
 
 import { env } from '../env';
 import { getDb } from '../lib/db';
@@ -553,7 +553,7 @@ function emptyProgress() {
  * (no "Calling Gemini 2.5 Flash Image API" — just "Generating image").
  */
 function stageMessage(
-  provider: 'gemini' | 'kling' | 'seedance',
+  provider: Provider,
   _model: string,
   stage: number,
   total: number,
@@ -575,6 +575,7 @@ function buildProviderEnv(): ProviderEnv {
         ? { accessKey: env.KLING_ACCESS_KEY, secretKey: env.KLING_SECRET_KEY }
         : undefined,
     seedance: env.SEEDANCE_API_KEY ? { apiKey: env.SEEDANCE_API_KEY } : undefined,
+    openai: env.OPENAI_API_KEY ? { apiKey: env.OPENAI_API_KEY } : undefined,
   };
 }
 

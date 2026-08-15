@@ -642,17 +642,19 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     notes: 'Best all-round Seedream: png output, up to 4K, multi-image.',
   },
 
-  // ── GPT Image 2 (forward-looking — not wired to an adapter yet) ─────
-  // Included so the admin form can preview the model picker and so we
-  // can validate the capability shape against a non-Google,
-  // non-aspect-ratio provider. The runtime adapter ships when we wire
-  // OpenAI credentials.
+  // ── OpenAI ──────────────────────────────────────────────────────────
   'gpt-image-2': {
-    provider: 'gemini', // placeholder — narrow `Provider` union doesn't have 'openai' yet
+    provider: 'openai',
     modelKey: 'gpt-image-2',
-    displayName: 'GPT Image 2 (coming soon)',
-    status: 'deprecated', // hidden from active picker until wired
+    // Pin the dated snapshot on the wire so a silent upstream revision
+    // can't change output or price under us; `gpt-image-2` alone floats.
+    apiModelId: 'gpt-image-2-2026-04-21',
+    displayName: 'GPT Image 2',
+    status: 'active',
     kind: 'image',
+    // Pixel-sized rather than aspect-ratio'd — the only model in the
+    // roster that works this way. Constraints are OpenAI's documented
+    // limits and were already correct in the original stub.
     sizing: {
       mode: 'pixels',
       presets: ['1024x1024', '1536x1024', '1024x1536'],
@@ -661,13 +663,20 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       minPixels: 655_360,
       maxPixels: 8_294_400,
     },
-    outputs: { min: 1, max: 10, default: 1 },
+    // The API documents n up to 10, but the count is not confirmed for
+    // this model specifically and each image is billed, so we keep the
+    // same one-image-per-job contract as every other provider.
+    outputs: { min: 1, max: 1, default: 1 },
+    // Quality spans a 35x price range ($0.006 low → $0.211 high), so it
+    // is a genuine user-facing choice rather than a fixed setting.
     quality: { values: ['low', 'medium', 'high'], default: 'medium' },
     refAddressing: 'ordinal',
     maxReferences: 16,
     maxSubjects: 16,
     maxImagesTotal: 16,
-    notes: 'Stub entry — pending OpenAI provider integration.',
+    // Docs say 32,000 characters; keep the roster's comfortable cap.
+    maxPromptChars: 5000,
+    notes: 'Strongest text rendering. Quality tier drives a 35x price swing.',
   },
 };
 

@@ -65,7 +65,7 @@ type AdminJobListItem = {
   template: { id: string; title: string };
   status: JobStatus;
   progress: { stage: string; percent: number } | null;
-  provider: 'gemini' | 'kling' | 'seedance' | 'mixed';
+  provider: 'gemini' | 'kling' | 'seedance' | 'openai' | 'mixed';
   costCredits: number;
   durationMs: number | null;
   createdAt: string;
@@ -225,7 +225,7 @@ function formatDuration(ms: number | null) {
 export default function JobsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<JobStatus | 'all'>('all');
-  const [providerFilter, setProviderFilter] = useState<'all' | 'gemini' | 'kling' | 'seedance' | 'mixed'>('all');
+  const [providerFilter, setProviderFilter] = useState<'all' | 'gemini' | 'kling' | 'seedance' | 'openai' | 'mixed'>('all');
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -345,7 +345,7 @@ export default function JobsPage() {
         <Select
           value={providerFilter}
           onValueChange={(v) =>
-            setProviderFilter(v as 'all' | 'gemini' | 'kling' | 'seedance' | 'mixed')
+            setProviderFilter(v as 'all' | 'gemini' | 'kling' | 'seedance' | 'openai' | 'mixed')
           }
         >
           <SelectTrigger className="md:w-44">
@@ -355,9 +355,10 @@ export default function JobsPage() {
                   all: 'All providers',
                   gemini: 'Gemini',
                   kling: 'Kling',
-                  seedance: 'Seedance',
+                  seedance: 'BytePlus',
+                  openai: 'OpenAI',
                   mixed: 'Mixed (multi-stage)',
-                } as const)[val as 'all' | 'gemini' | 'kling' | 'seedance' | 'mixed'] ??
+                } as const)[val as 'all' | 'gemini' | 'kling' | 'seedance' | 'openai' | 'mixed'] ??
                 'Provider'
               }
             </SelectValue>
@@ -366,7 +367,8 @@ export default function JobsPage() {
             <SelectItem value="all">All providers</SelectItem>
             <SelectItem value="gemini">Gemini</SelectItem>
             <SelectItem value="kling">Kling</SelectItem>
-            <SelectItem value="seedance">Seedance</SelectItem>
+            <SelectItem value="seedance">BytePlus</SelectItem>
+            <SelectItem value="openai">OpenAI</SelectItem>
             <SelectItem value="mixed">Mixed (multi-stage)</SelectItem>
           </SelectContent>
         </Select>

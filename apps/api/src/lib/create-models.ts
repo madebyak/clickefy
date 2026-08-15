@@ -62,6 +62,13 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     supportsEndFrame: false,
   },
   {
+    modelKey: 'gpt-image-2',
+    name: 'GPT Image 2',
+    attachments: 'references',
+    requiresStartFrame: false,
+    supportsEndFrame: false,
+  },
+  {
     modelKey: 'kling-v3-omni',
     name: 'Kling 3 Omni',
     attachments: 'frames',

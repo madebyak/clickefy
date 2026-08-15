@@ -220,6 +220,9 @@ export async function POST(req: Request) {
       seedance: process.env.SEEDANCE_API_KEY
         ? { apiKey: process.env.SEEDANCE_API_KEY }
         : undefined,
+      openai: process.env.OPENAI_API_KEY
+        ? { apiKey: process.env.OPENAI_API_KEY }
+        : undefined,
     });
 
     return NextResponse.json({ ...result, warnings });

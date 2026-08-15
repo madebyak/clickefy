@@ -37,6 +37,7 @@ const PROVIDER_STYLE: Record<string, string> = {
   gemini: "bg-accent-turquoise/20 text-accent-turquoise",
   kling: "bg-brand-purple/25 text-[#b98aff]",
   seedance: "bg-accent-pink/20 text-accent-pink",
+  openai: "bg-white/10 text-white",
 };
 
 /**

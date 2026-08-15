@@ -181,7 +181,7 @@ export type TemplateInputField =
  * shape inside that SDK. The list is intentionally narrow — we add a
  * value here only when a provider adapter actually exists.
  */
-export type Provider = 'gemini' | 'kling' | 'seedance';
+export type Provider = 'gemini' | 'kling' | 'seedance' | 'openai';
 
 /**
  * Role tags admins attach to reference images so the prompt-compiler

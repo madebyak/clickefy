@@ -509,6 +509,9 @@ export function compile(ctx: CompileContext): CompileResult {
   if (capabilities.provider === 'kling') {
     return compileKling(ctx, tokens, warnings);
   }
+  if (capabilities.provider === 'openai') {
+    return compileOpenAI(ctx, tokens, warnings);
+  }
   if (capabilities.provider === 'seedance') {
     // One vendor, two product lines: Seedream (image) is a synchronous
     // `/images/generations` call, Seedance (video) is a submit-and-poll
@@ -854,6 +857,140 @@ function extractNumberOfOutputs(
     return Math.max(capabilities.outputs.min, Math.min(capabilities.outputs.max, Math.trunc(raw)));
   }
   return capabilities.outputs.default;
+}
+
+// ─── OpenAI compiler (GPT Image 2) ──────────────────────────────────
+
+/**
+ * Resolve a pixel-mode `size` string.
+ *
+ * Every other provider in the roster is aspect-ratio based, so nothing
+ * existed for this arm — `extractAspect()` returns undefined for pixels
+ * mode, which is why an unresolved size would previously have sailed
+ * past validation unchallenged.
+ *
+ * Accepts, in order of preference:
+ *   1. an explicit `WIDTHxHEIGHT` that satisfies every documented
+ *      constraint (each edge divisible by 16, total pixels in range,
+ *      aspect between 1:3 and 3:1, longest edge ≤ maxEdge);
+ *   2. an aspect-ratio string mapped onto the closest preset, so a
+ *      template authored against ratio-based models still works;
+ *   3. the model's first preset.
+ */
+function resolvePixelSize(
+  stage: GenerationStage,
+  capabilities: ModelCapabilities,
+  warnings: CompileWarning[],
+): string {
+  const sizing = capabilities.sizing;
+  if (sizing.mode !== 'pixels') return '1024x1024';
+  const fallback = sizing.presets[0] ?? '1024x1024';
+  const cfg = stage.config;
+
+  const raw = typeof cfg.imageSize === 'string' ? cfg.imageSize : undefined;
+  if (raw) {
+    const m = /^(\d+)x(\d+)$/i.exec(raw.trim());
+    if (m) {
+      const w = Number(m[1]);
+      const h = Number(m[2]);
+      const pixels = w * h;
+      const ratio = w / h;
+      const ok =
+        w % sizing.divisibleBy === 0 &&
+        h % sizing.divisibleBy === 0 &&
+        Math.max(w, h) <= sizing.maxEdge &&
+        pixels >= sizing.minPixels &&
+        pixels <= sizing.maxPixels &&
+        ratio <= 3 &&
+        ratio >= 1 / 3;
+      if (ok) return `${w}x${h}`;
+      warnings.push({
+        code: 'config_clamped',
+        message: `Size "${raw}" violates the model's pixel constraints; using "${fallback}".`,
+      });
+      return fallback;
+    }
+    // Not WxH — fall through and try to read it as an aspect ratio.
+  }
+
+  const aspect = typeof cfg.aspectRatio === 'string' ? cfg.aspectRatio : raw;
+  if (aspect && aspect !== 'Auto' && aspect !== 'adaptive') {
+    const parts = aspect.split(':').map(Number);
+    const [aw, ah] = parts;
+    if (aw && ah) {
+      // Pick the preset whose ratio is closest to the requested one.
+      const want = aw / ah;
+      let best = fallback;
+      let bestDelta = Number.POSITIVE_INFINITY;
+      for (const preset of sizing.presets) {
+        const pm = /^(\d+)x(\d+)$/.exec(preset);
+        if (!pm) continue;
+        const delta = Math.abs(Number(pm[1]) / Number(pm[2]) - want);
+        if (delta < bestDelta) {
+          bestDelta = delta;
+          best = preset;
+        }
+      }
+      return best;
+    }
+  }
+
+  return fallback;
+}
+
+function compileOpenAI(
+  ctx: CompileContext,
+  tokens: ParsedToken[],
+  warnings: CompileWarning[],
+): CompileResult {
+  const { stage, capabilities } = ctx;
+  const cfg = stage.config;
+
+  const imageParts = buildImagePartsForGemini(ctx, warnings);
+
+  const prompt = substituteTokens({
+    prompt: stage.prompt,
+    tokens,
+    templateInputs: ctx.templateInputs,
+    inputValues: ctx.inputValues,
+    references: stage.references,
+    previousOutputs: ctx.previousOutputs,
+    imageParts,
+    style: 'ordinal',
+    warnings,
+  });
+
+  // Validate the quality tier against what the model actually offers
+  // rather than trusting the stage config — an unknown value is a 400.
+  const allowed = capabilities.quality?.values ?? ['low', 'medium', 'high'];
+  const fallbackQuality = (capabilities.quality?.default ?? 'medium') as 'low' | 'medium' | 'high';
+  const requested = typeof cfg.quality === 'string' ? cfg.quality : undefined;
+  let quality = fallbackQuality;
+  if (requested) {
+    if (allowed.includes(requested)) {
+      quality = requested as 'low' | 'medium' | 'high';
+    } else {
+      warnings.push({
+        code: 'config_clamped',
+        message: `Quality "${requested}" is not supported; using "${fallbackQuality}".`,
+      });
+    }
+  }
+
+  const request: GptImageCompiledRequest = {
+    provider: 'openai',
+    // Reference images switch the call from /images/generations to
+    // /images/edits, which is multipart rather than JSON.
+    variant: imageParts.length > 0 ? 'image-edit' : 'image-generate',
+    model: apiModelFor(stage, capabilities),
+    prompt,
+    size: resolvePixelSize(stage, capabilities, warnings),
+    quality,
+    numberOfOutputs: extractNumberOfOutputs(stage, capabilities),
+    imageParts,
+  };
+
+  return { request, warnings };
 }
 
 // ─── Seedream compiler (BytePlus ModelArk, image line) ──────────────

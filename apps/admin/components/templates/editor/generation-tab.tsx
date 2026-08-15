@@ -73,6 +73,10 @@ const klingModels = [
   { value: 'kling-v2-master', label: 'Kling V2 Master' },
 ];
 
+const openaiModels = [
+  { value: 'gpt-image-2', label: 'GPT Image 2 (best text)' },
+];
+
 // One BytePlus ModelArk provider, two product lines: Seedream generates
 // images (synchronous), Seedance generates video (async task). The stage's
 // model choice is what selects between them.
@@ -83,12 +87,13 @@ const seedanceModels = [
   { value: 'dreamina-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast — video' },
 ];
 
-type AdminProvider = 'gemini' | 'kling' | 'seedance';
+type AdminProvider = 'gemini' | 'kling' | 'seedance' | 'openai';
 
 const providerConfig: Record<AdminProvider, { label: string; icon: typeof Sparkles; color: string; bgColor: string; borderColor: string }> = {
   gemini: { label: 'Google Gemini', icon: Sparkles, color: 'text-blue-400', bgColor: 'bg-blue-400/10', borderColor: 'border-blue-400/20' },
   kling: { label: 'Kling AI', icon: Film, color: 'text-purple-400', bgColor: 'bg-purple-400/10', borderColor: 'border-purple-400/20' },
-  seedance: { label: 'Seedance 2.0', icon: Film, color: 'text-orange-400', bgColor: 'bg-orange-400/10', borderColor: 'border-orange-400/20' },
+  seedance: { label: 'BytePlus (Seedream / Seedance)', icon: Film, color: 'text-orange-400', bgColor: 'bg-orange-400/10', borderColor: 'border-orange-400/20' },
+  openai: { label: 'OpenAI', icon: Sparkles, color: 'text-emerald-400', bgColor: 'bg-emerald-400/10', borderColor: 'border-emerald-400/20' },
 };
 
 /**
@@ -99,12 +104,14 @@ const providerConfig: Record<AdminProvider, { label: string; icon: typeof Sparkl
 function defaultModelFor(provider: AdminProvider): string {
   if (provider === 'gemini') return 'gemini-3.1-flash-image';
   if (provider === 'kling') return 'kling-v2-6';
+  if (provider === 'openai') return 'gpt-image-2';
   return 'dreamina-seedance-2-0-fast-260128';
 }
 
 function modelsFor(provider: AdminProvider) {
   if (provider === 'gemini') return geminiModels;
   if (provider === 'kling') return klingModels;
+  if (provider === 'openai') return openaiModels;
   return seedanceModels;
 }
 
@@ -448,7 +455,13 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                 <SelectItem value="seedance">
                                   <div className="flex items-center gap-2">
                                     <Film className="h-3.5 w-3.5 text-orange-400" />
-                                    Seedance 2.0
+                                    BytePlus (Seedream / Seedance)
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="openai">
+                                  <div className="flex items-center gap-2">
+                                    <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+                                    OpenAI
                                   </div>
                                 </SelectItem>
                               </SelectContent>

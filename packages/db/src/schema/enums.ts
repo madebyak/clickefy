@@ -118,7 +118,7 @@ export type CreditBucket = 'promo' | 'subscription' | 'topup';
  *   - 0000  gemini, kling, veo  (veo never wired)
  *   - 0014  + seedance          (BytePlus Seedance 2.0 integration)
  */
-export const providerEnum = pgEnum('provider', ['gemini', 'kling', 'veo', 'seedance']);
+export const providerEnum = pgEnum('provider', ['gemini', 'kling', 'veo', 'seedance', 'openai']);
 
 export const modelStatusEnum = pgEnum('model_status', [
   'active',

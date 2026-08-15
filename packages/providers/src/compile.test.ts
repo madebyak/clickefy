@@ -791,3 +791,54 @@ describe('compile() — Seedream', () => {
     expect((request as { watermark: boolean }).watermark).toBe(false);
   });
 });
+
+// ─── OpenAI (GPT Image 2) ───────────────────────────────────────────
+
+describe('compile() — OpenAI GPT Image 2', () => {
+  const openaiStage = (config: Record<string, unknown> = {}) =>
+    makeStage({ provider: 'openai', model: 'gpt-image-2', prompt: 'A yellow circle', config });
+
+  it('pins the dated snapshot on the wire, not the floating alias', () => {
+    const { request } = compile(makeCtx({ stage: openaiStage() }));
+    expect(request.model).toBe('gpt-image-2-2026-04-21');
+  });
+
+  it('uses the generate variant with no references and edit with them', () => {
+    const plain = compile(makeCtx({ stage: openaiStage() }));
+    expect((plain.request as { variant: string }).variant).toBe('image-generate');
+
+    const field = imageField('src', 'Source');
+    const withRef = compile(
+      makeCtx({
+        stage: openaiStage(),
+        templateInputs: [field],
+        inputValues: {
+          src: { kind: 'image', bytes: new Uint8Array([1, 2, 3]), mimeType: 'image/png' },
+        },
+      }),
+    );
+    expect((withRef.request as { variant: string }).variant).toBe('image-edit');
+  });
+
+  it('accepts a valid WxH and rejects one that breaks the pixel constraints', () => {
+    const ok = compile(makeCtx({ stage: openaiStage({ imageSize: '1536x1024' }) }));
+    expect((ok.request as { size: string }).size).toBe('1536x1024');
+
+    // 100x100: below minPixels and not divisible by 16.
+    const bad = compile(makeCtx({ stage: openaiStage({ imageSize: '100x100' }) }));
+    expect((bad.request as { size: string }).size).toBe('1024x1024');
+    expect(bad.warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+
+  it('maps an aspect ratio onto the closest pixel preset', () => {
+    // Templates authored against ratio-based models still need to work.
+    const { request } = compile(makeCtx({ stage: openaiStage({ aspectRatio: '3:2' }) }));
+    expect((request as { size: string }).size).toBe('1536x1024');
+  });
+
+  it('falls back to the default quality when an unsupported tier is asked for', () => {
+    const { request, warnings } = compile(makeCtx({ stage: openaiStage({ quality: 'ultra' }) }));
+    expect((request as { quality: string }).quality).toBe('medium');
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+});

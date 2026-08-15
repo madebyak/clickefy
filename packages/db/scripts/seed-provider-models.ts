@@ -68,11 +68,7 @@ const db = drizzle(neonSql, { schema });
  * (provider doesn't really match) or otherwise not wired end-to-end.
  */
 const EXCLUDED_MODEL_KEYS = new Set<string>([
-  // Placeholder entry — provider is set to 'gemini' as a hack until
-  // the OpenAI runtime adapter ships and the `provider` enum gains
-  // an 'openai' value. Seeding it would create a row that crashes
-  // at dispatch time if accidentally referenced.
-  'gpt-image-2',
+  // (empty) — every registry entry is now wired to a real adapter.
 ]);
 
 /**
@@ -103,6 +99,10 @@ const COST_PER_CALL_USD: Record<string, string> = {
   'gemini/imagen-4.0-generate-001': '0.0400',
   'gemini/imagen-4.0-fast-generate-001': '0.0200',
 
+  // OpenAI GPT Image 2 — price varies ~35x by quality tier; this is the
+  // 'medium' 1024x1024 rate (low $0.006, high $0.211).
+  'openai/gpt-image-2': '0.0530',
+
   // Kling video — Kuaishou published prices for 5s 1080p output.
   'kling/kling-v2-5-turbo': '0.3500',
   'kling/kling-v2-6': '0.4900',
@@ -124,7 +124,7 @@ const COST_PER_CALL_USD: Record<string, string> = {
 };
 
 interface ModelRow {
-  provider: 'gemini' | 'kling' | 'veo' | 'seedance';
+  provider: 'gemini' | 'kling' | 'veo' | 'seedance' | 'openai';
   modelKey: string;
   displayName: string;
   status: 'active' | 'preview' | 'deprecated';
@@ -148,7 +148,7 @@ function buildRows(): ModelRow[] {
     const capabilitiesJson = JSON.parse(JSON.stringify(cap)) as Record<string, unknown>;
 
     rows.push({
-      provider: cap.provider as 'gemini' | 'kling' | 'veo' | 'seedance',
+      provider: cap.provider as 'gemini' | 'kling' | 'veo' | 'seedance' | 'openai',
       modelKey: cap.modelKey,
       displayName: cap.displayName,
       status: cap.status,

@@ -1,0 +1,26 @@
+-- 0026_provider_enum_add_openai.sql
+--
+-- Append 'openai' to the `provider` Postgres enum so GPT Image 2 can be
+-- inserted into `provider_models` — and through it, drive the admin
+-- pricing UI, `computeTemplateCost`, and the create-flow model roster.
+--
+-- Safety analysis (same shape as 0014, which added 'seedance'):
+--   • Fully ADDITIVE — `ALTER TYPE … ADD VALUE` only widens what the
+--     enum permits. Existing rows keep their 'gemini' / 'kling' /
+--     'seedance' values untouched.
+--   • Zero rows written. Zero columns altered. Zero indexes rebuilt.
+--   • Atomic in Postgres 12+; sub-100ms on Neon, no table lock.
+--   • `IF NOT EXISTS` makes a re-run a no-op.
+--   • Contains no TRUNCATE / DELETE / DROP, so the destructive-pattern
+--     guard in scripts/reconcile-migrations.ts does not trip.
+--
+-- ONE-WAY: Postgres cannot remove an enum value without rewriting the
+-- type and every column that uses it. Getting the spelling right the
+-- first time matters — it must match `Provider` in
+-- packages/types/src/json-types.ts exactly ('openai', lowercase).
+--
+-- After this lands run `pnpm --filter @clickfy/db db:seed-models` to
+-- insert the gpt-image-2 row, then price it (it seeds at 0 credits,
+-- which keeps it hidden from the picker until an operator sets a price).
+
+ALTER TYPE "provider" ADD VALUE IF NOT EXISTS 'openai';--> statement-breakpoint

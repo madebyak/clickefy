@@ -72,6 +72,11 @@ export {
   type SeedanceEnv,
 } from './adapters/seedance';
 export {
+  executeOpenAI,
+  type OpenAIEnv,
+  type OpenAIResult,
+} from './adapters/openai';
+export {
   executeSeedream,
   type SeedreamEnv,
   type SeedreamResult,

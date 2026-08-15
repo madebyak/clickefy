@@ -34,6 +34,7 @@ const envSchema = z.object({
    * fails when a Seedance stage actually runs.
    */
   SEEDANCE_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

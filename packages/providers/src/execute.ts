@@ -25,11 +25,13 @@ import {
   type SeedanceEnv,
 } from './adapters/seedance';
 import { executeSeedream } from './adapters/seedream';
+import { executeOpenAI, type OpenAIEnv } from './adapters/openai';
 
 export interface ProviderEnv {
   gemini?: GeminiEnv;
   kling?: KlingEnv;
   seedance?: SeedanceEnv;
+  openai?: OpenAIEnv;
 }
 
 /** A single output piece returned by an adapter. */
@@ -85,6 +87,12 @@ export async function executeStage(
     }
     return executeKling(request, env.kling);
   }
+  if (request.provider === 'openai') {
+    if (!env.openai) {
+      throw new Error('executeStage(): missing `env.openai` for an OpenAI request.');
+    }
+    return executeOpenAI(request, env.openai);
+  }
   if (request.provider === 'seedance') {
     if (!env.seedance) {
       throw new Error('executeStage(): missing `env.seedance` for a Seedance request.');
@@ -97,8 +105,12 @@ export async function executeStage(
     }
     return executeSeedance(request, env.seedance);
   }
+  // Exhaustive: every arm of CompiledRequest is handled above, so this
+  // is `never`. Adding a provider to the union without an arm here turns
+  // this assignment into a compile error rather than a runtime surprise.
+  const unhandled: never = request;
   throw new Error(
-    `executeStage(): no adapter for provider "${request.provider}". Add one in packages/providers/src/adapters/.`,
+    `executeStage(): no adapter for provider "${(unhandled as CompiledRequest).provider}". Add one in packages/providers/src/adapters/.`,
   );
 }
 

@@ -19,7 +19,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { providerModels, type Db } from '@clickfy/db';
 
 interface StageRef {
-  provider: 'gemini' | 'kling' | 'veo' | 'seedance' | string;
+  provider: 'gemini' | 'kling' | 'veo' | 'seedance' | 'openai' | string;
   model: string;
   /** Stage config — `config.mode` selects a quality tier (Kling std/pro/4k). */
   config?: Record<string, unknown>;
@@ -66,7 +66,10 @@ export async function computeTemplateCost(
       and(
         inArray(
           providerModels.provider,
-          providers as ('gemini' | 'kling' | 'veo' | 'seedance')[],
+          // Must list every enum member: this is a CAST, so a missing
+          // provider compiles fine and then silently matches no rows —
+          // the template would be costed at 0 credits.
+          providers as ('gemini' | 'kling' | 'veo' | 'seedance' | 'openai')[],
         ),
       ),
     );

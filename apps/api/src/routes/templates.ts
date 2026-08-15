@@ -110,7 +110,7 @@ type GenerationLike = {
   stages: Array<{
     id: string;
     order: number;
-    provider: 'gemini' | 'kling' | 'seedance';
+    provider: 'gemini' | 'kling' | 'seedance' | 'openai';
     model: string;
     prompt: string;
     references: Array<{

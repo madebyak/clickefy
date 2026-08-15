@@ -35,6 +35,7 @@ export interface Bindings {
    *   pnpm wrangler secret put SEEDANCE_API_KEY --config apps/api/wrangler.toml
    */
   SEEDANCE_API_KEY?: string;
+  OPENAI_API_KEY?: string;
 
   // ─── Payments ─────────────────────────────────────────────────
   REVENUECAT_WEBHOOK_SECRET?: string;

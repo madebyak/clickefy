@@ -373,13 +373,18 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
     }
   };
 
+  // Keyed lookup rather than a ternary chain: the old fallback labelled
+  // every unrecognised provider "Kling", which silently mislabels any
+  // newly added one.
+  const PROVIDER_LABELS: Record<string, string> = {
+    gemini: 'Gemini',
+    kling: 'Kling',
+    seedance: 'BytePlus',
+    openai: 'OpenAI',
+  };
+
   const getStageLabel = (stage: GenerationStage) => {
-    const providerName =
-      stage.provider === 'gemini'
-        ? 'Gemini'
-        : stage.provider === 'seedance'
-          ? 'Seedance'
-          : 'Kling';
+    const providerName = PROVIDER_LABELS[stage.provider] ?? stage.provider;
     return `${providerName} — ${stage.model}`;
   };
 
@@ -514,7 +519,7 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
                           'border-primary/50 bg-primary/10 animate-pulse'
                       )}
                     >
-                      {stage.provider === 'gemini' ? '✦ Gemini' : '▶ Kling'}: {stage.model}
+                      {PROVIDER_LABELS[stage.provider] ?? stage.provider}: {stage.model}
                     </Badge>
                   </div>
                 ))}

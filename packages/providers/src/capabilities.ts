@@ -670,6 +670,65 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       'Fast tier of Seedance 2.0 — ~20% cheaper, slightly lower fidelity. 480p/720p only, unlike Standard. Otherwise the same parameter surface.',
   },
 
+  // ── Seedance 2.5 ────────────────────────────────────────────────────
+  // The capability jump over 2.0: 30-second output, 30 reference
+  // images, and reference VIDEO and AUDIO alongside images. Same
+  // endpoint and key as the rest of the ModelArk line.
+  //
+  // `duration` documents a default of -1 ("model picks a length in
+  // range"). We default the picker to 5s instead: -1 makes the cost of a
+  // generation unknowable before it runs, and we debit up front. -1 stays
+  // legal for templates that want it.
+  //
+  // Ceiling here is 720p, NOT 1080p — see the resolution constant.
+  'dreamina-seedance-2-5-260628': {
+    provider: 'seedance',
+    modelKey: 'dreamina-seedance-2-5-260628',
+    displayName: 'Seedance 2.5',
+    status: 'preview',
+    kind: 'video',
+    sizing: {
+      mode: 'aspect',
+      values: SEEDANCE_ASPECT_RATIOS,
+      resolutions: SEEDANCE_RESOLUTIONS_SD,
+    },
+    outputs: { min: 1, max: 1, default: 1 },
+    duration: { values: SEEDANCE_25_DURATIONS, default: 5 },
+    refAddressing: 'ordinal',
+    maxReferences: 30,
+    maxSubjects: 2, // first_frame + optional last_frame
+    maxImagesTotal: 30,
+    acceptsStartEndImage: true,
+    supportsSound: true,
+    maxPromptChars: 2500,
+    notes:
+      'BytePlus Seedance 2.5. Up to 30s and 30 reference images, plus reference video (<=10, <=30s total) and reference audio (<=10 clips, <=30s total). 480p/720p. Also supports edit and extend task types via omni_reference_task_type. Billed per second of output.',
+  },
+  // Cheapest tier of the 2.0 line. Same parameter surface as Fast.
+  'dreamina-seedance-2-0-mini-260615': {
+    provider: 'seedance',
+    modelKey: 'dreamina-seedance-2-0-mini-260615',
+    displayName: 'Seedance 2.0 Mini',
+    status: 'preview',
+    kind: 'video',
+    sizing: {
+      mode: 'aspect',
+      values: SEEDANCE_ASPECT_RATIOS,
+      resolutions: SEEDANCE_RESOLUTIONS_SD,
+    },
+    outputs: { min: 1, max: 1, default: 1 },
+    duration: { values: SEEDANCE_DURATIONS, default: 5 },
+    refAddressing: 'ordinal',
+    maxReferences: 9,
+    maxSubjects: 2,
+    maxImagesTotal: 9,
+    acceptsStartEndImage: true,
+    supportsSound: true,
+    maxPromptChars: 2500,
+    notes:
+      'Cheapest tier of the Seedance 2.0 line. 480p/720p, 4-15s, up to 9 references. Same parameter surface as Fast.',
+  },
+
   // ── Seedream (BytePlus ModelArk — image line) ───────────────────────
   //
   // Same provider tag, host and API key as Seedance video; only the path

@@ -104,8 +104,22 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     supportsEndFrame: false,
   },
   {
+    modelKey: 'dreamina-seedance-2-5-260628',
+    name: 'Seedance 2.5',
+    attachments: 'seedance',
+    requiresStartFrame: false,
+    supportsEndFrame: true,
+  },
+  {
     modelKey: 'dreamina-seedance-2-0-260128',
     name: 'Seedance 2',
+    attachments: 'seedance',
+    requiresStartFrame: false,
+    supportsEndFrame: true,
+  },
+  {
+    modelKey: 'dreamina-seedance-2-0-mini-260615',
+    name: 'Seedance 2 Mini',
     attachments: 'seedance',
     requiresStartFrame: false,
     supportsEndFrame: true,

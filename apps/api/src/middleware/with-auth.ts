@@ -42,6 +42,39 @@ import { resolveOrLinkUser } from '../lib/provision-user';
  */
 const STUB_EMAIL_PREFIX = 'pending+';
 
+/**
+ * How stale `users.last_seen_at` may get before we refresh it.
+ *
+ * This column feeds "active users" reporting in the admin dashboard —
+ * nothing reads it at minute resolution. Writing it on EVERY
+ * authenticated request meant a Neon round-trip per request (four on a
+ * single web studio load) to move a timestamp by milliseconds. Ten
+ * minutes keeps every reporting bucket we actually use (DAU/WAU/MAU,
+ * "last seen" in the users table) accurate while removing ~99% of the
+ * writes.
+ */
+const LAST_SEEN_REFRESH_MS = 10 * 60 * 1000;
+
+/**
+ * Run a fire-and-forget promise without holding up the response.
+ *
+ * `c.executionCtx` THROWS (rather than returning undefined) when there is
+ * no ExecutionContext — i.e. outside the Workers runtime, such as in
+ * tests. Hence the try/catch rather than a truthiness check. On Workers
+ * this hands the promise to the runtime so it survives past the response;
+ * elsewhere we await it inline so tests stay deterministic.
+ */
+async function runInBackground(
+  c: { executionCtx: ExecutionContext },
+  work: Promise<unknown>,
+): Promise<void> {
+  try {
+    c.executionCtx.waitUntil(work);
+  } catch {
+    await work.catch(() => undefined);
+  }
+}
+
 interface ClerkProfile {
   email: string | null;
   name: string | null;
@@ -193,12 +226,21 @@ export function withCurrentUser() {
         );
       }
 
-      // Bump lastSeenAt opportunistically. Don't await — it's a hint, not critical.
-      void c.var.db
-        .update(users)
-        .set({ lastSeenAt: new Date() })
-        .where(eq(users.id, existing.id))
-        .catch((err) => console.error('users.lastSeenAt update failed', err));
+      // Bump lastSeenAt opportunistically — but only once the cached
+      // value has actually gone stale (see LAST_SEEN_REFRESH_MS). It's a
+      // reporting hint, not critical, so it runs in the background and a
+      // failure never affects the request.
+      const lastSeenAge = Date.now() - existing.lastSeenAt.getTime();
+      if (lastSeenAge >= LAST_SEEN_REFRESH_MS) {
+        await runInBackground(
+          c,
+          c.var.db
+            .update(users)
+            .set({ lastSeenAt: new Date() })
+            .where(eq(users.id, existing.id))
+            .catch((err: unknown) => console.error('users.lastSeenAt update failed', err)),
+        );
+      }
 
       // Heal stub rows opportunistically. If this row was created by
       // an earlier visit before Clerk's webhook fired (or before

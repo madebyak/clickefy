@@ -805,6 +805,14 @@ describe('compile() — apiModelId indirection', () => {
   });
 
   it('falls back to stage.model for models whose upstream id already matches', () => {
+    // Gemini GA keys are their own upstream ids. (Kling no longer suits
+    // this case: every ported model carries a path-segment apiModelId.)
+    const stage = makeStage({ model: 'gemini-3-pro-image', prompt: 'A banana.' });
+    const { request } = compile(makeCtx({ stage }));
+    expect(request.model).toBe('gemini-3-pro-image');
+  });
+
+  it('maps ported Kling keys to their API 2.0 path segment and flags the route', () => {
     const stage = makeStage({
       provider: 'kling',
       model: 'kling-v2-6',
@@ -812,7 +820,35 @@ describe('compile() — apiModelId indirection', () => {
       config: { aspectRatio: '16:9' },
     });
     const { request } = compile(makeCtx({ stage }));
-    expect(request.model).toBe('kling-v2-6');
+    const kling = request as KlingCompiledRequest;
+    // The stored modelKey never changes; only the id on the wire does.
+    expect(kling.model).toBe('kling-2.6');
+    expect(kling.api2).toBe(true);
+  });
+
+  it('leaves un-ported Kling models on the legacy client', () => {
+    const stage = makeStage({
+      provider: 'kling',
+      model: 'kling-v2-master',
+      prompt: 'A banana rotating.',
+      config: { aspectRatio: '16:9' },
+    });
+    const kling = compile(makeCtx({ stage })).request as KlingCompiledRequest;
+    expect(kling.model).toBe('kling-v2-master');
+    expect(kling.api2).toBeUndefined();
+  });
+
+  it('drops native audio rather than upgrading a billed tier (Kling 2.6)', () => {
+    const stage = makeStage({
+      provider: 'kling',
+      model: 'kling-v2-6',
+      prompt: 'A banana rotating, with sound.',
+      config: { aspectRatio: '16:9', sound: true, mode: 'std' },
+    });
+    const { request, warnings } = compile(makeCtx({ stage }));
+    const kling = request as KlingCompiledRequest;
+    expect(kling.soundEnabled).toBeUndefined();
+    expect(warnings.some((w) => w.message.includes('native audio'))).toBe(true);
   });
 });
 

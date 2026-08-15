@@ -27,6 +27,10 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().min(1).optional(),
   KLING_ACCESS_KEY: z.string().min(1).optional(),
   KLING_SECRET_KEY: z.string().min(1).optional(),
+  // Kling API 2.0 uses a console-issued API key; that host rejects the
+  // access/secret pair above outright. Both are configured during the
+  // migration — the legacy pair still serves models not yet ported.
+  KLING_API_KEY: z.string().min(1).optional(),
   /**
    * Bearer token minted in the BytePlus ModelArk console under
    * "API Key Management". Optional so the worker boots in

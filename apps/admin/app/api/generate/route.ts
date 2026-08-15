@@ -210,6 +210,9 @@ export async function POST(req: Request) {
       gemini: process.env.GEMINI_API_KEY
         ? { apiKey: process.env.GEMINI_API_KEY }
         : undefined,
+      klingApi2: process.env.KLING_API_KEY
+        ? { apiKey: process.env.KLING_API_KEY }
+        : undefined,
       kling:
         process.env.KLING_ACCESS_KEY && process.env.KLING_SECRET_KEY
           ? {

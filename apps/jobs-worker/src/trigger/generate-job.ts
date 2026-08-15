@@ -309,7 +309,8 @@ export const generateJob = task({
         // ignores.
         const pendingProvider = result.provider;
         const variant = pendingProvider === 'kling' ? result.variant : 'image2video';
-        result = await waitForAsync(result.taskId, pendingProvider, variant, providerEnv, {
+        const api2 = pendingProvider === 'kling' ? result.api2 === true : false;
+        result = await waitForAsync(result.taskId, pendingProvider, variant, providerEnv, api2, {
           jobId,
           stageNumber,
           totalStages,
@@ -574,6 +575,7 @@ function buildProviderEnv(): ProviderEnv {
       env.KLING_ACCESS_KEY && env.KLING_SECRET_KEY
         ? { accessKey: env.KLING_ACCESS_KEY, secretKey: env.KLING_SECRET_KEY }
         : undefined,
+    klingApi2: env.KLING_API_KEY ? { apiKey: env.KLING_API_KEY } : undefined,
     seedance: env.SEEDANCE_API_KEY ? { apiKey: env.SEEDANCE_API_KEY } : undefined,
     openai: env.OPENAI_API_KEY ? { apiKey: env.OPENAI_API_KEY } : undefined,
   };
@@ -598,6 +600,8 @@ async function waitForAsync(
   provider: 'kling' | 'seedance',
   variant: 'text2video' | 'image2video' | 'omni',
   providerEnv: ProviderEnv,
+  /** Kling API 2.0 task — polls `GET /tasks` instead of the legacy URL. */
+  api2: boolean,
   ctx: { jobId: string; stageNumber: number; totalStages: number },
 ): Promise<ExecuteResult> {
   const start = Date.now();
@@ -616,7 +620,7 @@ async function waitForAsync(
     const delayMs = elapsed < 30 ? 2_000 : 5_000;
     await new Promise((r) => setTimeout(r, delayMs));
 
-    const result = await pollAsyncTask(taskId, provider, variant, providerEnv);
+    const result = await pollAsyncTask(taskId, provider, variant, providerEnv, api2);
     if (result.status === 'completed') {
       logger.info('generate-job:async-completed', { taskId, provider, attempts: attempt });
       return result;

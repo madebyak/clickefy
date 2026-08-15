@@ -812,6 +812,22 @@ function compileKling(
   // surfaces the adapter's clear "requires a subject image" error
   // instead of a confusing provider 4xx.
   const supportsTextToVideo = !isOmni && capabilities.modes !== undefined;
+
+  // Native audio is gated behind a minimum tier on some models (Kling
+  // 2.6: 1080p only). The tier is what the user was BILLED for, so it is
+  // not ours to upgrade — quietly serving 1080p when they paid for 720p
+  // loses the difference on every job. Drop the audio and say why.
+  let audioEnabled = soundEnabled;
+  const audioTier = capabilities.nativeAudioRequiresTier;
+  if (audioEnabled && audioTier && mode && mode !== audioTier) {
+    const label = capabilities.modes?.labels?.[audioTier] ?? audioTier;
+    warnings.push({
+      code: 'config_clamped',
+      message: `${stage.model} only generates native audio at the ${label} tier; this stage is billed at "${mode}", so audio was turned off. Select ${label} to keep the sound.`,
+    });
+    audioEnabled = undefined;
+  }
+
   const request: KlingCompiledRequest = {
     provider: 'kling',
     variant: isOmni
@@ -819,6 +835,7 @@ function compileKling(
       : !subjects[0] && supportsTextToVideo
         ? 'text2video'
         : 'image2video',
+    api2: capabilities.klingApi2,
     model: apiModelFor(stage, capabilities),
     prompt,
     negativePrompt,
@@ -826,7 +843,7 @@ function compileKling(
     duration,
     mode,
     cfgScale,
-    soundEnabled,
+    soundEnabled: audioEnabled,
     startImage: subjects[0],
     endImage: capabilities.acceptsStartEndImage ? subjects[1] : undefined,
     referenceImages: refs.length > 0 ? refs : undefined,

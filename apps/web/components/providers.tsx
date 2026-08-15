@@ -13,8 +13,9 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useLocale } from "next-intl";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { attachLocaleGetter, attachTokenGetter } from "@/lib/api";
+import { makeQueryClient } from "@/lib/query-client";
 
 function ClerkSdkBridge() {
   const { getToken } = useAuth();
@@ -32,18 +33,10 @@ function ClerkSdkBridge() {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            // The Worker sets its own cache headers; keep client cache modest.
-            staleTime: 15_000,
-            refetchOnWindowFocus: false,
-          },
-        },
-      }),
-  );
+  // `useState` (not a module singleton) so the browser keeps ONE client
+  // across re-renders while each server render gets its own — see
+  // `makeQueryClient` for why that separation matters.
+  const [queryClient] = useState(makeQueryClient);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -78,6 +78,15 @@ function toMeResponse(row: typeof users.$inferSelect): MeResponse {
     locale: row.locale,
     entitlement: row.entitlement,
     creditsBalance: row.creditsBalance,
+    // Same projection `GET /v1/credits/me` performs off the same row —
+    // see the `MeResponse` docblock for why it is duplicated here. The
+    // spendability rule MUST stay in lockstep with `routes/credits.ts`.
+    creditBuckets: {
+      promo: row.promoCredits,
+      subscription: row.subscriptionCredits,
+      topup: row.topupCredits,
+    },
+    topupSpendable: row.entitlement !== 'free',
     subscriptionRenewsAt: row.subscriptionRenewsAt?.toISOString() ?? null,
     subscriptionExpiresAt: row.subscriptionExpiresAt?.toISOString() ?? null,
     preferences: withPreferenceDefaults(row.preferences),

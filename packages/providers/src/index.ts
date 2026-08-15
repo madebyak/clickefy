@@ -61,6 +61,11 @@ export {
 
 export { executeGemini, type GeminiEnv } from './adapters/gemini';
 export {
+  executeKlingApi2,
+  pollKlingApi2,
+  type KlingApi2Env,
+} from './adapters/kling-api2';
+export {
   executeKling,
   pollKling,
   type KlingEnv,

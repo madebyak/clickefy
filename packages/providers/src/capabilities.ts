@@ -120,6 +120,33 @@ export interface ModelCapabilities {
   acceptsStartEndImage?: boolean;
 
   /**
+   * Kling only: the minimum quality tier at which native audio is
+   * available. Kling 2.6 documents `audio=native` as 1080p-only; the
+   * 3.0 family has no such restriction.
+   *
+   * The tier is also the billed unit, so the compiler resolves the
+   * conflict by dropping the audio rather than silently upgrading the
+   * resolution — serving a tier the user was not charged for is a
+   * revenue leak, and serving a cheaper one is a shortfall.
+   */
+  nativeAudioRequiresTier?: string;
+
+  /**
+   * Kling only: route this model through the API 2.0 client
+   * (`adapters/kling-api2.ts`) instead of the legacy one.
+   *
+   * Per-model rather than global so the two generations can run side by
+   * side and models move over one at a time. It travels WITH
+   * `apiModelId`, which on API 2.0 is the URL path segment
+   * (`kling-2.6`) rather than a body field — setting one without the
+   * other sends the wrong model id to the wrong host.
+   *
+   * Kling 3.0 Turbo and O1 exist only on API 2.0, so they are always
+   * flagged.
+   */
+  klingApi2?: boolean;
+
+  /**
    * Seedream: does the model accept an `output_format` parameter?
    *
    * Not "does it support png" — Seedream 4.x rejects the FIELD itself
@@ -473,6 +500,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'kling-v2-6': {
     provider: 'kling',
     modelKey: 'kling-v2-6',
+    // API 2.0 puts the model in the URL path, not the body.
+    apiModelId: 'kling-2.6',
+    klingApi2: true,
     displayName: 'Kling V2.6',
     status: 'active',
     kind: 'video',
@@ -486,9 +516,11 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 1,
     acceptsStartEndImage: true,
     // 2.6 is the release that added native audio (`settings.audio`).
-    // Two upstream constraints ride along and are enforced in compile:
-    // audio=native forces 1080p, and so does using both frames.
+    // Upstream forces 1080p when audio is on, and also when both frames
+    // are used. 2.6 has no `modes` yet, so the tier name below is what a
+    // future tier list must call 1080p.
     supportsSound: true,
+    nativeAudioRequiresTier: 'pro',
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
     notes:
@@ -497,6 +529,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'kling-v2-5-turbo': {
     provider: 'kling',
     modelKey: 'kling-v2-5-turbo',
+    // API 2.0 puts the model in the URL path, not the body.
+    apiModelId: 'kling-2.5-turbo',
+    klingApi2: true,
     displayName: 'Kling V2.5 Turbo',
     status: 'active',
     kind: 'video',
@@ -535,6 +570,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'kling-v3-omni': {
     provider: 'kling',
     modelKey: 'kling-v3-omni',
+    // API 2.0 puts the model in the URL path, not the body.
+    apiModelId: 'kling-3.0-omni',
+    klingApi2: true,
     displayName: 'Kling 3 Omni',
     status: 'preview',
     kind: 'video',
@@ -576,6 +614,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'kling-v3': {
     provider: 'kling',
     modelKey: 'kling-v3',
+    // API 2.0 puts the model in the URL path, not the body.
+    apiModelId: 'kling-3.0',
+    klingApi2: true,
     displayName: 'Kling 3',
     status: 'preview',
     kind: 'video',

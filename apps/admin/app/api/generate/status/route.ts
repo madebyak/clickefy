@@ -18,6 +18,9 @@ export async function GET(req: Request) {
   const provider = url.searchParams.get('provider');
   // `variant` distinguishes Kling's two async endpoints. The submit
   // response carries it forward; the playground echoes it back here.
+  // Kling API 2.0 polls one unified endpoint; the submit route echoes
+  // this flag back so the poller picks the matching client.
+  const api2 = url.searchParams.get('api2') === '1';
   const rawVariant = url.searchParams.get('variant') ?? 'image2video';
   const variant: 'image2video' | 'omni' =
     rawVariant === 'omni' ? 'omni' : 'image2video';
@@ -68,6 +71,9 @@ export async function GET(req: Request) {
 
   try {
     const result = await pollAsyncTask(taskId, provider, variant, {
+      klingApi2: process.env.KLING_API_KEY
+        ? { apiKey: process.env.KLING_API_KEY }
+        : undefined,
       kling:
         process.env.KLING_ACCESS_KEY && process.env.KLING_SECRET_KEY
           ? {
@@ -78,7 +84,7 @@ export async function GET(req: Request) {
       seedance: process.env.SEEDANCE_API_KEY
         ? { apiKey: process.env.SEEDANCE_API_KEY }
         : undefined,
-    });
+    }, api2);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Status check failed.';

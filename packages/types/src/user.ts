@@ -109,8 +109,28 @@ export interface UpdateProfileInput {
 }
 
 /**
+ * Per-bucket credit balances. Mirrors the three `users` columns whose
+ * sum is `creditsBalance` (enforced by the `users_balance_matches_buckets`
+ * CHECK constraint). See `CreditBucket` in `@clickfy/db` for what each
+ * bucket means and when it is spendable.
+ */
+export interface CreditBuckets {
+  promo: number;
+  subscription: number;
+  topup: number;
+}
+
+/**
  * `GET /v1/users/me` response payload (the `data` field of the envelope).
  * The shape returned to mobile + admin clients.
+ *
+ * `creditBuckets` / `topupSpendable` are the same values `GET /v1/credits/me`
+ * returns. They live here too because both endpoints are pure projections
+ * of the SAME already-loaded `users` row — a client that wanted the
+ * breakdown was paying for a second request and a second DB read to
+ * re-fetch a row it had just received. Web derives its credit menu from
+ * this response; `/v1/credits/me` stays for mobile and remains the
+ * canonical endpoint for the standalone credits screen.
  */
 export interface MeResponse {
   id: string;
@@ -121,6 +141,9 @@ export interface MeResponse {
   locale: UserLocale;
   entitlement: UserEntitlement;
   creditsBalance: number;
+  creditBuckets: CreditBuckets;
+  /** False for free users — the top-up bucket is locked until they resubscribe. */
+  topupSpendable: boolean;
   subscriptionRenewsAt: string | null;
   subscriptionExpiresAt: string | null;
   preferences: UserPreferences;

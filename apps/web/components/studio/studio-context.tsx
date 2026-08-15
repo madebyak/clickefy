@@ -39,7 +39,6 @@ import type { JobInputValue } from "@clickfy/types";
 import { getSDK } from "@/lib/api";
 import { rebaseAssetUrl } from "@/lib/rebase-url";
 import { ME_QUERY_KEY } from "@/lib/use-session";
-import { CREDITS_QUERY_KEY } from "@/lib/use-credits";
 
 /**
  * Upper bound on paged fetches for one collection. The API caps `limit`
@@ -597,9 +596,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   /* -------------------------------------------------------- generation */
 
+  // One key covers both the balance and the bucket breakdown: the credit
+  // menu now derives from the `/me` row rather than holding its own query
+  // (see `lib/use-credits.ts`).
   const invalidateBalances = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
-    void queryClient.invalidateQueries({ queryKey: CREDITS_QUERY_KEY });
   }, [queryClient]);
 
   const trackJob = useCallback(

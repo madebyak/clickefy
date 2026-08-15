@@ -152,6 +152,13 @@ export interface KlingCompiledRequest {
    *   - `omni`        for v3 Omni (`reference_images[]` + start/end).
    */
   variant: 'text2video' | 'image2video' | 'omni';
+  /**
+   * Route through the Kling API 2.0 client rather than the legacy one.
+   * Copied from the model's `klingApi2` capability at compile time,
+   * because `executeStage` sees only the compiled request — by then
+   * `model` holds the API-facing id and can no longer be looked up.
+   */
+  api2?: boolean;
   model: string;
   /** Final prompt — for Omni, contains `@image_N` references. */
   prompt: string;

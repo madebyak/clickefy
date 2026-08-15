@@ -20,6 +20,11 @@ import {
   type KlingPollVariant,
 } from './adapters/kling';
 import {
+  executeKlingApi2,
+  pollKlingApi2,
+  type KlingApi2Env,
+} from './adapters/kling-api2';
+import {
   executeSeedance,
   pollSeedance,
   type SeedanceEnv,
@@ -30,6 +35,8 @@ import { executeOpenAI, type OpenAIEnv } from './adapters/openai';
 export interface ProviderEnv {
   gemini?: GeminiEnv;
   kling?: KlingEnv;
+  /** Kling API 2.0 — a console-issued key, separate from the AK/SK pair. */
+  klingApi2?: KlingApi2Env;
   seedance?: SeedanceEnv;
   openai?: OpenAIEnv;
 }
@@ -58,6 +65,8 @@ export type ExecuteResult =
        * forward; the playground passes it back as a query param.
        */
       variant: 'text2video' | 'image2video' | 'omni';
+      /** Poll via the API 2.0 client (`GET /tasks`) rather than legacy. */
+      api2?: boolean;
     }
   | {
       status: 'pending';
@@ -82,6 +91,14 @@ export async function executeStage(
     return executeGemini(request, env.gemini);
   }
   if (request.provider === 'kling') {
+    if (request.api2) {
+      if (!env.klingApi2) {
+        throw new Error(
+          'executeStage(): missing `env.klingApi2` for a Kling API 2.0 request. This host needs a console-issued API key (KLING_API_KEY); the legacy access/secret pair is rejected.',
+        );
+      }
+      return executeKlingApi2(request, env.klingApi2);
+    }
     if (!env.kling) {
       throw new Error('executeStage(): missing `env.kling` for a Kling request.');
     }
@@ -117,17 +134,29 @@ export async function executeStage(
 /**
  * Poll an async task previously started by {@link executeStage}.
  *
- * For Kling, the `variant` arg picks between the image2video and
- * omni-video poll endpoints. For Seedance, `variant` is ignored
- * (there's only one polling endpoint).
+ * For legacy Kling, the `variant` arg picks between the image2video and
+ * omni-video poll endpoints. Kling API 2.0 has a single `GET /tasks`
+ * for every variant, so `api2` short-circuits that choice. For Seedance,
+ * `variant` is ignored (there's only one polling endpoint).
+ *
+ * `api2` is passed rather than persisted because polling happens in the
+ * same worker invocation that created the task — the caller still holds
+ * the `ExecuteResult` that carries it.
  */
 export async function pollAsyncTask(
   taskId: string,
   provider: 'kling' | 'seedance',
   variant: KlingPollVariant,
   env: ProviderEnv,
+  api2?: boolean,
 ): Promise<ExecuteResult> {
   if (provider === 'kling') {
+    if (api2) {
+      if (!env.klingApi2) {
+        throw new Error('pollAsyncTask(): missing `env.klingApi2` for an API 2.0 task.');
+      }
+      return pollKlingApi2(taskId, env.klingApi2);
+    }
     if (!env.kling) {
       throw new Error('pollAsyncTask(): missing `env.kling`.');
     }

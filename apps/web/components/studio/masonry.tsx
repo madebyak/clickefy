@@ -121,7 +121,11 @@ export function Masonry({
             )}
 
             {a.type === "video" && (
-              <span className="pointer-events-none absolute start-2 bottom-2 grid size-6 place-items-center rounded-md bg-black/55 text-white backdrop-blur">
+              // Shares the bottom-start corner with the "Add as reference"
+              // button, so it yields on hover — it is a decorative
+              // "this is a video" hint, and the hover state makes that
+              // obvious anyway.
+              <span className="pointer-events-none absolute start-2 bottom-2 grid size-6 place-items-center rounded-md bg-black/55 text-white opacity-100 backdrop-blur transition-opacity group-hover:opacity-0">
                 <Play weight="fill" className="size-3" />
               </span>
             )}
@@ -151,14 +155,14 @@ export function Masonry({
             {/* Attaching used to be what a tile click did. Now the click
                 opens the asset, so the action needs its own affordance. */}
             {onAssetClick && (
-              <div className="absolute inset-x-2 bottom-2 opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="absolute start-2 bottom-2 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onAssetClick(a);
                   }}
-                  className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-black/70 px-2 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-black/70 px-3 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85"
                 >
                   <ImageSquare className="size-3.5" />
                   {t("addAsReference")}

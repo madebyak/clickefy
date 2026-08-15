@@ -214,7 +214,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
             <button
               type="button"
               onClick={downloadAll}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-surface-3 px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-surface-3 px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
             >
               <DownloadSimple className="size-4" />
               <span className="hidden sm:inline">{t("downloadAll")}</span>
@@ -222,7 +222,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
           )}
           <button
             type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-purple px-3 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-purple px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             <ShareNetwork className="size-4" />
             <span className="hidden sm:inline">{t("share")}</span>

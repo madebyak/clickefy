@@ -138,21 +138,31 @@ projectsRoute.get('/', ...readChain, async (c) => {
       .groupBy(projectAssets.projectId);
     for (const r of countRows) counts.set(r.projectId, r.n);
 
-    // Newest asset per project (cover) — DISTINCT ON matches the
-    // pagination index ordering.
+    // Cover per project: the user's pinned asset when there is one,
+    // otherwise the newest — which is how this behaved before pinning
+    // existed, and is still the case for every project with a null pin.
+    //
+    // `COALESCE(..., false)` rather than a bare equality: comparing
+    // against a NULL `cover_asset_id` yields NULL, and Postgres sorts
+    // NULLs FIRST under DESC, which would hand every unpinned project an
+    // arbitrary asset instead of its newest one.
     const coverRows = await c.var.db.execute<{
       project_id: string;
       kind: 'image' | 'video';
       r2_key: string;
       poster_r2_key: string | null;
     }>(dsql`
-      SELECT DISTINCT ON (project_id) project_id, kind, r2_key, poster_r2_key
-      FROM project_assets
-      WHERE project_id IN (${dsql.join(
+      SELECT DISTINCT ON (pa.project_id)
+             pa.project_id, pa.kind, pa.r2_key, pa.poster_r2_key
+      FROM project_assets pa
+      JOIN projects p ON p.id = pa.project_id
+      WHERE pa.project_id IN (${dsql.join(
         ids.map((id) => dsql`${id}::uuid`),
         dsql`, `,
       )})
-      ORDER BY project_id, created_at DESC, id DESC
+      ORDER BY pa.project_id,
+               COALESCE(p.cover_asset_id = pa.id, false) DESC,
+               pa.created_at DESC, pa.id DESC
     `);
     // `neon-http` execute returns the row array directly (see job-create.ts).
     const coverList = Array.isArray(coverRows)
@@ -257,11 +267,32 @@ projectsRoute.patch('/:id', ...writeChain, zValidator('json', updateProjectSchem
     }
   }
 
+  // The pinned cover must be an asset that lives in THIS project —
+  // otherwise a valid uuid from someone else's project would render as
+  // this project's thumbnail. Scoped by project, and the project itself
+  // is scoped by owner in the UPDATE below.
+  if (body.coverAssetId) {
+    const owned = await c.var.db
+      .select({ id: projectAssets.id })
+      .from(projectAssets)
+      .where(
+        and(eq(projectAssets.id, body.coverAssetId), eq(projectAssets.projectId, projectId)),
+      )
+      .limit(1);
+    if (owned.length === 0) {
+      return c.json(
+        { error: { code: 'asset_not_found', message: 'Asset not found in this project.' } },
+        404,
+      );
+    }
+  }
+
   const [row] = await c.var.db
     .update(projects)
     .set({
       ...(body.name !== undefined ? { name: body.name } : {}),
       ...(body.folderId !== undefined ? { folderId: body.folderId } : {}),
+      ...(body.coverAssetId !== undefined ? { coverAssetId: body.coverAssetId } : {}),
       updatedAt: new Date(),
     })
     .where(and(eq(projects.id, projectId), eq(projects.userId, user.id)))

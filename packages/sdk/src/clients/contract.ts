@@ -421,7 +421,16 @@ export interface ProjectsClient {
   create(input?: { name?: string; folderId?: string | null }): Promise<StudioProject>;
   update(
     projectId: string,
-    input: { name?: string; folderId?: string | null },
+    input: {
+      name?: string;
+      folderId?: string | null;
+      /**
+       * Pin a project asset as the cover. `null` clears the pin and
+       * returns the project to showing its newest asset. The asset must
+       * belong to this project; the server 404s otherwise.
+       */
+      coverAssetId?: string | null;
+    },
   ): Promise<Pick<StudioProject, 'id' | 'name' | 'folderId' | 'updatedAt'>>;
   delete(projectId: string): Promise<void>;
   listAssets(

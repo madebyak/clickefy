@@ -125,18 +125,26 @@ function ProjectView({
 }) {
   const t = useTranslations("studio");
   const timeLabel = useTimeLabel();
+  // The centred title block is an EMPTY STATE, not a header: it explains
+  // what the canvas is for while there is nothing on it. The project name
+  // and asset count also live in the top bar, so once the first
+  // generation lands this is pure duplication pushing the work down the
+  // page — the moment there is something to look at, the explanation goes.
+  const showIntro = assets.length === 0 && pending.length === 0;
   return (
     <div>
-      <div className="flex flex-col items-center py-8 text-center">
-        <div className="grid size-12 place-items-center rounded-2xl bg-surface-3">
-          <Sparkle weight="fill" className="size-5 text-brand-yellow" />
+      {showIntro && (
+        <div className="flex flex-col items-center py-8 text-center">
+          <div className="grid size-12 place-items-center rounded-2xl bg-surface-3">
+            <Sparkle weight="fill" className="size-5 text-brand-yellow" />
+          </div>
+          <h1 className="mt-4 text-2xl font-semibold tracking-tight">{project.name}</h1>
+          <p className="mt-1 max-w-md text-sm text-muted-foreground">{t("projectHint")}</p>
+          <p className="mt-3 text-xs text-muted-foreground">
+            {t("assetsUpdated", { count: assets.length, time: timeLabel(project.updatedAt) })}
+          </p>
         </div>
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight">{project.name}</h1>
-        <p className="mt-1 max-w-md text-sm text-muted-foreground">{t("projectHint")}</p>
-        <p className="mt-3 text-xs text-muted-foreground">
-          {t("assetsUpdated", { count: assets.length, time: timeLabel(project.updatedAt) })}
-        </p>
-      </div>
+      )}
       <PendingStrip pending={pending} onDismiss={onDismissPending} />
       <Masonry
         assets={assets}

@@ -48,6 +48,15 @@ function idempotencyKey(): string {
 
 type Slot = 'start' | 'end' | `ref-${number}`;
 
+/**
+ * A quality-tier key as the model roster reports it. Read off `GenModel`
+ * rather than written out here so this can never drift from what
+ * `GET /v1/models` actually returns — the previous hard-coded union
+ * (`'std' | 'pro' | '4k'`) only covered Kling and broke when the roster
+ * grew to Gemini and GPT Image, whose tier vocabularies differ.
+ */
+type QualityTier = NonNullable<GenModel['tiers']>[number]['mode'];
+
 export default function CreateScreen() {
   // One idempotency key per submission attempt-sequence (see submit below).
   const submitKeyRef = useRef(idempotencyKey());
@@ -73,7 +82,12 @@ export default function CreateScreen() {
   const [aspect, setAspect] = useState<string | undefined>(undefined);
   const [duration, setDuration] = useState<number | undefined>(undefined);
   const [sound, setSound] = useState(false);
-  const [quality, setQuality] = useState<'std' | 'pro' | '4k' | undefined>(undefined);
+  // Tier keys are provider vocabulary, not a fixed set: Kling speaks
+  // std/pro/4k, Gemini speaks 512/1K/2K/4K, GPT Image speaks
+  // low/medium/high. This was hard-coded to Kling's three, which stopped
+  // compiling once the roster grew. Derived from the SDK response so the
+  // screen follows `GET /v1/models` instead of restating it.
+  const [quality, setQuality] = useState<QualityTier | undefined>(undefined);
   const [seedanceMode, setSeedanceMode] = useState<'frames' | 'references'>('frames');
   const [startFrame, setStartFrame] = useState<PickedUpload | null>(null);
   const [endFrame, setEndFrame] = useState<PickedUpload | null>(null);

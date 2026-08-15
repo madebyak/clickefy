@@ -8,6 +8,8 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "web": "expo start --web",
+    "gen:router-types": "node scripts/gen-router-types.mjs",
+    "pretypecheck": "node scripts/gen-router-types.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "preflight": "pnpm typecheck && pnpm lint",

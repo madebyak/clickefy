@@ -46,6 +46,7 @@ import {
 import type { AppEnv } from '../types';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
+import { DEFAULT_PROJECT_NAME, titleFromPrompt } from '../lib/project-title';
 import { createJobSchema, createUserJobSchema, type JobInputValueParsed } from '../lib/job-schemas';
 import { validateCreateSubmission, validateJobSubmission } from '../lib/job-validation';
 import { createJobAtomically, createUserJobAtomically } from '../lib/job-create';
@@ -459,16 +460,25 @@ jobsRoute.post(
     // Verified BEFORE the debit so a bad id can never cost credits. A
     // foreign/unknown project 404s (no existence leak — same compound
     // (id, user_id) scoping as everywhere else).
+    let autoTitle: string | null = null;
     if (body.projectId) {
       const ownedProject = await c.var.db.query.projects.findFirst({
         where: and(eq(projects.id, body.projectId), eq(projects.userId, user.id)),
-        columns: { id: true },
+        columns: { id: true, name: true },
       });
       if (!ownedProject) {
         return c.json(
           { error: { code: 'project_not_found', message: 'Project not found.' } },
           404,
         );
+      }
+      // Name the project after the prompt that fills it, but only while
+      // it still carries the server-assigned default — a title the user
+      // (or an earlier prompt) chose is never overwritten. Only the
+      // prompt-first flow has a prompt to name it from; template jobs
+      // keep the default.
+      if (ownedProject.name === DEFAULT_PROJECT_NAME) {
+        autoTitle = titleFromPrompt(body.prompt);
       }
     }
 
@@ -544,6 +554,28 @@ jobsRoute.post(
         },
         402,
       );
+    }
+
+    // Title the project from its first prompt. Deliberately after the
+    // job is committed — a submission rejected for credits or
+    // idempotency must not leave a renamed project behind. Still guarded
+    // on the default name so a concurrent manual rename wins.
+    if (autoTitle && body.projectId) {
+      try {
+        await c.var.db
+          .update(projects)
+          .set({ name: autoTitle, updatedAt: new Date() })
+          .where(
+            and(
+              eq(projects.id, body.projectId),
+              eq(projects.userId, user.id),
+              eq(projects.name, DEFAULT_PROJECT_NAME),
+            ),
+          );
+      } catch (err) {
+        // Cosmetic: never fail a paid generation over a title.
+        console.error('project auto-title failed:', err);
+      }
     }
 
     // ── Dispatch to Trigger.dev (same path as the template flow) ───

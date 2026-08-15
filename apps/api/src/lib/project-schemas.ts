@@ -20,10 +20,17 @@ export const updateProjectSchema = z
     name: nameSchema.optional(),
     /** `null` explicitly unfiles the project. */
     folderId: z.string().uuid().nullable().optional(),
+    /**
+     * Pinned cover asset. `null` clears the pin and returns the project
+     * to deriving its cover from the newest asset. Ownership of the
+     * asset is verified in the handler.
+     */
+    coverAssetId: z.string().uuid().nullable().optional(),
   })
-  .refine((v) => v.name !== undefined || v.folderId !== undefined, {
-    message: 'Provide name and/or folderId.',
-  });
+  .refine(
+    (v) => v.name !== undefined || v.folderId !== undefined || v.coverAssetId !== undefined,
+    { message: 'Provide name, folderId and/or coverAssetId.' },
+  );
 export type UpdateProjectBody = z.infer<typeof updateProjectSchema>;
 
 export const createFolderSchema = z.object({ name: nameSchema });

@@ -4,8 +4,8 @@ import { useTranslations } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
 import { Plus, FolderSimple, Heart, CaretUpDown } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
+import { ProjectRow } from "@/components/studio/project-row";
 import { useSession } from "@/lib/use-session";
-import { useTimeLabel } from "@/lib/time-label";
 import { cn } from "@/lib/utils";
 
 export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -13,10 +13,19 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
   const ta = useTranslations("account");
   const router = useRouter();
   const pathname = usePathname();
-  const { projects, projectsLoading, activeProjectId, setActiveProject, createProject } =
-    useStudio();
+  const {
+    projects,
+    projectsLoading,
+    activeProjectId,
+    setActiveProject,
+    createProject,
+    folders,
+    renameProject,
+    moveProjectToFolder,
+    setProjectCover,
+    deleteProject,
+  } = useStudio();
   const { user, plan } = useSession();
-  const timeLabel = useTimeLabel();
 
   const displayName = user?.name?.trim() || user?.email.split("@")[0] || "…";
   const initials =
@@ -106,44 +115,19 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
                 <span className="h-3.5 w-28 animate-pulse rounded bg-surface-3" />
               </div>
             ))}
-          {projects.map((p) => {
-            const active = !inBrowser && activeProjectId === p.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => openProject(p.id)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-lg p-2 text-start transition-colors",
-                  active ? "bg-surface-3" : "hover:bg-surface-2",
-                )}
-              >
-                <span className="size-9 shrink-0 overflow-hidden rounded-md bg-surface-3">
-                  {p.cover &&
-                    (p.cover.kind === "video" ? (
-                      // First frame via preload — video posters aren't
-                      // generated yet (worker uses the video key itself).
-                      <video
-                        src={p.cover.url}
-                        muted
-                        playsInline
-                        preload="metadata"
-                        className="size-full object-cover"
-                      />
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.cover.url} alt="" className="size-full object-cover" />
-                    ))}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{p.name}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {t("assets", { count: p.assetCount })} · {timeLabel(p.updatedAt)}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
+          {projects.map((p) => (
+            <ProjectRow
+              key={p.id}
+              project={p}
+              folders={folders}
+              active={!inBrowser && activeProjectId === p.id}
+              onOpen={() => openProject(p.id)}
+              onRename={(name) => renameProject(p.id, name)}
+              onMoveToFolder={(folderId) => moveProjectToFolder(p.id, folderId)}
+              onSetCover={(assetId) => setProjectCover(p.id, assetId)}
+              onDelete={() => void deleteProject(p.id)}
+            />
+          ))}
         </div>
 
         <button

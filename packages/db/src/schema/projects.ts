@@ -30,6 +30,20 @@ export const projects = pgTable(
     // Folder deleted ⇒ project survives, unfiled.
     folderId: uuid('folder_id').references(() => folders.id, { onDelete: 'set null' }),
     name: text('name').notNull(),
+    /**
+     * Pinned cover asset. Null (the default) means "derive from the
+     * newest asset", which is how every project behaved before this
+     * existed.
+     *
+     * The foreign key (REFERENCES project_assets(id) ON DELETE SET NULL)
+     * is declared in migration 0027 and enforced by the database, but is
+     * deliberately NOT declared here: `project_assets` already imports
+     * this table, so pointing back at it forms an import cycle that
+     * silently degrades Drizzle's inferred row types to `any` across
+     * every query in the app. Nothing at the type level needs the
+     * relation — only the column.
+     */
+    coverAssetId: uuid('cover_asset_id'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
@@ -42,6 +56,7 @@ export const projects = pgTable(
     // scoped to the owner (same compound-DESC pattern as jobs).
     index('projects_user_pagination_idx').on(t.userId, t.updatedAt.desc(), t.id.desc()),
     index('projects_folder_idx').on(t.folderId),
+    index('projects_cover_asset_idx').on(t.coverAssetId),
   ],
 );
 

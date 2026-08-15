@@ -45,15 +45,7 @@
     "bannerHeadline": "From idea to campaign, in minutes",
     "bannerSub": "Generate images and video, tell the whole story, and ship — all in one place.",
     "startCreating": "Start creating",
-    "chooseModel": "Choose your model",
-    "viewAllModels": "View all models"
-  },
-  "models": {
-    "tagBestText": "Best text",
-    "tagQuality": "Quality",
-    "tagFast": "Fast",
-    "tag4k": "4K",
-    "tagDetail": "Detail"
+    "modelsHeadline": "All models in one subscription"
   },
   "templates": {
     "heading": "Templates",
@@ -250,7 +242,19 @@
     "queued": "Queued",
     "generating": "Generating…",
     "generationFailed": "Generation failed",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "projectActions": "Project options",
+    "rename": "Rename",
+    "changeThumbnail": "Change thumbnail",
+    "chooseThumbnail": "Choose a thumbnail",
+    "resetThumbnail": "Use newest",
+    "noAssetsForThumbnail": "Generate something first",
+    "moveToFolder": "Move to folder",
+    "noFolder": "No folder",
+    "deleteProject": "Delete project",
+    "confirmDeleteProject": "Delete — are you sure?",
+    "toastCoverFailed": "Couldn't update the thumbnail",
+    "back": "Back"
   },
   "projects": {
     "heading": "My Projects",

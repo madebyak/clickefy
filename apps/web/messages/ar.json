@@ -45,15 +45,7 @@
     "bannerHeadline": "من الفكرة إلى الحملة، في دقائق",
     "bannerSub": "أنشئ الصور والفيديو، واروِ القصة كاملة، وانشرها — كل ذلك في مكان واحد.",
     "startCreating": "ابدأ الإبداع",
-    "chooseModel": "اختر نموذجك",
-    "viewAllModels": "عرض كل النماذج"
-  },
-  "models": {
-    "tagBestText": "الأفضل للنصوص",
-    "tagQuality": "جودة",
-    "tagFast": "سريع",
-    "tag4k": "4K",
-    "tagDetail": "تفاصيل"
+    "modelsHeadline": "كل النماذج في اشتراك واحد"
   },
   "templates": {
     "heading": "القوالب",
@@ -250,7 +242,19 @@
     "queued": "في الانتظار",
     "generating": "جارٍ الإنشاء…",
     "generationFailed": "فشل الإنشاء",
-    "dismiss": "إغلاق"
+    "dismiss": "إغلاق",
+    "projectActions": "خيارات المشروع",
+    "rename": "إعادة تسمية",
+    "changeThumbnail": "تغيير الصورة المصغّرة",
+    "chooseThumbnail": "اختر صورة مصغّرة",
+    "resetThumbnail": "استخدم الأحدث",
+    "noAssetsForThumbnail": "أنشئ شيئاً أولاً",
+    "moveToFolder": "نقل إلى مجلد",
+    "noFolder": "بدون مجلد",
+    "deleteProject": "حذف المشروع",
+    "confirmDeleteProject": "حذف — هل أنت متأكد؟",
+    "toastCoverFailed": "تعذّر تحديث الصورة المصغّرة",
+    "back": "رجوع"
   },
   "projects": {
     "heading": "مشاريعي",

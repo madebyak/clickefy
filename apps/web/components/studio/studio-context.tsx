@@ -132,6 +132,8 @@ type StudioValue = {
   deleteFolder: (folderId: string) => Promise<void>;
   moveProjectToFolder: (projectId: string, folderId: string | null) => void;
   renameProject: (projectId: string, name: string) => void;
+  /** Pin an asset as the project cover; `null` reverts to newest-asset. */
+  setProjectCover: (projectId: string, assetId: string | null) => void;
   deleteProject: (projectId: string) => Promise<void>;
 
   // assets
@@ -425,6 +427,19 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [queryClient, cancelProjects, invalidateProjects, t],
   );
 
+  const setProjectCover = useCallback(
+    (projectId: string, assetId: string | null) => {
+      cancelProjects();
+      getSDK()
+        .projects.update(projectId, { coverAssetId: assetId })
+        .catch(() => toast.error(t("toastCoverFailed")))
+        // The cover URL is derived server-side, so refetch rather than
+        // patching the cache with a guess at which asset won.
+        .finally(invalidateProjects);
+    },
+    [cancelProjects, invalidateProjects, t],
+  );
+
   const deleteProject = useCallback(
     async (projectId: string) => {
       cancelProjects();
@@ -711,6 +726,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       deleteFolder,
       moveProjectToFolder,
       renameProject,
+      setProjectCover,
       deleteProject,
       copyAssets,
       moveAssets,
@@ -743,6 +759,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       deleteFolder,
       moveProjectToFolder,
       renameProject,
+      setProjectCover,
       deleteProject,
       copyAssets,
       moveAssets,

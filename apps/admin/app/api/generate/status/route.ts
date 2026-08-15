@@ -43,12 +43,19 @@ export async function GET(req: Request) {
   // toast ("add SEEDANCE_API_KEY to .env.local") instead of a
   // generic "poll failed".
   if (provider === 'kling') {
-    if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+    // The two Kling API generations take different credentials, so gate
+    // on the one this task actually needs: API 2.0 tasks poll with the
+    // console-issued key and never touch the legacy pair.
+    const missing = api2
+      ? !process.env.KLING_API_KEY && 'KLING_API_KEY'
+      : (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) &&
+        'KLING_ACCESS_KEY / KLING_SECRET_KEY';
+    if (missing) {
       return NextResponse.json(
         {
           error: {
             code: 'missing_credentials',
-            message: 'KLING_ACCESS_KEY / KLING_SECRET_KEY are not set in the admin environment.',
+            message: `${missing} not set in the admin environment.`,
           },
         },
         { status: 500 },

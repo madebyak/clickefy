@@ -225,13 +225,20 @@ function ShareDonut({ rows }: { rows: BarRow[] }) {
   const STROKE = 18;
   const C = 2 * Math.PI * R;
 
-  let cumulative = 0;
-  const segments = rows.map((r) => {
+  // Each arc starts where the previous one ended, so the offset is the
+  // running total of the fractions before it. Built with a reduce rather
+  // than a counter mutated inside map(): the lint rule is right that
+  // mutating across a render pass is unsound, and the accumulator is the
+  // honest way to express "offset depends on everything prior".
+  const segments = rows.reduce<
+    { color: string; len: number; offset: number; frac: number }[]
+  >((acc, r) => {
     const frac = total > 0 ? r.value / total : 0;
-    const seg = { color: r.color, len: frac * C, offset: cumulative * C, frac };
-    cumulative += frac;
-    return seg;
-  });
+    const prior = acc.length > 0 ? acc[acc.length - 1]! : undefined;
+    const offset = prior ? prior.offset + prior.frac * C : 0;
+    acc.push({ color: r.color, len: frac * C, offset, frac });
+    return acc;
+  }, []);
 
   return (
     <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">

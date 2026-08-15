@@ -198,6 +198,8 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
     taskId: string,
     provider: string,
     variant: string,
+    /** Kling API 2.0 task — the status route must use the newer client. */
+    api2: boolean,
   ): Promise<StageOutput[]> => {
     const maxMs = provider === 'seedance' ? 15 * 60 * 1000 : 5 * 60 * 1000;
     const start = Date.now();
@@ -207,7 +209,7 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
 
       const response = await fetch(
-        `/api/generate/status?taskId=${encodeURIComponent(taskId)}&provider=${encodeURIComponent(provider)}&variant=${encodeURIComponent(variant)}`,
+        `/api/generate/status?taskId=${encodeURIComponent(taskId)}&provider=${encodeURIComponent(provider)}&variant=${encodeURIComponent(variant)}${api2 ? '&api2=1' : ''}`,
       );
       const data = await response.json();
 
@@ -302,13 +304,15 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
 
       // `ExecuteResult` discriminator: sync providers return
       // `status: 'completed'` with inline outputs; Kling returns
-      // `status: 'pending'` plus a `taskId` (+ `variant` so the poll
-      // hits the right detail endpoint — omni vs image2video).
+      // `status: 'pending'` plus a `taskId` (+ `variant` so a legacy
+      // poll hits the right detail endpoint — omni vs image2video, and
+      // `api2` to pick the client, since API 2.0 has one unified poll).
       if (data.status === 'pending' && data.taskId) {
         const videoOutputs = await pollForCompletion(
           data.taskId,
           data.provider,
           data.variant ?? 'image2video',
+          data.api2 === true,
         );
         return videoOutputs;
       }

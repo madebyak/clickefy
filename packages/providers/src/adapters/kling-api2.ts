@@ -23,9 +23,27 @@
  * work for the models that predate the split, so this runs alongside
  * `kling.ts` rather than replacing it in one step.
  *
- * Verified against the live API on 2026-08-15: auth, and that polling
- * by system id is `?task_ids=` (the service itself answers
- * `"task_ids or external_task_ids is required"` for anything else).
+ * Verified against the live API on 2026-08-15, without creating a single
+ * billable task — each probe sent this adapter's exact body with one
+ * deliberately invalid VALUE, so the server had to parse the whole
+ * envelope before it could complain:
+ *
+ *   - auth with the console key                        → 200 SUCCEED
+ *   - polling by system id is `?task_ids=`             (the service itself
+ *     answers "task_ids or external_task_ids is required" otherwise)
+ *   - `/text-to-video/kling-2.6` with a bare `prompt`  → rejects duration 7
+ *   - `/omni-video/kling-3.0-omni` with `contents[]`
+ *     carrying a `refer_image`                         → rejects duration 99
+ *   - the server echoes the field path back, confirming each name:
+ *     `settings.resolution value '9000p' is invalid`,
+ *     `settings.audio value 'bogus' is invalid`,
+ *     `settings.aspect_ratio value '7:3' is invalid`
+ *   - a legacy `settings.mode` key is ignored, not rejected — so a stale
+ *     field would fail silently rather than loudly. Do not rely on the
+ *     server to catch one.
+ *
+ * Still unproven: a full successful generation, i.e. the output-parsing
+ * path in `pollKlingApi2`. That one needs a real (billable) render.
  *
  * Docs: https://kling.ai/document-api/api/video/3-0-omni
  */

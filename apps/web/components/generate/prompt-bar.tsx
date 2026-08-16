@@ -532,31 +532,55 @@ export function PromptBar({
 
   // ── Re-use: restore a past generation's setup ────────────────────
   //
-  // Ordering matters. Selecting a model resets the dependent knobs
-  // (aspect, tier, attachments) via the effect above, so the model is
-  // applied first and everything else on the following commit — writing
-  // them together would let that reset wipe what we just restored.
+  // Three commits, because each step invalidates the next:
+  //
+  //   1. MODE   — `useModels(mode)` filters the roster by image/video, so
+  //               a video model is not even in the list until the mode
+  //               flips. Flipping it also resets the selected model.
+  //   2. MODEL  — selecting a model resets its dependent knobs (aspect,
+  //               duration, tier, sound) from that model's defaults.
+  //   3. KNOBS  — only now can the restored values survive.
+  //
+  // Collapsing these would let each reset wipe what the previous step
+  // just wrote, which is how re-using a video used to land in the image
+  // composer with an image model.
+  //
+  // ⚠️ These three effects MUST stay declared below the mode-flip and
+  // model-change effects above. React runs effects in declaration order
+  // within a commit, and that is precisely what lets a restore overwrite
+  // the reset it races. Move this block up and re-use breaks silently.
   const pendingSetup = studio?.pendingSetup ?? null;
   const clearPendingSetup = studio?.clearPendingSetup;
-  const [setupStage, setSetupStage] = useState<"idle" | "applyModel" | "applyRest">("idle");
+  const [setupStage, setSetupStage] = useState<"idle" | "mode" | "model" | "knobs">("idle");
 
   useEffect(() => {
-    if (pendingSetup && setupStage === "idle") setSetupStage("applyModel");
+    if (pendingSetup && setupStage === "idle") setSetupStage("mode");
   }, [pendingSetup, setupStage]);
 
   useEffect(() => {
-    if (!pendingSetup || setupStage !== "applyModel") return;
+    if (!pendingSetup || setupStage !== "mode") return;
     setPrompt(pendingSetup.prompt);
+    setMode(pendingSetup.kind);
+    setSetupStage("model");
+  }, [pendingSetup, setupStage]);
+
+  useEffect(() => {
+    if (!pendingSetup || setupStage !== "model") return;
+    // Wait for the roster of the NEW mode to arrive; picking from a
+    // stale list would fail the lookup exactly as before.
+    if (modelsLoading) return;
     if (pendingSetup.modelKey && models.some((m) => m.modelKey === pendingSetup.modelKey)) {
       setModelKey(pendingSetup.modelKey);
     }
-    setSetupStage("applyRest");
-  }, [pendingSetup, setupStage, models]);
+    setSetupStage("knobs");
+  }, [pendingSetup, setupStage, models, modelsLoading]);
 
   useEffect(() => {
-    if (!pendingSetup || setupStage !== "applyRest") return;
+    if (!pendingSetup || setupStage !== "knobs") return;
     if (pendingSetup.aspectRatio) setAspect(pendingSetup.aspectRatio);
     if (pendingSetup.quality) setTier(pendingSetup.quality);
+    if (pendingSetup.duration != null) setDuration(pendingSetup.duration);
+    if (pendingSetup.sound != null) setSound(pendingSetup.sound);
     for (const url of pendingSetup.referenceUrls) {
       studio?.addAttachment({ id: `reuse-${url}`, type: "image", src: url });
     }
@@ -564,6 +588,7 @@ export function PromptBar({
     clearPendingSetup?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per restore
   }, [pendingSetup, setupStage]);
+
   const [focused, setFocused] = useState(false);
   const basePlaceholder = t(isVideo ? "placeholderVideo" : "placeholderImage");
   const examples = useMemo(

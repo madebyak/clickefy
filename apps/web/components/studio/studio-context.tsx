@@ -64,10 +64,21 @@ export type Asset = { id: string; type: AssetType; src: string; poster?: string 
 
 /** A past generation's settings, handed to the composer to restore. */
 export type ReuseSetup = {
+  /**
+   * Image or video. Carried because the composer filters its model list
+   * by the CURRENT mode: without switching mode first, a video modelKey
+   * is simply absent from the roster and the restore silently lands on
+   * whatever image model happened to be selected.
+   */
+  kind: "image" | "video";
   prompt: string;
   modelKey: string | null;
   aspectRatio: string | null;
   quality: string | null;
+  /** Video length in seconds; null for image generations. */
+  duration: number | null;
+  /** Native-audio toggle; null when the model has none. */
+  sound: boolean | null;
   referenceUrls: string[];
 };
 export type { StudioAsset, StudioFolder, StudioProject };
@@ -595,10 +606,17 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       // changes, so they have to land after the model is applied. The
       // prompt bar owns that ordering; we only carry the payload.
       setPendingSetup({
+        // The asset's own kind IS the model's kind — a video asset can
+        // only have come from a video model.
+        kind: detail.kind,
         prompt: gen.prompt ?? "",
         modelKey: gen.modelKey,
         aspectRatio: gen.aspectRatio,
         quality: gen.quality,
+        duration: gen.duration,
+        sound: gen.sound,
+        // Ordered start frame → end frame → references by the API, which
+        // is exactly the order a frames-mode model expects them in.
         referenceUrls: gen.references.map((r) => r.url),
       });
       toast.success(t("reuseApplied"));

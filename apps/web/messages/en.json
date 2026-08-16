@@ -275,7 +275,9 @@
     "referenceRole": "Reference",
     "soundOn": "On",
     "soundOff": "Off",
-    "sound": "Sound"
+    "sound": "Sound",
+    "reuseShort": "Re-use",
+    "reuseNothingToRestore": "No prompt to re-use for this one"
   },
   "projects": {
     "heading": "My Projects",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Sparkle,
@@ -10,6 +10,8 @@ import {
   Warning,
   X,
 } from "@phosphor-icons/react";
+import { toast } from "sonner";
+import { getSDK } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   useStudio,
@@ -115,6 +117,8 @@ function ProjectView({
   onDismissPending,
   onAttach,
   onAssetInfo,
+  onAssetReuse,
+  reusingAssetId,
   selectedIds,
   onToggleSelect,
 }: {
@@ -124,6 +128,8 @@ function ProjectView({
   onDismissPending: (jobId: string) => void;
   onAttach: (a: Asset) => void;
   onAssetInfo: (a: Asset) => void;
+  onAssetReuse: (a: Asset) => void;
+  reusingAssetId: string | null;
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
 }) {
@@ -154,6 +160,8 @@ function ProjectView({
         assets={assets}
         onAssetClick={onAttach}
         onAssetInfo={onAssetInfo}
+        onAssetReuse={onAssetReuse}
+        reusingAssetId={reusingAssetId}
         selectedIds={selectedIds}
         onToggleSelect={onToggleSelect}
       />
@@ -179,6 +187,32 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
   // Which asset the details slide-over is showing, if any.
   const [infoAssetId, setInfoAssetId] = useState<string | null>(null);
   const infoAsset = infoAssetId ? activeAssets.find((a) => a.id === infoAssetId) : undefined;
+
+  // Re-use straight from a tile. The masonry only holds an `Asset`, but
+  // restoring a setup needs the full provenance, so fetch it first — the
+  // button shows a spinner for that hop rather than appearing inert.
+  const [reusingAssetId, setReusingAssetId] = useState<string | null>(null);
+  const handleReuse = useCallback(
+    async (a: Asset) => {
+      if (!activeProject || reusingAssetId) return;
+      setReusingAssetId(a.id);
+      try {
+        const detail = await getSDK().projects.getAsset(activeProject.id, a.id);
+        // Template-made assets carry no user prompt, so there is nothing
+        // to restore — say so instead of silently doing nothing.
+        if (!detail.generation?.prompt) {
+          toast.error(t("reuseNothingToRestore"));
+          return;
+        }
+        reuseSetup(detail);
+      } catch {
+        toast.error(t("detailsUnavailable"));
+      } finally {
+        setReusingAssetId(null);
+      }
+    },
+    [activeProject, reusingAssetId, reuseSetup, t],
+  );
 
   const projectPending = activeProject
     ? pending.filter((p) => p.projectId === activeProject.id)
@@ -255,6 +289,8 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
               onDismissPending={dismissPending}
               onAttach={addAttachment}
               onAssetInfo={(a) => setInfoAssetId(a.id)}
+              onAssetReuse={handleReuse}
+              reusingAssetId={reusingAssetId}
               selectedIds={selectedAssetIds}
               onToggleSelect={toggleAssetSelection}
             />

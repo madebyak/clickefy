@@ -275,7 +275,9 @@
     "referenceRole": "مرجع",
     "soundOn": "مفعّل",
     "soundOff": "معطّل",
-    "sound": "الصوت"
+    "sound": "الصوت",
+    "reuseShort": "إعادة استخدام",
+    "reuseNothingToRestore": "لا يوجد نص لإعادة استخدامه هنا"
   },
   "projects": {
     "heading": "مشاريعي",

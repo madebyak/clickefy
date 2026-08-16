@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Info, DownloadSimple, X, Play, Check, ImageSquare } from "@phosphor-icons/react";
+import {
+  Info,
+  DownloadSimple,
+  X,
+  Play,
+  Check,
+  ImageSquare,
+  ArrowCounterClockwise,
+  CircleNotch,
+} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import type { Asset } from "@/components/studio/studio-context";
 
@@ -47,6 +56,8 @@ export function Masonry({
   assets,
   onAssetClick,
   onAssetInfo,
+  onAssetReuse,
+  reusingAssetId,
   selectedIds,
   onToggleSelect,
 }: {
@@ -54,6 +65,14 @@ export function Masonry({
   onAssetClick?: (asset: Asset) => void;
   /** Opens the details slide-over for one asset. */
   onAssetInfo?: (asset: Asset) => void;
+  /**
+   * Restores this asset's generation setup into the composer — the same
+   * action the details panel offers. The tile only holds an `Asset`, so
+   * the parent fetches the full detail before applying it.
+   */
+  onAssetReuse?: (asset: Asset) => void;
+  /** Asset id whose re-use fetch is in flight, if any. */
+  reusingAssetId?: string | null;
   selectedIds?: string[];
   onToggleSelect?: (id: string) => void;
 }) {
@@ -152,23 +171,46 @@ export function Masonry({
               </OverlayButton>
             </div>
 
-            {/* Attaching used to be what a tile click did. Now the click
-                opens the asset, so the action needs its own affordance. */}
-            {onAssetClick && (
-              <div className="absolute start-2 bottom-2 opacity-0 transition-opacity group-hover:opacity-100">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAssetClick(a);
-                  }}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-black/70 px-3 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85"
-                >
-                  <ImageSquare className="size-3.5" />
-                  {t("addAsReference")}
-                </button>
+            {/* Bottom action bar. Both live in ONE row rather than at
+                opposite corners: the masonry is columns-2 on mobile, so
+                at ~170px of tile width two corner-anchored pills would
+                overlap. Labels drop away on narrow tiles, leaving icons. */}
+            {(onAssetClick || onAssetReuse) && (
+              <div className="absolute inset-x-2 bottom-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                {onAssetClick && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAssetClick(a);
+                    }}
+                    className="inline-flex h-9 min-w-0 items-center gap-1.5 rounded-lg bg-black/70 px-2.5 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85"
+                  >
+                    <ImageSquare className="size-3.5 shrink-0" />
+                    <span className="hidden truncate sm:inline">{t("addAsReference")}</span>
+                  </button>
+                )}
+                {onAssetReuse && (
+                  <button
+                    type="button"
+                    disabled={reusingAssetId === a.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAssetReuse(a);
+                    }}
+                    className="inline-flex h-9 min-w-0 items-center gap-1.5 rounded-lg bg-black/70 px-2.5 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85 disabled:opacity-60"
+                  >
+                    {reusingAssetId === a.id ? (
+                      <CircleNotch className="size-3.5 shrink-0 animate-spin" />
+                    ) : (
+                      <ArrowCounterClockwise className="size-3.5 shrink-0" />
+                    )}
+                    <span className="hidden truncate sm:inline">{t("reuseShort")}</span>
+                  </button>
+                )}
               </div>
             )}
+
           </div>
         ))}
       </div>

@@ -77,6 +77,28 @@ function parseKeysetCursor(cursor: string | undefined): { ts: string; id: string
 const assetUrl = (origin: string, r2Key: string) => `${origin}/v1/outputs/${r2Key}`;
 
 /**
+ * URL for a key that may live in EITHER R2 bucket.
+ *
+ * Generated artifacts sit in OUTPUTS under `jobs/<jobId>/…` and are
+ * served by `/v1/outputs`; anything a user or admin uploaded sits in
+ * UPLOADS and is served by `/v1/uploads`. The two are different buckets
+ * behind different routes, so serving an upload key from the outputs
+ * route 404s — which is exactly what every reference image in the asset
+ * info panel did.
+ *
+ * Reference images are always uploads in practice (attaching a generated
+ * asset re-uploads its bytes to get a real `r2Key`), but this dispatches
+ * on the key's own prefix rather than trusting that, so a future path
+ * that references an output directly still resolves.
+ */
+const UPLOAD_KEY_PREFIXES = ['user-uploads/', 'avatars/', 'categories/', 'templates/'];
+
+function mediaUrl(origin: string, r2Key: string): string {
+  const isUpload = UPLOAD_KEY_PREFIXES.some((p) => r2Key.startsWith(p));
+  return `${origin}/v1/${isUpload ? 'uploads' : 'outputs'}/${r2Key}`;
+}
+
+/**
  * Reference slots to look for on a create job. `buildCreateStage` emits
  * `ref_0…ref_N`; the API caps submissions well below this, so scanning a
  * fixed window is cheaper than parsing every key.
@@ -378,7 +400,7 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
       const pushRef = (key: string, role: 'start_frame' | 'end_frame' | 'reference') => {
         const v = inputs[key];
         if (v && (v.kind === 'image' || v.kind === 'video') && v.r2Key) {
-          refs.push({ role, url: assetUrl(origin, v.r2Key) });
+          refs.push({ role, url: mediaUrl(origin, v.r2Key) });
         }
       };
       pushRef(CREATE_START_FRAME_KEY, 'start_frame');

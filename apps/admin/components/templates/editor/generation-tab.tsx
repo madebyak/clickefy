@@ -16,7 +16,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import type { Template, GenerationStage, TemplateInput, ReferenceImageRole, GenerationReference } from '@clickfy/types';
-import { findCapabilities, listActiveModels } from '@clickfy/providers';
+import { aspectRatiosFor, findCapabilities, listActiveModels, pixelSizeForAspect } from '@clickfy/providers';
 import { cn } from '@/lib/utils';
 import { uploadImageAsset, ApiError } from '@/lib/api/uploads';
 import type { TokenGetter } from '@/lib/api';
@@ -778,13 +778,21 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                               // Drive the aspect-ratio control off the
                               // model's capability declaration so the UI
                               // never offers values the provider would
-                              // silently drop. Imagen-only models would
-                              // also fit here in the future; for now
-                              // every entry in MODEL_CAPABILITIES uses
-                              // the 'aspect' sizing mode.
+                              // silently drop. `aspectRatiosFor` covers
+                              // both sizing modes: ratio-based models
+                              // (Gemini, Kling, Seedance) list them
+                              // directly, and pixel-based models (GPT
+                              // Image 2) declare the ratios the compiler
+                              // solves into exact dimensions — labelled
+                              // below so the admin sees the real output
+                              // size for each preset.
                               const caps = findCapabilities(stage.model);
-                              const aspectValues =
-                                caps?.sizing.mode === 'aspect' ? caps.sizing.values : [];
+                              const aspectValues = caps ? aspectRatiosFor(caps) : [];
+                              const dimsFor = (ratio: string): string | null => {
+                                if (!caps) return null;
+                                const solved = pixelSizeForAspect(caps, ratio);
+                                return solved ? solved.replace('x', '×') : null;
+                              };
                               if (aspectValues.length === 0) {
                                 return (
                                   <div className="space-y-2">
@@ -817,12 +825,16 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {aspectValues.map((ratio) => (
-                                        <SelectItem key={ratio} value={ratio}>
-                                          {ratio}
-                                          {locked ? ' (model-locked)' : ''}
-                                        </SelectItem>
-                                      ))}
+                                      {aspectValues.map((ratio) => {
+                                        const dims = dimsFor(ratio);
+                                        return (
+                                          <SelectItem key={ratio} value={ratio}>
+                                            {ratio}
+                                            {dims ? ` — ${dims}` : ''}
+                                            {locked ? ' (model-locked)' : ''}
+                                          </SelectItem>
+                                        );
+                                      })}
                                     </SelectContent>
                                   </Select>
                                 </div>
@@ -852,7 +864,11 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                               // Models without a declared list keep the classic
                               // 5/10 pair — identical to the previous hardcoded
                               // options, so existing templates are unaffected.
+                              // Video-only: the `seedance` provider also hosts
+                              // the Seedream IMAGE models, which have no
+                              // duration — the compiler would just drop it.
                               const caps = findCapabilities(stage.model);
+                              if (caps && caps.kind !== 'video') return null;
                               const durations = caps?.duration?.values ?? [5, 10];
                               return (
                                 <div className="space-y-2">
@@ -876,24 +892,23 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                               );
                             })()}
 
-                            {/* Kling v3 family: quality tier (std=720p / pro=1080p / 4k).
-                                Written to `stage.config.mode`; the compiler passes it to
-                                the API and template costing bills the tier's credits.
-                                Only rendered for models that declare `modes` — v2 rows
-                                and existing templates see nothing new. */}
-                            {stage.provider === 'kling' && (() => {
+                            {/* Quality tier — any model that declares priced `modes`:
+                                Kling std/pro/4k, Gemini 1K/2K/4K resolution, GPT Image 2
+                                Draft/Standard/High. Written to `stage.config.mode`; the
+                                compiler maps it onto the provider's own parameter and
+                                template costing bills that tier's credits. Seedance is
+                                excluded — its tier is the Resolution picker below, which
+                                shares the same key space. Labels come from the registry
+                                so they never drift from what the compiler accepts. */}
+                            {stage.provider !== 'seedance' && (() => {
                               const caps = findCapabilities(stage.model);
                               if (!caps?.modes) return null;
-                              const tierLabel: Record<string, string> = {
-                                std: 'Standard (720p)',
-                                pro: 'Pro (1080p)',
-                                '4k': '4K',
-                              };
+                              const modes = caps.modes;
                               const cfgMode = stage.config.mode as string | undefined;
                               const selected =
-                                cfgMode && (caps.modes.values as readonly string[]).includes(cfgMode)
+                                cfgMode && (modes.values as readonly string[]).includes(cfgMode)
                                   ? cfgMode
-                                  : caps.modes.default;
+                                  : modes.default;
                               return (
                                 <div className="space-y-2">
                                   <Label className="text-xs text-muted-foreground">Quality</Label>
@@ -901,7 +916,7 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                     value={selected}
                                     onValueChange={(value) =>
                                       handleUpdateStage(stage.id, {
-                                        config: { ...stage.config, mode: value || caps.modes!.default },
+                                        config: { ...stage.config, mode: value || modes.default },
                                       })
                                     }
                                   >
@@ -909,8 +924,8 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {caps.modes.values.map((m) => (
-                                        <SelectItem key={m} value={m}>{tierLabel[m] ?? m}</SelectItem>
+                                      {modes.values.map((m) => (
+                                        <SelectItem key={m} value={m}>{modes.labels?.[m] ?? m}</SelectItem>
                                       ))}
                                     </SelectContent>
                                   </Select>
@@ -953,13 +968,21 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                             {/* Seedance: resolution picker. Defaults to 720p per
                                 spec — the cheapest tier above 480p, and the
                                 sweet spot for cost/quality. Higher tiers escalate
-                                billing meaningfully (1080p ≈ 2× 720p; 2K higher). */}
+                                billing meaningfully (1080p ≈ 2× 720p; 2K higher).
+                                The resolution IS the priced tier, so it's written
+                                to BOTH `resolution` (provider parameter) and
+                                `mode` (billed tier) — costing reads `mode`, and a
+                                stage that generated 1080p while billing the 720p
+                                base was a silent loss-maker. */}
                             {stage.provider === 'seedance' && (() => {
                               const caps = findCapabilities(stage.model);
+                              if (!caps || caps.kind !== 'video') return null;
                               const allowed =
-                                caps?.sizing.mode === 'aspect' ? caps.sizing.resolutions ?? [] : [];
+                                caps.sizing.mode === 'aspect' ? caps.sizing.resolutions ?? [] : [];
                               if (allowed.length === 0) return null;
-                              const cfgRes = (stage.config.resolution as string | undefined);
+                              const cfgRes =
+                                (stage.config.resolution as string | undefined) ??
+                                (stage.config.mode as string | undefined);
                               const selected = cfgRes && allowed.includes(cfgRes) ? cfgRes : '720p';
                               return (
                                 <div className="space-y-2">
@@ -968,7 +991,53 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                     value={selected}
                                     onValueChange={(value) =>
                                       handleUpdateStage(stage.id, {
-                                        config: { ...stage.config, resolution: value || '720p' },
+                                        config: {
+                                          ...stage.config,
+                                          resolution: value || '720p',
+                                          mode: value || '720p',
+                                        },
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {allowed.map((r) => (
+                                        <SelectItem key={r} value={r}>{r}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    Resolution changes this stage&apos;s credit price.
+                                  </p>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Seedream (image line): resolution keyword, written to
+                                `imageSize` — the key the Seedream compiler reads.
+                                Flat-priced, so unlike the video picker this does not
+                                affect billing. Previously this model family fell into
+                                the video Resolution picker above, whose `resolution`
+                                key the image compiler ignores — the choice was a no-op
+                                and every stage ran at the model's first resolution. */}
+                            {stage.provider === 'seedance' && (() => {
+                              const caps = findCapabilities(stage.model);
+                              if (!caps || caps.kind !== 'image') return null;
+                              const allowed =
+                                caps.sizing.mode === 'aspect' ? caps.sizing.resolutions ?? [] : [];
+                              if (allowed.length === 0) return null;
+                              const cfg = stage.config.imageSize as string | undefined;
+                              const selected = cfg && allowed.includes(cfg) ? cfg : allowed[0];
+                              return (
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Resolution</Label>
+                                  <Select
+                                    value={selected}
+                                    onValueChange={(value) =>
+                                      handleUpdateStage(stage.id, {
+                                        config: { ...stage.config, imageSize: value || allowed[0] },
                                       })
                                     }
                                   >
@@ -985,7 +1054,13 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                               );
                             })()}
 
-                            {stage.provider === 'seedance' && (
+                            {stage.provider === 'seedance' && (() => {
+                              const caps = findCapabilities(stage.model);
+                              // Audio + camera are video-generation knobs; the
+                              // Seedream image models share this provider and
+                              // must not render them.
+                              if (!caps || caps.kind !== 'video') return null;
+                              return (
                               <>
                                 <div className="space-y-2">
                                   <Label className="text-xs text-muted-foreground">Generate Audio</Label>
@@ -1034,7 +1109,8 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                                   </Select>
                                 </div>
                               </>
-                            )}
+                              );
+                            })()}
 
                             <div className="space-y-2">
                               <Label className="text-xs text-muted-foreground">Retry on Failure</Label>

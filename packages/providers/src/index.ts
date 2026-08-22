@@ -25,7 +25,7 @@ export {
   type SizingMode,
 } from './capabilities';
 
-export { compile } from './compile';
+export { compile, pixelSizeForAspect } from './compile';
 
 export {
   buildCreateStage,

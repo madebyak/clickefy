@@ -21,7 +21,12 @@ import { providerModels, type Db } from '@clickfy/db';
 interface StageRef {
   provider: 'gemini' | 'kling' | 'veo' | 'seedance' | 'openai' | string;
   model: string;
-  /** Stage config — `config.mode` selects a quality tier (Kling std/pro/4k). */
+  /**
+   * Stage config — `config.mode` selects a quality tier (Kling std/pro/4k,
+   * Gemini 1K/2K/4K, GPT Image low/medium/high). Seedance stages authored
+   * before the editor wrote `mode` carry the tier in `config.resolution`
+   * instead (same key space: 480p/720p/1080p/4k).
+   */
   config?: Record<string, unknown>;
 }
 
@@ -90,10 +95,19 @@ export async function computeTemplateCost(
   const perStage = stages.map((s) => {
     const key = `${s.provider}/${s.model}`;
     const found = priceByKey.get(key);
-    // Tier-aware: a stage configured for a specific quality (Kling
-    // std/pro/4k) costs that tier's credits; otherwise the flat base.
-    const stageMode = typeof s.config?.mode === 'string' ? s.config.mode : undefined;
-    const cost = found ? ((stageMode ? found.tiers?.[stageMode] : undefined) ?? found.base) : 0;
+    // Tier-aware: a stage configured for a specific quality costs that
+    // tier's credits; otherwise the flat base. `mode` is canonical, but
+    // legacy Seedance stages stored the tier under `resolution` — the
+    // compiler honours both (compile.ts), so billing must too, or a
+    // 1080p/4k stage generates at that tier while billing the base.
+    const cfg = s.config ?? {};
+    const tierKey =
+      typeof cfg.mode === 'string'
+        ? cfg.mode
+        : typeof cfg.resolution === 'string'
+          ? cfg.resolution
+          : undefined;
+    const cost = found ? ((tierKey ? found.tiers?.[tierKey] : undefined) ?? found.base) : 0;
     const missing = found === undefined;
     if (missing) missingCount += 1;
     total += cost;

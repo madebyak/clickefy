@@ -935,6 +935,22 @@ function solvePixelSize(
   return best?.size ?? null;
 }
 
+/**
+ * The exact `WIDTHxHEIGHT` the compiler will send for an aspect-ratio
+ * choice on a pixel-mode model, or null when the model isn't pixel-sized
+ * or the ratio can't be expressed within its constraints. Lets UIs label
+ * a ratio preset with the real output dimensions instead of guessing.
+ */
+export function pixelSizeForAspect(
+  capabilities: ModelCapabilities,
+  aspect: string,
+): string | null {
+  if (capabilities.sizing.mode !== 'pixels') return null;
+  const [aw, ah] = aspect.split(':').map(Number);
+  if (!aw || !ah) return null;
+  return solvePixelSize(aw / ah, capabilities.sizing);
+}
+
 function resolvePixelSize(
   stage: GenerationStage,
   capabilities: ModelCapabilities,

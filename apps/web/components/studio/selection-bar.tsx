@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel } from "@/components/ui/menu";
+import { cn } from "@/lib/utils";
 
 function ProjectPicker({
   label,
@@ -144,16 +145,24 @@ export function SelectionBar() {
           icon={<ArrowRight className="size-4 rtl:-scale-x-100" />}
           onPick={(id) => moveAssets(selectedAssetIds, activeProjectId, id)}
         />
+        {/* Labelled like the Copy/Move pickers rather than an icon in a
+            row of icons: favouriting a whole selection is a decision, and
+            an unlabelled heart next to Download and Delete reads as
+            decoration. Collapses to the icon on narrow screens, same as
+            its neighbours. */}
         <button
           type="button"
           onClick={() => setAssetsFavorite(selectedAssetIds, !allFavorited)}
           aria-label={allFavorited ? t("unfavoriteSelected") : t("favoriteSelected")}
-          className="grid size-9 place-items-center rounded-lg bg-surface-2 text-foreground transition-colors hover:bg-surface-1"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-surface-2 px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-1"
         >
           <Heart
             weight={allFavorited ? "fill" : "regular"}
-            className={allFavorited ? "size-4 text-status-red" : "size-4"}
+            className={cn("size-4", allFavorited && "text-status-red")}
           />
+          <span className="hidden sm:inline">
+            {allFavorited ? t("unfavoriteSelectedShort") : t("favoriteSelectedShort")}
+          </span>
         </button>
         <button
           type="button"

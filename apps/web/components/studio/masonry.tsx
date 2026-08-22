@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import {
   Info,
   DownloadSimple,
+  DotsThree,
   Heart,
   X,
   Play,
@@ -13,6 +14,7 @@ import {
   ArrowCounterClockwise,
   CircleNotch,
 } from "@phosphor-icons/react";
+import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import type { Asset } from "@/components/studio/studio-context";
 import { DEFAULT_GRID_SIZE, type GridSize } from "@/components/studio/canvas-toolbar";
@@ -243,31 +245,102 @@ export function Masonry({
                 </OverlayButton>
               </div>
             )}
+            {/* Everything the tile can do, in one menu. Details and
+                Download used to be their own hover buttons; with the
+                heart added that was three icons plus two pills fighting
+                over a tile that can be 150px wide at high density. The
+                menu portals out because the tile is `overflow-hidden`
+                and would otherwise clip it. */}
             <div
               className={cn(
-                "absolute top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100",
+                "absolute top-2 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
                 // Shift clear of the always-on heart when there is one.
                 onToggleFavorite ? "end-12" : "end-2",
               )}
             >
-              <OverlayButton
-                label={t("assetInfo")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAssetInfo?.(a);
-                }}
+              <Menu
+                portal
+                align="end"
+                panelClassName="w-52"
+                trigger={({ toggle }) => (
+                  <OverlayButton
+                    label={t("assetOptions")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggle();
+                    }}
+                  >
+                    <DotsThree weight="bold" className="size-4" />
+                  </OverlayButton>
+                )}
               >
-                <Info className="size-4" />
-              </OverlayButton>
-              <OverlayButton
-                label={t("download")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  downloadAsset(a);
-                }}
-              >
-                <DownloadSimple className="size-4" />
-              </OverlayButton>
+                {({ close }) => (
+                  <>
+                    {onToggleFavorite && (
+                      <>
+                        <MenuItem
+                          onClick={() => {
+                            onToggleFavorite(a);
+                            close();
+                          }}
+                        >
+                          <Heart
+                            weight={a.favorited ? "fill" : "regular"}
+                            className={cn(
+                              "size-4",
+                              a.favorited ? "text-status-red" : "text-muted-foreground",
+                            )}
+                          />
+                          {a.favorited ? t("unfavorite") : t("favorite")}
+                        </MenuItem>
+                        <MenuSeparator />
+                      </>
+                    )}
+                    {onAssetClick && a.type === "image" && (
+                      <MenuItem
+                        onClick={() => {
+                          onAssetClick(a);
+                          close();
+                        }}
+                      >
+                        <ImageSquare className="size-4 text-muted-foreground" />
+                        {t("addAsReference")}
+                      </MenuItem>
+                    )}
+                    {onAssetReuse && (
+                      <MenuItem
+                        onClick={() => {
+                          onAssetReuse(a);
+                          close();
+                        }}
+                      >
+                        <ArrowCounterClockwise className="size-4 text-muted-foreground" />
+                        {t("reuse")}
+                      </MenuItem>
+                    )}
+                    {onAssetInfo && (
+                      <MenuItem
+                        onClick={() => {
+                          onAssetInfo(a);
+                          close();
+                        }}
+                      >
+                        <Info className="size-4 text-muted-foreground" />
+                        {t("assetInfo")}
+                      </MenuItem>
+                    )}
+                    <MenuItem
+                      onClick={() => {
+                        downloadAsset(a);
+                        close();
+                      }}
+                    >
+                      <DownloadSimple className="size-4 text-muted-foreground" />
+                      {t("download")}
+                    </MenuItem>
+                  </>
+                )}
+              </Menu>
             </div>
 
             {/* Bottom action bar. Both live in ONE row rather than at

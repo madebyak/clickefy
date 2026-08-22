@@ -41,6 +41,8 @@ import {
   type GridSize,
 } from "@/components/studio/canvas-toolbar";
 import { DrawModal } from "@/components/generate/draw-modal";
+import { Masonry } from "@/components/studio/masonry";
+import type { Asset } from "@/components/studio/studio-context";
 import { CreditMenu } from "@/components/site/credit-menu";
 import { ProfileMenu } from "@/components/site/profile-menu";
 
@@ -49,6 +51,58 @@ import { ProfileMenu } from "@/components/site/profile-menu";
 function copy(value: string, label: string) {
   navigator.clipboard?.writeText(value);
   toast.success(`Copied ${label}`, { description: value });
+}
+
+/** A 1x1 transparent GIF — enough for a tile, no network needed. */
+const PIXEL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+function MasonryTileDemo() {
+  const [assets, setAssets] = useState<Asset[]>(() =>
+    Array.from({ length: 6 }, (_, i) => ({
+      id: `demo-${i}`,
+      projectId: "demo",
+      type: (i % 3 === 0 ? "video" : "image") as Asset["type"],
+      src: PIXEL,
+      favorited: i === 1,
+      projectName: `Project ${i + 1}`,
+    })),
+  );
+  const [size, setSize] = useState<GridSize>(DEFAULT_GRID_SIZE);
+  const [sel, setSel] = useState<string[]>([]);
+  return (
+    <div className="rounded-xl border border-border bg-surface-1 p-3">
+      <div className="mb-3 flex items-center gap-3">
+        <span className="me-auto ps-1 text-sm text-muted-foreground">
+          Hover a tile: heart + ··· menu. The menu portals out of the clipped tile.
+        </span>
+        <CanvasToolbar
+          filter="all"
+          onFilterChange={() => {}}
+          gridSize={size}
+          onGridSizeChange={setSize}
+          counts={{ image: 4, video: 2 }}
+        />
+      </div>
+      <Masonry
+        assets={assets}
+        gridSize={size}
+        showProjectName
+        selectedIds={sel}
+        onToggleSelect={(id) =>
+          setSel((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+        }
+        onAssetClick={() => {}}
+        onAssetInfo={() => {}}
+        onAssetReuse={() => {}}
+        onToggleFavorite={(a) =>
+          setAssets((p) =>
+            p.map((x) => (x.id === a.id ? { ...x, favorited: !x.favorited } : x)),
+          )
+        }
+      />
+    </div>
+  );
 }
 
 function DrawModalDemo() {
@@ -741,6 +795,11 @@ export default function DesignSystemPage() {
           <div className="mt-10">
             <h3 className="mb-4 text-sm font-medium text-muted-foreground">Draw modal</h3>
             <DrawModalDemo />
+          </div>
+
+          <div className="mt-10">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">Asset tiles</h3>
+            <MasonryTileDemo />
             <p className="mt-2 text-xs text-muted-foreground">
               Type filter and grid density, as they appear in the /create header. The
               type filter is hidden unless the project holds both images and videos.

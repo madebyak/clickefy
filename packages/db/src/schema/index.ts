@@ -19,6 +19,7 @@ export * from './credit-broadcasts';
 export * from './credit-ledger';
 export * from './credit-packs';
 export * from './device-tokens';
+export * from './favorite-assets';
 export * from './folders';
 export * from './grant-policies';
 export * from './home-banners';

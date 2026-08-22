@@ -1,7 +1,15 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { X, CopySimple, ArrowRight, DownloadSimple, Trash, CaretDown } from "@phosphor-icons/react";
+import {
+  X,
+  CopySimple,
+  ArrowRight,
+  DownloadSimple,
+  Heart,
+  Trash,
+  CaretDown,
+} from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel } from "@/components/ui/menu";
 
@@ -85,9 +93,17 @@ export function SelectionBar() {
     copyAssets,
     moveAssets,
     deleteAssets,
+    setAssetsFavorite,
   } = useStudio();
 
   if (selectedAssetIds.length === 0 || !activeProject || !activeProjectId) return null;
+
+  // One button, not a favorite/unfavorite pair: it favorites unless the
+  // whole selection is already favorited, which is the only case where
+  // "add to favorites" would be a no-op and the user obviously meant the
+  // opposite.
+  const selected = activeAssets.filter((a) => selectedAssetIds.includes(a.id));
+  const allFavorited = selected.length > 0 && selected.every((a) => a.favorited);
 
   const downloadSelected = () => {
     const chosen = activeAssets.filter((a) => selectedAssetIds.includes(a.id));
@@ -128,6 +144,17 @@ export function SelectionBar() {
           icon={<ArrowRight className="size-4 rtl:-scale-x-100" />}
           onPick={(id) => moveAssets(selectedAssetIds, activeProjectId, id)}
         />
+        <button
+          type="button"
+          onClick={() => setAssetsFavorite(selectedAssetIds, !allFavorited)}
+          aria-label={allFavorited ? t("unfavoriteSelected") : t("favoriteSelected")}
+          className="grid size-9 place-items-center rounded-lg bg-surface-2 text-foreground transition-colors hover:bg-surface-1"
+        >
+          <Heart
+            weight={allFavorited ? "fill" : "regular"}
+            className={allFavorited ? "size-4 text-status-red" : "size-4"}
+          />
+        </button>
         <button
           type="button"
           onClick={downloadSelected}

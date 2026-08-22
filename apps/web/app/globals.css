@@ -209,3 +209,41 @@ body {
 .cl-socialButtonsBlockButton:hover {
   background-color: var(--surface-3) !important;
 }
+
+/*
+ * Studio grid-density slider.
+ *
+ * `appearance: none` on a range input strips the track AND the thumb,
+ * and the thumb has to be restyled per engine — there is no cross-browser
+ * shorthand for it. The track itself is the element's own background
+ * (set with utilities on the input), so only the thumb is defined here.
+ */
+.studio-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 9999px;
+  background-color: var(--foreground);
+  cursor: pointer;
+  transition: transform 150ms ease;
+}
+.studio-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+.studio-range::-moz-range-thumb {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 0;
+  border-radius: 9999px;
+  background-color: var(--foreground);
+  cursor: pointer;
+}
+.studio-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.studio-range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

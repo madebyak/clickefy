@@ -82,7 +82,7 @@ export function HomeHero() {
 
             {/* Same composer as the studio, one size down — see PromptBar's
                 `size` prop for why this is a variant rather than a fork. */}
-            <PromptBar size="compact" />
+            <PromptBar size="compact" animatedPlaceholder />
           </div>
         </MediaCard>
 

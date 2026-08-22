@@ -52,3 +52,11 @@ export type MoveAssetsBody = z.infer<typeof moveAssetsSchema>;
 
 export const deleteAssetsSchema = z.object({ assetIds: assetIdsSchema });
 export type DeleteAssetsBody = z.infer<typeof deleteAssetsSchema>;
+
+/**
+ * Favorite / unfavorite. Deliberately bulk-only: the studio's heart
+ * button sends a one-element array, and the selection bar sends the
+ * whole selection, so one endpoint pair covers both instead of two.
+ */
+export const favoriteAssetsSchema = z.object({ assetIds: assetIdsSchema });
+export type FavoriteAssetsBody = z.infer<typeof favoriteAssetsSchema>;

@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations, useFormatter } from "next-intl";
-import { X, DownloadSimple, Copy, ArrowCounterClockwise } from "@phosphor-icons/react";
+import { X, DownloadSimple, Copy, ArrowCounterClockwise, Heart } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { AssetDetail } from "@clickfy/sdk";
 import { getSDK } from "@/lib/api";
@@ -34,6 +34,8 @@ export function AssetInfoPanel({
   onClose,
   onReuse,
   onDownload,
+  favorited,
+  onToggleFavorite,
 }: {
   projectId: string;
   assetId: string;
@@ -41,6 +43,13 @@ export function AssetInfoPanel({
   /** Restore prompt + settings + references into the composer. */
   onReuse: (detail: AssetDetail) => void;
   onDownload: () => void;
+  /**
+   * Heart state is read from the studio's live asset cache rather than
+   * the fetched detail, so toggling it here and toggling it on the tile
+   * behind the panel never disagree.
+   */
+  favorited: boolean;
+  onToggleFavorite: () => void;
 }) {
   const t = useTranslations("studio");
   const format = useFormatter();
@@ -191,6 +200,20 @@ export function AssetInfoPanel({
         </div>
 
         <footer className="flex flex-wrap gap-2 border-t border-border p-3">
+          <button
+            type="button"
+            aria-pressed={favorited}
+            onClick={onToggleFavorite}
+            className={cn(
+              "inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors",
+              favorited
+                ? "bg-status-red/15 text-status-red hover:bg-status-red/25"
+                : "bg-surface-3 text-foreground hover:bg-surface-2",
+            )}
+          >
+            <Heart weight={favorited ? "fill" : "regular"} className="size-4" />
+            {favorited ? t("favorited") : t("favorite")}
+          </button>
           <button
             type="button"
             onClick={onDownload}

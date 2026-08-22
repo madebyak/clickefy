@@ -34,6 +34,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PromptBar } from "@/components/generate/prompt-bar";
+import {
+  CanvasToolbar,
+  DEFAULT_GRID_SIZE,
+  type CanvasFilter,
+  type GridSize,
+} from "@/components/studio/canvas-toolbar";
+import { DrawModal } from "@/components/generate/draw-modal";
 import { CreditMenu } from "@/components/site/credit-menu";
 import { ProfileMenu } from "@/components/site/profile-menu";
 
@@ -42,6 +49,54 @@ import { ProfileMenu } from "@/components/site/profile-menu";
 function copy(value: string, label: string) {
   navigator.clipboard?.writeText(value);
   toast.success(`Copied ${label}`, { description: value });
+}
+
+function DrawModalDemo() {
+  const [open, setOpen] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  return (
+    <div className="rounded-xl border border-border bg-surface-1 p-3">
+      <div className="flex items-center gap-3">
+        <span className="me-auto ps-1 text-sm text-muted-foreground">
+          Annotate an image, save it as a reference
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex h-9 items-center rounded-lg bg-surface-3 px-3 text-sm font-medium"
+        >
+          Open Draw
+        </button>
+      </div>
+      {saved && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={saved} alt="" className="mt-3 max-h-64 rounded-lg" />
+      )}
+      <DrawModal
+        open={open}
+        sources={[]}
+        onClose={() => setOpen(false)}
+        onSave={(file) => setSaved(URL.createObjectURL(file))}
+      />
+    </div>
+  );
+}
+
+function CanvasToolbarDemo() {
+  const [filter, setFilter] = useState<CanvasFilter>("all");
+  const [gridSize, setGridSize] = useState<GridSize>(DEFAULT_GRID_SIZE);
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-1 p-3">
+      <span className="me-auto ps-1 text-sm text-muted-foreground">Canvas header centre</span>
+      <CanvasToolbar
+        filter={filter}
+        onFilterChange={setFilter}
+        gridSize={gridSize}
+        onGridSizeChange={setGridSize}
+        counts={{ image: 6, video: 3 }}
+      />
+    </div>
+  );
 }
 
 function Section({
@@ -673,6 +728,22 @@ export default function DesignSystemPage() {
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               Click the credit pill or avatar to open. Logged-out shows Log in / Sign up instead.
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">
+              Studio canvas toolbar
+            </h3>
+            <CanvasToolbarDemo />
+          </div>
+
+          <div className="mt-10">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">Draw modal</h3>
+            <DrawModalDemo />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Type filter and grid density, as they appear in the /create header. The
+              type filter is hidden unless the project holds both images and videos.
             </p>
           </div>
         </Section>

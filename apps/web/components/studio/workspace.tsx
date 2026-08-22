@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Sparkle,
@@ -20,6 +20,13 @@ import {
   type StudioProject,
 } from "@/components/studio/studio-context";
 import { Masonry } from "@/components/studio/masonry";
+import {
+  CanvasToolbar,
+  DEFAULT_GRID_SIZE,
+  GRID_SIZES,
+  type CanvasFilter,
+  type GridSize,
+} from "@/components/studio/canvas-toolbar";
 import { AssetInfoPanel } from "@/components/studio/asset-info-panel";
 import { SelectionBar } from "@/components/studio/selection-bar";
 import { PromptBar } from "@/components/generate/prompt-bar";
@@ -32,6 +39,35 @@ function downloadAsset(a: Asset) {
   document.body.appendChild(el);
   el.click();
   el.remove();
+}
+
+const GRID_SIZE_STORAGE_KEY = "clickefy:studio:gridSize";
+
+/**
+ * Grid density, remembered across sessions.
+ *
+ * Read lazily in an effect rather than in `useState`'s initializer: the
+ * studio renders on the server first, and touching localStorage during
+ * the initial render would hydrate a different tree than the server sent.
+ */
+function useGridSize(): [GridSize, (next: GridSize) => void] {
+  const [gridSize, setGridSize] = useState<GridSize>(DEFAULT_GRID_SIZE);
+
+  useEffect(() => {
+    const stored = Number(window.localStorage.getItem(GRID_SIZE_STORAGE_KEY));
+    if (GRID_SIZES.includes(stored as GridSize)) setGridSize(stored as GridSize);
+  }, []);
+
+  const update = useCallback((next: GridSize) => {
+    setGridSize(next);
+    try {
+      window.localStorage.setItem(GRID_SIZE_STORAGE_KEY, String(next));
+    } catch {
+      // Private mode / quota. The setting still applies for this session.
+    }
+  }, []);
+
+  return [gridSize, update];
 }
 
 function EmptyState({ kind }: { kind: "image" | "video" }) {
@@ -118,7 +154,9 @@ function ProjectView({
   onAttach,
   onAssetInfo,
   onAssetReuse,
+  onToggleFavorite,
   reusingAssetId,
+  gridSize,
   selectedIds,
   onToggleSelect,
 }: {
@@ -129,7 +167,9 @@ function ProjectView({
   onAttach: (a: Asset) => void;
   onAssetInfo: (a: Asset) => void;
   onAssetReuse: (a: Asset) => void;
+  onToggleFavorite: (a: Asset) => void;
   reusingAssetId: string | null;
+  gridSize: GridSize;
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
 }) {
@@ -161,7 +201,9 @@ function ProjectView({
         onAssetClick={onAttach}
         onAssetInfo={onAssetInfo}
         onAssetReuse={onAssetReuse}
+        onToggleFavorite={onToggleFavorite}
         reusingAssetId={reusingAssetId}
+        gridSize={gridSize}
         selectedIds={selectedIds}
         onToggleSelect={onToggleSelect}
       />
@@ -182,7 +224,16 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
     selectedAssetIds,
     toggleAssetSelection,
     reuseSetup,
+    setAssetsFavorite,
   } = useStudio();
+
+  const [filter, setFilter] = useState<CanvasFilter>("all");
+  const [gridSize, setGridSize] = useGridSize();
+
+  const toggleFavorite = useCallback(
+    (a: Asset) => setAssetsFavorite([a.id], !a.favorited),
+    [setAssetsFavorite],
+  );
 
   // Which asset the details slide-over is showing, if any.
   const [infoAssetId, setInfoAssetId] = useState<string | null>(null);
@@ -214,6 +265,25 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
     [activeProject, reusingAssetId, reuseSetup, t],
   );
 
+  const kindCounts = useMemo(
+    () => ({
+      image: activeAssets.filter((a) => a.type === "image").length,
+      video: activeAssets.filter((a) => a.type === "video").length,
+    }),
+    [activeAssets],
+  );
+  const visibleAssets = useMemo(
+    () => (filter === "all" ? activeAssets : activeAssets.filter((a) => a.type === filter)),
+    [activeAssets, filter],
+  );
+
+  // A filter that hides everything is a dead end the user can't diagnose
+  // from an empty canvas — drop back to All when the kind they picked
+  // stops existing (last video deleted, project switched).
+  useEffect(() => {
+    if (filter !== "all" && kindCounts[filter] === 0) setFilter("all");
+  }, [filter, kindCounts]);
+
   const projectPending = activeProject
     ? pending.filter((p) => p.projectId === activeProject.id)
     : [];
@@ -230,9 +300,12 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
 
   return (
     <main className="relative flex min-w-0 flex-1 flex-col">
-      {/* content header */}
-      <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <div className="flex min-w-0 items-center gap-2 text-sm">
+      {/* Content header. Three tracks rather than `justify-between`: the
+          toolbar has to sit in the OPTICAL centre of the row, which a
+          flex distribution can't guarantee once the project name on the
+          start side changes length. */}
+      <div className="flex shrink-0 items-center gap-3 px-4 py-3 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
           {folderName && (
             <>
               <span className="hidden truncate text-muted-foreground sm:inline">{folderName}</span>
@@ -243,7 +316,19 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
             {activeProject ? activeProject.name : t("newProject")}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        {activeProject && (
+          <div className="flex shrink-0 items-center justify-center">
+            <CanvasToolbar
+              filter={filter}
+              onFilterChange={setFilter}
+              gridSize={gridSize}
+              onGridSizeChange={setGridSize}
+              counts={kindCounts}
+            />
+          </div>
+        )}
+
+        <div className="flex flex-1 shrink-0 items-center justify-end gap-2">
           {!isEmpty && (
             <button
               type="button"
@@ -284,13 +369,15 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
           activeProject && (
             <ProjectView
               project={activeProject}
-              assets={activeAssets}
+              assets={visibleAssets}
               pending={projectPending}
               onDismissPending={dismissPending}
               onAttach={addAttachment}
               onAssetInfo={(a) => setInfoAssetId(a.id)}
               onAssetReuse={handleReuse}
+              onToggleFavorite={toggleFavorite}
               reusingAssetId={reusingAssetId}
+              gridSize={gridSize}
               selectedIds={selectedAssetIds}
               onToggleSelect={toggleAssetSelection}
             />
@@ -311,6 +398,8 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
           assetId={infoAssetId}
           onClose={() => setInfoAssetId(null)}
           onDownload={() => infoAsset && downloadAsset(infoAsset)}
+          favorited={infoAsset?.favorited ?? false}
+          onToggleFavorite={() => infoAsset && toggleFavorite(infoAsset)}
           onReuse={(detail) => {
             reuseSetup(detail);
             setInfoAssetId(null);

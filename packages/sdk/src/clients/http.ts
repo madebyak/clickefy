@@ -36,6 +36,7 @@ import { JobSubmissionError, RateLimitedError } from '../types';
 import type {
   CreditsSummary,
   AssetDetail,
+  FavoriteAssetsResponse,
   ProjectAssetsResponse,
   ProjectsListResponse,
   SDKClient,
@@ -939,6 +940,22 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
       },
       async deleteAssets(assetIds) {
         await mutateJson<void>('DELETE', '/v1/assets', { assetIds });
+      },
+      async listFavorites(opts) {
+        const params = new URLSearchParams();
+        if (opts?.limit) params.set('limit', String(opts.limit));
+        if (opts?.cursor) params.set('cursor', opts.cursor);
+        const qs = params.size > 0 ? `?${params}` : '';
+        const json = await get<ApiEnvelope<FavoriteAssetsResponse>>(
+          `/v1/assets/favorites${qs}`,
+          { auth: true },
+        );
+        return json.data;
+      },
+      async setAssetsFavorite(assetIds, favorited) {
+        await mutateJson<void>(favorited ? 'POST' : 'DELETE', '/v1/assets/favorites', {
+          assetIds,
+        });
       },
       async createFolder(name) {
         return mutateJson<StudioFolder>('POST', '/v1/folders', { name });

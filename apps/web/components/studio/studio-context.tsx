@@ -9,6 +9,7 @@
  * Query keys:
  *   ['projects']                    → folders + project summaries
  *   ['projects', id, 'assets']      → a project's assets (newest first)
+ *   ['favorites']                   → hearted assets across every project
  * Every mutation invalidates what it touches; job completion
  * invalidates both so new outputs appear via refetch.
  */
@@ -30,6 +31,7 @@ import { toast } from "sonner";
 import type {
   AssetDetail,
   CreateGenerationInput,
+  FavoriteAsset,
   GenerationProgress,
   ProjectsListResponse,
   StudioAsset,
@@ -60,7 +62,29 @@ const EMPTY_PROJECTS: StudioProject[] = [];
 
 export type AssetType = "image" | "video";
 /** The masonry's render unit — mapped from `StudioAsset`. */
-export type Asset = { id: string; type: AssetType; src: string; poster?: string };
+export type Asset = {
+  id: string;
+  /** Owning project — needed to fetch provenance from a cross-project grid. */
+  projectId: string;
+  type: AssetType;
+  src: string;
+  poster?: string;
+  favorited: boolean;
+  /**
+   * Which project the asset lives in. Only set on the Favorites grid,
+   * which is cross-project and has to label each tile; inside a project
+   * it would be the same string on every tile, so it is left off.
+   */
+  projectName?: string;
+};
+
+/**
+ * What `addAttachment` actually needs: the media itself. Kept narrower
+ * than `Asset` so callers that synthesise one from a bare URL (the
+ * re-use restore, which has references but no asset rows) don't have to
+ * invent favorite state they know nothing about.
+ */
+export type AttachableAsset = Pick<Asset, "id" | "type" | "src">;
 
 /** A past generation's settings, handed to the composer to restore. */
 export type ReuseSetup = {
@@ -112,9 +136,16 @@ export type PendingGeneration = {
 
 const toAsset = (a: StudioAsset): Asset => ({
   id: a.id,
+  projectId: a.projectId,
   type: a.kind,
   src: rebaseAssetUrl(a.url),
   poster: a.posterUrl && a.kind === "video" ? undefined : (a.posterUrl ?? undefined),
+  favorited: a.isFavorited,
+});
+
+const toFavoriteAsset = (a: FavoriteAsset): Asset => ({
+  ...toAsset(a),
+  projectName: a.projectName,
 });
 
 /* ---------------------------------------------------------------- context */
@@ -157,6 +188,13 @@ type StudioValue = {
   setProjectCover: (projectId: string, assetId: string | null) => void;
   deleteProject: (projectId: string) => Promise<void>;
 
+  // favorites (global, across every project)
+  /** Hearted assets, newest favorite first. */
+  favorites: Asset[];
+  favoritesLoading: boolean;
+  /** Heart or un-heart in bulk; the tile button passes a single id. */
+  setAssetsFavorite: (assetIds: string[], favorited: boolean) => void;
+
   // assets
   copyAssets: (assetIds: string[], targetProjectId: string) => void;
   moveAssets: (assetIds: string[], fromProjectId: string, targetProjectId: string) => void;
@@ -172,7 +210,7 @@ type StudioValue = {
   /** Attach a local file: uploads to R2 immediately, tracking progress. */
   attachFile: (file: File) => void;
   /** Attach an existing canvas asset as a reference (fetch → re-upload). */
-  addAttachment: (asset: Asset) => void;
+  addAttachment: (asset: AttachableAsset) => void;
   /**
    * Restore a past generation's setup into the composer — prompt, model,
    * tier, aspect ratio and its reference images — WITHOUT generating.
@@ -203,6 +241,7 @@ const StudioContext = createContext<StudioValue | null>(null);
 type ProjectsCache = ProjectsListResponse | undefined;
 
 const PROJECTS_KEY = ["projects"] as const;
+const FAVORITES_KEY = ["favorites"] as const;
 const assetsKey = (projectId: string) => ["projects", projectId, "assets"] as const;
 
 export function StudioProvider({ children }: { children: ReactNode }) {
@@ -286,6 +325,26 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     },
     enabled: isLoaded && !!isSignedIn && !!activeProjectId,
     staleTime: 5_000,
+  });
+
+  // Favorites are global, so unlike assets this query is not keyed on a
+  // project and stays warm while the user moves between them.
+  const favoritesQuery = useQuery({
+    queryKey: FAVORITES_KEY,
+    queryFn: async () => {
+      const sdk = getSDK();
+      const first = await sdk.projects.listFavorites({ limit: PAGE_SIZE });
+      const items = [...first.items];
+      let cursor = first.nextCursor;
+      for (let page = 1; cursor && page < MAX_PAGES; page++) {
+        const next = await sdk.projects.listFavorites({ limit: PAGE_SIZE, cursor });
+        items.push(...next.items);
+        cursor = next.nextCursor;
+      }
+      return items.map(toFavoriteAsset);
+    },
+    enabled: isLoaded && !!isSignedIn,
+    staleTime: 15_000,
   });
 
   const invalidateProjects = useCallback(
@@ -542,6 +601,68 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [queryClient, invalidateAssets, invalidateProjects, t],
   );
 
+  /* ------------------------------------------------------ favorites */
+
+  /**
+   * Heart / un-heart in bulk. One code path serves the tile button (a
+   * one-element array), the info panel and the selection bar.
+   *
+   * The optimistic write touches two places: every cached project grid
+   * (so the heart fills instantly wherever the asset is on screen) and
+   * the global favorites list (so the Favorites page reflects it without
+   * a round-trip). Newly favorited tiles are prepended because the
+   * server orders by favorite time, not asset time.
+   */
+  const setAssetsFavorite = useCallback(
+    (assetIds: string[], favorited: boolean) => {
+      if (assetIds.length === 0) return;
+      const ids = new Set(assetIds);
+      void queryClient.cancelQueries({ queryKey: FAVORITES_KEY });
+
+      // Collect the tiles being favorited before mutating, so they can be
+      // spliced into the favorites list. Assets already in that list (a
+      // re-favorite) are skipped by the dedupe below.
+      const added: Asset[] = [];
+      if (favorited) {
+        for (const [, data] of queryClient.getQueriesData({ queryKey: ["projects"] })) {
+          if (!Array.isArray(data)) continue;
+          for (const a of data as Asset[]) {
+            if (ids.has(a.id) && !added.some((x) => x.id === a.id)) added.push(a);
+          }
+        }
+      }
+
+      // Flip the heart in every project grid held in cache. The
+      // `['projects']` root query holds a ProjectsListResponse rather
+      // than an array, hence the guard.
+      queryClient.setQueriesData({ queryKey: ["projects"] }, (prev: unknown) =>
+        Array.isArray(prev)
+          ? (prev as Asset[]).map((a) => (ids.has(a.id) ? { ...a, favorited } : a))
+          : prev,
+      );
+
+      queryClient.setQueryData(FAVORITES_KEY, (prev: Asset[] | undefined) => {
+        if (!prev) return prev;
+        if (!favorited) return prev.filter((a) => !ids.has(a.id));
+        const fresh = added
+          .filter((a) => !prev.some((p) => p.id === a.id))
+          .map((a) => ({ ...a, favorited: true }));
+        return [...fresh, ...prev];
+      });
+
+      getSDK()
+        .projects.setAssetsFavorite(assetIds, favorited)
+        .catch(() => {
+          toast.error(t("toastFavoriteFailed"));
+          // Roll back by refetching rather than reversing by hand — the
+          // failure could be partial and the server is the truth.
+          void queryClient.invalidateQueries({ queryKey: ["projects"] });
+        })
+        .finally(() => void queryClient.invalidateQueries({ queryKey: FAVORITES_KEY }));
+    },
+    [queryClient, t],
+  );
+
   /* ------------------------------------------------------- attachments */
 
   const uploadAttachment = useCallback((id: string, file: File | Blob, name: string) => {
@@ -625,7 +746,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   );
 
   const addAttachment = useCallback(
-    (asset: Asset) => {
+    (asset: AttachableAsset) => {
       if (asset.type !== "image") return; // only images can be references/frames
       const id = `att-${seq.current++}`;
       setAttachments((prev) =>
@@ -771,6 +892,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   );
 
   const activeAssets = assetsQuery.data ?? EMPTY_ASSETS;
+  const favorites = favoritesQuery.data ?? EMPTY_ASSETS;
 
   // Memoized so `useStudio()` consumers only re-render when something they
   // read actually changes, not on every provider render.
@@ -792,6 +914,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       renameProject,
       setProjectCover,
       deleteProject,
+      favorites,
+      favoritesLoading: favoritesQuery.isLoading,
+      setAssetsFavorite,
       copyAssets,
       moveAssets,
       deleteAssets,
@@ -828,6 +953,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       renameProject,
       setProjectCover,
       deleteProject,
+      favorites,
+      favoritesQuery.isLoading,
+      setAssetsFavorite,
       copyAssets,
       moveAssets,
       deleteAssets,

@@ -11,20 +11,27 @@
  *   GET/POST/PATCH/DELETE /v1/folders[...]
  *   PATCH  /v1/assets               bulk move to another project
  *   DELETE /v1/assets               bulk delete rows
+ *   GET    /v1/assets/favorites     the user's hearted assets (all projects)
+ *   POST   /v1/assets/favorites     bulk favorite
+ *   DELETE /v1/assets/favorites     bulk unfavorite
  *
  * Ownership: every query is compound-scoped `(id, user_id)` so foreign
  * ids no-op (404/204) instead of leaking existence — house convention.
  *
- * Move is implemented as copy-then-delete (fresh rows) so the
- * `(project_id, job_id, output_index)` uniqueness can never abort a
- * bulk move; duplicates in the target dedupe silently.
+ * Move updates `project_id` IN PLACE so asset ids survive it — global
+ * favorites reference `project_assets.id`, and the previous
+ * copy-then-delete implementation minted fresh ids, silently dropping
+ * every favorite on a moved asset. Rows that would violate the
+ * `(project_id, job_id, output_index)` uniqueness are excluded from the
+ * UPDATE and deleted instead, which is exactly what the old
+ * INSERT … ON CONFLICT DO NOTHING + DELETE pair did to them.
  */
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, inArray, sql as dsql } from 'drizzle-orm';
 
-import { folders, jobs, projectAssets, projects, templates } from '@clickfy/db';
+import { favoriteAssets, folders, jobs, projectAssets, projects, templates } from '@clickfy/db';
 
 import type { JobInputValue } from '@clickfy/types';
 import {
@@ -42,6 +49,7 @@ import {
   createFolderSchema,
   createProjectSchema,
   deleteAssetsSchema,
+  favoriteAssetsSchema,
   moveAssetsSchema,
   updateFolderSchema,
   updateProjectSchema,
@@ -336,8 +344,17 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
       durationSec: projectAssets.durationSec,
       createdAt: projectAssets.createdAt,
       jobId: projectAssets.jobId,
+      projectId: projectAssets.projectId,
+      favorited: dsql<boolean>`${favoriteAssets.assetId} IS NOT NULL`,
     })
     .from(projectAssets)
+    .leftJoin(
+      favoriteAssets,
+      and(
+        eq(favoriteAssets.assetId, projectAssets.id),
+        eq(favoriteAssets.userId, user.id),
+      ),
+    )
     .where(
       and(
         eq(projectAssets.id, assetId),
@@ -428,6 +445,8 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
   return c.json({
     data: {
       id: row.id,
+      projectId: row.projectId,
+      jobId: row.jobId,
       kind: row.kind,
       url: assetUrl(origin, row.r2Key),
       posterUrl: row.posterR2Key ? assetUrl(origin, row.posterR2Key) : null,
@@ -435,6 +454,7 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
       height: row.height,
       durationSec: row.durationSec,
       createdAt: row.createdAt.toISOString(),
+      isFavorited: row.favorited,
       // No MIME column exists; the stored key keeps its extension.
       format: formatFromKey(row.r2Key),
       generation,
@@ -553,8 +573,19 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
       // INSERT), silently dropping them at the page boundary. Emit the raw
       // text and compare against it as timestamptz to preserve precision.
       cursorTs: dsql<string>`${projectAssets.createdAt}::text`,
+      // Heart state for THIS caller. A LEFT JOIN on the favorites PK is
+      // an index probe per row; without it every heart renders empty on
+      // load and only corrects itself after a toggle.
+      favorited: dsql<boolean>`${favoriteAssets.assetId} IS NOT NULL`,
     })
     .from(projectAssets)
+    .leftJoin(
+      favoriteAssets,
+      and(
+        eq(favoriteAssets.assetId, projectAssets.id),
+        eq(favoriteAssets.userId, user.id),
+      ),
+    )
     .where(
       keyset
         ? and(
@@ -568,7 +599,6 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
 
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
-  const page = pageRows.map((r) => r.row);
   const nextCursor = hasMore
     ? `${pageRows[pageRows.length - 1]!.cursorTs}|${pageRows[pageRows.length - 1]!.row.id}`
     : null;
@@ -576,7 +606,7 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
   c.header('Cache-Control', 'private, max-age=5');
   return c.json({
     data: {
-      items: page.map((a) => ({
+      items: pageRows.map(({ row: a, favorited }) => ({
         id: a.id,
         projectId: a.projectId,
         jobId: a.jobId,
@@ -587,6 +617,7 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
         height: a.height,
         durationSec: a.durationSec,
         createdAt: a.createdAt.toISOString(),
+        isFavorited: favorited,
       })),
       nextCursor,
     },
@@ -660,21 +691,58 @@ assetsRoute.patch('/', ...writeChain, zValidator('json', moveAssetsSchema), asyn
     return c.json({ error: { code: 'project_not_found', message: 'Project not found.' } }, 404);
   }
 
-  // Move = copy-then-delete (fresh rows) so target-side uniqueness can
-  // never abort the bulk operation; colliding rows simply dedupe.
-  const inserted = await c.var.db.execute<{ id: string }>(dsql`
-    INSERT INTO project_assets
-      (project_id, user_id, job_id, output_index, kind, r2_key, width, height, duration_sec, poster_r2_key)
-    SELECT ${projectId}::uuid, user_id, job_id, output_index, kind, r2_key, width, height, duration_sec, poster_r2_key
-    FROM project_assets
-    WHERE id IN (${dsql.join(
-      assetIds.map((id) => dsql`${id}::uuid`),
-      dsql`, `,
-    )}) AND user_id = ${user.id}::uuid AND project_id != ${projectId}::uuid
-    ON CONFLICT (project_id, job_id, output_index) DO NOTHING
-    RETURNING id
+  // Move = in-place `project_id` UPDATE, so the asset keeps its id.
+  // That matters beyond tidiness: `favorite_assets.asset_id` references
+  // it, and the previous copy-then-delete implementation minted a fresh
+  // row per move — silently un-favoriting everything the user moved.
+  //
+  // The NOT EXISTS guard mirrors the `(project_id, job_id, output_index)`
+  // unique index exactly, including its NULL semantics: `t.job_id =
+  // src.job_id` yields NULL (not true) for job-less rows, which is
+  // precisely when Postgres also treats them as non-conflicting. Rows the
+  // guard excludes are true duplicates of something already in the target
+  // and are deleted below — the same fate the old ON CONFLICT DO NOTHING
+  // + unconditional DELETE gave them.
+  const idList = dsql.join(
+    assetIds.map((id) => dsql`${id}::uuid`),
+    dsql`, `,
+  );
+
+  const updated = await c.var.db.execute<{ id: string }>(dsql`
+    UPDATE project_assets AS src
+    SET project_id = ${projectId}::uuid
+    WHERE src.id IN (${idList})
+      AND src.user_id = ${user.id}::uuid
+      AND src.project_id != ${projectId}::uuid
+      AND NOT EXISTS (
+        SELECT 1 FROM project_assets AS t
+        WHERE t.project_id = ${projectId}::uuid
+          AND t.job_id = src.job_id
+          AND t.output_index = src.output_index
+      )
+    RETURNING src.id
   `);
 
+  // A pinned cover follows the asset out of its old project. The FK's
+  // ON DELETE SET NULL used to handle this for free, because the move
+  // deleted the source row; an in-place move never fires it, so the
+  // source project would keep a pin pointing at an asset it no longer
+  // holds. (The cover query joins on `project_id`, so a stale pin can
+  // only ever mean "fall back to newest" — never show a foreign asset —
+  // but leaving it is still a lie in the data.)
+  await c.var.db
+    .update(projects)
+    .set({ coverAssetId: null })
+    .where(
+      and(
+        eq(projects.userId, user.id),
+        inArray(projects.coverAssetId, assetIds),
+        dsql`${projects.id} != ${projectId}::uuid`,
+      ),
+    );
+
+  // Whatever is still outside the target after the UPDATE is a duplicate
+  // of a row already filed there.
   await c.var.db
     .delete(projectAssets)
     .where(
@@ -687,11 +755,132 @@ assetsRoute.patch('/', ...writeChain, zValidator('json', moveAssetsSchema), asyn
 
   await c.var.db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId));
 
-  const movedRows = Array.isArray(inserted)
-    ? inserted
-    : ((inserted as { rows?: unknown[] }).rows ?? []);
+  const movedRows = Array.isArray(updated)
+    ? updated
+    : ((updated as { rows?: unknown[] }).rows ?? []);
   return c.json({ data: { moved: movedRows.length } });
 });
+
+// ─── Favorites (global, cross-project) ──────────────────────────────
+//
+// GET    /v1/assets/favorites   the caller's hearted assets, newest
+//                               FAVORITE first (not newest asset —
+//                               hearting something old should put it at
+//                               the top of the shelf you just put it on)
+// POST   /v1/assets/favorites   { assetIds } → favorite
+// DELETE /v1/assets/favorites   { assetIds } → unfavorite
+//
+// Both writes are bulk-only and idempotent: the composite PK on
+// `favorite_assets` makes a re-favorite a no-op insert, and unfavoriting
+// something that was never favorited deletes zero rows rather than
+// erroring. `assetIds` is filtered by `user_id` in the same statement, so
+// a foreign id silently contributes nothing instead of 404-ing and
+// leaking whether it exists.
+
+assetsRoute.get('/favorites', ...readChain, async (c) => {
+  const user = c.var.user!;
+  const origin = new URL(c.req.url).origin;
+
+  const limitRaw = Number(c.req.query('limit') ?? '50');
+  const limit = Math.min(100, Math.max(1, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 50));
+  // Keyset over the FAVORITE's timestamp, not the asset's — same
+  // full-precision `::text` cursor as everywhere else in this file.
+  const keyset = parseKeysetCursor(c.req.query('cursor'));
+
+  const rows = await c.var.db
+    .select({
+      row: projectAssets,
+      projectName: projects.name,
+      cursorTs: dsql<string>`${favoriteAssets.createdAt}::text`,
+    })
+    .from(favoriteAssets)
+    .innerJoin(projectAssets, eq(projectAssets.id, favoriteAssets.assetId))
+    .innerJoin(projects, eq(projects.id, projectAssets.projectId))
+    .where(
+      keyset
+        ? and(
+            eq(favoriteAssets.userId, user.id),
+            dsql`(${favoriteAssets.createdAt} < ${keyset.ts}::timestamptz OR (${favoriteAssets.createdAt} = ${keyset.ts}::timestamptz AND ${favoriteAssets.assetId} < ${keyset.id}))`,
+          )
+        : eq(favoriteAssets.userId, user.id),
+    )
+    .orderBy(desc(favoriteAssets.createdAt), desc(favoriteAssets.assetId))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore
+    ? `${pageRows[pageRows.length - 1]!.cursorTs}|${pageRows[pageRows.length - 1]!.row.id}`
+    : null;
+
+  c.header('Cache-Control', 'private, max-age=5');
+  return c.json({
+    data: {
+      items: pageRows.map(({ row: a, projectName }) => ({
+        id: a.id,
+        projectId: a.projectId,
+        jobId: a.jobId,
+        kind: a.kind,
+        url: assetUrl(origin, a.r2Key),
+        posterUrl: a.posterR2Key ? assetUrl(origin, a.posterR2Key) : null,
+        width: a.width,
+        height: a.height,
+        durationSec: a.durationSec,
+        createdAt: a.createdAt.toISOString(),
+        // Every row here is favorited by definition; sent anyway so the
+        // DTO is identical to the project asset list and the studio can
+        // render both through one component.
+        isFavorited: true,
+        // Cross-project view, so each tile says where it came from.
+        projectName,
+      })),
+      nextCursor,
+    },
+  });
+});
+
+assetsRoute.post(
+  '/favorites',
+  ...writeChain,
+  zValidator('json', favoriteAssetsSchema),
+  async (c) => {
+    const user = c.var.user!;
+    const { assetIds } = c.req.valid('json');
+
+    // INSERT … SELECT rather than a client-side values list: ownership is
+    // enforced by the same statement that writes, so there is no window
+    // between checking and inserting.
+    await c.var.db.execute(dsql`
+      INSERT INTO favorite_assets (user_id, asset_id)
+      SELECT user_id, id FROM project_assets
+      WHERE id IN (${dsql.join(
+        assetIds.map((id) => dsql`${id}::uuid`),
+        dsql`, `,
+      )}) AND user_id = ${user.id}::uuid
+      ON CONFLICT (user_id, asset_id) DO NOTHING
+    `);
+
+    return c.json({ data: { assetIds, isFavorited: true } });
+  },
+);
+
+assetsRoute.delete(
+  '/favorites',
+  ...writeChain,
+  zValidator('json', favoriteAssetsSchema),
+  async (c) => {
+    const user = c.var.user!;
+    const { assetIds } = c.req.valid('json');
+
+    await c.var.db
+      .delete(favoriteAssets)
+      .where(
+        and(eq(favoriteAssets.userId, user.id), inArray(favoriteAssets.assetId, assetIds)),
+      );
+
+    return c.json({ data: { assetIds, isFavorited: false } });
+  },
+);
 
 // ─── DELETE /v1/assets (bulk) ───────────────────────────────────────
 assetsRoute.delete('/', ...writeChain, zValidator('json', deleteAssetsSchema), async (c) => {

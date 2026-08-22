@@ -37,6 +37,7 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
       .toUpperCase() || "?";
 
   const inBrowser = pathname === "/projects";
+  const inFavorites = pathname === "/favorites";
 
   const openProject = (id: string) => {
     setActiveProject(id);
@@ -95,9 +96,18 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
           </button>
           <button
             type="button"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+            onClick={() => {
+              router.push("/favorites");
+              onClose();
+            }}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+              inFavorites
+                ? "bg-surface-3 text-foreground"
+                : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+            )}
           >
-            <Heart className="size-[18px]" />
+            <Heart className="size-[18px]" weight={inFavorites ? "fill" : "regular"} />
             {t("favorites")}
           </button>
         </nav>
@@ -120,7 +130,7 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
               key={p.id}
               project={p}
               folders={folders}
-              active={!inBrowser && activeProjectId === p.id}
+              active={!inBrowser && !inFavorites && activeProjectId === p.id}
               onOpen={() => openProject(p.id)}
               onRename={(name) => renameProject(p.id, name)}
               onMoveToFolder={(folderId) => moveProjectToFolder(p.id, folderId)}

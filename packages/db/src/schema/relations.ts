@@ -17,6 +17,7 @@ import { categories } from './categories';
 import { creditLedger } from './credit-ledger';
 import { folders } from './folders';
 import { jobs } from './jobs';
+import { favoriteAssets } from './favorite-assets';
 import { projectAssets } from './project-assets';
 import { projects } from './projects';
 import { savedTemplates } from './saved-templates';
@@ -29,6 +30,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   jobs: many(jobs),
   creditEntries: many(creditLedger),
   savedTemplates: many(savedTemplates),
+  favoriteAssets: many(favoriteAssets),
 }));
 
 export const savedTemplatesRelations = relations(savedTemplates, ({ one }) => ({
@@ -108,13 +110,22 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   jobs: many(jobs),
 }));
 
-export const projectAssetsRelations = relations(projectAssets, ({ one }) => ({
+export const projectAssetsRelations = relations(projectAssets, ({ one, many }) => ({
   project: one(projects, {
     fields: [projectAssets.projectId],
     references: [projects.id],
   }),
   user: one(users, { fields: [projectAssets.userId], references: [users.id] }),
   job: one(jobs, { fields: [projectAssets.jobId], references: [jobs.id] }),
+  favoritedBy: many(favoriteAssets),
+}));
+
+export const favoriteAssetsRelations = relations(favoriteAssets, ({ one }) => ({
+  user: one(users, { fields: [favoriteAssets.userId], references: [users.id] }),
+  asset: one(projectAssets, {
+    fields: [favoriteAssets.assetId],
+    references: [projectAssets.id],
+  }),
 }));
 
 export const creditLedgerRelations = relations(creditLedger, ({ one }) => ({

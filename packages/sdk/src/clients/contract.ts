@@ -398,6 +398,17 @@ export interface StudioAsset {
   height: number | null;
   durationSec: number | null;
   createdAt: string;
+  /** Whether the caller has hearted this asset. */
+  isFavorited: boolean;
+}
+
+/**
+ * A favorited asset. Favorites span every project, so each one carries
+ * the name of the project it lives in — the grid has no other context
+ * to place it with.
+ */
+export interface FavoriteAsset extends StudioAsset {
+  projectName: string;
 }
 
 export interface ProjectsListResponse {
@@ -434,6 +445,11 @@ export interface ProjectAssetsResponse {
   nextCursor: string | null;
 }
 
+export interface FavoriteAssetsResponse {
+  items: FavoriteAsset[];
+  nextCursor: string | null;
+}
+
 /**
  * `/v1/projects` + `/v1/folders` + `/v1/assets` — the web studio's
  * persistent projects layer. All methods require auth and are scoped
@@ -467,6 +483,17 @@ export interface ProjectsClient {
   /** Move assets to another project (rows are re-created; ids change). */
   moveAssets(assetIds: string[], projectId: string): Promise<{ moved: number }>;
   deleteAssets(assetIds: string[]): Promise<void>;
+  /**
+   * The caller's favorited assets across every project, newest FAVORITE
+   * first — hearting an old asset puts it at the top of the shelf.
+   */
+  listFavorites(opts?: { limit?: number; cursor?: string }): Promise<FavoriteAssetsResponse>;
+  /**
+   * Favorite or unfavorite in bulk. Idempotent in both directions, and
+   * ids the caller doesn't own are silently ignored rather than
+   * rejected. The studio's heart button sends a one-element array.
+   */
+  setAssetsFavorite(assetIds: string[], favorited: boolean): Promise<void>;
   createFolder(name: string): Promise<StudioFolder>;
   renameFolder(folderId: string, name: string): Promise<Pick<StudioFolder, 'id' | 'name'>>;
   /** Projects inside fall back to "unfiled" — never deleted. */

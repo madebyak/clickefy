@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import {
   Info,
   DownloadSimple,
+  Heart,
   X,
   Play,
   Check,
@@ -14,6 +15,41 @@ import {
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import type { Asset } from "@/components/studio/studio-context";
+import { DEFAULT_GRID_SIZE, type GridSize } from "@/components/studio/canvas-toolbar";
+
+/**
+ * Column counts per density step, largest tiles first.
+ *
+ * Written out as whole class strings because Tailwind scans source
+ * statically — `columns-${n}` produces nothing at build time. Each step
+ * also scales with the viewport, so "smallest" on a laptop is not the
+ * same absolute tile size as "smallest" on a 4K display; the control
+ * sets relative density, which is what the user is actually choosing.
+ *
+ * Below `md` every step is two columns: a phone has no room for a third,
+ * and the toolbar hides the slider there for the same reason.
+ */
+const GRID_COLUMNS: Record<GridSize, string> = {
+  0: "columns-2 md:columns-2 2xl:columns-3",
+  1: "columns-2 md:columns-3 2xl:columns-4",
+  2: "columns-2 md:columns-4 2xl:columns-6",
+  3: "columns-3 md:columns-6 2xl:columns-8",
+};
+
+/** Gutters tighten as tiles shrink, so dense grids don't read as gappy. */
+const GRID_GAP: Record<GridSize, string> = {
+  0: "gap-4",
+  1: "gap-3",
+  2: "gap-2.5",
+  3: "gap-2",
+};
+
+const TILE_GAP: Record<GridSize, string> = {
+  0: "mb-4",
+  1: "mb-3",
+  2: "mb-2.5",
+  3: "mb-2",
+};
 
 function downloadAsset(a: Asset) {
   const el = document.createElement("a");
@@ -47,10 +83,14 @@ function OverlayButton({
 
 /**
  * Pinterest-style masonry of typed assets (images + auto-looping videos).
- * Tiles have hover actions (expand / download); expand opens a lightbox.
- * onAssetClick attaches the asset to the prompt (the "Add as reference"
- * action); onAssetInfo opens the details panel. A plain tile click opens
- * the lightbox and is handled here.
+ * Tiles have hover actions (favorite / info / download); a plain tile
+ * click opens the lightbox and is handled here. onAssetClick attaches
+ * the asset to the prompt (the "Add as reference" action); onAssetInfo
+ * opens the details panel.
+ *
+ * The heart is the one control that stays visible when it is ON — a
+ * favorite the user can only see by hovering isn't a favorite they can
+ * find. Everything else in the overlay appears on hover.
  */
 export function Masonry({
   assets,
@@ -58,6 +98,10 @@ export function Masonry({
   onAssetInfo,
   onAssetReuse,
   reusingAssetId,
+  onToggleFavorite,
+  showProjectName = false,
+  exitingIds,
+  gridSize = DEFAULT_GRID_SIZE,
   selectedIds,
   onToggleSelect,
 }: {
@@ -73,10 +117,27 @@ export function Masonry({
   onAssetReuse?: (asset: Asset) => void;
   /** Asset id whose re-use fetch is in flight, if any. */
   reusingAssetId?: string | null;
+  /** Heart / un-heart. Absent hides the control entirely. */
+  onToggleFavorite?: (asset: Asset) => void;
+  /** Cross-project grids (Favorites) label each tile with its project. */
+  showProjectName?: boolean;
+  /**
+   * Tiles on their way out. A CSS-columns masonry can't animate a
+   * reflow, but it can fade the departing tile before the parent drops
+   * it — enough to show the click landed rather than blinking a hole in
+   * the grid.
+   */
+  exitingIds?: string[];
+  /** Grid density; see `GRID_COLUMNS`. */
+  gridSize?: GridSize;
   selectedIds?: string[];
   onToggleSelect?: (id: string) => void;
 }) {
   const t = useTranslations("studio");
+  // Dense grids drop the button labels. The existing `sm:` breakpoint
+  // only knows the VIEWPORT, so on a wide screen at maximum density it
+  // would happily render "Add as reference" inside a 150px tile.
+  const compactTiles = gridSize >= 2;
   const [lightbox, setLightbox] = useState<Asset | null>(null);
   // Reset per open so a second, slower image doesn't flash the previous one.
   const [loaded, setLoaded] = useState(false);
@@ -87,13 +148,15 @@ export function Masonry({
 
   return (
     <>
-      <div className="columns-2 gap-3 md:columns-3 2xl:columns-4">
+      <div className={cn(GRID_COLUMNS[gridSize], GRID_GAP[gridSize])}>
         {assets.map((a) => (
           <div
             key={a.id}
             className={cn(
-              "group relative mb-3 break-inside-avoid overflow-hidden rounded-xl bg-surface-2",
+              "group relative break-inside-avoid overflow-hidden rounded-xl bg-surface-2 transition-all duration-200",
+              TILE_GAP[gridSize],
               selectedIds?.includes(a.id) && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+              exitingIds?.includes(a.id) && "pointer-events-none scale-95 opacity-0",
             )}
           >
             <button
@@ -139,18 +202,54 @@ export function Masonry({
               </button>
             )}
 
-            {a.type === "video" && (
-              // Shares the bottom-start corner with the "Add as reference"
-              // button, so it yields on hover — it is a decorative
-              // "this is a video" hint, and the hover state makes that
-              // obvious anyway.
-              <span className="pointer-events-none absolute start-2 bottom-2 grid size-6 place-items-center rounded-md bg-black/55 text-white opacity-100 backdrop-blur transition-opacity group-hover:opacity-0">
-                <Play weight="fill" className="size-3" />
+            {/* One badge for both hints — "this is a video" and, on the
+                cross-project Favorites grid, which project it came from.
+                They share the bottom-start corner with the action row, so
+                the badge yields on hover; both are orientation, not
+                controls, and the hover state makes the media type obvious
+                anyway. */}
+            {(a.type === "video" || (showProjectName && a.projectName)) && (
+              <span className="pointer-events-none absolute start-2 bottom-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-md bg-black/55 px-1.5 py-1 text-[10px] font-medium text-white opacity-100 backdrop-blur transition-opacity group-hover:opacity-0">
+                {a.type === "video" && <Play weight="fill" className="size-3 shrink-0" />}
+                {showProjectName && a.projectName && (
+                  <span className="truncate">{a.projectName}</span>
+                )}
               </span>
             )}
 
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-            <div className="absolute end-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+            {/* The heart sits outside the hover group on purpose: once an
+                asset is favorited the filled icon has to stay on screen,
+                or the grid gives the user no way to tell which of fifty
+                tiles they already saved. */}
+            {onToggleFavorite && (
+              <div
+                className={cn(
+                  "absolute end-2 top-2 z-10 transition-opacity",
+                  a.favorited ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                )}
+              >
+                <OverlayButton
+                  label={a.favorited ? t("unfavorite") : t("favorite")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFavorite(a);
+                  }}
+                >
+                  <Heart
+                    weight={a.favorited ? "fill" : "regular"}
+                    className={cn("size-4", a.favorited && "text-status-red")}
+                  />
+                </OverlayButton>
+              </div>
+            )}
+            <div
+              className={cn(
+                "absolute top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100",
+                // Shift clear of the always-on heart when there is one.
+                onToggleFavorite ? "end-12" : "end-2",
+              )}
+            >
               <OverlayButton
                 label={t("assetInfo")}
                 onClick={(e) => {
@@ -184,10 +283,15 @@ export function Masonry({
                       e.stopPropagation();
                       onAssetClick(a);
                     }}
-                    className="inline-flex h-9 min-w-0 items-center gap-1.5 rounded-lg bg-black/70 px-2.5 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85"
+                    className={cn(
+                      "inline-flex h-9 min-w-0 items-center gap-1.5 rounded-lg bg-black/70 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85",
+                      compactTiles ? "size-8 justify-center" : "px-2.5",
+                    )}
                   >
                     <ImageSquare className="size-3.5 shrink-0" />
-                    <span className="hidden truncate sm:inline">{t("addAsReference")}</span>
+                    {!compactTiles && (
+                      <span className="hidden truncate sm:inline">{t("addAsReference")}</span>
+                    )}
                   </button>
                 )}
                 {onAssetReuse && (
@@ -198,14 +302,19 @@ export function Masonry({
                       e.stopPropagation();
                       onAssetReuse(a);
                     }}
-                    className="inline-flex h-9 min-w-0 items-center gap-1.5 rounded-lg bg-black/70 px-2.5 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85 disabled:opacity-60"
+                    className={cn(
+                      "inline-flex h-9 min-w-0 items-center gap-1.5 rounded-lg bg-black/70 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85 disabled:opacity-60",
+                      compactTiles ? "size-8 justify-center" : "px-2.5",
+                    )}
                   >
                     {reusingAssetId === a.id ? (
                       <CircleNotch className="size-3.5 shrink-0 animate-spin" />
                     ) : (
                       <ArrowCounterClockwise className="size-3.5 shrink-0" />
                     )}
-                    <span className="hidden truncate sm:inline">{t("reuseShort")}</span>
+                    {!compactTiles && (
+                      <span className="hidden truncate sm:inline">{t("reuseShort")}</span>
+                    )}
                   </button>
                 )}
               </div>

@@ -28,6 +28,7 @@ import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
 import { cn } from "@/lib/utils";
 import { useModels } from "@/lib/use-models";
 import { useStudioMaybe, type PromptAttachment } from "@/components/studio/studio-context";
+import { DrawModal } from "@/components/generate/draw-modal";
 import { modelLogo } from "@/lib/model-logos";
 
 /* ------------------------------------------------------------------ atoms */
@@ -418,7 +419,20 @@ function AttachmentThumb({
 export function PromptBar({
   kind = "image",
   size = "default",
-}: { kind?: "image" | "video"; size?: "default" | "compact" } = {}) {
+  animatedPlaceholder = false,
+}: {
+  kind?: "image" | "video";
+  size?: "default" | "compact";
+  /**
+   * Cycle example prompts as a typewriter while the field is idle.
+   *
+   * This is marketing copy: on the homepage it shows a visitor what the
+   * product can do. Inside the studio the user already knows, and text
+   * that types and deletes itself next to the box they are trying to
+   * think in is a distraction — so the studio gets a plain, static hint.
+   */
+  animatedPlaceholder?: boolean;
+} = {}) {
   const t = useTranslations("promptbar");
   const compact = size === "compact";
   // Class overrides rather than conditional markup: `cn` runs tailwind-merge,
@@ -460,7 +474,7 @@ export function PromptBar({
   const [tier, setTier] = useState<string | null>(null);
   const [sound, setSound] = useState(false);
   const [count, setCount] = useState(1);
-  const [draw, setDraw] = useState(false);
+  const [drawOpen, setDrawOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -485,9 +499,9 @@ export function PromptBar({
     [model],
   );
 
-  // When the mode flips, fall back to that roster's first model and clear
-  // image-only toggles — Draw is hidden in video, so leaving it on would
-  // strand an invisible active state that reappears on the way back.
+  // When the mode flips, fall back to that roster's first model. Draw is
+  // image-only, so a modal left open would survive onto a surface whose
+  // button no longer exists.
   const firstRun = useRef(true);
   useEffect(() => {
     if (firstRun.current) {
@@ -495,7 +509,7 @@ export function PromptBar({
       return;
     }
     setModelKey(null);
-    setDraw(false);
+    setDrawOpen(false);
   }, [isVideo]);
 
   // Snap dependent knobs to the selected model's capabilities.
@@ -595,9 +609,10 @@ export function PromptBar({
     () => t.raw(isVideo ? "examplesVideo" : "examplesImage") as string[],
     [t, isVideo],
   );
-  // Animate only while the field is idle and empty; static hint once focused.
-  const animate = !focused && prompt.length === 0;
-  const animatedPlaceholder = useTypewriterPlaceholder(examples, animate);
+  // Animate only while the field is idle and empty; static hint once
+  // focused — and only at all where the caller asked for it.
+  const animate = animatedPlaceholder && !focused && prompt.length === 0;
+  const typedPlaceholder = useTypewriterPlaceholder(examples, animate);
 
   const selectedTier = model?.tiers?.find((x) => x.mode === tier) ?? null;
   const costPerJob = selectedTier?.costCredits ?? model?.costCredits ?? 0;
@@ -859,7 +874,7 @@ export function PromptBar({
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               maxLength={model?.maxPromptChars}
-              placeholder={animate ? animatedPlaceholder : basePlaceholder}
+              placeholder={animate ? typedPlaceholder : basePlaceholder}
               // Once the user types, direction follows the content (English → LTR,
               // Arabic → RTL) regardless of locale. While empty, the placeholder is
               // in the site language, so follow the locale direction.
@@ -1107,7 +1122,7 @@ export function PromptBar({
 
             {/* draw — image-only; there's no draw surface for video */}
             {!isVideo && (
-              <Pill active={draw} onClick={() => setDraw((d) => !d)} className={pillCls}>
+              <Pill active={drawOpen} onClick={() => setDrawOpen(true)} className={pillCls}>
                 <PencilSimple className="size-4" />
                 {t("draw")}
               </Pill>
@@ -1142,6 +1157,18 @@ export function PromptBar({
           {costPerJob > 0 && <span className="tabular-nums">{costPerJob * count}</span>}
         </button>
       </div>
+
+      {/* Draw. The annotated PNG goes back through `addFiles` rather than
+          straight to `attachFile`, so it obeys the same per-model
+          attachment ceiling as a dragged-in file. */}
+      {!isVideo && (
+        <DrawModal
+          open={drawOpen}
+          onClose={() => setDrawOpen(false)}
+          sources={readyAttachments.map((a) => ({ id: a.id, url: a.previewUrl }))}
+          onSave={(file) => addFiles([file])}
+        />
+      )}
     </div>
   );
 }

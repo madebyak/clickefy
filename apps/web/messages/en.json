@@ -69,6 +69,8 @@
     "searchPlaceholder": "Search templates…",
     "all": "All",
     "noResults": "No templates match your search.",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
     "backToGallery": "All templates",
     "notFound": "This template isn't available.",
     "noInputsNeeded": "No inputs needed — just hit run.",

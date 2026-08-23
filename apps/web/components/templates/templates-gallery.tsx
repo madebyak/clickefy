@@ -7,7 +7,7 @@
  * marketing shell (Navbar/Footer stay server-rendered).
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/navigation";
 import {
@@ -22,7 +22,7 @@ import {
 import type { CatalogTemplate } from "@clickfy/sdk";
 import type { MobileHomeBanner } from "@clickfy/types";
 import { Input } from "@/components/ui/input";
-import { useTemplateCategories, useTemplates } from "@/lib/use-templates";
+import { useTemplateCategories, useInfiniteTemplates } from "@/lib/use-templates";
 import { useBanners } from "@/lib/use-banners";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
@@ -166,13 +166,38 @@ export function TemplatesGallery() {
   // Debounce so each keystroke doesn't spawn a request / query key.
   const debouncedSearch = useDebouncedValue(search, 300);
   const categoriesQuery = useTemplateCategories();
-  const templatesQuery = useTemplates({ categoryId, search: debouncedSearch, kind });
+  const templatesQuery = useInfiniteTemplates({ categoryId, search: debouncedSearch, kind });
 
   const roots = useMemo(
     () => (categoriesQuery.data ?? []).filter((c) => !c.parentId),
     [categoriesQuery.data],
   );
-  const items = templatesQuery.data?.items ?? [];
+  const items = useMemo(
+    () => (templatesQuery.data?.pages ?? []).flatMap((p) => p.items),
+    [templatesQuery.data],
+  );
+
+  // Fetch the next page when a sentinel below the grid scrolls into
+  // view. `rootMargin` starts the request before it is visible, so the
+  // grid grows without the user ever reaching an empty bottom.
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = templatesQuery;
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && !isFetchingNextPage) void fetchNextPage();
+      },
+      { rootMargin: "600px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   return (
     <main className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6">
@@ -273,6 +298,37 @@ export function TemplatesGallery() {
             {items.map((tpl) => (
               <TemplateCard key={tpl.id} template={tpl} />
             ))}
+            {/* Placeholders for the page in flight, so the grid grows
+                rather than jumping when it lands. */}
+            {isFetchingNextPage &&
+              Array.from({ length: 5 }, (_, i) => (
+                <div
+                  key={`more-${i}`}
+                  className="aspect-[3/4] animate-pulse rounded-xl bg-surface-2"
+                />
+              ))}
+          </div>
+        )}
+
+        {/* Intersection sentinel — rendered only while more pages exist. */}
+        {hasNextPage && <div ref={sentinelRef} aria-hidden className="h-px w-full" />}
+
+        {/* The scroll trigger is an optimisation, not the only way down.
+            IntersectionObserver delivers nothing while the document is
+            hidden, and pure infinite scroll strands keyboard and
+            screen-reader users with no way to reach the rest of the
+            catalog at all. So the manual control is always present while
+            more pages exist; the observer just usually gets there first. */}
+        {hasNextPage && (
+          <div className="mt-8 flex justify-center">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={isFetchingNextPage}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-surface-1 px-5 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 disabled:opacity-60"
+            >
+              {isFetchingNextPage ? t("loadingMore") : t("loadMore")}
+            </button>
           </div>
         )}
     </main>

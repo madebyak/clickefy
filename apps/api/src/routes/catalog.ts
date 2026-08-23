@@ -22,6 +22,14 @@ import { homeBanners, savedTemplates, templates, users } from '@clickfy/db';
 import type { MediaRef, UserLocale } from '@clickfy/types';
 import type { MobileHomeBanner } from '@clickfy/types';
 
+import {
+  cursorForRow,
+  decodeCursor,
+  keysetAfter,
+  orderByFor,
+  selectionFor,
+  type SortKey,
+} from '../lib/catalog-cursor';
 import type { AppEnv } from '../types';
 import { resolveOwnMediaUrl, templateToMobileDTO } from '../lib/template-dto';
 import {
@@ -159,84 +167,121 @@ catalog.get(
   if (q.categoryId) filterParts.push(templateInCategoryTree(q.categoryId));
   if (q.featured !== undefined) filterParts.push(eq(templates.featured, q.featured));
 
-  // Cursor format depends on the active sort. We keep them disjoint so
-  // a cursor minted under one ordering can't accidentally page through
-  // the other. The cursor always carries a stable tiebreaker (`id`).
+  // ── Sort keys ────────────────────────────────────────────────
+  //
+  // Declared ONCE per mode. `orderByFor`, `keysetAfter` and the cursor
+  // encoding are all derived from the same list, so the ordering and
+  // the predicate that pages it cannot drift apart — which is exactly
+  // how `default` came to terminate after 73 of 271 rows, and how
+  // `popular` came to compare its id tiebreaker backwards.
+  //
+  // Every expression here is NOT NULL or COALESCE-wrapped; a NULL key
+  // makes the keyset predicate NULL and drops the row from every later
+  // page. See lib/catalog-cursor.ts.
   const useRecent = q.sort === 'recent';
   const usePopular = q.sort === 'popular';
-  const whereParts: SQL[] = [...filterParts];
 
-  if (q.cursor) {
-    if (useRecent) {
-      const [iso, idCursor] = q.cursor.split('::');
-      if (iso && idCursor) {
-        // `published_at` may be null for legacy rows; we treat null as
-        // "less than every real timestamp" by using `COALESCE` server-
-        // side in the comparison.
-        whereParts.push(
-          sql`(COALESCE(${templates.publishedAt}, ${templates.createdAt}), ${templates.id}::text) < (${iso}::timestamptz, ${idCursor})`,
-        );
-      }
-    } else if (usePopular) {
-      // Cursor: `runs:sortOrder:id`. We page by descending runs first,
-      // then ascending sortOrder, then id — same chain as orderBy below.
-      const [runsRaw, sortOrderRaw, idCursor] = q.cursor.split(':');
-      const runsCursor = Number.parseInt(runsRaw, 10);
-      const sortOrderCursor = Number.parseInt(sortOrderRaw, 10);
-      if (Number.isFinite(runsCursor) && Number.isFinite(sortOrderCursor) && idCursor) {
-        whereParts.push(
-          sql`(COALESCE((${templates.stats}->>'runs')::int, 0), -${templates.sortOrder}, ${templates.id}::text) < (${runsCursor}, -${sortOrderCursor}, ${idCursor})`,
-        );
-      }
-    } else {
-      const [sortOrderRaw, idCursor] = q.cursor.split(':');
-      const sortOrderCursor = Number.parseInt(sortOrderRaw, 10);
-      if (Number.isFinite(sortOrderCursor) && idCursor) {
-        whereParts.push(
-          sql`(${templates.sortOrder}, ${templates.id}::text) > (${sortOrderCursor}, ${idCursor})`,
-        );
-      }
-    }
-  }
+  // Publication instant, with the legacy-row fallback the old `recent`
+  // ordering already used. `created_at` is NOT NULL, so this is total.
+  const pubExpr = sql`COALESCE(${templates.publishedAt}, ${templates.createdAt})`;
+  const runsExpr = sql`COALESCE((${templates.stats}->>'runs')::int, 0)`;
 
   // When a search term is set we fold a small relevance score into the
   // default ordering: exact title match first (rank 0), then prefix
-  // match (rank 1), then everything else (rank 2). The remaining
-  // `featured / sortOrder` chain breaks ties so curated rails still
-  // surface their hand-picked top entry. We only apply this on the
-  // default sort — `recent` is explicitly recency-ordered and people
-  // expect that even when a query is set.
+  // match (rank 1), then everything else (rank 2). Only on the default
+  // sort — `recent` is explicitly recency-ordered and people expect
+  // that even when a query is set.
   const searchTerm = q.search?.trim() ?? '';
-  const useSearchRank = !useRecent && searchTerm.length > 0;
-  const searchRank = useSearchRank
-    ? sql<number>`CASE
+  const useSearchRank = !useRecent && !usePopular && searchTerm.length > 0;
+  const rankExpr = sql<number>`CASE
         WHEN LOWER(${templates.title}) = LOWER(${searchTerm}) THEN 0
         WHEN LOWER(${templates.title}) LIKE LOWER(${searchTerm + '%'}) THEN 1
         ELSE 2
-      END`
-    : null;
+      END`;
 
-  const orderBy = useRecent
-    ? [
-        desc(sql`COALESCE(${templates.publishedAt}, ${templates.createdAt})`),
-        desc(templates.id),
-      ]
+  const K = {
+    rank: {
+      expr: rankExpr,
+      dir: 'asc',
+      as: 'k_rank',
+      selectExpr: sql<number>`(${rankExpr})::int`,
+      bind: (v) => sql`${Number(v)}::int`,
+    },
+    runs: {
+      expr: runsExpr,
+      dir: 'desc',
+      as: 'k_runs',
+      selectExpr: sql<number>`(${runsExpr})::int`,
+      bind: (v) => sql`${Number(v)}::int`,
+    },
+    featured: {
+      expr: sql`${templates.featured}`,
+      dir: 'desc',
+      as: 'k_featured',
+      selectExpr: sql<boolean>`${templates.featured}`,
+      bind: (v) => sql`${Boolean(v)}::boolean`,
+    },
+    sortOrder: {
+      expr: sql`${templates.sortOrder}`,
+      dir: 'asc',
+      as: 'k_sort_order',
+      selectExpr: sql<number>`${templates.sortOrder}`,
+      bind: (v) => sql`${Number(v)}::int`,
+    },
+    // Newest first. This is the fix for the ordering itself: every
+    // published row carries sort_order = 0, so before this the only
+    // effective tiebreaker was `id` — a random uuid — and the catalog
+    // came back in arbitrary order with new templates buried anywhere.
+    //
+    // Selected as `::text` for full microsecond precision; a JS Date
+    // rounds to milliseconds and the resulting cursor would skip every
+    // row inside that sub-millisecond window.
+    published: {
+      expr: pubExpr,
+      dir: 'desc',
+      as: 'k_published',
+      selectExpr: sql<string>`(${pubExpr})::text`,
+      bind: (v) => sql`${String(v)}::timestamptz`,
+    },
+    // Final tiebreaker, purely so the ordering is total and the cursor
+    // deterministic. Compared AS UUID, matching the ORDER BY — the old
+    // predicate cast to text, which agrees only because this database
+    // happens to collate C.UTF-8.
+    id: {
+      expr: sql`${templates.id}`,
+      dir: 'asc',
+      as: 'k_id',
+      selectExpr: sql<string>`${templates.id}::text`,
+      bind: (v) => sql`${String(v)}::uuid`,
+    },
+  } satisfies Record<string, SortKey>;
+
+  // The curated chain, shared by `default` and by `popular`'s
+  // tiebreakers so a catalog with no engagement data still orders
+  // editorially rather than at random.
+  const curated: SortKey[] = [K.featured, K.sortOrder, K.published, K.id];
+
+  const sortKeys: SortKey[] = useRecent
+    ? [K.published, K.id]
     : usePopular
-      ? [
-          // Most-used first. Coerce the JSONB value through `text` ->
-          // `int` so a missing key (or null) sorts as 0 rather than
-          // breaking the comparison.
-          desc(sql`COALESCE((${templates.stats}->>'runs')::int, 0)`),
-          // Tiebreakers — same chain the curated default uses, so a
-          // brand-new catalog (all runs == 0) still produces an
-          // editorially sensible order instead of an arbitrary one.
-          desc(templates.featured),
-          asc(templates.sortOrder),
-          asc(templates.id),
-        ]
+      ? [K.runs, ...curated]
       : useSearchRank
-        ? [asc(searchRank!), desc(templates.featured), asc(templates.sortOrder), asc(templates.id)]
-        : [desc(templates.featured), asc(templates.sortOrder), asc(templates.id)];
+        ? [K.rank, ...curated]
+        : curated;
+
+  // The cursor is bound to the key SHAPE, not just the sort name, so a
+  // token minted with a search term active can never be replayed
+  // against the unranked ordering (or vice versa).
+  const cursorMode = `${q.sort ?? 'default'}${useSearchRank ? '+rank' : ''}`;
+
+  const whereParts: SQL[] = [...filterParts];
+  const cursorValues = decodeCursor(q.cursor, cursorMode, sortKeys.length);
+  if (cursorValues) {
+    const after = keysetAfter(sortKeys, cursorValues);
+    if (after) whereParts.push(after);
+  }
+
+  const orderBy = orderByFor(sortKeys);
 
   // Run the count in parallel with the page fetch when requested.
   // `filterParts` excludes the cursor predicate so we count the
@@ -249,9 +294,12 @@ catalog.get(
         .then((r) => r[0]?.count ?? 0)
     : Promise.resolve(undefined);
 
+  // Each sort key also selects its own value under `k_*`, so the cursor
+  // is minted from exactly what the database ordered by rather than
+  // from a JS re-derivation of it.
   const [rows, total] = await Promise.all([
     c.var.db
-      .select()
+      .select({ row: templates, ...selectionFor(sortKeys) })
       .from(templates)
       .where(and(...whereParts))
       .orderBy(...orderBy)
@@ -260,16 +308,11 @@ catalog.get(
   ]);
 
   const hasMore = rows.length > q.limit;
-  const page = hasMore ? rows.slice(0, q.limit) : rows;
-  const last = page[page.length - 1];
+  const pageRows = hasMore ? rows.slice(0, q.limit) : rows;
+  const page = pageRows.map((r) => r.row);
+  const last = pageRows[pageRows.length - 1];
   const nextCursor =
-    hasMore && last
-      ? useRecent
-        ? `${(last.publishedAt ?? last.createdAt).toISOString()}::${last.id}`
-        : usePopular
-          ? `${last.stats?.runs ?? 0}:${last.sortOrder}:${last.id}`
-          : `${last.sortOrder}:${last.id}`
-      : null;
+    hasMore && last ? cursorForRow(cursorMode, sortKeys, last as Record<string, unknown>) : null;
 
   const publicBaseUrl = new URL(c.req.url).origin;
   const locale = resolveLocale(q.locale);

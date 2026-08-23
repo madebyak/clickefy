@@ -69,6 +69,8 @@
     "searchPlaceholder": "ابحث في القوالب…",
     "all": "الكل",
     "noResults": "لا توجد قوالب مطابقة لبحثك.",
+    "loadMore": "تحميل المزيد",
+    "loadingMore": "جارٍ التحميل…",
     "backToGallery": "كل القوالب",
     "notFound": "هذا القالب غير متاح.",
     "noInputsNeeded": "لا يحتاج مدخلات — اضغط إنشاء مباشرة.",

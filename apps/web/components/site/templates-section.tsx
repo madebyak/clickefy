@@ -89,7 +89,9 @@ export function TemplatesSection() {
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
 
   const categoriesQuery = useTemplateCategories();
-  const templatesQuery = useTemplates({ categoryId });
+  // Ask for exactly what the rail renders. It was fetching 50 rows to
+  // show 15, over a public endpoint hit by every homepage visit.
+  const templatesQuery = useTemplates({ categoryId, limit: RAIL_SIZE });
 
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
   const roots = categories.filter((c) => !c.parentId);

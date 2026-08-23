@@ -139,7 +139,15 @@
     "faqCancelQ": "Can I cancel anytime?",
     "faqCancelA": "Yes. You keep your plan and its credits until the end of the period you have already paid for.",
     "faqMobileQ": "Why does the app cost more?",
-    "faqMobileA": "Apple and Google take a share of every purchase made inside an app. Subscribing here on the web avoids that, which is why the same plan costs less."
+    "faqMobileA": "Apple and Google take a share of every purchase made inside an app. Subscribing here on the web avoids that, which is why the same plan costs less.",
+    "checkoutFailed": "Could not start checkout. Please try again.",
+    "starting": "Starting…",
+    "manageSubscription": "Manage subscription",
+    "successTitle": "You're all set",
+    "successBody": "Your plan is active and your credits have been added.",
+    "successCta": "Start creating",
+    "successPending": "Confirming your payment…",
+    "successPendingBody": "This usually takes a couple of seconds."
   },
   "footer": {
     "create": "Create",

@@ -4,13 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useRouter } from "@/i18n/navigation";
 import { toast } from "sonner";
-import { Camera, Lightning, LockSimple, SignOut, Trash } from "@phosphor-icons/react";
-import { Button } from "@/components/ui/button";
+import { ArrowSquareOut, Camera, Lightning, LockSimple, SignOut, Trash } from "@phosphor-icons/react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getSDK } from "@/lib/api";
 import { useSession } from "@/lib/use-session";
 import { useCredits } from "@/lib/use-credits";
+import { useBillingActions } from "@/lib/use-billing-actions";
 import { cn } from "@/lib/utils";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -30,6 +31,8 @@ export default function SettingsPage() {
   const pathname = usePathname();
   const { user, plan, updateProfile, uploadAvatar, signOut } = useSession();
   const creditsQuery = useCredits();
+  const { openPortal, portalPending } = useBillingActions();
+  const tp = useTranslations("pricing");
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState("");
@@ -222,6 +225,31 @@ export default function SettingsPage() {
                 <span className="tabular-nums">{buckets.topup}</span>
               </div>
             </div>
+          )}
+
+          {/* Self-service billing. Stripe's portal handles cancellation,
+              plan changes, card updates and invoice history — all of which
+              would otherwise mean reimplementing proration and dunning UI
+              that Stripe already gets right.
+
+              Shown only to people who actually subscribed HERE. A store
+              subscriber cannot be managed from Stripe at all; sending them
+              to a portal that does not know about their subscription would
+              be worse than showing nothing. */}
+          {user.subscriptionPlatform === "stripe" && (
+            <button
+              type="button"
+              onClick={() => void openPortal()}
+              disabled={portalPending}
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "mt-4 w-full justify-between",
+                portalPending && "pointer-events-none opacity-60",
+              )}
+            >
+              {portalPending ? tp("starting") : tp("manageSubscription")}
+              <ArrowSquareOut className="size-4 rtl:-scale-x-100" />
+            </button>
           )}
         </Section>
 

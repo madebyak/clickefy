@@ -27,6 +27,7 @@ import { Check, ArrowUpRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { Link } from "@/i18n/navigation";
+import { useBillingActions } from "@/lib/use-billing-actions";
 import {
   purchaseState,
   usePlans,
@@ -71,6 +72,7 @@ export function PricingSection() {
   const t = useTranslations("pricing");
   const [interval, setInterval] = useState<PlanInterval>("month");
   const { data, isLoading } = usePlans();
+  const { startCheckout, pendingPlanId } = useBillingActions();
 
   const { canBuy, managedOn } = purchaseState(data?.current ?? null);
   const byTier = new Map<string, CataloguePlan>();
@@ -157,7 +159,14 @@ export function PricingSection() {
           // A tier with no storefront product cannot be bought yet. Better
           // an honest "coming soon" than a button that leads nowhere —
           // which is exactly what the old page did.
+          //
+          // But "not loaded yet" is NOT the same as "not for sale", and
+          // this component server-renders before the catalogue arrives.
+          // Without the isLoading guard every visitor sees "Coming soon"
+          // flash on plans they can actually buy — worse than a plain
+          // placeholder, because it actively tells them not to try.
           const sellable = !!plan && Object.keys(plan.products).length > 0;
+          const unknownYet = isLoading || !plan;
 
           return (
             <div
@@ -219,18 +228,30 @@ export function PricingSection() {
                   {t("manageInApp")}
                   <ArrowUpRight className="size-4 rtl:-scale-x-100" />
                 </span>
+              ) : unknownYet ? (
+                <span
+                  aria-hidden
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "w-full cursor-default opacity-40",
+                  )}
+                >
+                  &nbsp;
+                </span>
               ) : sellable ? (
                 <button
                   type="button"
-                  // Checkout lands here once the Stripe keys exist; until
-                  // then the button is deliberately absent rather than
-                  // pointing at a dead anchor.
+                  disabled={pendingPlanId !== null}
+                  onClick={() => startCheckout(plan!.id)}
                   className={cn(
                     buttonVariants({ variant: highlighted ? "primary" : "outline", size: "sm" }),
                     "w-full",
+                    pendingPlanId !== null && "pointer-events-none opacity-60",
                   )}
                 >
-                  {t("choosePlan", { plan: t(`${tier}Name`) })}
+                  {pendingPlanId === plan!.id
+                    ? t("starting")
+                    : t("choosePlan", { plan: t(`${tier}Name`) })}
                 </button>
               ) : (
                 <span

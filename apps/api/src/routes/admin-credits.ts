@@ -216,6 +216,10 @@ adminCreditsRoute.get('/models', async (c) => {
       displayName: providerModels.displayName,
       status: providerModels.status,
       costCredits: providerModels.costCredits,
+      // Needed by the template editor's cost summary: without it the
+      // admin could only ever show the base price, which disagrees with
+      // what publish actually charges for any tiered stage.
+      tierPricing: providerModels.tierPricing,
       costPerCallUsd: providerModels.costPerCallUsd,
       updatedAt: providerModels.updatedAt,
     })

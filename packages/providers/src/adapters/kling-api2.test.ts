@@ -116,6 +116,42 @@ describe('executeKlingApi2 — request shape', () => {
     expect((on.calls[0]!.body.settings as Record<string, unknown>).audio).toBe('native');
   });
 
+  it("uses O1's `original` audio value when the model asks for it", async () => {
+    // O1's enum is `original | off`; it rejects `native`. The compiler
+    // copies the right value onto the request from the capability.
+    const { calls } = stubFetch(OK_CREATE);
+    await executeKlingApi2(req({ soundEnabled: true, soundOnValue: 'original' }), ENV);
+    expect((calls[0]!.body.settings as Record<string, unknown>).audio).toBe('original');
+  });
+
+  it('sends Elements as element content parts keyed by name', async () => {
+    // Elements carry no bytes — only the id Kling issued. Their `id` is
+    // the NAME, because that is the token the prompt uses (`@Zhang`),
+    // where images bind to `@image_N`.
+    const { calls } = stubFetch(OK_CREATE);
+    await executeKlingApi2(
+      req({
+        variant: 'image2video',
+        startImage: {
+          index: 1, role: 'subject', roleTag: 'USER_INPUT', displayLabel: '',
+          mimeType: 'image/png', url: 'https://cdn/a.png',
+        },
+        elements: [{ elementId: '901', name: 'Zhang' }],
+      }),
+      ENV,
+    );
+    const contents = calls[0]!.body.contents as Array<Record<string, unknown>>;
+    expect(contents).toContainEqual({ type: 'element', element_id: '901', id: 'Zhang' });
+  });
+
+  it('always pins multi_shot off', async () => {
+    // Upstream defaults it to TRUE on the 3.0 family, so a prompt that
+    // merely contains semicolons can come back as several cuts.
+    const { calls } = stubFetch(OK_CREATE);
+    await executeKlingApi2(req({}), ENV);
+    expect((calls[0]!.body.settings as Record<string, unknown>).multi_shot).toBe(false);
+  });
+
   it('maps frames and references onto typed content parts', async () => {
     const { calls } = stubFetch(OK_CREATE);
     await executeKlingApi2(

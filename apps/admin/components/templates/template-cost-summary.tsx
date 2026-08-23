@@ -22,6 +22,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { fetchModels } from '@/lib/api/credits';
+import { resolveCreditCost } from '@clickfy/types';
+import { findCapabilities } from '@clickfy/providers';
 import type { TokenGetter } from '@/lib/api';
 
 interface StageLike {
@@ -29,6 +31,12 @@ interface StageLike {
   order?: number;
   provider: string;
   model: string;
+  /**
+   * Needed to price the stage the way the server does: `mode` (or the
+   * legacy Seedance `resolution`) selects the tier, and `duration`
+   * scales it on per-second models.
+   */
+  config?: Record<string, unknown>;
 }
 
 interface TemplateCostSummaryProps {
@@ -51,9 +59,12 @@ export function TemplateCostSummary({
   });
 
   const priceByKey = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, { base: number; tiers: Record<string, number> | null }>();
     for (const m of models ?? []) {
-      map.set(`${m.provider}/${m.modelKey}`, m.costCredits);
+      map.set(`${m.provider}/${m.modelKey}`, {
+        base: m.costCredits,
+        tiers: m.tierPricing ?? null,
+      });
     }
     return map;
   }, [models]);
@@ -69,9 +80,32 @@ export function TemplateCostSummary({
     const items = orderedStages.map((s) => {
       const key = `${s.provider}/${s.model}`;
       const price = priceByKey.get(key);
-      const cost = price ?? 0;
       const isMissing = price === undefined;
       if (isMissing) missing += 1;
+
+      // Mirrors `computeTemplateCost` on the server, through the same
+      // shared resolver — this panel used to show the flat base price
+      // and so disagreed with what publishing actually charged for any
+      // stage that picked a tier or a non-default duration.
+      const cfg = (s.config ?? {}) as Record<string, unknown>;
+      const tierKey =
+        typeof cfg.mode === 'string'
+          ? cfg.mode
+          : typeof cfg.resolution === 'string'
+            ? cfg.resolution
+            : undefined;
+      const caps = findCapabilities(s.model);
+      const refDuration = caps?.kind === 'video' ? caps.duration?.default : undefined;
+
+      const cost = price
+        ? resolveCreditCost({
+            baseCredits: price.base,
+            tierPricing: price.tiers,
+            mode: tierKey,
+            duration: typeof cfg.duration === 'number' ? cfg.duration : refDuration,
+            defaultDuration: refDuration,
+          })
+        : 0;
       total += cost;
       return { provider: s.provider, model: s.model, cost, missing: isMissing };
     });

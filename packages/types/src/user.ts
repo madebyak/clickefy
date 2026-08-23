@@ -162,6 +162,18 @@ export interface MeResponse {
   topupSpendable: boolean;
   subscriptionRenewsAt: string | null;
   subscriptionExpiresAt: string | null;
+  /**
+   * WHERE the subscription lives: 'stripe' | 'app_store' | 'play_store',
+   * or null when there isn't one.
+   *
+   * Neither Apple nor Stripe can see the other's subscriptions, so this is
+   * the only way a client knows whether it may sell an upgrade itself or
+   * must send the user back to the platform that owns the subscription —
+   * which is what stops someone paying twice for the same plan.
+   */
+  subscriptionPlatform: 'stripe' | 'app_store' | 'play_store' | null;
+  /** The exact product they are on, so a paywall can mark it as current. */
+  subscriptionProductId: string | null;
   preferences: UserPreferences;
   createdAt: string;
   lastSeenAt: string;

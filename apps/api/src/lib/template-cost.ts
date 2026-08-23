@@ -17,6 +17,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 
 import { providerModels, type Db } from '@clickfy/db';
+import { resolveCreditCost } from '@clickfy/types';
+import { findCapabilities } from '@clickfy/providers';
 
 interface StageRef {
   provider: 'gemini' | 'kling' | 'veo' | 'seedance' | 'openai' | string;
@@ -107,7 +109,25 @@ export async function computeTemplateCost(
         : typeof cfg.resolution === 'string'
           ? cfg.resolution
           : undefined;
-    const cost = found ? ((tierKey ? found.tiers?.[tierKey] : undefined) ?? found.base) : 0;
+    // Duration scales the charge, exactly as it does on the create flow.
+    // Kling and Seedance bill per SECOND, and template costing used to
+    // ignore that entirely: a 10s stage was billed at the 5s price, so
+    // 31 of 101 published video stages were under-charged, most by 2x.
+    // The reference length comes from the model registry rather than the
+    // stage, because it is what the price was quoted at.
+    const caps = findCapabilities(s.model);
+    const refDuration = caps?.kind === 'video' ? caps.duration?.default : undefined;
+    const cfgDuration = typeof cfg.duration === 'number' ? cfg.duration : undefined;
+
+    const cost = found
+      ? resolveCreditCost({
+          baseCredits: found.base,
+          tierPricing: found.tiers,
+          mode: tierKey,
+          duration: cfgDuration ?? refDuration,
+          defaultDuration: refDuration,
+        })
+      : 0;
     const missing = found === undefined;
     if (missing) missingCount += 1;
     total += cost;

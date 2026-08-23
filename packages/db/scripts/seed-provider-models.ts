@@ -103,11 +103,27 @@ const COST_PER_CALL_USD: Record<string, string> = {
   // 'medium' 1024x1024 rate (low $0.006, high $0.211).
   'openai/gpt-image-2': '0.0530',
 
-  // Kling video — Kuaishou published prices for 5s 1080p output.
-  'kling/kling-v2-5-turbo': '0.3500',
-  'kling/kling-v2-6': '0.4900',
-  'kling/kling-v2-master': '1.4000',
-  'kling/kling-v3-omni': '0.4900',
+  // Kling video — Kuaishou's own rate card
+  // (kling.ai/document-api/pricing/base/video, read 2026-08-23), which
+  // bills PER SECOND. Each figure below is $/s at the model's DEFAULT
+  // tier × its default 5s clip, matching how the Seedance rows are
+  // quoted. Native audio costs more per second on the models that
+  // offer it (3.0 @1080p: $0.112 → $0.168) and is not reflected here.
+  //
+  // The previous values were a mix of stale and 1080p-only figures —
+  // 2.6 and 2.5 Turbo were listed at $0.49/$0.35 when their default
+  // 720p output is $0.21, and kling-v3 was absent entirely, so it fell
+  // through to the '0.0000' default.
+  //
+  // Operator-facing reference only — what a user pays is
+  // `cost_credits` / `tier_pricing`.
+  'kling/kling-v2-5-turbo': '0.2100', // 720p $0.042/s × 5s
+  'kling/kling-v2-6': '0.2100', // 720p $0.042/s × 5s
+  'kling/kling-v2-master': '1.4000', // 1080p-only $0.28/s × 5s
+  'kling/kling-v3': '0.5600', // 1080p $0.112/s × 5s (default tier: pro)
+  'kling/kling-v3-omni': '0.5600', // 1080p $0.112/s × 5s (default tier: pro)
+  'kling/kling-v3-turbo': '0.5600', // 720p $0.112/s × 5s (audio-inclusive rate)
+  'kling/kling-o1': '0.4200', // 720p $0.084/s × 5s
 
   // Seedream image (same ModelArk account and key as Seedance video).
   // Flat per image across every resolution tier — only 5.0 pro, which we

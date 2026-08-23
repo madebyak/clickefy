@@ -40,6 +40,7 @@ import {
   uploadsUserRoute,
 } from './routes/uploads';
 import { clerkWebhookRoute } from './routes/webhooks/clerk';
+import { stripeWebhookRoute } from './routes/webhooks/stripe';
 import { revenuecatWebhookRoute } from './routes/webhooks/revenuecat';
 import type { AppEnv, Bindings } from './types';
 
@@ -114,6 +115,7 @@ app.route('/v1/admin/uploads', uploadsAdminRoute);
 app.route('/v1/outputs', outputsRoute);
 app.route('/v1/webhooks/clerk', clerkWebhookRoute);
 app.route('/v1/webhooks/revenuecat', revenuecatWebhookRoute);
+app.route('/v1/webhooks/stripe', stripeWebhookRoute);
 
 app.notFound((c) =>
   c.json({ error: { code: 'not_found', message: `Route ${c.req.path} not found` } }, 404),

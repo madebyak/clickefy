@@ -39,6 +39,21 @@ export interface Bindings {
 
   // ─── Payments ─────────────────────────────────────────────────
   REVENUECAT_WEBHOOK_SECRET?: string;
+  /**
+   * Stripe secret key (`sk_…` or a restricted `rk_…`). SERVER ONLY — the
+   * web app gets the publishable key and nothing more.
+   *
+   *   local: apps/api/.dev.vars
+   *   prod:  pnpm --filter @clickfy/api exec wrangler secret put STRIPE_SECRET_KEY
+   */
+  STRIPE_SECRET_KEY?: string;
+  /**
+   * Signing secret for the Stripe webhook endpoint (`whsec_…`). Locally
+   * this is whatever `stripe listen` prints; in production it is the one
+   * shown when the endpoint is registered in the Stripe dashboard. They
+   * are DIFFERENT values — a local secret will reject live deliveries.
+   */
+  STRIPE_WEBHOOK_SECRET?: string;
   /** DeepSeek API key for admin EN→AR content translation. */
   DEEPSEEK_API_KEY?: string;
   /**

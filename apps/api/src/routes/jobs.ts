@@ -35,6 +35,7 @@ import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 
 import { jobs, projects, providerModels, templates } from '@clickfy/db';
+import { resolveCreditCost } from '@clickfy/types';
 import {
   aspectRatiosFor,
   CREATE_END_FRAME_KEY,
@@ -455,17 +456,20 @@ jobsRoute.post(
       );
     }
 
-    const baseCost = (mode ? priceRow?.tierPricing?.[mode] : undefined) ?? priceRow?.costCredits ?? 0;
-
-    // Video providers bill per SECOND of output, so a flat per-job price
-    // only breaks even at one length. Prices are quoted at the model's
-    // default duration; anything longer scales linearly from there.
-    // Without this a 15s job costs us 3x a 5s one and bills the same.
+    // Tier + duration, via the shared resolver in `@clickfy/types`. The
+    // composer on web and mobile calls the SAME function with the same
+    // inputs, so the figure on the Generate button is the figure that
+    // gets charged — they disagreed whenever duration moved off the
+    // model's default.
     const refDuration = caps.kind === 'video' ? caps.duration?.default : undefined;
-    const chosenDuration = typeof body.duration === 'number' ? body.duration : refDuration;
-    const durationFactor =
-      refDuration && chosenDuration && refDuration > 0 ? chosenDuration / refDuration : 1;
-    const cost = Math.ceil(baseCost * durationFactor);
+    const baseCost = (mode ? priceRow?.tierPricing?.[mode] : undefined) ?? priceRow?.costCredits ?? 0;
+    const cost = resolveCreditCost({
+      baseCredits: priceRow?.costCredits ?? 0,
+      tierPricing: priceRow?.tierPricing ?? null,
+      mode,
+      duration: typeof body.duration === 'number' ? body.duration : refDuration,
+      defaultDuration: refDuration,
+    });
     if (!priceRow || baseCost <= 0 || cost <= 0) {
       return c.json(
         { error: { code: 'model_unpriced', message: 'That model is not available right now.' } },

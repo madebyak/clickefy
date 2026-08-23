@@ -329,6 +329,41 @@ export interface SeedanceFrameSlots {
   lastFrame?: SeedanceSlotBinding;
 }
 
+/**
+ * A Kling Element referenced by a stage.
+ *
+ * Elements are NOT reference images. They are persistent entities in a
+ * Kling-side library, created asynchronously from a frontal photo plus
+ * 1-3 further angles, and addressed from the prompt by name (`@Zhang`).
+ * A stage stores the id Kling issued plus the name, because the name is
+ * what the prompt token must match and re-fetching it at compile time
+ * would mean a network call inside the compiler.
+ *
+ * `elementId` is a string: Kling's create/query docs type it as a number
+ * while the generation docs type it as a string, so we keep the wider of
+ * the two and send back exactly what they gave us.
+ */
+export interface KlingElementRef {
+  elementId: string;
+  /** Element name, matched by the `@name` token in the prompt. */
+  name: string;
+}
+
+/**
+ * Provider-neutral aliases for the two types above.
+ *
+ * The binding and slot shapes were written for Seedance but describe
+ * something every frame-capable provider needs: "which image fills the
+ * first frame, and which fills the last". Kling now uses them too.
+ *
+ * The `Seedance*` names are kept because they are written into every
+ * stored `stage.config` and every `template_versions.snapshot` — a
+ * rename would be a data migration for a cosmetic gain. New code should
+ * prefer these aliases; both refer to the same structure.
+ */
+export type FrameSlotBinding = SeedanceSlotBinding;
+export type FrameSlots = SeedanceFrameSlots;
+
 /** One slot in the `reference` mode. */
 export interface SeedanceReferenceSlot {
   id: string;

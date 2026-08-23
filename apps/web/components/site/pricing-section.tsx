@@ -20,13 +20,16 @@
  * twice.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 import { Check, ArrowUpRight } from "@phosphor-icons/react";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
-import { Link } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
+import { useBillingActions } from "@/lib/use-billing-actions";
 import {
   purchaseState,
   usePlans,
@@ -67,10 +70,46 @@ function Feature({ label }: { label: string }) {
   );
 }
 
+/**
+ * Resume a checkout that was interrupted by sign-up.
+ *
+ * Clicking a plan while signed out sends the visitor to Clerk with the
+ * plan id in `redirect_url`, so they come back here as `/?plan=<id>`.
+ * Without this hook that parameter is inert: they would arrive at a
+ * pricing page that has forgotten which plan they chose and have to find
+ * it and click again, having already declared their intent once.
+ *
+ * The parameter is stripped BEFORE the redirect fires. If Stripe or our
+ * API rejects the checkout, or they press back, a lingering `?plan=`
+ * would re-trigger this on every render — an endless bounce out to a
+ * checkout they cannot complete. Firing once, from a URL that no longer
+ * says to, is the safe shape. The ref guards against React 18 double
+ * effects in development.
+ *
+ * The router is the locale-aware one — plain `next/navigation` would drop
+ * the `/ar` prefix and flip an Arabic visitor to English mid-purchase.
+ */
+function useResumeCheckout(startCheckout: (planId: string) => void, ready: boolean) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const params = useSearchParams();
+  const router = useRouter();
+  const fired = useRef(false);
+
+  useEffect(() => {
+    const planId = params.get("plan");
+    if (!planId || fired.current || !ready || !isLoaded || !isSignedIn) return;
+    fired.current = true;
+    router.replace("/#pricing");
+    startCheckout(planId);
+  }, [params, ready, isLoaded, isSignedIn, router, startCheckout]);
+}
+
 export function PricingSection() {
   const t = useTranslations("pricing");
   const [interval, setInterval] = useState<PlanInterval>("month");
   const { data, isLoading } = usePlans();
+  const { startCheckout, pendingPlanId } = useBillingActions();
+  useResumeCheckout(startCheckout, !isLoading);
 
   const { canBuy, managedOn } = purchaseState(data?.current ?? null);
   const byTier = new Map<string, CataloguePlan>();
@@ -157,7 +196,14 @@ export function PricingSection() {
           // A tier with no storefront product cannot be bought yet. Better
           // an honest "coming soon" than a button that leads nowhere —
           // which is exactly what the old page did.
+          //
+          // But "not loaded yet" is NOT the same as "not for sale", and
+          // this component server-renders before the catalogue arrives.
+          // Without the isLoading guard every visitor sees "Coming soon"
+          // flash on plans they can actually buy — worse than a plain
+          // placeholder, because it actively tells them not to try.
           const sellable = !!plan && Object.keys(plan.products).length > 0;
+          const unknownYet = isLoading || !plan;
 
           return (
             <div
@@ -219,18 +265,30 @@ export function PricingSection() {
                   {t("manageInApp")}
                   <ArrowUpRight className="size-4 rtl:-scale-x-100" />
                 </span>
+              ) : unknownYet ? (
+                <span
+                  aria-hidden
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "w-full cursor-default opacity-40",
+                  )}
+                >
+                  &nbsp;
+                </span>
               ) : sellable ? (
                 <button
                   type="button"
-                  // Checkout lands here once the Stripe keys exist; until
-                  // then the button is deliberately absent rather than
-                  // pointing at a dead anchor.
+                  disabled={pendingPlanId !== null}
+                  onClick={() => startCheckout(plan!.id)}
                   className={cn(
                     buttonVariants({ variant: highlighted ? "primary" : "outline", size: "sm" }),
                     "w-full",
+                    pendingPlanId !== null && "pointer-events-none opacity-60",
                   )}
                 >
-                  {t("choosePlan", { plan: t(`${tier}Name`) })}
+                  {pendingPlanId === plan!.id
+                    ? t("starting")
+                    : t("choosePlan", { plan: t(`${tier}Name`) })}
                 </button>
               ) : (
                 <span

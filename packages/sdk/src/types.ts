@@ -351,6 +351,12 @@ export interface GenModel {
   aspectRatios: string[];
   /** Video durations in seconds; empty for image models. */
   durations: number[];
+  /**
+   * The clip length `costCredits` is quoted at. Video models bill per
+   * second, so the composer scales the displayed price by
+   * `chosen / defaultDuration` — see `resolveCreditCost`.
+   */
+  defaultDuration?: number;
   /** Total input-image budget. */
   maxImages: number;
   attachments: CreateAttachmentMode;

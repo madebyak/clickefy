@@ -40,7 +40,7 @@ importers:
         version: 3.2.2(react@19.2.4)
       '@google/genai':
         specifier: ^1.48.0
-        version: 1.52.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+        version: 1.52.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       '@tanstack/react-query':
         specifier: ^5.96.1
         version: 5.100.9(react@19.2.4)
@@ -101,7 +101,7 @@ importers:
         version: 9.39.4(jiti@2.7.0)
       eslint-config-next:
         specifier: 16.2.2
-        version: 16.2.2(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
+        version: 16.2.2(@typescript-eslint/parser@8.59.2(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       tailwindcss:
         specifier: ^4
         version: 4.3.0
@@ -135,6 +135,9 @@ importers:
       hono:
         specifier: ^4.6.14
         version: 4.12.18
+      stripe:
+        specifier: ^22.5.0
+        version: 22.5.0(@types/node@25.9.5)
       svix:
         specifier: ^1.93.0
         version: 1.93.0
@@ -452,7 +455,7 @@ importers:
         version: 16.2.2(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       next-intl:
         specifier: ^4.13.2
-        version: 4.13.2(@swc/helpers@0.5.21)(next@16.2.2(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
+        version: 4.13.2(@swc/helpers@0.5.21)(next@16.2.2(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -495,7 +498,7 @@ importers:
         version: 9.39.4(jiti@2.7.0)
       eslint-config-next:
         specifier: 16.2.2
-        version: 16.2.2(@typescript-eslint/parser@8.59.2(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
+        version: 16.2.2(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       png-to-ico:
         specifier: ^3.0.2
         version: 3.0.2
@@ -536,6 +539,9 @@ importers:
       drizzle-kit:
         specifier: ^0.30.1
         version: 0.30.6
+      stripe:
+        specifier: ^22.5.0
+        version: 22.5.0(@types/node@25.9.5)
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -5116,10 +5122,12 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@zxcvbn-ts/core@3.0.4':
     resolution: {integrity: sha512-aQeiT0F09FuJaAqNrxynlAwZ2mW/1MdXakKWNmGM1Qp/VaY6CnB/GfnMS2T8gB2231Esp1/maCWd8vTG4OuShw==}
@@ -5955,6 +5963,7 @@ packages:
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   crypto-random-string@2.0.0:
     resolution: {integrity: sha512-v1plID3y9r/lPhviJ1wrXpLeyUIGAZ2SHNYTEapm7/8A9nLPoyvVp3RK/EPFqn5kEznyWgYZNsRtYYIWbuG8KA==}
@@ -6622,6 +6631,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -10039,6 +10049,15 @@ packages:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
 
+  stripe@22.5.0:
+    resolution: {integrity: sha512-QVwMwriC0bbySx6R4dpsvJ0W//GojC1kwWVS6rPSoVqDUIZX4Hy3TaUrd2AZeXEAaKbfWIjQjvo3vKAReHZ0vQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+
   structured-headers@0.4.1:
     resolution: {integrity: sha512-0MP/Cxx5SzeeZ10p/bZI0S6MpgD+yxAhi1BOQ34jgnMXsCq3j1t6tQnZu+KdlL7dvJTLT3g9xN8tl10TqgFMcg==}
 
@@ -12981,7 +13000,7 @@ snapshots:
       metro-babel-transformer: 0.83.3
       metro-cache: 0.83.3
       metro-cache-key: 0.83.3
-      metro-config: 0.83.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      metro-config: 0.83.3(bufferutil@4.1.0)
       metro-core: 0.83.3
       metro-file-map: 0.83.3
       metro-minify-terser: 0.83.3
@@ -13278,6 +13297,19 @@ snapshots:
       '@formatjs/fast-memoize': 3.1.7
 
   '@google-cloud/precise-date@4.0.0': {}
+
+  '@google/genai@1.52.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
+    dependencies:
+      google-auth-library: 10.6.2
+      p-retry: 4.6.2
+      protobufjs: 7.5.7
+      ws: 8.20.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+    optionalDependencies:
+      '@modelcontextprotocol/sdk': 1.29.0(zod@3.25.76)
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
 
   '@google/genai@1.52.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
     dependencies:
@@ -14909,7 +14941,7 @@ snapshots:
       debug: 4.4.3(supports-color@10.2.2)
       invariant: 2.2.4
       metro: 0.83.7(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      metro-config: 0.83.7(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      metro-config: 0.83.7(bufferutil@4.1.0)
       metro-core: 0.83.7
       semver: 7.8.0
     transitivePeerDependencies:
@@ -20225,42 +20257,12 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  metro-config@0.83.3(bufferutil@4.1.0)(utf-8-validate@6.0.6):
-    dependencies:
-      connect: 3.7.0
-      flow-enums-runtime: 0.0.6
-      jest-validate: 29.7.0
-      metro: 0.83.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      metro-cache: 0.83.3
-      metro-core: 0.83.3
-      metro-runtime: 0.83.3
-      yaml: 2.8.4
-    transitivePeerDependencies:
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
   metro-config@0.83.7(bufferutil@4.1.0):
     dependencies:
       connect: 3.7.0
       flow-enums-runtime: 0.0.6
       jest-validate: 29.7.0
       metro: 0.83.7(bufferutil@4.1.0)
-      metro-cache: 0.83.7
-      metro-core: 0.83.7
-      metro-runtime: 0.83.7
-      yaml: 2.8.4
-    transitivePeerDependencies:
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
-  metro-config@0.83.7(bufferutil@4.1.0)(utf-8-validate@6.0.6):
-    dependencies:
-      connect: 3.7.0
-      flow-enums-runtime: 0.0.6
-      jest-validate: 29.7.0
-      metro: 0.83.7(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       metro-cache: 0.83.7
       metro-core: 0.83.7
       metro-runtime: 0.83.7
@@ -20564,7 +20566,7 @@ snapshots:
       metro-babel-transformer: 0.83.3
       metro-cache: 0.83.3
       metro-cache-key: 0.83.3
-      metro-config: 0.83.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      metro-config: 0.83.3(bufferutil@4.1.0)
       metro-core: 0.83.3
       metro-file-map: 0.83.3
       metro-resolver: 0.83.3
@@ -20656,7 +20658,7 @@ snapshots:
       metro-babel-transformer: 0.83.7
       metro-cache: 0.83.7
       metro-cache-key: 0.83.7
-      metro-config: 0.83.7(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      metro-config: 0.83.7(bufferutil@4.1.0)
       metro-core: 0.83.7
       metro-file-map: 0.83.7
       metro-resolver: 0.83.7
@@ -20883,7 +20885,7 @@ snapshots:
 
   next-intl-swc-plugin-extractor@4.13.2: {}
 
-  next-intl@4.13.2(@swc/helpers@0.5.21)(next@16.2.2(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(typescript@5.9.3):
+  next-intl@4.13.2(@swc/helpers@0.5.21)(next@16.2.2(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(typescript@5.9.3):
     dependencies:
       '@formatjs/intl-localematcher': 0.8.12
       '@parcel/watcher': 2.5.6
@@ -22714,6 +22716,10 @@ snapshots:
   strip-json-comments@2.0.1: {}
 
   strip-json-comments@3.1.1: {}
+
+  stripe@22.5.0(@types/node@25.9.5):
+    optionalDependencies:
+      '@types/node': 25.9.5
 
   structured-headers@0.4.1: {}
 

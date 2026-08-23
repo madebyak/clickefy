@@ -23,6 +23,7 @@ import {
   FilmStrip,
   ImagesSquare,
 } from "@phosphor-icons/react";
+import { resolveCreditCost } from "@clickfy/types";
 import type { GenModel } from "@clickfy/sdk";
 import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
 import { cn } from "@/lib/utils";
@@ -615,7 +616,21 @@ export function PromptBar({
   const typedPlaceholder = useTypewriterPlaceholder(examples, animate);
 
   const selectedTier = model?.tiers?.find((x) => x.mode === tier) ?? null;
-  const costPerJob = selectedTier?.costCredits ?? model?.costCredits ?? 0;
+  // Same resolver the server bills with, so the number on the button is
+  // the number charged. Showing only the tier price under-stated every
+  // clip longer than the model's default — a 15s Kling 3.0 job read
+  // "168" and cost 504.
+  const costPerJob = model
+    ? resolveCreditCost({
+        baseCredits: model.costCredits,
+        tierPricing: model.tiers
+          ? Object.fromEntries(model.tiers.map((t) => [t.mode, t.costCredits]))
+          : null,
+        mode: tier,
+        duration,
+        defaultDuration: model.defaultDuration,
+      })
+    : 0;
 
   const readyAttachments = attachments.filter((a) => a.status === "ready");
   const uploadsInFlight = attachments.some((a) => a.status === "uploading");

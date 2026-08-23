@@ -12,6 +12,7 @@
 import { Button, Chip, HStack, Pressable, Stack, Switch, Text, useTheme } from '@clickfy/ui';
 import { useUser } from '@clerk/expo';
 import { JobSubmissionError, type CreateGenerationInput, type GenModel } from '@clickfy/sdk';
+import { resolveCreditCost } from '@clickfy/types';
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -160,10 +161,21 @@ export default function CreateScreen() {
     return true;
   }, [selectedModel, submitting, busy, prompt, startFrame]);
 
-  // Cost follows the selected quality tier when the model has tiers
-  // (e.g. Kling 720p/1080p/4K are priced differently).
-  const selectedTier = selectedModel?.tiers?.find((t) => t.mode === quality);
-  const cost = selectedTier?.costCredits ?? selectedModel?.costCredits ?? 0;
+  // Cost follows BOTH the quality tier and the clip length — Kling and
+  // Seedance bill per second, so a 10s clip costs twice a 5s one. Uses
+  // the same resolver the server bills with; showing only the tier price
+  // under-stated every duration above the model's default.
+  const cost = selectedModel
+    ? resolveCreditCost({
+        baseCredits: selectedModel.costCredits,
+        tierPricing: selectedModel.tiers
+          ? Object.fromEntries(selectedModel.tiers.map((t) => [t.mode, t.costCredits]))
+          : null,
+        mode: quality,
+        duration: selectedModel.kind === 'video' ? duration : undefined,
+        defaultDuration: selectedModel.defaultDuration,
+      })
+    : 0;
   const promptCap = selectedModel?.maxPromptChars ?? 2500;
 
   const runGeneration = async () => {

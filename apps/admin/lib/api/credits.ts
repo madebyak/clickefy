@@ -55,6 +55,8 @@ export interface ProviderModelRow {
   displayName: string;
   status: 'active' | 'preview' | 'deprecated';
   costCredits: number;
+  /** Absolute credits per tier key; null for flat-priced models. */
+  tierPricing: Record<string, number> | null;
   costPerCallUsd: string;
   updatedAt: string;
 }

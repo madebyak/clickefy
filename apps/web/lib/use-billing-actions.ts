@@ -74,7 +74,11 @@ export function useBillingActions() {
       const token = await getToken();
       const result = await post<{ url: string }>("/v1/billing/checkout", token, {
         planId,
-        successPath: "/billing/success",
+        // Carry the plan through the round trip. The success page has to
+        // know WHICH plan to wait for: an upgrade lands on a user who is
+        // already subscribed, so "are they still on the free tier" cannot
+        // tell whether the new plan has arrived yet.
+        successPath: `/billing/success?plan=${encodeURIComponent(planId)}`,
         cancelPath: "/#pricing",
       });
       if (!result.ok) {

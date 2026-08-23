@@ -15,7 +15,8 @@
  * their payment is safe either way, and Stripe retries for three days.
  */
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, CircleNotch } from "@phosphor-icons/react";
@@ -24,18 +25,36 @@ import { Link } from "@/i18n/navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ME_QUERY_KEY, useSession } from "@/lib/use-session";
-import { PLANS_QUERY_KEY } from "@/lib/use-plans";
+import { PLANS_QUERY_KEY, usePlans } from "@/lib/use-plans";
 
 /** How long to wait for the webhook before saying so plainly. */
 const MAX_WAIT_MS = 25_000;
 
-export default function BillingSuccessPage() {
+function BillingSuccessContent() {
   const t = useTranslations("pricing");
   const queryClient = useQueryClient();
-  const { plan } = useSession();
+  const { plan, user } = useSession();
+  const { data: catalogue } = usePlans();
+  const purchasedPlanId = useSearchParams().get("plan");
   const [gaveUp, setGaveUp] = useState(false);
 
-  const confirmed = plan?.tier != null && plan.tier !== "Free";
+  // What we are waiting for. Checkout carries the plan id back, so we can
+  // wait for THAT tier rather than merely "no longer free".
+  //
+  // This matters most for an UPGRADE. Someone moving Basic → Creator is
+  // already non-free the instant they land here, so a "not free" check
+  // would declare success immediately and show them their OLD tier and
+  // OLD credit balance — wrong information at the one moment they have
+  // just spent money and are looking closely.
+  const expectedTier = purchasedPlanId
+    ? catalogue?.plans.find((p) => p.id === purchasedPlanId)?.tier
+    : undefined;
+
+  const confirmed = expectedTier
+    ? user?.entitlement === expectedTier
+    : // No plan id (someone opened this page directly) — fall back to the
+      // weaker check, which is still right for a first-time subscriber.
+      user != null && plan.entitlement !== "free";
 
   useEffect(() => {
     if (confirmed) return;
@@ -84,5 +103,26 @@ export default function BillingSuccessPage() {
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * `useSearchParams` suspends during prerender, and a static page that
+ * calls it without a boundary FAILS THE PRODUCTION BUILD — while working
+ * perfectly in dev, where routes render on demand. Hence the explicit
+ * boundary, with the same spinner the pending state uses so the hand-off
+ * is invisible.
+ */
+export default function BillingSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto flex min-h-[70vh] max-w-lg flex-col items-center justify-center px-6">
+          <CircleNotch className="size-10 animate-spin text-muted-foreground" />
+        </main>
+      }
+    >
+      <BillingSuccessContent />
+    </Suspense>
   );
 }

@@ -11,7 +11,8 @@
  *
  *   1. Walk `generation.stages[]` and identify which stages are
  *      *consumed* by a later stage (their output is plumbing, not a
- *      deliverable). Two ways a stage gets consumed:
+ *      deliverable). A stage flagged `hidden` by the admin is always
+ *      treated this way; beyond that, two ways a stage gets consumed:
  *        a) Prompt placeholders: `{{stage_N_output}}` or `{{previous}}`
  *           in any later stage's `prompt`.
  *        b) Seedance config slot bindings — `frameSlots.firstFrame`,
@@ -79,6 +80,17 @@ function derivedFromStages(
   const stages = [...generation.stages].sort((a, b) => a.order - b.order);
   const consumed = collectConsumedStages(stages);
 
+  // A stage the admin explicitly marked as intermediate is never a
+  // deliverable, whatever the inference below concludes. The inference
+  // reads plumbing out of prompt placeholders and Seedance slot
+  // bindings, which misses chains wired through a provider's own config
+  // (a Kling `image` field, say) — the flag is the admin saying so
+  // outright, so it takes precedence.
+  const hasExplicitHidden = stages.some((s) => s.hidden);
+  for (const s of stages) {
+    if (s.hidden) consumed.add(s.order);
+  }
+
   const byKind = new Map<'image' | 'video', number>();
   let recognised = 0;
 
@@ -100,8 +112,19 @@ function derivedFromStages(
     .map(([kind, count]) => ({ kind, count }))
     .sort((a, b) => KIND_SORT[a.kind] - KIND_SORT[b.kind]);
 
-  // Step 4 — sanity-check against mode.
-  if (!agreesWithMode(list, generation.mode)) {
+  // Step 4 — sanity-check against mode, but ONLY when the admin hasn't
+  // spoken at the stage level.
+  //
+  // `mode` is not an independent statement of intent: the editor seeds
+  // it from the template's `kind` label (`kind === 'video' ? 'video' :
+  // 'image'`), so deferring to it here would let a label override an
+  // explicit per-stage decision. A video-labelled template whose image
+  // stage is marked intermediate would fail the `image_then_video`
+  // check and fall back to promising an image the admin just hid.
+  //
+  // The flag is specific and deliberate; `mode` is a default. When any
+  // stage carries the flag, the pipeline walk is the answer.
+  if (!hasExplicitHidden && !agreesWithMode(list, generation.mode)) {
     const fromMode = derivedFromMode(generation.mode);
     if (fromMode) return fromMode;
   }

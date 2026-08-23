@@ -415,41 +415,49 @@ export const generateJob = task({
     const completedAt = new Date();
     const durationMs = completedAt.getTime() - startedAt.getTime();
 
-    // Which stage outputs are user-facing depends on the template's
-    // declared output shape:
-    //   • output.type === 'image'  → only the final stage's images
-    //   • output.type === 'video'  → only the final stage's videos
-    //   • output.type === 'both'   → every stage that produced media
-    //     (e.g. `image_then_video`: the stage-1 still + the stage-2
-    //     animated video are both shown on the result screen).
-    //
-    // Previously we always returned only the final stage, which
-    // hid the image half of a `both`-type pipeline. With the new
-    // result screen rendering mixed outputs in an aspect-aware
-    // grid, surfacing both reads naturally.
     // ── User-visible outputs ──────────────────────────────────────
-    // Rule: every stage's output is user-visible. If the admin built
-    // N stages, each stage is intentional and should appear in the
-    // result. This handles all template shapes uniformly:
     //
-    //   • single image stage         → 1 image
-    //   • 4 parallel image variants  → 4 images (e.g. Luxury set)
-    //   • image_then_video chain     → image + video (e.g. Elegant)
-    //   • N video stages             → N videos
+    // Default: every stage's output reaches the user. If the admin built
+    // N stages, each was intentional — 4 parallel image variants give 4
+    // images, an image→video chain gives both. This deliberately does
+    // NOT consult `template.kind`, `generation.mode` or `output.type`:
+    // those describe how a template is LABELLED, and earlier versions
+    // that keyed visibility off them produced zero-output and
+    // one-output bugs whenever a label drifted from the pipeline.
     //
-    // The previous "final-stage only" filter was wrong for parallel
-    // pipelines (it kept only stage N) and the per-type filter
-    // depended on `template.output.type` being correctly set, which
-    // proved fragile in practice (admin UI didn't expose it; created
-    // templates inherited stale defaults). Surfacing every produced
-    // artifact removes a class of zero-output / one-output bugs and
-    // matches user expectations ("I configured 4 stages, give me 4").
+    // The single exception is `stage.hidden`, set per stage by the
+    // admin. A hidden stage still runs, still persists to R2, still
+    // feeds later stages via `previousOutputs`, and is still billed —
+    // only its artifact is withheld. That covers the "generate a still,
+    // then animate it, deliver only the video" shape, where the still
+    // is scaffolding rather than a deliverable.
     //
-    // If we ever need an "internal intermediate" stage (e.g. an
-    // upscale step that should NOT be shown to the user), we'll add
-    // an explicit per-stage `hidden: true` flag rather than re-add
-    // type-based heuristics.
-    const userVisibleKeys = allOutputKeys;
+    // Keyed on the same 1-based sorted position `allOutputKeys.stageIndex`
+    // was built from, NOT on `stage.order`, so the two cannot drift if a
+    // template ever carries a non-contiguous order.
+    const hiddenStageNumbers = new Set<number>();
+    stages.forEach((s, i) => {
+      if (s.hidden) hiddenStageNumbers.add(i + 1);
+    });
+
+    // Every stage hidden means an empty result screen. The API refuses
+    // to publish a template in that shape, but a snapshot frozen before
+    // that guard existed could still reach here — show everything
+    // rather than hand back nothing.
+    const allHidden =
+      hiddenStageNumbers.size > 0 && hiddenStageNumbers.size >= stages.length;
+    if (allHidden) {
+      logger.warn('generate-job:all-stages-hidden', {
+        jobId,
+        stages: stages.length,
+        note: 'showing every output instead of returning nothing',
+      });
+    }
+
+    const userVisibleKeys =
+      hiddenStageNumbers.size === 0 || allHidden
+        ? allOutputKeys
+        : allOutputKeys.filter((k) => !hiddenStageNumbers.has(k.stageIndex));
 
     const images: MediaRef[] = userVisibleKeys
       .filter((k) => k.kind === 'image')

@@ -23,25 +23,26 @@ import type { TokenGetter } from '@/lib/api';
 import { toast } from 'sonner';
 import { SeedanceModeEditor } from './seedance-mode-editor';
 import {
-  Plus,
-  Trash2,
-  Zap,
-  ChevronDown,
   ArrowDown,
-  Sparkles,
+  ChevronDown,
+  Copy,
+  Eye,
+  EyeOff,
   Film,
-  Variable,
   ImageIcon,
+  Layout,
+  Mountain,
+  Palette,
+  Plus,
+  Sparkles,
+  Sun,
+  Trash2,
   Type,
+  Upload,
+  Variable,
   Video,
   X,
-  Copy,
-  Upload,
-  Palette,
-  Layout,
-  Sun,
-  Mountain,
-  Eye,
+  Zap,
 } from 'lucide-react';
 
 interface GenerationTabProps {
@@ -456,6 +457,20 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                             <Badge variant="secondary" className="text-xs">
                               {stage.model}
                             </Badge>
+                            {/* Visible on the collapsed card: whether a
+                                stage reaches the user is the kind of thing
+                                you want to see while scanning a pipeline,
+                                not only after expanding it. */}
+                            {stage.hidden ? (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 text-xs text-muted-foreground"
+                                title="Runs in the pipeline; its output is not shown to the user"
+                              >
+                                <EyeOff className="h-3 w-3" />
+                                Intermediate
+                              </Badge>
+                            ) : null}
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-md">
                             {stage.prompt ? stage.prompt.slice(0, 80) + (stage.prompt.length > 80 ? '...' : '') : 'No prompt configured'}
@@ -1142,6 +1157,49 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                               </Select>
                             </div>
                           </div>
+
+                          {/* Intermediate step.
+                              Full width under the grid because the label
+                              needs a sentence to be unambiguous — "hidden"
+                              on its own reads as "disabled". */}
+                          {(() => {
+                            const visibleCount = stages.filter((s) => !s.hidden).length;
+                            // Hiding the last visible stage would bill the
+                            // user for a run that returns nothing, and the
+                            // publish endpoint rejects it — block it here
+                            // rather than at save time.
+                            const isLastVisible = !stage.hidden && visibleCount <= 1;
+                            return (
+                              <label
+                                className={cn(
+                                  'flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/30 p-3',
+                                  isLastVisible
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer',
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 size-4 shrink-0 accent-primary"
+                                  checked={!!stage.hidden}
+                                  disabled={isLastVisible}
+                                  onChange={(e) =>
+                                    handleUpdateStage(stage.id, { hidden: e.target.checked })
+                                  }
+                                />
+                                <span className="space-y-0.5">
+                                  <span className="block text-xs font-medium">
+                                    Intermediate step — don&apos;t show this output to the user
+                                  </span>
+                                  <span className="block text-xs text-muted-foreground">
+                                    {isLastVisible
+                                      ? 'At least one stage has to produce something the user receives.'
+                                      : 'The stage still runs, still feeds later stages, and is still billed — only its result is withheld. Use it when this output is scaffolding, like a still that a later stage animates.'}
+                                  </span>
+                                </span>
+                              </label>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}

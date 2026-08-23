@@ -176,6 +176,12 @@ const generationStageSchema = z.object({
     maxAttempts: z.number().int().min(1).max(10),
     fallbackModel: z.string().optional(),
   }),
+  /**
+   * Intermediate step — runs and chains, but its output is withheld
+   * from the user. Optional: `z.object` strips unknown keys, so without
+   * this line the admin's checkbox would be silently dropped on save.
+   */
+  hidden: z.boolean().optional(),
 });
 
 export const templateGenerationSchema = z.object({

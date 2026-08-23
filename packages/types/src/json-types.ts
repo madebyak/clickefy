@@ -271,6 +271,25 @@ export interface GenerationStage {
     maxAttempts: number;
     fallbackModel?: string;
   };
+  /**
+   * Intermediate step: run it, chain its output onward, but never show
+   * that output to the user.
+   *
+   * The motivating shape is a video template that first generates a
+   * still — "turn the user's product photo into scene X" — and then
+   * animates it. The still is scaffolding; the deliverable is the video.
+   * Without this flag the worker hands the user both, because it treats
+   * every stage's output as a deliverable.
+   *
+   * Only the USER-FACING result is affected. The output is still
+   * generated, still persisted to R2, still available to later stages
+   * through `{{stage_N_output}}` and slot bindings, and the stage is
+   * still billed — it consumed provider capacity like any other.
+   *
+   * Optional, and absent means visible, so every template authored
+   * before this existed keeps its current behaviour exactly.
+   */
+  hidden?: boolean;
 }
 
 export interface TemplateGeneration {

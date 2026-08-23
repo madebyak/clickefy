@@ -531,8 +531,18 @@ templatesRoute.post(
     const missing: string[] = [];
     if (!row.coverMedia) missing.push('a cover image');
     if (!cats?.primary) missing.push('a primary category');
-    const stageCount = row.generation?.stages?.length ?? 0;
+    const allStages = row.generation?.stages ?? [];
+    const stageCount = allStages.length;
     if (stageCount === 0) missing.push('at least one generation stage');
+    // Every stage marked intermediate means the run finishes and the
+    // user receives nothing at all. Not a pricing question — the price
+    // is one number covering the whole pipeline, and intermediates are
+    // part of what it pays for — but a template that can only ever
+    // return an empty result should not be publishable. The worker has
+    // its own fallback for snapshots frozen before this guard.
+    else if (allStages.every((s) => s.hidden)) {
+      missing.push('at least one stage whose output the user can see');
+    }
     if (missing.length > 0) {
       return c.json(
         {

@@ -61,8 +61,17 @@ export interface BuildCreateStageInput {
   duration?: number;
   /** Native audio toggle (sound-capable models only; compiler gates it). */
   sound?: boolean;
-  /** Quality tier for models with selectable modes (Kling std/pro/4k). */
-  mode?: 'std' | 'pro' | '4k';
+  /**
+   * Quality tier for models with selectable modes — and the tier the user
+   * was BILLED for, so it must reach the provider on every path.
+   *
+   * The key vocabulary is per-provider (Kling `std`/`pro`/`4k`, Seedance
+   * `480p`/`720p`/`1080p`/`4k`, Gemini `1K`/`2K`/`4K`, OpenAI
+   * `low`/`medium`/`high`), which is why this is a plain string: the
+   * previous Kling-shaped union silently mislabelled every other
+   * provider's tiers.
+   */
+  mode?: string;
   /** Whether a start-frame image was attached (present in `inputs`). */
   hasStartFrame?: boolean;
   /** Whether an end-frame image was attached. */
@@ -118,9 +127,29 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
   // model's allowed list, so it's safe to always set it when present.
   if (input.aspectRatio) config.aspectRatio = input.aspectRatio;
 
-  if (provider === 'seedance') {
+  // The billed quality tier, on EVERY provider path.
+  //
+  // This used to be set only in the Gemini/Kling branch below, so a
+  // Seedance job was charged at the tier the user picked and then sent
+  // with no `resolution` at all — BytePlus fell back to its own default
+  // and we ate (or pocketed) the difference on every single generation.
+  // `compile()` reads `config.mode` for Gemini, Kling and Seedance alike
+  // and clamps it against that model's own tier list, so setting it once,
+  // here, is both correct and provider-agnostic.
+  if (input.mode) config.mode = input.mode;
+
+  // Seedream shares the `seedance` provider tag (same vendor, same host,
+  // same key) but is an IMAGE model on a completely different endpoint —
+  // it has no duration, no frames and no reference slots. Branch on the
+  // model kind, not the provider, or an image job gets a video's config.
+  if (provider === 'seedance' && !isImage) {
     const seedance = config as SeedanceStageConfig;
     if (typeof input.duration === 'number') seedance.duration = input.duration;
+    // Seedance's audio switch is `generateAudio` — the `sound` key the
+    // Kling branch writes is not read by the Seedance compiler, so the
+    // toggle silently did nothing here. Always explicit: the ModelArk
+    // default is TRUE and audio is billed.
+    if (caps.supportsSound) seedance.generateAudio = input.sound === true;
     if (refCount > 0) {
       // Reference mode — bind each image to a user_input slot.
       seedance.seedanceMode = 'reference';
@@ -144,17 +173,17 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
       }
       seedance.frameSlots = frameSlots;
     }
+  } else if (isImage) {
+    // Gemini / Seedream / OpenAI image models. One image per job on every
+    // provider — outputs are debited per job, so a model deciding to
+    // return more (or fewer) would be a billing defect.
+    config.numberOfOutputs = 1;
   } else {
-    // Gemini + Kling.
-    if (!isImage && typeof input.duration === 'number') config.duration = input.duration;
+    // Kling video.
+    if (typeof input.duration === 'number') config.duration = input.duration;
     // Native audio — the compiler drops it (with a warning) on models
     // without `supportsSound`, so setting it here is always safe.
-    if (!isImage && input.sound) config.sound = true;
-    // Quality tier — the user was charged for this exact tier upstream,
-    // so it must reach the compiler for images (Gemini resolution, GPT
-    // Image quality) as well as video (Kling mode).
-    if (input.mode) config.mode = input.mode;
-    if (isImage) config.numberOfOutputs = 1;
+    if (input.sound) config.sound = true;
   }
 
   const stage: GenerationStage = {

@@ -425,7 +425,7 @@ describe('compile() — GPT Image aspect ratios', () => {
     const size = (compile(makeCtx({ stage })).request as GptImageCompiledRequest).size;
     // The old closest-preset logic returned 1536x1024 (3:2) here.
     expect(size).not.toBe('1536x1024');
-    const [w, h] = size!.split('x').map(Number);
+    const [w, h] = size!.split('x').map(Number) as [number, number];
     expect(w! / h!).toBeCloseTo(16 / 9, 2);
   });
 
@@ -471,13 +471,22 @@ describe('compile() — Seedance priced resolution tiers', () => {
     expect(getCapabilities('dreamina-seedance-2-0-260128').modes?.values).toEqual([
       '480p', '720p', '1080p', '4k',
     ]);
-    // Fast, Mini and 2.5 all cap at 720p.
+    // 2.5 gained 1080p on 2026-08-14 (10-bit H.265), separately priced.
+    expect(getCapabilities('dreamina-seedance-2-5-260628').modes?.values).toEqual([
+      '480p', '720p', '1080p',
+    ]);
+    // Fast and Mini genuinely cap at 720p.
+    for (const key of [
+      'dreamina-seedance-2-0-fast-260128',
+      'dreamina-seedance-2-0-mini-260615',
+    ]) {
+      expect(getCapabilities(key).modes?.values).toEqual(['480p', '720p']);
+    }
     for (const key of [
       'dreamina-seedance-2-0-fast-260128',
       'dreamina-seedance-2-0-mini-260615',
       'dreamina-seedance-2-5-260628',
     ]) {
-      expect(getCapabilities(key).modes?.values).toEqual(['480p', '720p']);
       expect(getCapabilities(key).modes?.default).toBe('720p');
     }
   });
@@ -586,7 +595,9 @@ describe('compile() — Seedance 2.0', () => {
     expect(sd.resolution).toBe('720p');
     expect(sd.duration).toBe(5);
     expect(sd.generateAudio).toBe(true);
-    expect(sd.cameraFixed).toBe(false);
+    // `camera_fixed` is documented for the Seedance 1.x line only, so it
+    // is dropped rather than sent to a 2.x model that would reject it.
+    expect(sd.cameraFixed).toBeUndefined();
     expect(sd.startImage).toBeUndefined();
     expect(sd.endImage).toBeUndefined();
     expect(sd.referenceImages).toBeUndefined();
@@ -988,14 +999,42 @@ describe('compile() — Seedream', () => {
     expect(request).toHaveProperty('outputFormat');
   });
 
-  it('clamps a sub-minimum resolution rather than letting the API 400', () => {
+  it('clamps a sub-minimum resolution keyword rather than letting the API 400', () => {
     // 5.0-lite rejects anything under ~3.69 MP, so 1K is not merely
-    // suboptimal — it is an error.
+    // suboptimal — it is an error. 'adaptive' keeps us on the keyword
+    // path, where the clamp is the only protection.
     const { request, warnings } = compile(
-      makeCtx({ stage: seedreamStage('seedream-5-0-260128', { imageSize: '1K' }) }),
+      makeCtx({
+        stage: seedreamStage('seedream-5-0-260128', {
+          imageSize: '1K',
+          aspectRatio: 'adaptive',
+        }),
+      }),
     );
     expect((request as { size?: string }).size).toBe('2K');
     expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+
+  it('pins the chosen aspect ratio as exact pixels, not as prose', () => {
+    // `size` is the only lever that actually controls shape — there is no
+    // `aspect_ratio` field, and a ratio described in the prompt is a
+    // suggestion the model routinely ignores.
+    const { request } = compile(makeCtx({ stage: seedreamStage('seedream-4-0-250828') }));
+    const size = (request as { size?: string }).size!;
+    const [w, h] = size.split('x').map(Number) as [number, number];
+    expect(w / h).toBeCloseTo(16 / 9, 2);
+    // Inside 4.0's documented pixel window.
+    expect(w * h).toBeGreaterThanOrEqual(921_600);
+    expect(w * h).toBeLessThanOrEqual(16_777_216);
+  });
+
+  it('respects each model\u2019s own pixel floor when solving a ratio', () => {
+    // The same 16:9 request must land above ~3.69 MP on 5.0-lite, where a
+    // perfectly reasonable-looking 1024x1024 is a hard error.
+    const { request } = compile(makeCtx({ stage: seedreamStage('seedream-5-0-260128') }));
+    const [w, h] = (request as { size?: string }).size!.split('x').map(Number) as [number, number];
+    expect(w / h).toBeCloseTo(16 / 9, 2);
+    expect(w * h).toBeGreaterThanOrEqual(3_686_400);
   });
 
   it('always disables sequential generation so the output count is predictable', () => {
@@ -1010,9 +1049,11 @@ describe('compile() — Seedream', () => {
     expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
   });
 
-  it('folds the aspect ratio into the prompt (the API has no such field)', () => {
+  it('does not also fold the ratio into the prompt once pixels carry it', () => {
+    // Belt-and-braces prose was the old mechanism; with exact dimensions
+    // it is redundant text competing with the user's own prompt.
     const { request } = compile(makeCtx({ stage: seedreamStage('seedream-4-0-250828') }));
-    expect((request as { prompt: string }).prompt).toContain('16:9');
+    expect((request as { prompt: string }).prompt).toBe('A ripe banana on white');
   });
 
   it('never sends watermark:true — the API default stamps the output', () => {

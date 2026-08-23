@@ -204,10 +204,21 @@ export interface SeedanceCompiledRequest {
    * image's aspect (useful for I2V flows where the input drives shape).
    */
   ratio?: string;
-  /** Video length in seconds. 5 or 10 today; the API accepts 4–15. */
+  /** Video length in seconds. 2.0 accepts 4–15, 2.5 accepts 4–30. */
   duration?: number;
-  /** Output resolution. */
-  resolution?: '480p' | '720p' | '1080p' | '2K';
+  /**
+   * Output resolution. These are ModelArk's literal `resolution` values —
+   * `4k` is lowercase and there is no `2K` (an earlier spelling here that
+   * the API would have rejected; it never fired because the compiler
+   * casts into this type rather than being checked against it).
+   */
+  resolution?: '480p' | '720p' | '1080p' | '4k';
+  /**
+   * Seedance 2.5 only. Declaring the omni sub-task moves validation from
+   * an async failure — after the task is queued and the user debited —
+   * to a synchronous rejection at submit.
+   */
+  omniReferenceTaskType?: 'auto' | 'reference' | 'edit' | 'extend';
   /** Generate native audio (sfx, ambient, lip-sync if a face is present). */
   generateAudio?: boolean;
   /** Return the final video frame as a still in the result payload. */

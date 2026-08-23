@@ -147,8 +147,10 @@ const TIER_PRICES: Array<{
   {
     provider: 'seedance',
     modelKey: 'dreamina-seedance-2-5-260628',
-    tiers: { '480p': 154, '720p': 347 },
-    why: '$0.514 / $1.156 per 5s (1080p lands 2026-08-17 at $2.843)',
+    tiers: { '480p': 154, '720p': 347, '1080p': 853 },
+    // 1080p is discounted to 72% of list until 2026-09-17. We price at
+    // LIST so the promo is margin rather than exposure when it ends.
+    why: '$0.514 / $1.156 / $2.843 per 5s',
   },
 ];
 

@@ -911,14 +911,25 @@ function extractNumberOfOutputs(
  * target area chosen to match the model's own presets — so output size
  * stays consistent whichever shape is picked.
  */
-function solvePixelSize(
-  ratio: number,
-  sizing: Extract<ModelCapabilities['sizing'], { mode: 'pixels' }>,
-): string | null {
-  // OpenAI rejects anything beyond 1:3–3:1 regardless of pixel count.
-  if (ratio > 3 || ratio < 1 / 3) return null;
-  const { divisibleBy: step, maxEdge, minPixels, maxPixels } = sizing;
-  const TARGET_PIXELS = 1_600_000;
+/**
+ * The constraint set a `WIDTHxHEIGHT` must satisfy. Both OpenAI's
+ * pixel-mode sizing and Seedream's `pixelSizing` reduce to this shape, so
+ * one solver serves both.
+ */
+interface PixelBounds {
+  divisibleBy: number;
+  maxEdge: number;
+  minPixels: number;
+  maxPixels: number;
+  minRatio: number;
+  maxRatio: number;
+  targetPixels: number;
+}
+
+function solvePixelSize(ratio: number, bounds: PixelBounds): string | null {
+  // Outside the provider's ratio window no pixel count can help.
+  if (ratio > bounds.maxRatio || ratio < bounds.minRatio) return null;
+  const { divisibleBy: step, maxEdge, minPixels, maxPixels, targetPixels } = bounds;
 
   let best: { size: string; err: number; areaGap: number } | null = null;
   for (let h = step; h <= maxEdge; h += step) {
@@ -927,12 +938,45 @@ function solvePixelSize(
     const pixels = w * h;
     if (pixels < minPixels || pixels > maxPixels) continue;
     const err = Math.abs(w / h - ratio) / ratio;
-    const areaGap = Math.abs(pixels - TARGET_PIXELS);
+    const areaGap = Math.abs(pixels - targetPixels);
     if (!best || err < best.err - 1e-9 || (Math.abs(err - best.err) < 1e-9 && areaGap < best.areaGap)) {
       best = { size: `${w}x${h}`, err, areaGap };
     }
   }
   return best?.size ?? null;
+}
+
+/** OpenAI's pixel-mode sizing, expressed as `PixelBounds`. */
+function boundsFromPixelSizing(
+  sizing: Extract<ModelCapabilities['sizing'], { mode: 'pixels' }>,
+): PixelBounds {
+  return {
+    divisibleBy: sizing.divisibleBy,
+    maxEdge: sizing.maxEdge,
+    minPixels: sizing.minPixels,
+    maxPixels: sizing.maxPixels,
+    // OpenAI rejects anything beyond 1:3–3:1 regardless of pixel count.
+    minRatio: 1 / 3,
+    maxRatio: 3,
+    targetPixels: 1_600_000,
+  };
+}
+
+/** Seedream's `pixelSizing` block, expressed as `PixelBounds`. */
+function boundsFromSeedream(
+  px: NonNullable<ModelCapabilities['pixelSizing']>,
+): PixelBounds {
+  return {
+    divisibleBy: px.divisibleBy,
+    // Seedream constrains the pixel PRODUCT, not either edge; the widest
+    // legal shape at the pixel ceiling bounds the search on its own.
+    maxEdge: Math.ceil(Math.sqrt(px.maxPixels * px.maxRatio)),
+    minPixels: px.minPixels,
+    maxPixels: px.maxPixels,
+    minRatio: px.minRatio,
+    maxRatio: px.maxRatio,
+    targetPixels: px.targetPixels,
+  };
 }
 
 /**
@@ -948,7 +992,7 @@ export function pixelSizeForAspect(
   if (capabilities.sizing.mode !== 'pixels') return null;
   const [aw, ah] = aspect.split(':').map(Number);
   if (!aw || !ah) return null;
-  return solvePixelSize(aw / ah, capabilities.sizing);
+  return solvePixelSize(aw / ah, boundsFromPixelSizing(capabilities.sizing));
 }
 
 function resolvePixelSize(
@@ -996,7 +1040,7 @@ function resolvePixelSize(
       // nearest preset. With only three presets (1:1, 3:2, 2:3), a 16:9
       // request used to come back as 3:2 — visibly the wrong shape, with
       // nothing to tell the user it had been substituted.
-      const solved = solvePixelSize(aw / ah, sizing);
+      const solved = solvePixelSize(aw / ah, boundsFromPixelSizing(sizing));
       if (solved) return solved;
       warnings.push({
         code: 'config_clamped',
@@ -1108,18 +1152,25 @@ function compileSeedream(
     warnings,
   });
 
-  // Fold the aspect ratio into the prompt, since the API has no field for
-  // it. Skipped for 'adaptive' (means "match the input").
-  const ratio = typeof cfg.aspectRatio === 'string' ? cfg.aspectRatio : undefined;
-  if (ratio && ratio !== 'adaptive') {
-    prompt = `${prompt}\n\nAspect ratio: ${ratio}.`;
-  }
-
-  // Resolution keyword. Never pass raw WxH: 4.5 and 5.0-lite reject
-  // anything under ~3.69 MP, so a plausible-looking 1024x1024 is a hard
-  // error there. Keywords are per-model and always valid.
+  // Resolution / shape.
+  //
+  // `size` is overloaded: it takes EITHER a resolution keyword (1K/2K/4K —
+  // the model then picks a shape, guided only by prose in the prompt) OR
+  // an exact `WIDTHxHEIGHT`. There is no `aspect_ratio` field, so the
+  // pixel form is the only way to actually honour a ratio the user chose.
+  // Describing the ratio in the prompt — what this did before — is a
+  // suggestion the model frequently ignores, so a request for 16:9 could
+  // come back square.
+  //
+  // Each model's pixel window differs sharply (4.5 and 5.0-lite floor at
+  // ~3.69 MP, where a plausible-looking 1024x1024 is a hard error), which
+  // is why the bounds are declared per-model in the registry. Price is
+  // flat per image on every model we ship, so solving to ~2048² costs
+  // exactly what the 1K keyword did.
   const resolutions = capabilities.sizing.mode === 'aspect' ? capabilities.sizing.resolutions : undefined;
   const requested = typeof cfg.imageSize === 'string' ? cfg.imageSize : undefined;
+  const ratio = typeof cfg.aspectRatio === 'string' ? cfg.aspectRatio : undefined;
+
   let size = requested;
   if (size && resolutions && !resolutions.includes(size)) {
     warnings.push({
@@ -1128,7 +1179,34 @@ function compileSeedream(
     });
     size = resolutions[0];
   }
+
+  // A concrete ratio beats a keyword: the keyword leaves shape to chance,
+  // and shape is what the user actually picked. 'adaptive' means "match
+  // the input", which is the keyword path.
+  let solvedFromRatio = false;
+  if (ratio && ratio !== 'adaptive' && capabilities.pixelSizing) {
+    const [aw, ah] = ratio.split(':').map(Number);
+    if (aw && ah) {
+      const solved = solvePixelSize(aw / ah, boundsFromSeedream(capabilities.pixelSizing));
+      if (solved) {
+        size = solved;
+        solvedFromRatio = true;
+      } else {
+        warnings.push({
+          code: 'config_clamped',
+          message: `Aspect ratio "${ratio}" cannot be expressed within ${stage.model}'s pixel limits; falling back to a resolution keyword.`,
+        });
+      }
+    }
+  }
+
   if (!size && resolutions?.length) size = resolutions[0];
+
+  // Keyword path only: with no pixel dimensions to pin the shape, the
+  // prompt is the sole remaining lever, so keep folding the ratio in.
+  if (ratio && ratio !== 'adaptive' && !solvedFromRatio) {
+    prompt = `${prompt}\n\nAspect ratio: ${ratio}.`;
+  }
 
   // Deliberately ONE image per call.
   //
@@ -1527,6 +1605,21 @@ function compileSeedance(
     ratio = cfgRatio;
   }
 
+  // A first (or first+last) frame makes some models preserve that frame's
+  // own aspect ratio, and `ratio` then only accepts `adaptive`. Seedance
+  // 2.5 is documented this way; the 2.0 series still takes an explicit
+  // ratio. Sending a concrete ratio anyway is a rejected request on a job
+  // we have already charged for, so the frame wins and we say so.
+  if (capabilities.framesRatioAdaptiveOnly && startImage) {
+    if (ratio && ratio !== 'adaptive') {
+      warnings.push({
+        code: 'config_clamped',
+        message: `${stage.model} preserves the first frame's aspect ratio, so "${ratio}" cannot be applied; sending "adaptive".`,
+      });
+    }
+    ratio = 'adaptive';
+  }
+
   // The billed tier wins over a stage-authored `resolution`: the user was
   // charged for that exact tier and must be served it. Mirrors how Gemini
   // resolves imageSize.
@@ -1574,13 +1667,34 @@ function compileSeedance(
     typeof stage.config.returnLastFrame === 'boolean'
       ? stage.config.returnLastFrame
       : undefined;
+
+  // `camera_fixed`, `seed` and `negative_prompt` are NOT accepted by the
+  // Seedance 2.x line: BytePlus documents the first two for 1.5 pro / 1.0
+  // pro / 1.0 pro fast only, and the video API has no negative-prompt
+  // field at all. The request body is validated strictly, so a stage that
+  // was authored with any of them would fail AFTER the debit. Each is now
+  // gated on the model actually declaring it; for every model we ship
+  // today that means the field is simply never sent.
   const cameraFixed =
-    typeof stage.config.cameraFixed === 'boolean' ? stage.config.cameraFixed : undefined;
-  const seed = typeof stage.config.seed === 'number' ? stage.config.seed : undefined;
+    capabilities.supportsCameraFixed && typeof stage.config.cameraFixed === 'boolean'
+      ? stage.config.cameraFixed
+      : undefined;
+  const seed =
+    capabilities.supportsSeed && typeof stage.config.seed === 'number'
+      ? stage.config.seed
+      : undefined;
   const negativePrompt =
-    typeof stage.config.negativePrompt === 'string' && stage.config.negativePrompt.length > 0
+    capabilities.negativePrompt &&
+    typeof stage.config.negativePrompt === 'string' &&
+    stage.config.negativePrompt.length > 0
       ? stage.config.negativePrompt
       : undefined;
+
+  // Declare the omni sub-task when we know it, so an incompatible
+  // combination is rejected at submit rather than failing asynchronously
+  // on a task that is already queued and already paid for.
+  const omniReferenceTaskType =
+    capabilities.supportsOmniTaskType && refs.length > 0 ? ('reference' as const) : undefined;
 
   const request: SeedanceCompiledRequest = {
     provider: 'seedance',
@@ -1589,6 +1703,7 @@ function compileSeedance(
     ratio,
     duration,
     resolution,
+    omniReferenceTaskType,
     generateAudio,
     returnLastFrame,
     cameraFixed,

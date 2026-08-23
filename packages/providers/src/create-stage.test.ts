@@ -190,3 +190,128 @@ describe('buildCreateStage — Seedance (video)', () => {
     expect(s.endImage).toBeUndefined();
   });
 });
+
+// ─── The billed tier must reach the provider ────────────────────────
+//
+// Regression guard for a live money bug: `mode` (and the sound toggle)
+// were written only in the Gemini/Kling branch, so a Seedance job was
+// charged at the tier the user picked and then submitted with no
+// `resolution` at all. BytePlus fell back to its own default, and every
+// cheap-tier sale ran at a loss while every premium sale was
+// under-served. These tests assert the value survives the whole
+// buildCreateStage → compile path, per provider.
+
+describe('buildCreateStage — the billed quality tier reaches the request', () => {
+  it('Seedance: the picked resolution tier is sent, not silently defaulted', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'a paper boat drifting down a rain gutter',
+      aspectRatio: '16:9',
+      duration: 5,
+      mode: '480p',
+    });
+    expect(built.stage.config.mode).toBe('480p');
+
+    const { request } = run(built, {});
+    expect((request as SeedanceCompiledRequest).resolution).toBe('480p');
+  });
+
+  it('Seedance: 1080p is a reachable tier on 2.5', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'macro shot of dew on a spiderweb',
+      mode: '1080p',
+    });
+    const { request, warnings } = run(built, {});
+    expect((request as SeedanceCompiledRequest).resolution).toBe('1080p');
+    expect(warnings.filter((w) => w.code === 'config_clamped')).toEqual([]);
+  });
+
+  it('Kling: the tier still reaches the request (unchanged path)', () => {
+    const built = buildCreateStage({
+      modelKey: 'kling-v3-omni',
+      prompt: 'a hummingbird hovering at a feeder',
+      mode: 'pro',
+    });
+    expect(built.stage.config.mode).toBe('pro');
+    const { request } = run(built, {});
+    expect((request as KlingCompiledRequest).mode).toBe('pro');
+  });
+});
+
+describe('buildCreateStage — Seedance native audio', () => {
+  it('sound: on reaches the request as generateAudio', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'waves breaking on shingle',
+      sound: true,
+    });
+    const { request } = run(built, {});
+    expect((request as SeedanceCompiledRequest).generateAudio).toBe(true);
+  });
+
+  it('sound: off is sent EXPLICITLY — the ModelArk default is true and audio is billed', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'waves breaking on shingle',
+      sound: false,
+    });
+    const { request } = run(built, {});
+    expect((request as SeedanceCompiledRequest).generateAudio).toBe(false);
+  });
+});
+
+describe('buildCreateStage — Seedance 2.5 frame/ratio constraint', () => {
+  it('a start frame forces ratio=adaptive, because 2.5 preserves the frame shape', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'push in slowly',
+      aspectRatio: '16:9',
+      hasStartFrame: true,
+    });
+    const { request, warnings } = run(built, {
+      [CREATE_START_FRAME_KEY]: img('uploads/start.png'),
+    });
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.startImage).toBeDefined();
+    expect(sd.ratio).toBe('adaptive');
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+
+  it('without a frame the chosen ratio is honoured as-is', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'push in slowly',
+      aspectRatio: '16:9',
+    });
+    const { request } = run(built, {});
+    expect((request as SeedanceCompiledRequest).ratio).toBe('16:9');
+  });
+});
+
+describe('buildCreateStage — Seedream is an image model on the seedance tag', () => {
+  it('gets image config, not a video stage', () => {
+    const built = buildCreateStage({
+      modelKey: 'seedream-4-0-250828',
+      prompt: 'a ripe banana on white',
+      aspectRatio: '16:9',
+      duration: 5,
+    });
+    expect(built.stage.config.numberOfOutputs).toBe(1);
+    // None of the video-shaped keys belong on an image stage.
+    expect(built.stage.config.duration).toBeUndefined();
+    expect(built.stage.config.seedanceMode).toBeUndefined();
+    expect(built.stage.config.frameSlots).toBeUndefined();
+  });
+
+  it('the chosen ratio becomes exact pixels', () => {
+    const built = buildCreateStage({
+      modelKey: 'seedream-4-0-250828',
+      prompt: 'a ripe banana on white',
+      aspectRatio: '9:16',
+    });
+    const { request } = run(built, {});
+    const [w, h] = (request as { size?: string }).size!.split('x').map(Number) as [number, number];
+    expect(w / h).toBeCloseTo(9 / 16, 2);
+  });
+});

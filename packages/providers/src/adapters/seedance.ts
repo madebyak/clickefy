@@ -177,6 +177,12 @@ function buildBody(request: SeedanceCompiledRequest): Record<string, unknown> {
   if (request.ratio) body.ratio = request.ratio;
   if (typeof request.duration === 'number') body.duration = request.duration;
   if (request.resolution) body.resolution = request.resolution;
+  // Seedance 2.5 only. Declaring the omni sub-task makes ModelArk check
+  // the task-shape constraints synchronously, so a bad combination is a
+  // 4xx here rather than an async failure on a queued, already-paid job.
+  if (request.omniReferenceTaskType) {
+    body.omni_reference_task_type = request.omniReferenceTaskType;
+  }
   if (typeof request.generateAudio === 'boolean') {
     body.generate_audio = request.generateAudio;
   }

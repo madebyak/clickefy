@@ -214,6 +214,65 @@ export interface ModelCapabilities {
    */
   maxPromptChars?: number;
 
+  /**
+   * Seedance: does the model accept a `seed` body parameter?
+   *
+   * BytePlus documents `seed` for 1.5 pro / 1.0 pro / 1.0 pro fast ONLY.
+   * The 2.x line does not take it, and the video API validates the body
+   * strictly, so sending it risks a hard rejection on a job we have
+   * already debited. Absent = never send it.
+   */
+  supportsSeed?: boolean;
+
+  /**
+   * Seedance: does the model accept a `camera_fixed` body parameter?
+   *
+   * Same story as `supportsSeed` — documented for 1.5 pro / 1.0 pro /
+   * 1.0 pro fast only, and additionally unsupported in reference-image
+   * scenarios even there. Absent = never send it.
+   */
+  supportsCameraFixed?: boolean;
+
+  /**
+   * Seedance: the model forces `ratio: 'adaptive'` whenever a first or
+   * first+last frame is supplied, because it preserves the first frame's
+   * own aspect ratio.
+   *
+   * Documented for Seedance 2.5 (the 2.0 series still accepts an
+   * explicit ratio alongside frames). Sending a concrete ratio with a
+   * frame on such a model is an invalid request — after the debit.
+   */
+  framesRatioAdaptiveOnly?: boolean;
+
+  /**
+   * Seedance 2.5: supports `omni_reference_task_type`, which moves
+   * task-shape validation from an async failure (already queued, already
+   * charged) to a synchronous rejection at submit time.
+   */
+  supportsOmniTaskType?: boolean;
+
+  /**
+   * Seedream: the model's `size` field also accepts an explicit
+   * `WIDTHxHEIGHT` (BytePlus "Method 2"), which is the ONLY way to pin
+   * an exact aspect ratio — there is no `aspect_ratio` parameter, and a
+   * ratio described in prose is a suggestion the model often ignores.
+   *
+   * Both constraints must hold simultaneously: `width * height` inside
+   * the pixel range, and `width / height` inside the ratio range. Note
+   * the pixel bound applies to the PRODUCT, not to either edge.
+   */
+  pixelSizing?: {
+    minPixels: number;
+    maxPixels: number;
+    /** Inclusive width/height bounds, e.g. 1/16 … 16. */
+    minRatio: number;
+    maxRatio: number;
+    /** Where inside the range to aim — bigger is better up to the cap. */
+    targetPixels: number;
+    /** Round both edges to this multiple. */
+    divisibleBy: number;
+  };
+
   /** Admin-facing description shown next to the model picker. */
   notes?: string;
 }
@@ -286,8 +345,13 @@ const SEEDANCE_ASPECT_RATIOS = [
 ] as const;
 /** Seedance 2.0 Standard only. */
 const SEEDANCE_RESOLUTIONS_FULL = ['480p', '720p', '1080p', '4k'] as const;
-/** Seedance 2.5, 2.0 Fast and 2.0 Mini all cap at 720p. */
+/** Seedance 2.0 Fast and 2.0 Mini cap at 720p. */
 const SEEDANCE_RESOLUTIONS_SD = ['480p', '720p'] as const;
+/**
+ * Seedance 2.5. 1080p shipped 2026-08-14 (10-bit / H.265) and is a
+ * separately-priced tier — see `price-models-2026-08.ts`.
+ */
+const SEEDANCE_RESOLUTIONS_25 = ['480p', '720p', '1080p'] as const;
 /** Seedance 2.0 series: [4, 15]. */
 const SEEDANCE_DURATIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
 /** Seedance 2.5: [4, 30]. */
@@ -762,7 +826,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     sizing: {
       mode: 'aspect',
       values: SEEDANCE_ASPECT_RATIOS,
-      resolutions: SEEDANCE_RESOLUTIONS_SD,
+      resolutions: SEEDANCE_RESOLUTIONS_25,
     },
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: SEEDANCE_25_DURATIONS, default: 5 },
@@ -772,15 +836,18 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 30,
     acceptsStartEndImage: true,
     supportsSound: true,
-    // 1080p lands 2026-08-17 per BytePlus's own note; add it (and its
-    // tier price) on the day, not before.
+    // A first / first+last frame makes 2.5 preserve that frame's own
+    // aspect ratio; `ratio` then only accepts `adaptive`. Sending a
+    // concrete ratio alongside a frame is rejected — after the debit.
+    framesRatioAdaptiveOnly: true,
+    supportsOmniTaskType: true,
     modes: {
-      values: ['480p', '720p'],
+      values: SEEDANCE_RESOLUTIONS_25,
       default: '720p',
     },
     maxPromptChars: 2500,
     notes:
-      'BytePlus Seedance 2.5. Up to 30s and 30 reference images, plus reference video (<=10, <=30s total) and reference audio (<=10 clips, <=30s total). 480p/720p. Also supports edit and extend task types via omni_reference_task_type. Billed per second of output.',
+      'BytePlus Seedance 2.5. Up to 30s and 30 reference images, plus reference video (<=10, <=30s total) and reference audio (<=10 clips, <=30s total). 480p/720p/1080p (1080p is 10-bit H.265). Also supports edit and extend task types via omni_reference_task_type. Billed per second of output.',
   },
   // Cheapest tier of the 2.0 line. Same parameter surface as Fast.
   'dreamina-seedance-2-0-mini-260615': {
@@ -830,6 +897,19 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // The only Seedream that accepts ~1 MP; 4.5 and 5.0-lite floor at
     // ~3.69 MP. Flat price across every tier.
     sizing: { mode: 'aspect', values: SEEDREAM_ASPECT_RATIOS, resolutions: ['1K', '2K', '4K'] },
+    // `size` doubles as an exact WIDTHxHEIGHT field — the only lever that
+    // actually pins the aspect ratio (there is no `aspect_ratio` param and
+    // a ratio written into the prompt is routinely ignored). Price is flat
+    // per image regardless of dimensions, so aiming at ~2048² costs the
+    // same as the 1K keyword this used to fall back to.
+    pixelSizing: {
+      minPixels: 921_600,
+      maxPixels: 16_777_216,
+      minRatio: 1 / 16,
+      maxRatio: 16,
+      targetPixels: 4_194_304,
+      divisibleBy: 16,
+    },
     outputs: { min: 1, max: 15, default: 1 },
     refAddressing: 'ordinal',
     maxReferences: 14,
@@ -847,6 +927,17 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     status: 'active',
     kind: 'image',
     sizing: { mode: 'aspect', values: SEEDREAM_ASPECT_RATIOS, resolutions: ['2K', '3K', '4K'] },
+    // Same story as 4.0, but this model FLOORS at ~3.69 MP — a 1024x1024
+    // that looks perfectly reasonable is a hard error here, which is why
+    // the bounds live in the registry rather than in the compiler.
+    pixelSizing: {
+      minPixels: 3_686_400,
+      maxPixels: 16_777_216,
+      minRatio: 1 / 16,
+      maxRatio: 16,
+      targetPixels: 4_194_304,
+      divisibleBy: 16,
+    },
     outputs: { min: 1, max: 15, default: 1 },
     refAddressing: 'ordinal',
     maxReferences: 14,

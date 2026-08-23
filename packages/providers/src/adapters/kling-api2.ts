@@ -113,7 +113,8 @@ function imageSource(part: ImagePart): string {
 
 type ContentPart =
   | { type: 'prompt'; text: string }
-  | { type: 'first_frame' | 'last_frame' | 'refer_image'; url: string; id?: string };
+  | { type: 'first_frame' | 'last_frame' | 'refer_image'; url: string; id?: string }
+  | { type: 'element'; element_id: string; id: string };
 
 interface TaskEnvelope {
   code: number;
@@ -191,6 +192,13 @@ function buildContents(request: KlingCompiledRequest): ContentPart[] {
       // `id` is what the prompt's `@image_N` token binds to.
       id: `image_${ref.index}`,
     });
+  }
+  // Library Elements. Unlike every other part these carry no bytes —
+  // just the id Kling issued when the element was created. Their `id`
+  // is the element's NAME, because that is the token the prompt uses
+  // (`@Zhang`), where images bind to `@image_N` instead.
+  for (const el of request.elements ?? []) {
+    contents.push({ type: 'element', element_id: el.elementId, id: el.name });
   }
   return contents;
 }

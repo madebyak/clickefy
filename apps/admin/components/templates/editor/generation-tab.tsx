@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import type { Template, GenerationStage, TemplateInput, ReferenceImageRole, GenerationReference, FrameSlots } from '@clickfy/types';
+import type { Template, GenerationStage, TemplateInput, ReferenceImageRole, GenerationReference, FrameSlots, KlingElementRef } from '@clickfy/types';
 import { aspectRatiosFor, findCapabilities, listActiveModels, pixelSizeForAspect } from '@clickfy/providers';
 import { cn } from '@/lib/utils';
 import { uploadImageAsset, ApiError } from '@/lib/api/uploads';
@@ -701,6 +701,115 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                             </>
                           );
                         })()}
+
+                        {/* Kling Elements. Not reference images: these are
+                            persistent entities in Kling's own library,
+                            created asynchronously from a frontal photo plus
+                            a few angles, and cited by id. The prompt
+                            addresses them by name, so the name must match
+                            the `@token` in the prompt exactly. */}
+                        {stage.provider === 'kling' &&
+                          (findCapabilities(stage.model)?.maxElements ?? 0) > 0 && (() => {
+                            const caps = findCapabilities(stage.model)!;
+                            const max = caps.maxElements ?? 0;
+                            const list =
+                              ((stage.config as { elements?: KlingElementRef[] }).elements) ?? [];
+                            const patch = (next: KlingElementRef[]) =>
+                              handleUpdateStage(stage.id, {
+                                config: {
+                                  ...stage.config,
+                                  elements: next.length > 0 ? next : undefined,
+                                },
+                              });
+                            return (
+                              <>
+                                <Separator />
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <Label className="text-sm font-medium">
+                                        Kling Elements
+                                      </Label>
+                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                        Reusable characters or objects from your Kling
+                                        library. Cite one in the prompt as{' '}
+                                        <code className="rounded bg-muted px-1">@name</code>.
+                                      </p>
+                                    </div>
+                                    {list.length < max && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          patch([...list, { elementId: '', name: '' }])
+                                        }
+                                        className="gap-1.5"
+                                      >
+                                        <Plus className="h-3.5 w-3.5" />
+                                        Add
+                                      </Button>
+                                    )}
+                                  </div>
+
+                                  {list.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">
+                                      None. Up to {max} per stage.
+                                    </p>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      {list.map((el, i) => (
+                                        <div key={i} className="flex items-center gap-2">
+                                          <Input
+                                            value={el.name}
+                                            placeholder="Name (matches @name)"
+                                            onChange={(e) =>
+                                              patch(
+                                                list.map((x, j) =>
+                                                  j === i ? { ...x, name: e.target.value } : x,
+                                                ),
+                                              )
+                                            }
+                                            className="h-9"
+                                          />
+                                          <Input
+                                            value={el.elementId}
+                                            placeholder="Element ID from Kling"
+                                            onChange={(e) =>
+                                              patch(
+                                                list.map((x, j) =>
+                                                  j === i
+                                                    ? { ...x, elementId: e.target.value }
+                                                    : x,
+                                                ),
+                                              )
+                                            }
+                                            className="h-9 font-mono text-xs"
+                                          />
+                                          <Button
+                                            size="icon-xs"
+                                            variant="ghost"
+                                            className="text-destructive hover:text-destructive"
+                                            onClick={() =>
+                                              patch(list.filter((_, j) => j !== i))
+                                            }
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {caps.elementsExcludeEndFrame && (
+                                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                                      {stage.model} cannot combine Elements with a first+last
+                                      frame pair — set only a first frame to use them.
+                                    </p>
+                                  )}
+                                </div>
+                              </>
+                            );
+                          })()}
 
                         {/* Reference Images — Gemini / Kling Omni only. Seedance
                              routes through its own editor above. */}

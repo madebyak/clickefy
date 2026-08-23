@@ -343,6 +343,112 @@ describe('compile() — Kling frame slots', () => {
   });
 });
 
+// ─── Kling Elements ─────────────────────────────────────────────────
+
+describe('compile() — Kling Elements', () => {
+  const withElements = (model: string, config: Record<string, unknown>) =>
+    makeStage({ provider: 'kling', model, prompt: 'a shot of @Zhang', config });
+
+  it('passes elements through with their id and name', () => {
+    const a = imageField('shot_a', 'Shot A');
+    const { request, warnings } = compile(
+      makeCtx({
+        stage: withElements('kling-v3', {
+          aspectRatio: '16:9',
+          mode: 'pro',
+          elements: [{ elementId: '901', name: 'Zhang' }],
+          frameSlots: { firstFrame: { kind: 'user_input', fieldKey: 'shot_a' } },
+        }),
+        templateInputs: [a],
+        inputValues: { shot_a: imageValue('a.png') },
+      }),
+    );
+    const kling = request as KlingCompiledRequest;
+    expect(kling.elements).toEqual([{ elementId: '901', name: 'Zhang' }]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('clamps to the model cap of 3', () => {
+    const a = imageField('shot_a', 'Shot A');
+    const { request, warnings } = compile(
+      makeCtx({
+        stage: withElements('kling-v3', {
+          aspectRatio: '16:9',
+          mode: 'pro',
+          elements: [1, 2, 3, 4].map((n) => ({ elementId: `${n}`, name: `E${n}` })),
+          frameSlots: { firstFrame: { kind: 'user_input', fieldKey: 'shot_a' } },
+        }),
+        templateInputs: [a],
+        inputValues: { shot_a: imageValue('a.png') },
+      }),
+    );
+    expect((request as KlingCompiledRequest).elements).toHaveLength(3);
+    expect(warnings.some((w) => /at most 3 Element/.test(w.message))).toBe(true);
+  });
+
+  it('drops them on a model that accepts none', () => {
+    const a = imageField('shot_a', 'Shot A');
+    const { request, warnings } = compile(
+      makeCtx({
+        stage: withElements('kling-v2-6', {
+          aspectRatio: '16:9',
+          elements: [{ elementId: '901', name: 'Zhang' }],
+          frameSlots: { firstFrame: { kind: 'user_input', fieldKey: 'shot_a' } },
+        }),
+        templateInputs: [a],
+        inputValues: { shot_a: imageValue('a.png') },
+      }),
+    );
+    expect((request as KlingCompiledRequest).elements).toBeUndefined();
+    expect(warnings.some((w) => /does not accept Kling Elements/.test(w.message))).toBe(true);
+  });
+
+  it('refuses to combine them with a first+last pair on Omni', () => {
+    // "Using first+last frames: Elements are not supported."
+    const a = imageField('shot_a', 'Shot A');
+    const b = imageField('shot_b', 'Shot B');
+    const { request, warnings } = compile(
+      makeCtx({
+        stage: withElements('kling-v3-omni', {
+          aspectRatio: '16:9',
+          mode: 'pro',
+          elements: [{ elementId: '901', name: 'Zhang' }],
+          frameSlots: {
+            firstFrame: { kind: 'user_input', fieldKey: 'shot_a' },
+            lastFrame: { kind: 'user_input', fieldKey: 'shot_b' },
+          },
+        }),
+        templateInputs: [a, b],
+        inputValues: { shot_a: imageValue('a.png'), shot_b: imageValue('b.png') },
+      }),
+    );
+    const kling = request as KlingCompiledRequest;
+    expect(kling.elements).toBeUndefined();
+    expect(kling.endImage).toBeDefined();
+    expect(warnings.some((w) => /cannot combine Elements/.test(w.message))).toBe(true);
+  });
+
+  it('drops them on a text-to-video request, which has no contents array', () => {
+    const { request, warnings } = compile(
+      makeCtx({
+        stage: withElements('kling-v3', {
+          aspectRatio: '16:9',
+          mode: 'pro',
+          elements: [{ elementId: '901', name: 'Zhang' }],
+        }),
+        templateInputs: [],
+        inputValues: {},
+      }),
+    );
+    const kling = request as KlingCompiledRequest;
+    expect(kling.variant).toBe('text2video');
+    expect(kling.elements).toBeUndefined();
+    expect(warnings.some((w) => /only use Elements on an image-to-video/.test(w.message))).toBe(
+      true,
+    );
+  });
+});
+
 // ─── Kling Omni: @image_N addressing ────────────────────────────────
 
 describe('compile() — Kling 3 Omni', () => {

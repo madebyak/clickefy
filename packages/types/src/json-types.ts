@@ -330,6 +330,26 @@ export interface SeedanceFrameSlots {
 }
 
 /**
+ * A Kling Element referenced by a stage.
+ *
+ * Elements are NOT reference images. They are persistent entities in a
+ * Kling-side library, created asynchronously from a frontal photo plus
+ * 1-3 further angles, and addressed from the prompt by name (`@Zhang`).
+ * A stage stores the id Kling issued plus the name, because the name is
+ * what the prompt token must match and re-fetching it at compile time
+ * would mean a network call inside the compiler.
+ *
+ * `elementId` is a string: Kling's create/query docs type it as a number
+ * while the generation docs type it as a string, so we keep the wider of
+ * the two and send back exactly what they gave us.
+ */
+export interface KlingElementRef {
+  elementId: string;
+  /** Element name, matched by the `@name` token in the prompt. */
+  name: string;
+}
+
+/**
  * Provider-neutral aliases for the two types above.
  *
  * The binding and slot shapes were written for Seedance but describe

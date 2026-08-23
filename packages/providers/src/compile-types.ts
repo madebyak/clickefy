@@ -179,6 +179,12 @@ export interface KlingCompiledRequest {
    * Defaults to `native`.
    */
   soundOnValue?: 'native' | 'original';
+  /**
+   * Kling library Elements cited by this request. Sent as
+   * `contents[{type:'element', element_id, id}]`; the prompt addresses
+   * them by name (`@Zhang`).
+   */
+  elements?: Array<{ elementId: string; name: string }>;
   /** First frame of the resulting video. */
   startImage?: ImagePart;
   /** Optional last frame. */

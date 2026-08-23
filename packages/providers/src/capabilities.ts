@@ -128,6 +128,24 @@ export interface ModelCapabilities {
   acceptsStartEndImage?: boolean;
 
   /**
+   * Kling only: how many library Elements a request may cite.
+   *
+   * Elements are persistent Kling-side entities, not uploads — see
+   * `KlingElementRef`. 3.0 documents a hard cap of 3; Omni and O1 share
+   * one budget with reference images (7 normally, 4 once a reference
+   * video is involved), so the number here is their ceiling in the
+   * simple case. 0 or absent means the endpoint does not accept them.
+   */
+  maxElements?: number;
+
+  /**
+   * Kling Omni / O1 only: the endpoints refuse Elements and a
+   * first+last frame pair in the same request. Documented as "Using
+   * first+last frames: Elements are not supported."
+   */
+  elementsExcludeEndFrame?: boolean;
+
+  /**
    * Kling only: the minimum quality tier at which native audio is
    * available. Kling 2.6 documents `audio=native` as 1080p-only; the
    * 3.0 family has no such restriction.
@@ -715,6 +733,10 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 2,
     maxImagesTotal: 7,
     acceptsStartEndImage: true,
+    // Shares the 7-image budget with reference images; drops to 4 once a
+    // reference video is involved, which we do not send yet.
+    maxElements: 7,
+    elementsExcludeEndFrame: true,
     // Native audio via the `sound: on|off` request field.
     supportsSound: true,
     // Quality tiers — default `pro` matches what the adapter has always
@@ -753,11 +775,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     negativePrompt: true,
     // `POST /image-to-video/kling-3.0` accepts `contents[{type:'element'}]`
     // addressed from the prompt as `@name`, capped at 3 by the docs.
-    // Elements are pre-registered library entities rather than per-request
-    // uploads, so `maxReferences` stays 0 until that library is wired
-    // (they are NOT interchangeable with our GenerationReference images).
+    // Elements are pre-registered library entities rather than
+    // per-request uploads, so they are NOT interchangeable with our
+    // GenerationReference images and `maxReferences` stays 0.
     refAddressing: 'at',
     maxReferences: 0,
+    maxElements: 3,
     // first_frame + last_frame. Was 1, which made the end frame
     // unreachable and — because the admin gates its whole reference
     // block on capability — is why Kling 3 showed neither control.
@@ -841,6 +864,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxSubjects: 2,
     maxImagesTotal: 7,
     acceptsStartEndImage: true,
+    maxElements: 7,
+    elementsExcludeEndFrame: true,
     supportsSound: true,
     // O1 rejects `native`; its enum is `original | off`.
     soundOnValue: 'original',

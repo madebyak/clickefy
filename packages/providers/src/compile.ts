@@ -32,6 +32,7 @@
 import type {
   FrameSlots,
   GenerationReference,
+  KlingElementRef,
   GenerationStage,
   TemplateInputField,
 } from '@clickfy/types';
@@ -750,6 +751,50 @@ function compileKling(
     }
   }
 
+  // ── Elements ──────────────────────────────────────────────────
+  //
+  // Library entities, not uploads: the stage stores the id Kling issued
+  // and the name the prompt addresses (`@Zhang`). Validated here rather
+  // than at the adapter because the caps that bound them — the count,
+  // and the mutual exclusion with an end frame — are model facts.
+  const configuredElements =
+    (stage.config as { elements?: KlingElementRef[] }).elements ?? [];
+  const maxElements = capabilities.maxElements ?? 0;
+  let elements: KlingElementRef[] = [];
+  if (configuredElements.length > 0) {
+    if (maxElements === 0) {
+      warnings.push({
+        code: 'reference_dropped',
+        message: `${stage.model} does not accept Kling Elements; ${configuredElements.length} dropped.`,
+      });
+    } else if (capabilities.elementsExcludeEndFrame && subjects.length > 1) {
+      // Omni / O1: "Using first+last frames: Elements are not
+      // supported." Dropping the elements rather than the end frame is
+      // the conservative read — the frames are the stronger statement
+      // of intent, and an element silently missing from a shot is more
+      // recoverable than a shot that ends somewhere unasked for.
+      warnings.push({
+        code: 'config_clamped',
+        message: `${stage.model} cannot combine Elements with a first+last frame pair; ${configuredElements.length} element(s) dropped. Remove the last frame to use them.`,
+      });
+    } else {
+      elements = configuredElements.filter((e) => e.elementId && e.name);
+      if (elements.length < configuredElements.length) {
+        warnings.push({
+          code: 'reference_dropped',
+          message: `${configuredElements.length - elements.length} element(s) skipped — missing an id or a name.`,
+        });
+      }
+      if (elements.length > maxElements) {
+        warnings.push({
+          code: 'config_clamped',
+          message: `${stage.model} accepts at most ${maxElements} Element(s); ${elements.length - maxElements} dropped.`,
+        });
+        elements = elements.slice(0, maxElements);
+      }
+    }
+  }
+
   // References. Empty array for v2 (which doesn't accept them) plus a
   // warning if the admin attached any.
   const refs: ImagePart[] = [];
@@ -898,13 +943,27 @@ function compileKling(
     endFrame = undefined;
   }
 
+  const variant: KlingCompiledRequest['variant'] = isOmni
+    ? 'omni'
+    : !subjects[0] && supportsTextToVideo
+      ? 'text2video'
+      : 'image2video';
+
+  // `/text-to-video/*` takes a bare `prompt` string and no `contents[]`
+  // at all, so it has nowhere to put an Element. Without this the
+  // elements would be silently dropped at the adapter and the prompt
+  // would keep an `@name` token pointing at nothing.
+  if (elements.length > 0 && variant === 'text2video') {
+    warnings.push({
+      code: 'config_clamped',
+      message: `${stage.model} can only use Elements on an image-to-video request; bind a first frame, or the ${elements.length} element(s) are ignored.`,
+    });
+    elements = [];
+  }
+
   const request: KlingCompiledRequest = {
     provider: 'kling',
-    variant: isOmni
-      ? 'omni'
-      : !subjects[0] && supportsTextToVideo
-        ? 'text2video'
-        : 'image2video',
+    variant,
     api2: capabilities.klingApi2,
     soundOnValue: capabilities.soundOnValue,
     model: apiModelFor(stage, capabilities),
@@ -915,6 +974,7 @@ function compileKling(
     mode,
     cfgScale,
     soundEnabled: audioEnabled,
+    ...(elements.length > 0 ? { elements } : {}),
     startImage: subjects[0],
     endImage: endFrame,
     referenceImages: refs.length > 0 ? refs : undefined,

@@ -7,6 +7,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { withDb } from './middleware/with-db';
 import { purgeDeletedUserAssets } from './lib/purge-assets';
 import { health } from './routes/health';
+import { billingRoute } from './routes/billing';
 import { catalog } from './routes/catalog';
 import { categoriesRoute } from './routes/categories';
 import { jobsRoute } from './routes/jobs';
@@ -76,6 +77,7 @@ app.get('/', (c) =>
 );
 
 app.route('/v1/health', health);
+app.route('/v1/billing', billingRoute);
 app.route('/v1/catalog', catalog);
 app.route('/v1/categories', categoriesRoute);
 app.route('/v1/admin/me', adminMeRoute);

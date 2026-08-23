@@ -33,6 +33,7 @@ export * from './provider-models';
 export * from './reports';
 export * from './revenuecat-events';
 export * from './saved-templates';
+export * from './stripe-events';
 export * from './subscription-plans';
 export * from './template-categories';
 export * from './template-versions';

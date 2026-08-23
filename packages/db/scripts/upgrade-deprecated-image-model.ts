@@ -30,15 +30,20 @@
  *   - Refuses to touch a template that does not actually contain the
  *     deprecated model, or whose replacement is missing/deprecated/
  *     unpriced in `provider_models`.
- *   - Only `status = 'published'` templates get a new version. Archived
- *     and draft rows are reported, never written — republishing them is
- *     an editorial decision, not a migration.
+ *   - ONLY `status = 'published'` templates ever get a new version.
+ *     Archived and draft rows are skipped by default; with
+ *     `--include-unpublished` they get the model swap and the price
+ *     recomputation on the live row ONLY, and their `status` is asserted
+ *     unchanged afterwards. Publishing a version for an archived template
+ *     would silently un-archive it, which is an editorial decision rather
+ *     than a migration.
  *   - Re-reads every row after writing instead of trusting the write.
  *   - Idempotent: a second run finds nothing to do.
  *
  * Usage:
  *   DATABASE_URL=... pnpm tsx scripts/upgrade-deprecated-image-model.ts
  *   DATABASE_URL=... pnpm tsx scripts/upgrade-deprecated-image-model.ts --apply
+ *   DATABASE_URL=... pnpm tsx scripts/upgrade-deprecated-image-model.ts --apply --include-unpublished
  */
 
 import { and, createDb, eq, templateCategories, templateVersions, templates } from '../src';
@@ -49,6 +54,14 @@ if (!url) {
   process.exit(1);
 }
 const apply = process.argv.includes('--apply');
+/**
+ * Also repair archived/draft rows. They get the model swap and the price
+ * recomputation on the LIVE row only — never a published version, which
+ * would flip an archived template back to `published`. Whenever someone
+ * next publishes one from the admin, the publish endpoint snapshots the
+ * already-corrected row, which is exactly the behaviour we want.
+ */
+const includeUnpublished = process.argv.includes('--include-unpublished');
 const db = createDb({ connectionString: url, runtime: 'http' });
 
 /** The model being retired. */
@@ -152,6 +165,7 @@ async function main() {
   }
 
   let published = 0;
+  let rowsRepaired = 0;
   let skipped = 0;
 
   for (const row of affected) {
@@ -175,9 +189,38 @@ async function main() {
       `       ${swapped} stage(s): ${DEPRECATED} → ${replacement}   cost ${row.costCredits}cr → ${nextCost}cr`,
     );
 
+    const nextGeneration = { ...row.generation, stages: nextStages } as typeof row.generation;
+
+    // ── Archived / draft: repair the live row, publish nothing ───────
     if (row.status !== 'published') {
-      console.log(`       skipped — only published templates get a new version`);
-      skipped += 1;
+      if (!includeUnpublished) {
+        console.log(
+          `       skipped — pass --include-unpublished to repair the live row (no version is published)`,
+        );
+        skipped += 1;
+        continue;
+      }
+      if (!apply) {
+        rowsRepaired += 1;
+        continue;
+      }
+      await db
+        .update(templates)
+        .set({ generation: nextGeneration, costCredits: nextCost, updatedAt: new Date() })
+        .where(eq(templates.id, row.id));
+
+      const back = await db.query.templates.findFirst({ where: eq(templates.id, row.id) });
+      const clean = !((back?.generation?.stages ?? []) as unknown as StageJson[]).some(
+        (s) => s.model === DEPRECATED,
+      );
+      // The status must NOT have moved — that is the whole point of this branch.
+      const statusHeld = back?.status === row.status;
+      const ok = clean && back?.costCredits === nextCost && statusHeld;
+      console.log(
+        `       ${ok ? '✓' : '✗ MISMATCH'} live row clean=${clean} cost=${back?.costCredits}cr status=${back?.status} (unchanged=${statusHeld}); no version published`,
+      );
+      if (ok) rowsRepaired += 1;
+      else skipped += 1;
       continue;
     }
 
@@ -187,7 +230,6 @@ async function main() {
     }
 
     // ── 1+2. live row: new stages + recomputed cost ─────────────────
-    const nextGeneration = { ...row.generation, stages: nextStages } as typeof row.generation;
     await db
       .update(templates)
       .set({ generation: nextGeneration, costCredits: nextCost, updatedAt: new Date() })
@@ -271,7 +313,8 @@ async function main() {
   }
 
   console.log(
-    `\n${apply ? 'Published' : 'Would publish'} ${published} new version(s); ${skipped} skipped.`,
+    `\n${apply ? 'Published' : 'Would publish'} ${published} new version(s); ` +
+      `${apply ? 'repaired' : 'would repair'} ${rowsRepaired} unpublished row(s); ${skipped} skipped.`,
   );
   if (!apply) console.log('Re-run with --apply to write.');
 }

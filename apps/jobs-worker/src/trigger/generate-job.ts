@@ -163,7 +163,11 @@ export const generateJob = task({
         aspectRatio?: string;
         duration?: number;
         sound?: boolean;
-        mode?: 'std' | 'pro' | '4k';
+        // The billed tier. Deliberately a plain string: the key vocabulary
+        // is per-provider (Kling std/pro/4k, Seedance 480p/720p/1080p/4k,
+        // Gemini 1K/2K/4K, OpenAI low/medium/high) and the old Kling-shaped
+        // union described only one of them.
+        mode?: string;
       };
       const rawInputKeys = Object.keys(jobRow.inputs as Record<string, unknown>);
       const referenceCount = rawInputKeys.filter((k) => k.startsWith('ref_')).length;
@@ -218,6 +222,45 @@ export const generateJob = task({
       }
       const template = versionRow.snapshot as Template;
       stages = [...template.generation.stages].sort((a, b) => a.order - b.order);
+
+      // Apply the aspect ratio the user picked, when the template offers
+      // the choice.
+      //
+      // Until now this branch never read `jobs.options` at all: the ratio
+      // was collected, validated against the first stage's model, and
+      // persisted — then ignored, so the user was served whatever the
+      // admin froze in. Only `source='user'` jobs honoured it.
+      //
+      // Three guards make this safe for every template that does NOT use
+      // the feature — which today is all of them:
+      //   1. `userCanChooseAspectRatio` is read from the FROZEN snapshot,
+      //      so a template that never offered the choice can't be altered
+      //      even if the live row is edited later.
+      //   2. `POST /v1/jobs` already rejects an `aspectRatio` outright
+      //      when the flag is off, so `options.aspectRatio` cannot be set
+      //      on such a job in the first place.
+      //   3. No option → the stage list is passed through untouched.
+      //
+      // Only the FIRST stage is overridden: that is the stage whose model
+      // bounded the choice at validation time, and later stages inherit
+      // the frame from its output rather than re-deciding shape.
+      const templateOpts = (jobRow.options ?? {}) as { aspectRatio?: string };
+      const chosenRatio = templateOpts.aspectRatio;
+      if (template.userCanChooseAspectRatio && chosenRatio && stages.length > 0) {
+        const first = stages[0]!;
+        // Clone rather than mutate — `stages` holds objects owned by the
+        // parsed snapshot, and the compiler is handed them directly.
+        stages = [
+          { ...first, config: { ...first.config, aspectRatio: chosenRatio } },
+          ...stages.slice(1),
+        ];
+        logger.info('generate-job:user-aspect-ratio', {
+          jobId,
+          aspectRatio: chosenRatio,
+          stage: first.id,
+        });
+      }
+
       stageTemplateInputs = template.userInputs;
       jobCostCredits = template.costCredits;
       notifyTitle = template.title;

@@ -50,12 +50,44 @@ import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 import { DEFAULT_PROJECT_NAME, titleFromPrompt } from '../lib/project-title';
 import { createJobSchema, createUserJobSchema, type JobInputValueParsed } from '../lib/job-schemas';
 import { validateCreateSubmission, validateJobSubmission } from '../lib/job-validation';
-import { createJobAtomically, createUserJobAtomically } from '../lib/job-create';
+import { createJobAtomically, createUserJobAtomically, isCreditRace } from '../lib/job-create';
 import { getCreateModelDef, isCreateEligible } from '../lib/create-models';
 import { dispatchJob } from '../lib/dispatch-job';
 import { resolveOwnMediaUrl } from '../lib/template-dto';
 
 export const jobsRoute = new Hono<AppEnv>();
+
+/**
+ * How many credits this user can ACTUALLY spend right now.
+ *
+ * Top-up credits are only spendable with an active subscription, so the
+ * affordability pre-check has to use this rather than the raw balance.
+ * Using `creditsBalance` meant a lapsed subscriber holding only top-ups
+ * passed the pre-check, failed the atomic debit, and was told "Credits
+ * changed during submission. Try again." — on a balance that looked
+ * perfectly healthy, forever.
+ */
+function spendableCredits(user: { entitlement: string; creditsBalance: number; topupCredits: number }): number {
+  return user.entitlement === 'free' ? user.creditsBalance - user.topupCredits : user.creditsBalance;
+}
+
+/**
+ * Turn an `insufficient_credits` rejection into an accurate one. A free
+ * user whose balance is mostly locked top-ups needs to be told to
+ * resubscribe, not to buy more credits.
+ */
+function creditErrorFor(
+  user: { entitlement: string; topupCredits: number },
+  fallback: { code: string; message: string },
+): { code: string; message: string } {
+  if (user.entitlement === 'free' && user.topupCredits > 0) {
+    return {
+      code: 'topup_locked',
+      message: `You have ${user.topupCredits} credits from a credit pack, but they need an active subscription to spend. Resubscribe to unlock them.`,
+    };
+  }
+  return fallback;
+}
 
 // ─── POST /v1/jobs ──────────────────────────────────────────────────
 
@@ -163,7 +195,7 @@ jobsRoute.post(
         defaultAspectRatio: template.defaultAspectRatio,
         costCredits: template.costCredits,
       },
-      currentCreditsBalance: user.creditsBalance,
+      currentCreditsBalance: spendableCredits(user),
       allowedAspectRatios,
     });
 
@@ -171,7 +203,11 @@ jobsRoute.post(
       // 402 reserved for payment-related rejections so the mobile app
       // can show a "Get more credits" CTA distinct from generic 4xx.
       const status = validationError.code === 'insufficient_credits' ? 402 : 422;
-      return c.json({ error: validationError }, status);
+      const payload =
+        validationError.code === 'insufficient_credits'
+          ? creditErrorFor(user, validationError)
+          : validationError;
+      return c.json({ error: payload }, status);
     }
 
     // ── Project ownership (web studio) ─────────────────────────────
@@ -227,6 +263,20 @@ jobsRoute.post(
             },
           });
         }
+      }
+      // A concurrent spend left one lot short after our snapshot was
+      // taken, so the lot CHECK rolled the whole statement back. Nothing
+      // was applied; this is the same answer as the zero-rows case.
+      if (isCreditRace(err)) {
+        return c.json(
+          {
+            error: {
+              code: 'insufficient_credits',
+              message: 'Credits changed during submission. Try again.',
+            },
+          },
+          402,
+        );
       }
       console.error('createJobAtomically failed:', err);
       return c.json(
@@ -452,11 +502,15 @@ jobsRoute.post(
         acceptsStartEndImage: caps.acceptsStartEndImage ?? false,
         cost,
       },
-      currentCreditsBalance: user.creditsBalance,
+      currentCreditsBalance: spendableCredits(user),
     });
     if (validationError) {
       const status = validationError.code === 'insufficient_credits' ? 402 : 422;
-      return c.json({ error: validationError }, status);
+      const payload =
+        validationError.code === 'insufficient_credits'
+          ? creditErrorFor(user, validationError)
+          : validationError;
+      return c.json({ error: payload }, status);
     }
 
     // ── Project ownership (web studio) ─────────────────────────────
@@ -534,6 +588,20 @@ jobsRoute.post(
             },
           });
         }
+      }
+      // A concurrent spend left one lot short after our snapshot was
+      // taken, so the lot CHECK rolled the whole statement back. Nothing
+      // was applied; this is the same answer as the zero-rows case.
+      if (isCreditRace(err)) {
+        return c.json(
+          {
+            error: {
+              code: 'insufficient_credits',
+              message: 'Credits changed during submission. Try again.',
+            },
+          },
+          402,
+        );
       }
       console.error('createUserJobAtomically failed:', err);
       return c.json(

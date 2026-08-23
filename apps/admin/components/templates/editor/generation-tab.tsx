@@ -345,7 +345,14 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
       id: `stage-${crypto.randomUUID()}`,
       order: stages.length + 1,
       provider: 'gemini',
-      model: 'gemini-2.5-flash-image',
+      // Use the same pinned default as the provider picker rather than a
+      // literal. This hardcoded `gemini-2.5-flash-image` long after that
+      // key was deprecated, so every stage an author added and never
+      // re-picked silently inherited a model Google shuts down on
+      // 2026-10-02 — three published templates had to be migrated off it.
+      // `defaultModelFor` also falls back when a pin is retired, which a
+      // literal here cannot do.
+      model: defaultModelFor('gemini'),
       prompt: '',
       references: [],
       config: {

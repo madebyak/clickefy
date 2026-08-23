@@ -18,6 +18,7 @@ import { sql } from 'drizzle-orm';
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { creditReasonEnum, type CreditBucket } from './enums';
+import { creditLots } from './credit-lots';
 import { jobs } from './jobs';
 import { users } from './users';
 
@@ -35,6 +36,13 @@ export const creditLedger = pgTable(
 
     /** Optional foreign keys for traceability. */
     jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'set null' }),
+    /**
+     * Which `credit_lots` row this entry moved (migration 0029). Lets a
+     * refund return credits to exactly the lots the charge drew from
+     * rather than guessing a class. NULL on entries that predate lots and
+     * on aggregate rows that don't map to a single lot.
+     */
+    lotId: uuid('lot_id').references(() => creditLots.id, { onDelete: 'set null' }),
     revenueCatTransactionId: text('revenuecat_transaction_id'),
 
     balanceAfter: integer('balance_after').notNull(),

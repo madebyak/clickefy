@@ -22,6 +22,7 @@ import { projectAssets } from './project-assets';
 import { projects } from './projects';
 import { savedTemplates } from './saved-templates';
 import { templateCategories } from './template-categories';
+import { creditLots } from './credit-lots';
 import { templateVersions } from './template-versions';
 import { templates } from './templates';
 import { users } from './users';
@@ -29,6 +30,7 @@ import { users } from './users';
 export const usersRelations = relations(users, ({ many }) => ({
   jobs: many(jobs),
   creditEntries: many(creditLedger),
+  creditLots: many(creditLots),
   savedTemplates: many(savedTemplates),
   favoriteAssets: many(favoriteAssets),
 }));
@@ -131,4 +133,10 @@ export const favoriteAssetsRelations = relations(favoriteAssets, ({ one }) => ({
 export const creditLedgerRelations = relations(creditLedger, ({ one }) => ({
   user: one(users, { fields: [creditLedger.userId], references: [users.id] }),
   job: one(jobs, { fields: [creditLedger.jobId], references: [jobs.id] }),
+  lot: one(creditLots, { fields: [creditLedger.lotId], references: [creditLots.id] }),
+}));
+
+export const creditLotsRelations = relations(creditLots, ({ one, many }) => ({
+  user: one(users, { fields: [creditLots.userId], references: [users.id] }),
+  ledgerEntries: many(creditLedger),
 }));

@@ -17,6 +17,7 @@ export * from './admin-audit-log';
 export * from './categories';
 export * from './credit-broadcasts';
 export * from './credit-ledger';
+export * from './credit-lots';
 export * from './credit-packs';
 export * from './device-tokens';
 export * from './favorite-assets';

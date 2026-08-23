@@ -1,8 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,7 +26,7 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import type { Template, Category, TemplateKind, MediaRef } from '@clickfy/types';
-import { ImagePlus, ImageIcon, Film, GalleryHorizontal, Languages, Loader2, X, Video as VideoIcon } from 'lucide-react';
+import { ChevronDownIcon, Film, GalleryHorizontal, ImageIcon, ImagePlus, Languages, Loader2, Video as VideoIcon, X, XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { setTemplateField } from '@/lib/i18n-content';
 import { toast } from 'sonner';
@@ -183,6 +192,13 @@ function filesToList(files: File[]): FileList {
  *     the join-table `sort_order` is server-assigned in selection
  *     order, so the *first chip you tap* becomes the first extra.
  */
+/**
+ * Extra category memberships allowed on top of the primary.
+ * Mirrors `extraCategoryIds: z.array(...).max(2)` in the API's
+ * template-schemas — exceeding it here would only earn a 422.
+ */
+const MAX_EXTRA_CATEGORIES = 2;
+
 function ExtraCategoriesPicker({
   categories,
   primaryId,
@@ -194,93 +210,127 @@ function ExtraCategoriesPicker({
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
-  const MAX_EXTRAS = 2;
-  const atCap = selected.length >= MAX_EXTRAS;
+  const atCap = selected.length >= MAX_EXTRA_CATEGORIES;
+  const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const groups = useMemo(() => groupCategoriesByParent(categories), [categories]);
 
-  function toggle(id: string) {
-    if (selected.includes(id)) {
+  function toggle(id: string, next: boolean) {
+    if (!next) {
       onChange(selected.filter((x) => x !== id));
       return;
     }
+    // Server caps this at 2 as well; refusing here keeps the request
+    // from being rejected after the admin thinks it landed.
     if (atCap) return;
     onChange([...selected, id]);
   }
 
+  /**
+   * One row of the menu. `closeOnClick` defaults to false on base-ui's
+   * CheckboxItem, so the menu stays open across several picks — which is
+   * the whole point of a multi-select.
+   */
+  const renderItem = (cat: Category, isChild: boolean) => {
+    const isPrimary = cat.id === primaryId;
+    const isSelected = selected.includes(cat.id);
+    // The primary is already a membership; offering it here would let
+    // the admin create a duplicate the backend rejects.
+    const disabled = isPrimary || (atCap && !isSelected);
+    return (
+      <DropdownMenuCheckboxItem
+        key={cat.id}
+        checked={isSelected}
+        disabled={disabled}
+        onCheckedChange={(next) => toggle(cat.id, next)}
+        className={cn(isChild && 'pl-8')}
+      >
+        <span className="truncate">{cat.name}</span>
+        {isPrimary ? (
+          <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+            primary
+          </span>
+        ) : null}
+      </DropdownMenuCheckboxItem>
+    );
+  };
+
   return (
     <div className="space-y-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <Label>Also show in</Label>
-        <span className="text-xs text-muted-foreground">
-          {selected.length}/{MAX_EXTRAS} extras
+      {/* Same h-6 header row as the primary-category column beside it,
+          so the two dropdowns sit on one baseline. */}
+      <div className="flex h-6 items-center justify-between gap-3">
+        <Label>Other categories</Label>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {selected.length}/{MAX_EXTRA_CATEGORIES}
         </span>
       </div>
-      {/* Chips are grouped two-level (root + its children) so admins
-          can scan available extras quickly. Roots with no sub-
-          categories render as a single chip without a header row. */}
-      <div className="space-y-2">
-        {groupCategoriesByParent(categories).map((group) => {
-          const renderChip = (cat: Category, isChild: boolean) => {
-            const isPrimary = cat.id === primaryId;
-            const isSelected = selected.includes(cat.id);
-            const disabled = isPrimary || (atCap && !isSelected);
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                disabled={disabled}
-                onClick={() => toggle(cat.id)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors border',
-                  isSelected
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border bg-transparent text-muted-foreground hover:border-primary/40',
-                  isPrimary && 'opacity-60 cursor-not-allowed',
-                  disabled && !isPrimary && 'opacity-50 cursor-not-allowed',
-                )}
-                title={
-                  isPrimary
-                    ? 'This is the primary category'
-                    : atCap && !isSelected
-                      ? `Max ${MAX_EXTRAS} extra categories`
-                      : isSelected
-                        ? 'Click to remove'
-                        : 'Click to add'
-                }
-              >
-                {isChild ? (
-                  <span className="text-muted-foreground">↳</span>
-                ) : null}
-                {cat.name}
-                {isPrimary ? <span className="text-[10px] opacity-70">primary</span> : null}
-              </button>
-            );
-          };
 
-          if (group.children.length === 0) {
+      <DropdownMenu>
+        {/* Styled to match SelectTrigger beside it — base-ui's MenuTrigger
+            already renders a native button, so className is enough. */}
+        <DropdownMenuTrigger className="flex h-10 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50">
+          <span
+            className={cn(
+              'truncate',
+              selected.length === 0 && 'text-muted-foreground',
+            )}
+          >
+            {selected.length === 0
+              ? 'None — optional'
+              : selected
+                  .map((id) => byId.get(id)?.name ?? 'Unknown')
+                  .join(', ')}
+          </span>
+          <ChevronDownIcon className="size-4 shrink-0 opacity-50" />
+        </DropdownMenuTrigger>
+
+        {/* The popup already matches the trigger width and scrolls; the
+            extra cap keeps ~40 categories from filling the viewport. */}
+        <DropdownMenuContent className="max-h-72">
+          {groups.map((group, idx) => {
+            if (group.children.length === 0) {
+              return renderItem(group.root, false);
+            }
             return (
-              <div key={group.root.id} className="flex flex-wrap gap-2">
-                {renderChip(group.root, false)}
-              </div>
+              <DropdownMenuGroup key={group.root.id}>
+                {idx > 0 ? <DropdownMenuSeparator /> : null}
+                <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {group.root.name}
+                </DropdownMenuLabel>
+                {renderItem(group.root, false)}
+                {group.children.map((child) => renderItem(child, true))}
+              </DropdownMenuGroup>
             );
-          }
-          return (
-            <div key={group.root.id} className="space-y-1.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {group.root.name}
-              </p>
-              <div className="flex flex-wrap gap-2 pl-1">
-                {renderChip(group.root, false)}
-                {group.children.map((child) => renderChip(child, true))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Selected shown as removable chips so the current state is
+          readable without opening the menu. */}
+      {selected.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {selected.map((id) => (
+            <span
+              key={id}
+              className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 py-1 pl-2.5 pr-1 text-xs font-medium text-primary"
+            >
+              {byId.get(id)?.name ?? 'Unknown'}
+              <button
+                type="button"
+                aria-label={`Remove ${byId.get(id)?.name ?? 'category'}`}
+                onClick={() => onChange(selected.filter((x) => x !== id))}
+                className="grid size-4 place-items-center rounded-full text-primary/70 transition-colors hover:bg-primary/20 hover:text-primary"
+              >
+                <XIcon className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       <p className="text-xs text-muted-foreground">
-        Pick up to {MAX_EXTRAS} other categories where this template
-        should also be discoverable. On the home feed the template
-        still appears in the primary&apos;s rail only — extras affect
-        search filters and the category chip view.
+        Up to {MAX_EXTRA_CATEGORIES} extra places this template appears,
+        on top of its primary category.
       </p>
     </div>
   );
@@ -506,28 +556,37 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
 
   return (
     <div className="space-y-6">
-      {/* Title & Category */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Title — English and Arabic side by side. They are the same
+          field in two locales, so reading them as a pair is the point;
+          stacking them put the Arabic override directly under the
+          English input where it looked like a second, unrelated field. */}
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="title">Template Title</Label>
+          <div className="flex h-6 items-center">
+            <Label htmlFor="title">Template title</Label>
+          </div>
           <Input
             id="title"
             value={template.title || ''}
             onChange={(e) => onChange({ title: e.target.value })}
             placeholder="e.g., Luxury Skincare Product"
           />
-          {/* Arabic override — falls back to the English title above when
-              left blank. Stored under translations.ar.title. */}
-          <div className="flex items-center justify-between">
-            <Label htmlFor="title-ar" className="text-xs text-muted-foreground">
-              Title (العربية)
+        </div>
+
+        {/* Arabic override — falls back to the English title above when
+            left blank. Stored under translations.ar.title. The Translate
+            button sits on this field because this is the field it fills. */}
+        <div className="space-y-2">
+          <div className="flex h-6 items-center justify-between gap-2">
+            <Label htmlFor="title-ar">
+              Title <span className="text-muted-foreground">(العربية)</span>
             </Label>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-6 px-2 text-xs"
-              disabled={translatingField !== null}
+              disabled={translatingField !== null || !template.title?.trim()}
               onClick={() => translateField('title')}
             >
               {translatingField === 'title' ? (
@@ -556,9 +615,16 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
             placeholder="عنوان القالب بالعربية"
           />
         </div>
+      </div>
 
+      {/* Categories — primary and extras are one decision, so they sit
+          on one row rather than a dropdown up here and a wall of chips
+          further down the panel. */}
+      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label>Primary category</Label>
+          <div className="flex h-6 items-center">
+            <Label>Primary category</Label>
+          </div>
           <Select
             // Resolve primary from the new field with fallback to the
             // legacy `categoryId` so editors that loaded before a
@@ -650,15 +716,15 @@ export function BasicInfoTab({ template, categories, onChange, getToken }: Basic
             );
           })()}
         </div>
-      </div>
 
-      {/* Also-show-in — secondary categories. Max 2 extras → 3 total. */}
-      <ExtraCategoriesPicker
-        categories={categories}
-        primaryId={template.primaryCategoryId ?? template.categoryId ?? ''}
-        selected={template.extraCategoryIds ?? []}
-        onChange={(extras) => onChange({ extraCategoryIds: extras })}
-      />
+        {/* Also-show-in — secondary memberships. Max 2 extras → 3 total. */}
+        <ExtraCategoriesPicker
+          categories={categories}
+          primaryId={template.primaryCategoryId ?? template.categoryId ?? ''}
+          selected={template.extraCategoryIds ?? []}
+          onChange={(extras) => onChange({ extraCategoryIds: extras })}
+        />
+      </div>
 
       {/* Description — single field, line-clamped on cards */}
       <div className="space-y-2">

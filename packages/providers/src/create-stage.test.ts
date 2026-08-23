@@ -137,6 +137,69 @@ describe('buildCreateStage — Kling', () => {
     expect(k.variant).toBe('image2video');
     expect(k.startImage?.r2Key).toBe('start');
   });
+
+  // Regression guard for the family-wide bug: `maxSubjects: 1` capped the
+  // subject list at one, so `endImage` (read as `subjects[1]`) was always
+  // undefined and no Kling model could ever send a last frame — even
+  // though every endpoint except 3.0 Turbo documents one.
+  it.each([
+    ['kling-v3', 'pro'],
+    ['kling-v2-6', 'pro'],
+    ['kling-v2-5-turbo', 'pro'],
+  ])('%s: end frame reaches endImage', (modelKey, mode) => {
+    const built = buildCreateStage({
+      modelKey,
+      prompt: 'morph between the frames',
+      aspectRatio: '16:9',
+      hasStartFrame: true,
+      hasEndFrame: true,
+      mode,
+    });
+    const { request } = run(built, {
+      [CREATE_START_FRAME_KEY]: img('start'),
+      [CREATE_END_FRAME_KEY]: img('end'),
+    });
+    const k = request as KlingCompiledRequest;
+    expect(k.startImage?.r2Key).toBe('start');
+    expect(k.endImage?.r2Key).toBe('end');
+  });
+
+  it('2.6: end frame is dropped below the 1080p tier it requires', () => {
+    const built = buildCreateStage({
+      modelKey: 'kling-v2-6',
+      prompt: 'morph between the frames',
+      aspectRatio: '16:9',
+      hasStartFrame: true,
+      hasEndFrame: true,
+      mode: 'std',
+    });
+    const { request, warnings } = run(built, {
+      [CREATE_START_FRAME_KEY]: img('start'),
+      [CREATE_END_FRAME_KEY]: img('end'),
+    });
+    const k = request as KlingCompiledRequest;
+    expect(k.startImage?.r2Key).toBe('start');
+    // Dropped rather than silently upgrading the billed tier.
+    expect(k.endImage).toBeUndefined();
+    expect(warnings.some((w) => /first\+last frame pair/.test(w.message))).toBe(true);
+  });
+
+  it('3.0 Turbo: documents no last_frame, so none is sent', () => {
+    const built = buildCreateStage({
+      modelKey: 'kling-v3-turbo',
+      prompt: 'push in slowly',
+      aspectRatio: '16:9',
+      hasStartFrame: true,
+      hasEndFrame: true,
+    });
+    const { request } = run(built, {
+      [CREATE_START_FRAME_KEY]: img('start'),
+      [CREATE_END_FRAME_KEY]: img('end'),
+    });
+    const k = request as KlingCompiledRequest;
+    expect(k.startImage?.r2Key).toBe('start');
+    expect(k.endImage).toBeUndefined();
+  });
 });
 
 describe('buildCreateStage — Seedance (video)', () => {

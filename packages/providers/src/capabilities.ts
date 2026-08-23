@@ -140,6 +140,28 @@ export interface ModelCapabilities {
   nativeAudioRequiresTier?: string;
 
   /**
+   * Kling only: the minimum quality tier required when BOTH a first and
+   * a last frame are supplied.
+   *
+   * Kling 2.6 and 2.5 Turbo both document first+last-frame generation as
+   * 1080p-only; the 3.0 family has no such restriction. Resolved the
+   * same way as `nativeAudioRequiresTier` — the tier is the billed unit,
+   * so the compiler drops the END FRAME rather than silently upgrading
+   * the resolution the user paid for.
+   */
+  endFrameRequiresTier?: string;
+
+  /**
+   * Kling only: the value `settings.audio` takes when sound is ON.
+   *
+   * Not cosmetic — the enum differs by model. 2.6 / 3.0 / 3.0 Omni use
+   * `native` ("audio matching the visuals"); O1 uses `original` ("retains
+   * the original sound of the reference video"), and rejects `native`.
+   * Defaults to `native`.
+   */
+  soundOnValue?: 'native' | 'original';
+
+  /**
    * Kling only: route this model through the API 2.0 client
    * (`adapters/kling-api2.ts`) instead of the legacy one.
    *
@@ -316,6 +338,9 @@ const KLING_DURATIONS = [5, 10] as const;
  * 3 to 15. The previous `[3, 5, 8, 10, 15]` list was a guess from a
  * third-party mirror and made 8 of the 13 legal values unreachable.
  */
+/** Kling O1 tops out at 10s, unlike the rest of the 3.0 family. */
+const KLING_O1_DURATIONS = [3, 4, 5, 6, 7, 8, 9, 10] as const;
+
 const KLING_3_DURATIONS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
 
 /**
@@ -594,15 +619,25 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     negativePrompt: true,
     refAddressing: 'none',
     maxReferences: 0,
-    maxSubjects: 1,
-    maxImagesTotal: 1,
+    // Two images: `contents[]` accepts first_frame + last_frame. This was
+    // 1, which capped `subjects` at one and made `endImage` — read as
+    // `subjects[1]` by the compiler — permanently undefined, so the end
+    // frame could never be sent however the admin configured the stage.
+    maxSubjects: 2,
+    maxImagesTotal: 2,
     acceptsStartEndImage: true,
+    // 720p / 1080p only — 2.6 has no 4k tier, unlike 3.0.
+    modes: {
+      values: ['std', 'pro'],
+      default: 'std',
+      labels: { std: '720p', pro: '1080p' },
+    },
     // 2.6 is the release that added native audio (`settings.audio`).
-    // Upstream forces 1080p when audio is on, and also when both frames
-    // are used. 2.6 has no `modes` yet, so the tier name below is what a
-    // future tier list must call 1080p.
+    // Upstream forces 1080p both when audio is on and when both frames
+    // are used.
     supportsSound: true,
     nativeAudioRequiresTier: 'pro',
+    endFrameRequiresTier: 'pro',
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
     notes:
@@ -625,10 +660,20 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     negativePrompt: true,
     refAddressing: 'none',
     maxReferences: 0,
-    maxSubjects: 1,
-    maxImagesTotal: 1,
+    // first_frame + last_frame, same as 2.6. See the note there for why
+    // this being 1 silently disabled every end frame.
+    maxSubjects: 2,
+    maxImagesTotal: 2,
     acceptsStartEndImage: true,
-    notes: 'Does NOT support aspect_ratio — output mirrors input image aspect.',
+    modes: {
+      values: ['std', 'pro'],
+      default: 'std',
+      labels: { std: '720p', pro: '1080p' },
+    },
+    // No `settings.audio` on this endpoint — 2.6 is the first with it.
+    endFrameRequiresTier: 'pro',
+    notes:
+      'Does NOT support aspect_ratio — output mirrors input image aspect. No native audio. First+last frame forces 1080p.',
   },
   'kling-v2-master': {
     provider: 'kling',
@@ -706,11 +751,23 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: KLING_3_DURATIONS, default: 5 },
     negativePrompt: true,
-    refAddressing: 'none',
+    // `POST /image-to-video/kling-3.0` accepts `contents[{type:'element'}]`
+    // addressed from the prompt as `@name`, capped at 3 by the docs.
+    // Elements are pre-registered library entities rather than per-request
+    // uploads, so `maxReferences` stays 0 until that library is wired
+    // (they are NOT interchangeable with our GenerationReference images).
+    refAddressing: 'at',
     maxReferences: 0,
-    maxSubjects: 1,
-    maxImagesTotal: 1,
+    // first_frame + last_frame. Was 1, which made the end frame
+    // unreachable and — because the admin gates its whole reference
+    // block on capability — is why Kling 3 showed neither control.
+    maxSubjects: 2,
+    maxImagesTotal: 2,
     acceptsStartEndImage: true,
+    // `settings.audio: native | off`, confirmed on both the t2v and i2v
+    // pages. Previously unwired: the field name conflicted across
+    // third-party mirrors and was left out pending a first-party source.
+    supportsSound: true,
     // Quality tiers — default `pro` (1080p) anchors the sell price.
     modes: {
       values: ['std', 'pro', '4k'],
@@ -720,7 +777,82 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
     notes:
-      'Kling 3.0 on the classic t2v/i2v endpoints. Modes std (720p) / pro (1080p) / 4k. Text-to-video works with no input image.',
+      'Kling 3.0. first_frame + optional last_frame; up to 3 library Elements (not yet wired). Native audio via settings.audio. Modes std (720p) / pro (1080p) / 4k. Text-to-video works with no input image.',
+  },
+
+  // ── Kling 3.0 Turbo ─────────────────────────────────────────────────
+  // The cheapest, most constrained member of the 3.0 family: its
+  // `contents[]` accepts ONLY `prompt` and `first_frame`. No last frame,
+  // no elements, no audio, no 4k. Everything omitted below is omitted
+  // because the endpoint does not document it, not because it is
+  // untested.
+  'kling-v3-turbo': {
+    provider: 'kling',
+    modelKey: 'kling-v3-turbo',
+    apiModelId: 'kling-3.0-turbo',
+    klingApi2: true,
+    displayName: 'Kling 3 Turbo',
+    status: 'preview',
+    kind: 'video',
+    sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
+    outputs: { min: 1, max: 1, default: 1 },
+    duration: { values: KLING_3_DURATIONS, default: 5 },
+    negativePrompt: true,
+    refAddressing: 'none',
+    maxReferences: 0,
+    maxSubjects: 1,
+    maxImagesTotal: 1,
+    // Explicitly false: `last_frame` is not in this endpoint's enum.
+    acceptsStartEndImage: false,
+    modes: {
+      values: ['std', 'pro'],
+      default: 'std',
+      labels: { std: '720p', pro: '1080p' },
+    },
+    maxPromptChars: 2500,
+    notes:
+      'Kling 3.0 Turbo. First frame only — no end frame, no elements, no native audio, no 4k. Durations 3-15s.',
+  },
+
+  // ── Kling O1 ────────────────────────────────────────────────────────
+  // Same omni-style `contents[]` as 3.0 Omni (frames, refer_image,
+  // feature_video, base_video, element) on `/omni-video/kling-o1`, but
+  // capped at 1080p / 10s, and its audio switch means "keep the source
+  // video's sound" rather than "generate matching audio".
+  'kling-o1': {
+    provider: 'kling',
+    modelKey: 'kling-o1',
+    apiModelId: 'kling-o1',
+    klingApi2: true,
+    displayName: 'Kling O1',
+    status: 'preview',
+    kind: 'video',
+    sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
+    outputs: { min: 1, max: 1, default: 1 },
+    // 3-10s, unlike the 3-15s of the rest of the 3.0 family. Note the
+    // docs add: a first frame with no other reference collapses this to
+    // 5 or 10 only — a conditional we do not model yet.
+    duration: { values: KLING_O1_DURATIONS, default: 5 },
+    negativePrompt: true,
+    refAddressing: 'at',
+    // Reference images ride the same 7-image budget as Omni; Elements
+    // are library entities and not wired yet.
+    maxReferences: 7,
+    maxSubjects: 2,
+    maxImagesTotal: 7,
+    acceptsStartEndImage: true,
+    supportsSound: true,
+    // O1 rejects `native`; its enum is `original | off`.
+    soundOnValue: 'original',
+    modes: {
+      values: ['std', 'pro'],
+      // 720p, matching the endpoint's own default and the cheapest tier.
+      default: 'std',
+      labels: { std: '720p', pro: '1080p' },
+    },
+    maxPromptChars: 2500,
+    notes:
+      'Kling O1 on /omni-video. Frames + reference images + reference videos. Audio switch keeps the source video sound (original), it does not synthesise. 720p/1080p, 3-10s.',
   },
 
   // ── Seedance 2.0 (BytePlus ModelArk, dreamina-seedance family) ──────

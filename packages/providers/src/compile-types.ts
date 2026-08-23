@@ -171,6 +171,14 @@ export interface KlingCompiledRequest {
   cfgScale?: number;
   /** Native audio generation (Kling v3 Omni `sound: on|off`). */
   soundEnabled?: boolean;
+  /**
+   * The value `settings.audio` takes when `soundEnabled` — copied from
+   * the model's `soundOnValue` capability at compile time, because the
+   * adapter only sees the compiled request and can no longer look the
+   * model up. O1 rejects `native`; everything else rejects `original`.
+   * Defaults to `native`.
+   */
+  soundOnValue?: 'native' | 'original';
   /** First frame of the resulting video. */
   startImage?: ImagePart;
   /** Optional last frame. */

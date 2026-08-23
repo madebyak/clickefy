@@ -828,6 +828,21 @@ function compileKling(
     audioEnabled = undefined;
   }
 
+  // Same rule, same reasoning, for the end frame: Kling 2.6 and 2.5
+  // Turbo both generate first+last-frame video at 1080p only. Dropping
+  // the end frame keeps the user on the tier they paid for; upgrading
+  // the resolution would hand them output we did not charge for.
+  let endFrame = capabilities.acceptsStartEndImage ? subjects[1] : undefined;
+  const endTier = capabilities.endFrameRequiresTier;
+  if (endFrame && endTier && mode && mode !== endTier) {
+    const label = capabilities.modes?.labels?.[endTier] ?? endTier;
+    warnings.push({
+      code: 'config_clamped',
+      message: `${stage.model} only supports a first+last frame pair at the ${label} tier; this stage is billed at "${mode}", so the end frame was dropped. Select ${label} to keep it.`,
+    });
+    endFrame = undefined;
+  }
+
   const request: KlingCompiledRequest = {
     provider: 'kling',
     variant: isOmni
@@ -836,6 +851,7 @@ function compileKling(
         ? 'text2video'
         : 'image2video',
     api2: capabilities.klingApi2,
+    soundOnValue: capabilities.soundOnValue,
     model: apiModelFor(stage, capabilities),
     prompt,
     negativePrompt,
@@ -845,7 +861,7 @@ function compileKling(
     cfgScale,
     soundEnabled: audioEnabled,
     startImage: subjects[0],
-    endImage: capabilities.acceptsStartEndImage ? subjects[1] : undefined,
+    endImage: endFrame,
     referenceImages: refs.length > 0 ? refs : undefined,
   };
   return { request, warnings };

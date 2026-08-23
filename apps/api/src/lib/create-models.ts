@@ -86,8 +86,11 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     modelKey: 'kling-v2-6',
     name: 'Kling 2.6',
     attachments: 'frames',
+    // `first_frame` is required by the endpoint; `last_frame` is
+    // optional and IS supported — this said false, which hid the end
+    // frame slot on a model that accepts one.
     requiresStartFrame: true,
-    supportsEndFrame: false,
+    supportsEndFrame: true,
   },
   {
     modelKey: 'seedream-4-0-250828',
@@ -150,6 +153,13 @@ export interface CreateModelDTO {
   aspectRatios: string[];
   /** Video durations in seconds; empty for image models. */
   durations: number[];
+  /**
+   * The length `costCredits` is quoted at. Clients need it to show the
+   * same price the server will charge — without it the composer can
+   * only display the tier price and silently under-states any clip
+   * longer than the default.
+   */
+  defaultDuration?: number;
   /** Total input-image budget. */
   maxImages: number;
   attachments: CreateAttachmentMode;
@@ -215,6 +225,7 @@ export function buildCreateModelDTO(
     maxPromptChars: caps.maxPromptChars ?? DEFAULT_CREATE_PROMPT_CHARS,
     aspectRatios,
     durations,
+    defaultDuration: caps.kind === 'video' ? caps.duration?.default : undefined,
     maxImages: caps.maxImagesTotal,
     attachments: def.attachments,
     requiresStartFrame: def.requiresStartFrame,

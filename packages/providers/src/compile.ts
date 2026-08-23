@@ -30,6 +30,7 @@
  */
 
 import type {
+  FrameSlots,
   GenerationReference,
   GenerationStage,
   TemplateInputField,
@@ -651,13 +652,25 @@ function compileKling(
   const { stage, capabilities } = ctx;
   const isOmni = isKlingOmni(stage.model);
 
-  // Collect subjects (stage outputs first, then user image inputs).
-  // Kling v2 keeps only the first subject; Omni accepts up to 2 (start
-  // + end frame) and surfaces all refs in a separate slot.
+  // ── Frames ────────────────────────────────────────────────────
+  //
+  // Preferred: explicit `config.frameSlots`, the same binding shape
+  // Seedance uses — the admin names which input fills the first frame
+  // and which fills the last.
+  //
+  // Fallback: positional. Stage outputs first, then user image inputs,
+  // in declaration order; the first becomes the start frame and the
+  // second the end frame. Every Kling template authored before slots
+  // existed relies on this, so it stays — but it is a guess, and it
+  // guesses wrong the moment the admin wants the SECOND user input as
+  // the start frame.
+  const explicitFrames = (stage.config as { frameSlots?: FrameSlots }).frameSlots;
+  const hasExplicitFrames = Boolean(explicitFrames?.firstFrame || explicitFrames?.lastFrame);
+
   const subjects: ImagePart[] = [];
   let subjectIndex = 0;
 
-  for (const so of ctx.previousOutputs) {
+  for (const so of hasExplicitFrames ? [] : ctx.previousOutputs) {
     if (so.kind !== 'image') continue;
     if (subjects.length >= capabilities.maxSubjects) break;
     subjectIndex += 1;
@@ -672,7 +685,7 @@ function compileKling(
       url: so.url,
     });
   }
-  for (const field of ctx.templateInputs) {
+  for (const field of hasExplicitFrames ? [] : ctx.templateInputs) {
     const v = ctx.inputValues[field.fieldKey];
     if (!v || v.kind !== 'image') continue;
     if (subjects.length >= capabilities.maxSubjects) {
@@ -693,6 +706,48 @@ function compileKling(
       r2Key: v.r2Key,
       url: v.url,
     });
+  }
+
+  if (hasExplicitFrames) {
+    if (explicitFrames!.firstFrame) {
+      const part = resolveFrameSlot(
+        explicitFrames!.firstFrame,
+        ctx,
+        subjects.length + 1,
+        'image',
+        warnings,
+        'Kling',
+      );
+      if (part) subjects.push(part);
+    }
+    if (explicitFrames!.lastFrame) {
+      if (!capabilities.acceptsStartEndImage) {
+        warnings.push({
+          code: 'config_clamped',
+          message: `${stage.model} does not accept a last frame; the lastFrame slot was dropped.`,
+        });
+      } else {
+        const part = resolveFrameSlot(
+          explicitFrames!.lastFrame,
+          ctx,
+          subjects.length + 1,
+          'image',
+          warnings,
+          'Kling',
+        );
+        // A last frame with no first frame is rejected by every Kling
+        // endpoint ("last-frame-only video generation is not
+        // supported"), so hold the slot rather than shifting it up.
+        if (part && subjects.length === 0) {
+          warnings.push({
+            code: 'config_clamped',
+            message: `${stage.model} cannot generate from a last frame alone; bind a first frame too.`,
+          });
+        } else if (part) {
+          subjects.push(part);
+        }
+      }
+    }
   }
 
   // References. Empty array for v2 (which doesn't accept them) plus a
@@ -1295,12 +1350,19 @@ function compileSeedream(
  * produced an output yet. The caller decides whether a missing slot
  * is fatal (typically: no, drop it and continue).
  */
-function resolveSeedanceSlot(
-  binding: import('@clickfy/types').SeedanceSlotBinding,
+/**
+ * Resolve one frame/reference slot binding to a concrete image part.
+ *
+ * Written for Seedance, now shared with Kling — the logic is entirely
+ * provider-neutral, so only the warning text needs to name the caller.
+ */
+function resolveFrameSlot(
+  binding: import('@clickfy/types').FrameSlotBinding,
   ctx: CompileContext,
   index: number,
   assetKind: 'image' | 'video' | 'audio',
   warnings: CompileWarning[],
+  provider = 'Seedance',
 ): ImagePart | undefined {
   if (binding.kind === 'user_input') {
     const field = ctx.templateInputs.find((f) => f.fieldKey === binding.fieldKey);
@@ -1308,7 +1370,7 @@ function resolveSeedanceSlot(
     if (!value || (value.kind !== 'image' && value.kind !== 'video')) {
       warnings.push({
         code: 'unknown_variable',
-        message: `Seedance slot bound to user input "${binding.fieldKey}" — no usable value provided.`,
+        message: `${provider} slot bound to user input "${binding.fieldKey}" — no usable value provided.`,
         token: binding.fieldKey,
       });
       return undefined;
@@ -1329,7 +1391,7 @@ function resolveSeedanceSlot(
     if (!so) {
       warnings.push({
         code: 'stage_output_missing',
-        message: `Seedance slot bound to stage ${binding.stageIndex} output — that stage has not produced an output yet.`,
+        message: `${provider} slot bound to stage ${binding.stageIndex} output — that stage has not produced an output yet.`,
       });
       return undefined;
     }
@@ -1438,7 +1500,7 @@ function compileSeedance(
       let idx = 0;
       if (explicitSlots.firstFrame) {
         idx += 1;
-        startImage = resolveSeedanceSlot(explicitSlots.firstFrame, ctx, idx, 'image', warnings);
+        startImage = resolveFrameSlot(explicitSlots.firstFrame, ctx, idx, 'image', warnings);
       }
       if (explicitSlots.lastFrame) {
         if (!capabilities.acceptsStartEndImage) {
@@ -1448,7 +1510,7 @@ function compileSeedance(
           });
         } else {
           idx += 1;
-          endImage = resolveSeedanceSlot(explicitSlots.lastFrame, ctx, idx, 'image', warnings);
+          endImage = resolveFrameSlot(explicitSlots.lastFrame, ctx, idx, 'image', warnings);
         }
       }
     } else {
@@ -1527,7 +1589,7 @@ function compileSeedance(
         continue;
       }
       idx += 1;
-      const part = resolveSeedanceSlot(slot.source, ctx, idx, slot.assetKind, warnings);
+      const part = resolveFrameSlot(slot.source, ctx, idx, slot.assetKind, warnings);
       if (!part) continue; // resolver already pushed a warning
       // Stamp the assetKind onto the mimeType when missing/wrong so the
       // adapter routes correctly. admin_asset bindings carry only an

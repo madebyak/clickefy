@@ -15,13 +15,14 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import type { Template, GenerationStage, TemplateInput, ReferenceImageRole, GenerationReference } from '@clickfy/types';
+import type { Template, GenerationStage, TemplateInput, ReferenceImageRole, GenerationReference, FrameSlots } from '@clickfy/types';
 import { aspectRatiosFor, findCapabilities, listActiveModels, pixelSizeForAspect } from '@clickfy/providers';
 import { cn } from '@/lib/utils';
 import { uploadImageAsset, ApiError } from '@/lib/api/uploads';
 import type { TokenGetter } from '@/lib/api';
 import { toast } from 'sonner';
 import { SeedanceModeEditor } from './seedance-mode-editor';
+import { bindingLabel, SlotSourcePicker } from './slot-source-picker';
 import {
   ArrowDown,
   ChevronDown,
@@ -596,6 +597,110 @@ export function GenerationTab({ template, onChange, getToken }: GenerationTabPro
                             />
                           </>
                         )}
+
+                        {/* Kling frames. Every Kling endpoint takes a
+                            `first_frame` and most also take a `last_frame`;
+                            binding them explicitly replaces the positional
+                            guess the compiler falls back to (stage outputs
+                            first, then user inputs in declaration order),
+                            which cannot express "the SECOND user input is
+                            the start frame". Leaving both unset keeps that
+                            fallback, so existing templates are unaffected. */}
+                        {stage.provider === 'kling' && (() => {
+                          const caps = findCapabilities(stage.model);
+                          if (!caps || caps.kind !== 'video') return null;
+                          const cfg = stage.config as {
+                            frameSlots?: FrameSlots;
+                          };
+                          const frameSlots = cfg.frameSlots ?? {};
+                          const patch = (next: FrameSlots) =>
+                            handleUpdateStage(stage.id, {
+                              config: {
+                                ...stage.config,
+                                // Drop the key entirely once both slots are
+                                // cleared, so the compiler returns to the
+                                // positional fallback rather than seeing an
+                                // empty object and binding nothing.
+                                frameSlots:
+                                  next.firstFrame || next.lastFrame ? next : undefined,
+                              },
+                            });
+                          return (
+                            <>
+                              <Separator />
+                              <div className="space-y-4">
+                                <div>
+                                  <Label className="text-sm font-medium">Frames</Label>
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    Leave unset to use the first image the stage
+                                    receives. Bind them to choose exactly which
+                                    input starts and ends the clip.
+                                  </p>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                    <ImageIcon className="h-3.5 w-3.5" /> First frame
+                                    <span className="text-muted-foreground/60">
+                                      — required for image-to-video
+                                    </span>
+                                  </Label>
+                                  <SlotSourcePicker
+                                    binding={frameSlots.firstFrame}
+                                    assetKind="image"
+                                    userInputs={userInputs}
+                                    stageIndex={index}
+                                    folder="templates"
+                                    getToken={getToken}
+                                    onChange={(next) =>
+                                      patch({ ...frameSlots, firstFrame: next })
+                                    }
+                                  />
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {bindingLabel(frameSlots.firstFrame, userInputs)}
+                                  </p>
+                                </div>
+
+                                {caps.acceptsStartEndImage ? (
+                                  <div className="space-y-2">
+                                    <Label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                      <ImageIcon className="h-3.5 w-3.5" /> Last frame
+                                      <span className="text-muted-foreground/60">
+                                        — optional
+                                      </span>
+                                    </Label>
+                                    <SlotSourcePicker
+                                      binding={frameSlots.lastFrame}
+                                      assetKind="image"
+                                      userInputs={userInputs}
+                                      stageIndex={index}
+                                      folder="templates"
+                                      getToken={getToken}
+                                      onChange={(next) =>
+                                        patch({ ...frameSlots, lastFrame: next })
+                                      }
+                                    />
+                                    <p className="text-[11px] text-muted-foreground">
+                                      {bindingLabel(frameSlots.lastFrame, userInputs)}
+                                    </p>
+                                    {caps.endFrameRequiresTier ? (
+                                      <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                                        {stage.model} only generates a first+last pair at{' '}
+                                        {caps.modes?.labels?.[caps.endFrameRequiresTier] ??
+                                          caps.endFrameRequiresTier}
+                                        . At any other tier the last frame is dropped.
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {stage.model} does not accept a last frame.
+                                  </p>
+                                )}
+                              </div>
+                            </>
+                          );
+                        })()}
 
                         {/* Reference Images — Gemini / Kling Omni only. Seedance
                              routes through its own editor above. */}

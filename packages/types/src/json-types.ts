@@ -329,6 +329,21 @@ export interface SeedanceFrameSlots {
   lastFrame?: SeedanceSlotBinding;
 }
 
+/**
+ * Provider-neutral aliases for the two types above.
+ *
+ * The binding and slot shapes were written for Seedance but describe
+ * something every frame-capable provider needs: "which image fills the
+ * first frame, and which fills the last". Kling now uses them too.
+ *
+ * The `Seedance*` names are kept because they are written into every
+ * stored `stage.config` and every `template_versions.snapshot` — a
+ * rename would be a data migration for a cosmetic gain. New code should
+ * prefer these aliases; both refer to the same structure.
+ */
+export type FrameSlotBinding = SeedanceSlotBinding;
+export type FrameSlots = SeedanceFrameSlots;
+
 /** One slot in the `reference` mode. */
 export interface SeedanceReferenceSlot {
   id: string;

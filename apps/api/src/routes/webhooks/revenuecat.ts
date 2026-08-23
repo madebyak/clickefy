@@ -76,6 +76,13 @@ import {
   users,
 } from '@clickfy/db';
 
+import {
+  closeSubscriptionLots,
+  grantCredits,
+  pauseTopupClocks,
+  resumeTopupClocks,
+  revokeCredits,
+} from '../../lib/credit-grants';
 import type { AppEnv } from '../../types';
 
 export const revenuecatWebhookRoute = new Hono<AppEnv>();
@@ -113,6 +120,14 @@ const SUBSCRIPTION_GRANT_EVENTS = new Set([
   'PRODUCT_CHANGE',
   'UNCANCELLATION',
 ]);
+
+/**
+ * How long a bought credit pack lives. Deliberately gentler than the
+ * 90 days Higgsfield uses, because we sell through Apple and Google where
+ * "my credits vanished" is a one-tap refund and a review risk. The clock
+ * also pauses while the user is unsubscribed.
+ */
+const TOPUP_LIFETIME_MS = 365 * 24 * 60 * 60 * 1000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -261,6 +276,7 @@ revenuecatWebhookRoute.post('/', async (c) => {
         userId: userRow.id,
         productId: ev.product_id ?? null,
         environment: ev.environment,
+        eventId: ev.id,
       });
     } else if (SUBSCRIPTION_GRANT_EVENTS.has(ev.type)) {
       note = await applySubscriptionGrant({
@@ -269,6 +285,7 @@ revenuecatWebhookRoute.post('/', async (c) => {
         productId: ev.product_id ?? null,
         expirationMs: ev.expiration_at_ms ?? null,
         environment: ev.environment,
+        eventId: ev.id,
       });
     } else if (ev.type === 'EXPIRATION') {
       note = await applySubscriptionExpire({
@@ -324,8 +341,9 @@ async function applyTopupPurchase(args: {
   userId: string;
   productId: string | null;
   environment: 'SANDBOX' | 'PRODUCTION' | undefined;
+  eventId: string;
 }) {
-  const { db, userId, productId, environment } = args;
+  const { db, userId, productId, environment, eventId } = args;
   if (!productId) {
     throw new Error('NON_RENEWING_PURCHASE without product_id');
   }
@@ -342,30 +360,29 @@ async function applyTopupPurchase(args: {
   const grant = pack.credits + pack.bonusCredits;
   if (grant <= 0) return;
 
-  const [updated] = await db
-    .update(users)
-    .set({
-      topupCredits: sql`${users.topupCredits} + ${grant}`,
-      creditsBalance: sql`${users.creditsBalance} + ${grant}`,
-    })
-    .where(eq(users.id, userId))
-    .returning();
+  // Top-ups expire 12 months from purchase, and the clock is paused while
+  // the user is unsubscribed (see `pauseTopupClocks`) so they never lose
+  // time they could not spend.
+  const expiresAt = new Date(Date.now() + TOPUP_LIFETIME_MS);
 
-  if (!updated) throw new Error('users.update returned no row');
-
-  await db.insert(creditLedger).values({
+  await grantCredits(db, {
     userId,
-    delta: grant,
+    class: 'topup',
+    kind: 'topup',
+    amount: grant,
+    expiresAt,
     reason: 'purchase',
-    balanceAfter: updated.creditsBalance,
-    bucket: 'topup',
+    sourcePlatform: environment === 'SANDBOX' ? 'sandbox' : 'app_store',
+    // The RC event id makes a redelivery a no-op at the database level,
+    // on top of the handler's own dedupe.
+    sourceRef: eventId,
+    note: `RC topup ${productId} ${environment ?? 'PRODUCTION'}`.slice(0, 200),
     metadata: {
       storeProductId: productId,
       credits: pack.credits,
       bonusCredits: pack.bonusCredits,
       environment: environment ?? 'PRODUCTION',
     },
-    note: `RC topup ${productId} ${environment ?? 'PRODUCTION'}`.slice(0, 200),
   });
 }
 
@@ -390,8 +407,9 @@ async function applySubscriptionGrant(args: {
   productId: string | null;
   expirationMs: number | null;
   environment: 'SANDBOX' | 'PRODUCTION' | undefined;
+  eventId: string;
 }): Promise<string | undefined> {
-  const { db, userId, productId, expirationMs, environment } = args;
+  const { db, userId, productId, expirationMs, environment, eventId } = args;
 
   if (!productId) throw new Error('subscription event without product_id');
 
@@ -403,66 +421,63 @@ async function applySubscriptionGrant(args: {
       `unknown subscription productId='${productId}' — register it in /admin/credits/subscriptions`,
     );
   }
-  if (plan.entitlement !== 'pro' && plan.entitlement !== 'pro_max') {
+  if (plan.entitlement === 'free' || plan.entitlement === 'admin') {
     throw new Error(
       `plan '${productId}' has non-paid entitlement '${plan.entitlement}' — fix the catalog row`,
     );
   }
 
-  // Stale-event guard: a delayed grant whose period already ended must
-  // not re-upgrade an expired user (the symmetric twin of the
-  // EXPIRATION guard). Small negative windows from clock skew are fine
-  // because a *current* period's expiry is always well in the future.
+  // Stale-event guard: a delayed grant whose period already ended must not
+  // re-upgrade an expired user (the twin of the EXPIRATION guard).
   if (expirationMs !== null && expirationMs <= Date.now()) {
     return 'skipped_stale_grant (period already over)';
   }
 
-  const entitlement = plan.entitlement;
-  const grantCredits = plan.creditsPerPeriod;
+  const periodEnd = expirationMs ? new Date(expirationMs) : null;
 
-  const result = await db.execute<{ new_balance: number; leftover: number }>(sql`
-    UPDATE users SET
-      entitlement = ${entitlement},
-      subscription_renews_at = ${expirationMs ? new Date(expirationMs) : null},
-      subscription_expires_at = ${expirationMs ? new Date(expirationMs) : null},
-      subscription_credits = ${grantCredits},
-      credits_balance = users.credits_balance - users.subscription_credits + ${grantCredits}
-    FROM (SELECT id, subscription_credits FROM users WHERE id = ${userId}::uuid) AS old
-    WHERE users.id = old.id
-    RETURNING users.credits_balance AS new_balance, old.subscription_credits AS leftover
-  `);
-  const rows = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? []);
-  if (rows.length === 0) throw new Error('users.update returned no row');
-  const { new_balance, leftover } = rows[0] as { new_balance: number; leftover: number };
+  // Use-it-or-lose-it: the previous period's unspent allowance is
+  // forfeited before the new one is issued.
+  const forfeited = await closeSubscriptionLots(
+    db,
+    userId,
+    `RC subscription reset ${productId} ${environment ?? 'PRODUCTION'}`.slice(0, 200),
+  );
 
-  if (leftover > 0) {
-    await db.insert(creditLedger).values({
-      userId,
-      delta: -leftover,
-      reason: 'subscription_reset',
-      balanceAfter: new_balance - grantCredits,
-      bucket: 'subscription',
-      metadata: { storeProductId: productId, environment: environment ?? 'PRODUCTION' },
-      note: `RC subscription reset ${productId} ${environment ?? 'PRODUCTION'}`.slice(0, 200),
-    });
-  }
+  await db
+    .update(users)
+    .set({
+      entitlement: plan.entitlement,
+      subscriptionRenewsAt: periodEnd,
+      subscriptionExpiresAt: periodEnd,
+    })
+    .where(eq(users.id, userId));
 
-  if (grantCredits > 0) {
-    await db.insert(creditLedger).values({
-      userId,
-      delta: grantCredits,
-      reason: 'subscription_grant',
-      balanceAfter: new_balance,
-      bucket: 'subscription',
-      metadata: {
-        storeProductId: productId,
-        creditsPerPeriod: grantCredits,
-        environment: environment ?? 'PRODUCTION',
-      },
-      note: `RC ${productId} ${environment ?? 'PRODUCTION'}`.slice(0, 200),
-    });
-  }
-  return undefined;
+  // The new period's credits, expiring when the period does — which is
+  // what puts them first in the spend order.
+  await grantCredits(db, {
+    userId,
+    class: 'subscription',
+    kind: 'subscription',
+    amount: plan.creditsPerPeriod,
+    expiresAt: periodEnd,
+    reason: 'subscription_grant',
+    sourcePlatform: environment === 'SANDBOX' ? 'sandbox' : 'app_store',
+    sourceRef: eventId,
+    note: `RC ${productId} ${environment ?? 'PRODUCTION'}`.slice(0, 200),
+    metadata: {
+      storeProductId: productId,
+      creditsPerPeriod: plan.creditsPerPeriod,
+      environment: environment ?? 'PRODUCTION',
+    },
+  });
+
+  // Back in good standing — restart any top-up clock frozen by a lapse.
+  const resumed = await resumeTopupClocks(db, userId);
+
+  const notes: string[] = [];
+  if (forfeited > 0) notes.push(`forfeited ${forfeited} unspent`);
+  if (resumed > 0) notes.push(`resumed ${resumed} topup clock(s)`);
+  return notes.length > 0 ? notes.join('; ') : undefined;
 }
 
 /**
@@ -489,41 +504,45 @@ async function applySubscriptionExpire(args: {
 }): Promise<string | undefined> {
   const { db, userId, eventExpirationMs, force } = args;
 
+  // Monotonicity guard: an EXPIRATION whose expiry predates the user's
+  // current period end is the OLD plan of an upgrade and must not
+  // downgrade the newer one. `force` (refund) drops the guard.
   const guard = force
     ? sql``
     : sql`AND (users.subscription_expires_at IS NULL OR users.subscription_expires_at <= ${new Date(eventExpirationMs)})`;
 
-  const result = await db.execute<{ new_balance: number; leftover: number }>(sql`
+  const result = await db.execute<{ id: string }>(sql`
     UPDATE users SET
       entitlement = 'free',
       subscription_renews_at = NULL,
-      subscription_expires_at = NULL,
-      subscription_credits = 0,
-      credits_balance = users.credits_balance - users.subscription_credits
-    FROM (SELECT id, subscription_credits FROM users WHERE id = ${userId}::uuid) AS old
-    WHERE users.id = old.id
+      subscription_expires_at = NULL
+    WHERE users.id = ${userId}::uuid
       AND users.entitlement <> 'admin'
       ${guard}
-    RETURNING users.credits_balance AS new_balance, old.subscription_credits AS leftover
+    RETURNING users.id
   `);
   const rows = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? []);
   if (rows.length === 0) {
     return 'skipped_superseded (a newer subscription period is active)';
   }
-  const { new_balance, leftover } = rows[0] as { new_balance: number; leftover: number };
 
-  if (leftover > 0) {
-    await db.insert(creditLedger).values({
-      userId,
-      delta: -leftover,
-      reason: 'subscription_reset',
-      balanceAfter: new_balance,
-      bucket: 'subscription',
-      metadata: { reason: force ? 'refund' : 'expiration' },
-      note: force ? 'RC subscription refunded' : 'RC subscription expired',
-    });
-  }
-  return undefined;
+  // The period's unspent allowance is forfeited.
+  const forfeited = await closeSubscriptionLots(
+    db,
+    userId,
+    force ? 'RC subscription refunded' : 'RC subscription expired',
+  );
+
+  // Top-ups survive but become unspendable, so their 12-month clock is
+  // frozen rather than burning time the user cannot use. This is the whole
+  // point of the pausing model — without it, cancelling for six months
+  // would silently eat half the life of a pack they paid for.
+  const paused = await pauseTopupClocks(db, userId);
+
+  const notes: string[] = [];
+  if (forfeited > 0) notes.push(`forfeited ${forfeited} unspent`);
+  if (paused > 0) notes.push(`paused ${paused} topup clock(s)`);
+  return notes.length > 0 ? notes.join('; ') : undefined;
 }
 
 /**
@@ -553,34 +572,22 @@ async function applyRefundClawback(args: {
     const grant = pack.credits + pack.bonusCredits;
     if (grant <= 0) return 'refund_noop (zero-credit pack)';
 
-    const result = await db.execute<{ new_balance: number; clawed: number }>(sql`
-      UPDATE users SET
-        topup_credits = users.topup_credits - LEAST(users.topup_credits, ${grant}),
-        credits_balance = users.credits_balance - LEAST(users.topup_credits, ${grant})
-      FROM (SELECT id, topup_credits FROM users WHERE id = ${userId}::uuid) AS old
-      WHERE users.id = old.id
-      RETURNING users.credits_balance AS new_balance, LEAST(old.topup_credits, ${grant}) AS clawed
-    `);
-    const rows = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? []);
-    if (rows.length === 0) throw new Error('users.update returned no row');
-    const { new_balance, clawed } = rows[0] as { new_balance: number; clawed: number };
-
-    if (clawed > 0) {
-      await db.insert(creditLedger).values({
-        userId,
-        delta: -clawed,
-        reason: 'admin_adjust',
-        balanceAfter: new_balance,
-        bucket: 'topup',
-        metadata: {
-          rcRefund: true,
-          storeProductId: productId,
-          packGrant: grant,
-          environment: environment ?? 'PRODUCTION',
-        },
-        note: `RC refund clawback ${productId}`.slice(0, 200),
-      });
-    }
+    // Clamped at what is actually left: if they already spent the credits
+    // we absorb the difference rather than pushing them negative, which
+    // the balance CHECK would reject anyway.
+    const clawed = await revokeCredits(db, {
+      userId,
+      class: 'topup',
+      amount: grant,
+      reason: 'admin_adjust',
+      note: `RC refund clawback ${productId}`.slice(0, 200),
+      metadata: {
+        rcRefund: true,
+        storeProductId: productId,
+        packGrant: grant,
+        environment: environment ?? 'PRODUCTION',
+      },
+    });
     return `refund_clawback (${clawed} of ${grant} credits reclaimed)`;
   }
 

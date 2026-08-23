@@ -21,6 +21,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { creditLedger, grantPolicies, users } from '@clickfy/db';
 
 import type { AppEnv } from '../../types';
+import { grantCredits } from '../../lib/credit-grants';
 import { resolveOrLinkUser } from '../../lib/provision-user';
 
 export const clerkWebhookRoute = new Hono<AppEnv>();
@@ -145,21 +146,21 @@ clerkWebhookRoute.post('/', async (c) => {
       const amount = policy?.amount ?? WELCOME_BONUS_FALLBACK;
 
       if (amount > 0) {
-        const [bumped] = await c.var.db
-          .update(users)
-          .set({
-            promoCredits: sql`${users.promoCredits} + ${amount}`,
-            creditsBalance: sql`${users.creditsBalance} + ${amount}`,
-          })
-          .where(eq(users.id, user.id))
-          .returning();
-
-        await c.var.db.insert(creditLedger).values({
+        // One atomic statement: lot + projection + ledger. The previous
+        // UPDATE-then-INSERT pair could credit a brand-new user and then
+        // fail before writing the row that explains where it came from.
+        // Welcome credits never expire, so no `expiresAt`.
+        await grantCredits(c.var.db, {
           userId: user.id,
-          delta: amount,
+          class: 'promo',
+          kind: 'welcome',
+          amount,
           reason: 'signup_bonus',
-          balanceAfter: bumped?.creditsBalance ?? amount,
-          bucket: 'promo',
+          sourcePlatform: 'system',
+          // Keyed on the user's own id: if Clerk redelivers `user.created`
+          // the second grant collides on the lot's unique index and is
+          // ignored, so the ledger lookup above stops being the only guard.
+          sourceRef: `welcome:${user.id}`,
           metadata: { policyKind: 'welcome' },
         });
       }

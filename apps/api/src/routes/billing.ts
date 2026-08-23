@@ -24,12 +24,15 @@
  */
 
 import { Hono } from 'hono';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 
 import { creditPacks, planProducts, plans, users } from '@clickfy/db';
 
-import { withAuth } from '../middleware/with-auth';
-import { byIp, withRateLimit } from '../middleware/with-rate-limit';
+import { withAuth, withCurrentUser } from '../middleware/with-auth';
+import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
+import { makeStripe } from '../lib/stripe-client';
 import type { AppEnv } from '../types';
 
 export const billingRoute = new Hono<AppEnv>();
@@ -130,5 +133,190 @@ billingRoute.get(
         topupsLocked: !isSubscribed,
       },
     });
+  },
+);
+
+// ─── Checkout ───────────────────────────────────────────────────────
+
+const checkoutSchema = z
+  .object({
+    planId: z.string().uuid(),
+    /** Where to send the customer back to. Validated against our own origin. */
+    successPath: z.string().max(200).optional(),
+    cancelPath: z.string().max(200).optional(),
+  })
+  .strict();
+
+/**
+ * Only ever redirect back to our own site. An open redirect on a payment
+ * flow is a phishing primitive — "pay here, then get sent to a page that
+ * looks like us and asks for your card again".
+ */
+function safeReturnUrl(origin: string, path: string | undefined, fallback: string): string {
+  const p = path && path.startsWith('/') && !path.startsWith('//') ? path : fallback;
+  return `${origin}${p}`;
+}
+
+billingRoute.post(
+  '/checkout',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  zValidator('json', checkoutSchema),
+  async (c) => {
+    const user = c.var.user!;
+    const { planId, successPath, cancelPath } = c.req.valid('json');
+
+    if (!c.env.STRIPE_SECRET_KEY) {
+      return c.json(
+        { error: { code: 'stripe_unconfigured', message: 'Payments are not configured.' } },
+        503,
+      );
+    }
+
+    // Someone already subscribed through a store cannot be sold to here.
+    // Stripe cannot see or replace an Apple subscription, so charging them
+    // would simply bill them twice for the same thing.
+    if (
+      user.subscriptionPlatform === 'app_store' ||
+      user.subscriptionPlatform === 'play_store'
+    ) {
+      return c.json(
+        {
+          error: {
+            code: 'subscribed_elsewhere',
+            message:
+              'You already subscribe through the mobile app. Manage or change your plan there.',
+            details: { platform: user.subscriptionPlatform },
+          },
+        },
+        409,
+      );
+    }
+
+    const plan = await c.var.db.query.plans.findFirst({
+      where: and(eq(plans.id, planId), eq(plans.isActive, true)),
+    });
+    if (!plan) {
+      return c.json({ error: { code: 'plan_not_found', message: 'Plan not found.' } }, 404);
+    }
+
+    const product = await c.var.db.query.planProducts.findFirst({
+      where: and(
+        eq(planProducts.planId, planId),
+        eq(planProducts.platform, 'stripe'),
+        eq(planProducts.isActive, true),
+      ),
+    });
+    if (!product) {
+      // The plan exists but has no Stripe price yet. Refuse rather than
+      // improvise — a checkout built on a guessed price id is how someone
+      // gets charged the wrong amount.
+      return c.json(
+        {
+          error: {
+            code: 'plan_not_purchasable',
+            message: 'This plan is not available for purchase yet.',
+          },
+        },
+        409,
+      );
+    }
+
+    const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
+    const origin = new URL(c.req.url).origin;
+
+    // Reuse the customer if we have one, so a returning subscriber keeps a
+    // single Stripe identity and one billing history.
+    let customerId = user.stripeCustomerId ?? undefined;
+    if (!customerId) {
+      const created = await stripe.customers.create({
+        email: user.email,
+        name: user.name ?? undefined,
+        metadata: { clickefy_user_id: user.id },
+      });
+      customerId = created.id;
+      await c.var.db
+        .update(users)
+        .set({ stripeCustomerId: customerId })
+        .where(eq(users.id, user.id));
+    }
+
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'subscription',
+        customer: customerId,
+        line_items: [{ price: product.storeProductId, quantity: 1 }],
+        // Belt and braces for attribution: the webhook resolves the user
+        // from the customer id, but if a customer record is ever recreated
+        // this is a second way home.
+        client_reference_id: user.id,
+        subscription_data: {
+          metadata: {
+            clickefy_user_id: user.id,
+            clickefy_plan_id: plan.id,
+            clickefy_tier: plan.tier,
+          },
+        },
+        success_url: safeReturnUrl(
+          c.req.header('origin') ?? origin,
+          successPath,
+          '/billing/success?session={CHECKOUT_SESSION_ID}',
+        ),
+        cancel_url: safeReturnUrl(c.req.header('origin') ?? origin, cancelPath, '/#pricing'),
+        allow_promotion_codes: true,
+      },
+      {
+        // Stripe-level idempotency: a double-clicked button creates ONE
+        // session rather than two, so the customer cannot end up with two
+        // half-finished checkouts.
+        idempotencyKey: `checkout:${user.id}:${plan.id}:${Math.floor(Date.now() / 60_000)}`,
+      },
+    );
+
+    return c.json({ data: { url: session.url, sessionId: session.id } });
+  },
+);
+
+// ─── Customer portal ────────────────────────────────────────────────
+
+/**
+ * Stripe's hosted portal handles cancellation, plan changes, card updates
+ * and invoice history. Building those ourselves would mean reimplementing
+ * proration and dunning UI that Stripe already gets right.
+ */
+billingRoute.post(
+  '/portal',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  async (c) => {
+    const user = c.var.user!;
+    if (!c.env.STRIPE_SECRET_KEY) {
+      return c.json(
+        { error: { code: 'stripe_unconfigured', message: 'Payments are not configured.' } },
+        503,
+      );
+    }
+    if (!user.stripeCustomerId) {
+      return c.json(
+        {
+          error: {
+            code: 'no_stripe_customer',
+            message: 'There is no web billing account for this user.',
+          },
+        },
+        404,
+      );
+    }
+
+    const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
+    const origin = c.req.header('origin') ?? new URL(c.req.url).origin;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: `${origin}/settings`,
+    });
+
+    return c.json({ data: { url: session.url } });
   },
 );

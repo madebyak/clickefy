@@ -41,7 +41,7 @@ export interface SessionUser {
 }
 
 export interface SessionPlan {
-  tier: 'Free' | 'Pro' | 'Pro Max';
+  tier: 'Free' | 'Basic' | 'Creator' | 'Pro' | 'Ultimate';
   isPro: boolean;
   credits: number;
   renewsAt?: string;
@@ -49,9 +49,14 @@ export interface SessionPlan {
 
 const ENTITLEMENT_TO_TIER: Record<MeResponse['entitlement'], SessionPlan['tier']> = {
   free: 'Free',
+  basic: 'Basic',
+  creator: 'Creator',
   pro: 'Pro',
-  pro_max: 'Pro Max',
-  admin: 'Pro Max',
+  ultimate: 'Ultimate',
+  // Retired in migration 0030; an old row still renders as the tier that
+  // replaced it rather than showing a name no plan uses any more.
+  pro_max: 'Ultimate',
+  admin: 'Ultimate',
 };
 
 function makeInitials(name: string, email: string): string {

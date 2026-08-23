@@ -13,7 +13,14 @@ export const localeEnum = pgEnum('locale', ['ar', 'en']);
 
 export const entitlementEnum = pgEnum('entitlement', [
   'free',
+  'basic',
+  'creator',
   'pro',
+  'ultimate',
+  // RETIRED (migration 0030) — replaced by `ultimate`, and no longer
+  // written anywhere. Postgres cannot drop an enum value without
+  // rewriting every table that uses it, so it stays listed to keep this
+  // in step with the database type.
   'pro_max',
   'admin',
 ]);

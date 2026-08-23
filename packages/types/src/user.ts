@@ -11,7 +11,23 @@
 
 export type UserLocale = 'en' | 'ar';
 
-export type UserEntitlement = 'free' | 'pro' | 'pro_max' | 'admin';
+/**
+ * What a user is entitled to. Mirrors the `entitlement` enum in the
+ * database (migration 0030).
+ *
+ * `pro_max` is RETIRED — replaced by `ultimate` and no longer written
+ * anywhere. It remains in the union only because Postgres cannot drop an
+ * enum value without rewriting every table that uses it, so old rows
+ * could in principle still carry it.
+ */
+export type UserEntitlement =
+  | 'free'
+  | 'basic'
+  | 'creator'
+  | 'pro'
+  | 'ultimate'
+  | 'pro_max'
+  | 'admin';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 

@@ -302,7 +302,7 @@ export interface StoreSubscription {
   /** Store product id — matches the RevenueCat package's product id. */
   storeProductId: string;
   displayName: string;
-  entitlement: 'pro' | 'pro_max';
+  entitlement: 'basic' | 'creator' | 'pro' | 'ultimate' | 'pro_max';
   /** 'week' | 'month' | 'year'. */
   intervalUnit: string;
   intervalCount: number;
@@ -352,7 +352,7 @@ export interface CreditsSummary {
     topup: number;
   };
   total: number;
-  entitlement: 'free' | 'pro' | 'pro_max' | 'admin';
+  entitlement: 'free' | 'basic' | 'creator' | 'pro' | 'ultimate' | 'pro_max' | 'admin';
   /** False for free users — top-up balance is locked until they resubscribe. */
   topupSpendable: boolean;
   subscriptionExpiresAt: string | null;

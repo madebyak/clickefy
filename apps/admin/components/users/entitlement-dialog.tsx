@@ -32,8 +32,12 @@ interface EntitlementDialogProps {
 
 const ENTITLEMENT_LABELS: Record<UserEntitlement, string> = {
   free: 'Free',
+  basic: 'Basic',
+  creator: 'Creator',
   pro: 'Pro',
-  pro_max: 'Pro Max',
+  ultimate: 'Ultimate',
+  // Retired in migration 0030; kept so old rows still render.
+  pro_max: 'Pro Max (retired)',
   admin: 'Admin',
 };
 

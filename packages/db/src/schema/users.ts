@@ -72,6 +72,16 @@ export const users = pgTable(
     subscriptionCredits: integer('subscription_credits').default(0).notNull(),
     topupCredits: integer('topup_credits').default(0).notNull(),
 
+    /** Where this subscription lives, so we can send the user to the right
+     *  place to change or cancel it — and refuse to sell it twice. Neither
+     *  Apple nor Stripe can see the other; only this row can. */
+    subscriptionPlatform: text('subscription_platform').$type<
+      'stripe' | 'app_store' | 'play_store' | null
+    >(),
+    /** The exact product they are on, so a paywall can mark it current. */
+    subscriptionProductId: text('subscription_product_id'),
+    /** Stripe's identity for this user; set on first web checkout. */
+    stripeCustomerId: text('stripe_customer_id'),
     subscriptionRenewsAt: timestamp('subscription_renews_at', { withTimezone: true }),
     subscriptionExpiresAt: timestamp('subscription_expires_at', { withTimezone: true }),
 

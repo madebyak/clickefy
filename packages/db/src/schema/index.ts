@@ -26,6 +26,7 @@ export * from './grant-policies';
 export * from './home-banners';
 export * from './jobs';
 export * from './notifications';
+export * from './plans';
 export * from './project-assets';
 export * from './projects';
 export * from './provider-models';

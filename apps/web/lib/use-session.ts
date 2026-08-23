@@ -18,9 +18,13 @@ export const ME_QUERY_KEY = ["users", "me"] as const;
 
 const ENTITLEMENT_TIER: Record<MeResponse["entitlement"], string> = {
   free: "Free",
+  basic: "Basic",
+  creator: "Creator",
   pro: "Pro",
-  pro_max: "Pro Max",
-  admin: "Pro Max",
+  ultimate: "Ultimate",
+  // Retired in migration 0030; kept so an old row still renders.
+  pro_max: "Ultimate",
+  admin: "Ultimate",
 };
 
 export function useSession() {

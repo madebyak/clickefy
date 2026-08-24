@@ -51,7 +51,7 @@ export async function Footer() {
 
   return (
     <footer className="mt-20 bg-surface-1">
-      <div className="mx-auto max-w-[90rem] px-4 py-14 sm:px-6">
+      <div className="mx-auto w-full max-w-site py-14 site-px">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-6">
           <div className="lg:col-span-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}

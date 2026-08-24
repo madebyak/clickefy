@@ -50,7 +50,7 @@ export function ModelRow() {
   const t = useTranslations("home");
 
   return (
-    <section className="mx-auto max-w-[90rem] px-4 sm:px-6">
+    <section className="mx-auto w-full max-w-site site-px">
       <div className="mt-4 rounded-2xl bg-surface-2 px-6 py-10 sm:py-14">
         <h2 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">
           {t("modelsHeadline")}

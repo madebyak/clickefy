@@ -61,7 +61,7 @@ export function HomeHero() {
   const t = useTranslations("home");
 
   return (
-    <section className="mx-auto max-w-[90rem] px-4 sm:px-6">
+    <section className="mx-auto w-full max-w-site site-px">
       <div className="grid gap-4 lg:grid-cols-12">
         {/* ---- hero (left, big) ---- */}
         <MediaCard

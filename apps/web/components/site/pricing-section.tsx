@@ -151,7 +151,7 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
   return (
     <section
       id="pricing"
-      className={cn("mx-auto max-w-[90rem] px-4 sm:px-6", embedded ? "mt-0" : "mt-20")}
+      className={cn("mx-auto w-full max-w-site site-px", embedded ? "mt-0" : "mt-20")}
     >
       <Suspense fallback={null}>
         <ResumeCheckout startCheckout={startCheckout} ready={!isLoading} />
@@ -203,7 +203,7 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
         </p>
       )}
 
-      <div className="mx-auto mt-10 grid max-w-7xl gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {/* Free — a real option, so it gets a real column. */}
         <div className="flex flex-col rounded-2xl bg-surface-2 p-6">
           <h3 className="text-lg font-semibold">{t("freeName")}</h3>

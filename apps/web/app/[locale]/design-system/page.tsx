@@ -395,7 +395,7 @@ export default function DesignSystemPage() {
     <div className="min-h-dvh bg-background text-foreground">
       {/* header */}
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-6 gap-y-2 px-6 py-4">
+        <div className="mx-auto flex w-full max-w-site flex-wrap items-center gap-x-6 gap-y-2 py-4 site-px">
           <div className="mr-auto flex items-center gap-2">
             <div className="grid size-7 place-items-center rounded-md bg-brand-green">
               <Sparkle weight="fill" className="size-4 text-black" />
@@ -421,7 +421,7 @@ export default function DesignSystemPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[90rem] px-6 pb-24">
+      <main className="mx-auto w-full max-w-site pb-24 site-px">
         {/* intro */}
         <div className="py-12 lg:py-16">
           <p className="font-mono text-xs uppercase tracking-widest text-brand-green">

@@ -6,7 +6,7 @@ export async function VideoBanner() {
   const t = await getTranslations("home");
 
   return (
-    <section className="mx-auto mt-16 max-w-[90rem] px-4 sm:px-6">
+    <section className="mx-auto mt-16 w-full max-w-site site-px">
       <div className="relative overflow-hidden rounded-2xl bg-surface-2">
         <video
           className="absolute inset-0 size-full object-cover"

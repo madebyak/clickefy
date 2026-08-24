@@ -155,7 +155,7 @@ export function ModelAllowanceTable() {
   const span = columns.length + 1;
 
   return (
-    <section className="mx-auto mt-24 max-w-[90rem] px-4 sm:px-6">
+    <section className="mx-auto mt-24 w-full max-w-site site-px">
       <div className="mx-auto max-w-2xl text-center">
         <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
           {t("tableHeading")}
@@ -163,7 +163,7 @@ export function ModelAllowanceTable() {
         <p className="mt-3 text-muted-foreground">{t("tableSub")}</p>
       </div>
 
-      <div className="mx-auto mt-10 max-w-5xl overflow-hidden rounded-2xl bg-surface-1 ring-1 ring-border">
+      <div className="mx-auto mt-10 max-w-7xl overflow-hidden rounded-2xl bg-surface-1 ring-1 ring-border">
         {/* The table is wider than a phone. It scrolls inside its own box
             with the model name pinned, so a reader never loses which row
             they are on — the page itself never scrolls sideways. */}

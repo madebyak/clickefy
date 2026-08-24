@@ -331,7 +331,7 @@ export default function ProjectsPage() {
 
   return (
     <main className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
-      <div className="mx-auto max-w-[90rem]">
+      <div className="mx-auto w-full max-w-site">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">{t("heading")}</h1>

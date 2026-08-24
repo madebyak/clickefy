@@ -200,7 +200,7 @@ export function TemplatesGallery() {
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   return (
-    <main className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6">
+    <main className="mx-auto w-full max-w-site py-8 site-px">
       <PromoBanner onSelectCategory={(id) => setCategoryId(id)} />
 
         <div className="flex flex-wrap items-center justify-between gap-3">

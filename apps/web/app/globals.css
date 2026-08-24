@@ -22,6 +22,45 @@
   --spacing: 0.25rem; /* 4px atomic base → p-1=4, p-2=8, p-4=16, p-6=24 … */
   --breakpoint-xs: 30rem; /* 480px — large phones / small foldables */
   --breakpoint-3xl: 120rem; /* 1920px — ultrawide / 4K */
+
+  /* THE site container width. Generates `max-w-site` (v4 derives max-w-*,
+     w-* and min-w-* from the --container-* namespace), so the number lives
+     in exactly one place instead of the fourteen hand-copied
+     `max-w-[90rem]`s this replaced.
+
+     90rem (1440px) left ~280px of dead margin either side on a 2000px
+     display — a creator tool showing a gallery should use that space.
+     120rem matches --breakpoint-3xl deliberately: at and above 1920px the
+     shell is full-bleed and only `site-px` holds content off the edge,
+     and below it the shell is simply the viewport. */
+  --container-site: 120rem;
+}
+
+/*
+ * Gutter for the site shell. Grows with the viewport so content sits close
+ * to the edge on a large display without ever touching it, and stays
+ * thumb-safe on a phone.
+ *
+ * Kept SEPARATE from `max-w-site` on purpose: tailwind-merge cannot know
+ * that a custom utility sets max-width, so folding both into one class
+ * would silently break any future `cn("site-shell", "max-w-3xl")`. Keeping
+ * the max-width a real Tailwind class means conflict resolution still
+ * works the way everyone expects.
+ */
+@utility site-px {
+  padding-inline: 1rem; /* 16 — phones */
+  @media (width >= 40rem) {
+    padding-inline: 1.5rem; /* 24 — sm */
+  }
+  @media (width >= 64rem) {
+    padding-inline: 2rem; /* 32 — lg */
+  }
+  @media (width >= 80rem) {
+    padding-inline: 2.5rem; /* 40 — xl */
+  }
+  @media (width >= 96rem) {
+    padding-inline: 3rem; /* 48 — 2xl and up */
+  }
 }
 
 /* Tokens that reference :root custom properties (colors, fonts, radius). */

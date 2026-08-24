@@ -51,7 +51,16 @@ shadcn semantic tokens (`--primary`, `--card`, `--muted`…) are wired so shadcn
 | `2xl` | 1536px | large desktop |
 | `3xl` | 1920px | ultrawide / 4K |
 
-`xs` and `3xl` are added in `globals.css` (`--breakpoint-xs`, `--breakpoint-3xl`); the rest are Tailwind v4 defaults. Guidelines: mobile-first only; use **container queries** (`@container`) for resizable panels/components, viewport breakpoints for the app shell; cap main content ~1440px (`max-w-[90rem]`).
+`xs` and `3xl` are added in `globals.css` (`--breakpoint-xs`, `--breakpoint-3xl`); the rest are Tailwind v4 defaults. Guidelines: mobile-first only; use **container queries** (`@container`) for resizable panels/components, viewport breakpoints for the app shell.
+
+**The site shell is `mx-auto w-full max-w-site site-px`** — always that pair, never a hand-written width.
+
+- `max-w-site` comes from `--container-site` (120rem / 1920px) in `@theme`. Tailwind v4 derives `max-w-*`/`w-*`/`min-w-*` from the `--container-*` namespace, so the number lives in one place.
+- `site-px` is the gutter, growing 16 → 24 → 32 → 40 → 48px across sm/lg/xl/2xl. It uses `padding-inline`, so RTL is free.
+
+They are two classes rather than one on purpose: `tailwind-merge` cannot know a custom utility sets max-width, so folding them together would silently break any future `cn("site-shell", "max-w-3xl")`.
+
+This replaced fourteen hand-copied `max-w-[90rem]`s (1440px), which left ~240px of dead margin either side on a 1920px display. **Reading-width containers are a separate concern and must stay narrow** — legal pages and Settings keep `max-w-3xl`/`max-w-2xl`, because prose at 1800px is unreadable no matter how much room there is.
 
 ## Radius
 

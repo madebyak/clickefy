@@ -31,7 +31,7 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-[90rem] items-center gap-4 px-4 sm:px-6">
+      <div className="mx-auto flex h-16 w-full max-w-site items-center gap-4 site-px">
         <Link href="/" className="shrink-0" aria-label={t("home")}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-7 w-auto" />
@@ -81,7 +81,7 @@ export function Navbar() {
 
       {mobileOpen && (
         <div className="border-t border-border bg-background xl:hidden">
-          <nav className="mx-auto flex max-w-[90rem] flex-col gap-0.5 px-4 py-3 sm:px-6">
+          <nav className="mx-auto flex w-full max-w-site flex-col gap-0.5 py-3 site-px">
             {NAV_LINKS.map((l) => (
               <Link
                 key={l.key}

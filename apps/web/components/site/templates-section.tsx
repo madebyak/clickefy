@@ -109,7 +109,7 @@ export function TemplatesSection() {
   }
 
   return (
-    <section className="mx-auto mt-16 max-w-[90rem] px-4 sm:px-6">
+    <section className="mx-auto mt-16 w-full max-w-site site-px">
       <div className="flex items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t("heading")}</h2>

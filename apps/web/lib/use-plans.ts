@@ -54,19 +54,33 @@ export interface CatalogueModel {
   preview: boolean;
 }
 
+/** One credit pack, as the top-up slider shows it. */
+export interface CataloguePack {
+  id: string;
+  storeProductId: string;
+  displayName: string;
+  /** Credits bought. */
+  credits: number;
+  /** Extra credits granted free — the bulk incentive. */
+  bonusCredits: number;
+  /** What the customer actually receives. The number to show big. */
+  totalCredits: number;
+  displayOrder: number;
+  /** The step the slider starts on. */
+  isFeatured: boolean;
+  /** Web price. Null means no Stripe price exists yet. */
+  priceUsd: number | null;
+  /** False when no storefront can sell it — show, but do not offer. */
+  purchasable: boolean;
+}
+
 export interface PlansResponse {
   plans: CataloguePlan[];
   models: CatalogueModel[];
   freeCredits: number;
   current: CurrentSubscription | null;
   entitlement: string | null;
-  packs: Array<{
-    id: string;
-    storeProductId: string;
-    displayName: string;
-    credits: number;
-    bonusCredits: number;
-  }>;
+  packs: CataloguePack[];
   topupsLocked: boolean;
 }
 

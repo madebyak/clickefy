@@ -43,9 +43,10 @@ import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import type Stripe from 'stripe';
 
-import { planProducts, plans, stripeEvents, users } from '@clickfy/db';
+import { creditPacks, planProducts, plans, stripeEvents, users } from '@clickfy/db';
 
 import {
+  TOPUP_LIFETIME_MS,
   closeSubscriptionLots,
   grantCredits,
   pauseTopupClocks,
@@ -60,6 +61,11 @@ export const stripeWebhookRoute = new Hono<AppEnv>();
 /** Events worth acting on. Everything else is recorded and ignored. */
 const HANDLED = new Set([
   'invoice.paid',
+  // One-time credit-pack purchases. `checkout.session.completed` is the
+  // RIGHT event here, and the wrong one for subscriptions — it fires once
+  // per checkout, which is exactly a top-up's lifecycle and exactly not a
+  // renewal's.
+  'checkout.session.completed',
   'customer.subscription.updated',
   'customer.subscription.deleted',
   'invoice.payment_failed',
@@ -195,8 +201,11 @@ stripeWebhookRoute.post('/', async (c) => {
         // cut off customers whose card just needed a retry.
         note = 'payment failed — awaiting Stripe retries, access unchanged';
         break;
+      case 'checkout.session.completed':
+        note = await applyCheckoutCompleted(c, userRow.id, event);
+        break;
       case 'charge.refunded':
-        note = await applyChargeRefunded(c, userRow.id, event);
+        note = await applyChargeRefunded(c, stripe, userRow.id, event);
         break;
     }
 
@@ -376,6 +385,102 @@ async function applySubscriptionDeleted(
 }
 
 /**
+ * `checkout.session.completed` — a credit pack was bought.
+ *
+ * WHY THIS EVENT, when subscriptions deliberately avoid it: a top-up
+ * happens exactly once. There is no renewal to miss, so the event that
+ * fires once per checkout is the correct one. Using `invoice.paid` here
+ * would work for the first purchase and then never fire again, and using
+ * `checkout.session.completed` for SUBSCRIPTIONS would grant the first
+ * month and silently stop — which is why the two paths are split.
+ *
+ * THREE GUARDS before a single credit moves:
+ *
+ *  1. `mode === 'payment'`. Subscription checkouts also emit this event;
+ *     granting on them would hand out a top-up on top of the plan credits
+ *     `invoice.paid` is already about to grant. Double-granting every new
+ *     subscriber is the single most expensive bug available here.
+ *  2. `payment_status === 'paid'`. A session can complete with payment
+ *     still pending (delayed methods settle hours later). Crediting on
+ *     completion rather than payment gives away credits for money that
+ *     has not arrived.
+ *  3. The pack is re-read FROM THE DATABASE by id. The credit amount in
+ *     metadata is a copy made at checkout time; the row is the truth. If
+ *     a pack were re-credited between checkout and payment, the customer
+ *     gets what the catalogue says today, not what a stale copy claimed.
+ *
+ * Idempotency is the session id as `source_ref`, so a Stripe redelivery
+ * loses the lot insert and grants nothing — on top of the handler's own
+ * event dedupe.
+ */
+async function applyCheckoutCompleted(
+  c: { var: AppEnv['Variables']; env: AppEnv['Bindings'] },
+  userId: string,
+  event: Stripe.Event,
+): Promise<string> {
+  const session = event.data.object as unknown as Record<string, unknown>;
+
+  const mode = typeof session.mode === 'string' ? session.mode : null;
+  if (mode !== 'payment') {
+    // A subscription checkout. `invoice.paid` owns that path entirely.
+    return `checkout completed in ${mode ?? 'unknown'} mode — subscription path handles it`;
+  }
+
+  const paymentStatus = typeof session.payment_status === 'string' ? session.payment_status : null;
+  if (paymentStatus !== 'paid') {
+    return `checkout completed but payment_status=${paymentStatus ?? 'unknown'} — no credits until paid`;
+  }
+
+  const metadata = (session.metadata ?? {}) as Record<string, string>;
+  const packId = metadata.clickefy_pack_id;
+  if (!packId) {
+    return 'one-time payment with no clickefy_pack_id — nothing to grant';
+  }
+
+  const pack = await c.var.db.query.creditPacks.findFirst({
+    where: eq(creditPacks.id, packId),
+  });
+  if (!pack) {
+    // THROW, do not shrug. The customer has paid; a missing catalogue row
+    // is a configuration fault we must retry into, not swallow. Stripe
+    // redelivers for three days, which is ample time to restore the row.
+    throw new Error(
+      `paid top-up references unknown pack id='${packId}' — restore the credit_packs row`,
+    );
+  }
+
+  const amount = pack.credits + pack.bonusCredits;
+  if (amount <= 0) {
+    throw new Error(`pack '${pack.storeProductId}' grants ${amount} credits — refusing to charge for nothing`);
+  }
+
+  const sessionId = typeof session.id === 'string' ? session.id : event.id;
+
+  await grantCredits(c.var.db, {
+    userId,
+    class: 'topup',
+    kind: 'topup',
+    amount,
+    // The clock pauses while unsubscribed, so this is a floor rather than
+    // a deadline — nobody loses time they were not allowed to spend.
+    expiresAt: new Date(Date.now() + TOPUP_LIFETIME_MS),
+    reason: 'purchase',
+    sourcePlatform: 'stripe',
+    sourceRef: sessionId,
+    note: `Stripe top-up ${pack.storeProductId}`.slice(0, 200),
+    metadata: {
+      packId: pack.id,
+      storeProductId: pack.storeProductId,
+      credits: pack.credits,
+      bonusCredits: pack.bonusCredits,
+      sessionId,
+    },
+  });
+
+  return `top-up ${pack.storeProductId}: +${amount} credits (${pack.credits} + ${pack.bonusCredits} bonus)`;
+}
+
+/**
  * `charge.refunded` — claw back, clamped at what is left.
  *
  * Tracing a charge to what it paid for is a multi-hop walk in Stripe:
@@ -384,6 +489,7 @@ async function applySubscriptionDeleted(
  */
 async function applyChargeRefunded(
   c: { var: AppEnv['Variables'] },
+  stripe: Stripe,
   userId: string,
   event: Stripe.Event,
 ): Promise<string | undefined> {
@@ -392,25 +498,68 @@ async function applyChargeRefunded(
   const total = charge.amount ?? 0;
   if (total <= 0 || refunded <= 0) return 'nothing refunded';
 
-  // Reclaim PROPORTIONALLY to how much of the charge was refunded, so a
-  // partial refund takes back a proportional share rather than all or
-  // nothing. Clamped at what actually remains: if the credits are already
-  // spent we absorb the difference rather than pushing the balance
-  // negative, which the balance CHECK would reject anyway.
+  // WHICH PURCHASE was refunded decides which wallet to reclaim from, and
+  // getting it wrong is not cosmetic. Before top-ups existed this always
+  // reclaimed `subscription`; once packs are sellable that becomes a
+  // double fault — a refunded $250 pack would take back a month of PLAN
+  // credits the customer still paid for, while leaving the 30,000 top-up
+  // credits they were just refunded for sitting in their balance.
+  //
+  // The discriminator is the payment-intent metadata the top-up route
+  // wrote at checkout (`clickefy_kind: 'topup'`). Subscription charges
+  // never carry it, so ABSENCE means subscription — which is also the
+  // pre-top-up behaviour, making the unknown case degrade to what this
+  // handler has always done rather than to something new and untested.
+  let isTopup = false;
+  let packCredits: number | null = null;
+
+  const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : null;
+  if (piId) {
+    try {
+      const pi = await stripe.paymentIntents.retrieve(piId);
+      const kind = pi.metadata?.clickefy_kind;
+      if (kind === 'topup') {
+        isTopup = true;
+        const packId = pi.metadata?.clickefy_pack_id;
+        if (packId) {
+          const pack = await c.var.db.query.creditPacks.findFirst({
+            where: eq(creditPacks.id, packId),
+          });
+          if (pack) packCredits = pack.credits + pack.bonusCredits;
+        }
+      } else if (kind) {
+        isTopup = false;
+      }
+    } catch {
+      // A lookup failure must not strand the refund. Fall back to the
+      // invoice heuristic, which is right in the ordinary case.
+    }
+  }
+
+  const targetClass = isTopup ? ('topup' as const) : ('subscription' as const);
+
   const lots = await c.var.db.query.creditLots.findMany({
     where: (cl, { and: a, eq: e, gt }) =>
-      a(e(cl.userId, userId), e(cl.class, 'subscription'), gt(cl.amountRemaining, 0)),
+      a(e(cl.userId, userId), e(cl.class, targetClass), gt(cl.amountRemaining, 0)),
   });
   const outstanding = lots.reduce((n, l) => n + l.amountRemaining, 0);
-  if (outstanding <= 0) return 'nothing left to reclaim (credits already spent)';
+  if (outstanding <= 0) {
+    return `nothing left to reclaim from ${targetClass} (credits already spent)`;
+  }
 
   const share = Math.min(1, refunded / total);
-  const toReclaim = Math.floor(outstanding * share);
+
+  // For a top-up we know exactly how many credits THAT purchase granted,
+  // so the clawback is scoped to it. Proportioning across every top-up
+  // lot instead would let a refund on one pack eat into a different pack
+  // the customer still owns.
+  const basis = packCredits ?? outstanding;
+  const toReclaim = Math.min(outstanding, Math.floor(basis * share));
   if (toReclaim <= 0) return 'refund too small to reclaim a whole credit';
 
   const clawed = await revokeCredits(c.var.db, {
     userId,
-    class: 'subscription',
+    class: targetClass,
     amount: toReclaim,
     reason: 'admin_adjust',
     note: `Stripe refund ${charge.id}`,
@@ -420,7 +569,9 @@ async function applyChargeRefunded(
       amountRefunded: refunded,
       amountTotal: total,
       sharePct: Math.round(share * 100),
+      wallet: targetClass,
+      ...(packCredits != null ? { packCredits } : {}),
     },
   });
-  return `refund clawback (${clawed} of ${toReclaim} reclaimed, ${Math.round(share * 100)}% of charge)`;
+  return `refund clawback from ${targetClass} (${clawed} of ${toReclaim} reclaimed, ${Math.round(share * 100)}% of charge)`;
 }

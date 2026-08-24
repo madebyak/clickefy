@@ -77,6 +77,7 @@ import {
 } from '@clickfy/db';
 
 import {
+  TOPUP_LIFETIME_MS,
   closeSubscriptionLots,
   grantCredits,
   pauseTopupClocks,
@@ -120,14 +121,6 @@ const SUBSCRIPTION_GRANT_EVENTS = new Set([
   'PRODUCT_CHANGE',
   'UNCANCELLATION',
 ]);
-
-/**
- * How long a bought credit pack lives. Deliberately gentler than the
- * 90 days Higgsfield uses, because we sell through Apple and Google where
- * "my credits vanished" is a one-tap refund and a review risk. The clock
- * also pauses while the user is unsubscribed.
- */
-const TOPUP_LIFETIME_MS = 365 * 24 * 60 * 60 * 1000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

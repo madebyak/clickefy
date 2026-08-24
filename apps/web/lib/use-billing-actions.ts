@@ -21,7 +21,9 @@ type BillingErrorCode =
   | "subscribed_elsewhere"
   | "plan_not_purchasable"
   | "stripe_unconfigured"
-  | "no_stripe_customer";
+  | "no_stripe_customer"
+  | "topup_requires_subscription"
+  | "pack_not_purchasable";
 
 async function post<T>(
   path: string,
@@ -53,6 +55,7 @@ export function useBillingActions() {
   const { getToken, isSignedIn } = useAuth();
   const t = useTranslations("pricing");
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
+  const [pendingPackId, setPendingPackId] = useState<string | null>(null);
   const [portalPending, setPortalPending] = useState(false);
 
   /**
@@ -100,6 +103,45 @@ export function useBillingActions() {
     }
   }
 
+  /**
+   * Buy a credit pack — a ONE-TIME payment, not a subscription.
+   *
+   * Deliberately hits `/v1/billing/topup` rather than `/checkout`: that
+   * endpoint uses `mode: 'payment'`, and sending a pack through the
+   * subscription endpoint would enrol the customer in a monthly charge
+   * for what they believed was a single top-up.
+   */
+  async function startTopup(packId: string) {
+    if (!isSignedIn) {
+      window.location.href = `/sign-up?redirect_url=${encodeURIComponent("/pricing")}`;
+      return;
+    }
+    setPendingPackId(packId);
+    try {
+      const token = await getToken();
+      const result = await post<{ url: string }>("/v1/billing/topup", token, {
+        packId,
+        successPath: "/billing/success?topup=1",
+        cancelPath: "/pricing",
+      });
+      if (!result.ok) {
+        // The one case with its own copy: they have no plan, so the
+        // credits would be unspendable even once bought.
+        toast.error(
+          result.code === ("topup_requires_subscription" satisfies BillingErrorCode)
+            ? t("topupNeedsPlan")
+            : result.message,
+        );
+        return;
+      }
+      window.location.href = result.data.url;
+    } catch {
+      toast.error(t("checkoutFailed"));
+    } finally {
+      setPendingPackId(null);
+    }
+  }
+
   /** Open the Stripe Customer Portal: cancel, change plan, update card. */
   async function openPortal() {
     setPortalPending(true);
@@ -118,5 +160,12 @@ export function useBillingActions() {
     }
   }
 
-  return { startCheckout, openPortal, pendingPlanId, portalPending };
+  return {
+    startCheckout,
+    startTopup,
+    openPortal,
+    pendingPlanId,
+    pendingPackId,
+    portalPending,
+  };
 }

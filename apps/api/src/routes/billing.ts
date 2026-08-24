@@ -28,7 +28,14 @@ import { and, asc, eq } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 
-import { creditPacks, planProducts, plans, providerModels, users } from '@clickfy/db';
+import {
+  creditPacks,
+  packProducts,
+  planProducts,
+  plans,
+  providerModels,
+  users,
+} from '@clickfy/db';
 
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
@@ -153,23 +160,55 @@ billingRoute.get(
 
     const isSubscribed = !!user && user.entitlement !== 'free' && user.entitlement !== 'admin';
 
-    // Top-up packs stay gated behind an active subscription — the rule that
-    // guarantees nobody buys credits they cannot spend.
-    const packs = isSubscribed
-      ? await c.var.db
-          .select({
-            id: creditPacks.id,
-            storeProductId: creditPacks.storeProductId,
-            displayName: creditPacks.displayName,
-            credits: creditPacks.credits,
-            bonusCredits: creditPacks.bonusCredits,
-            displayOrder: creditPacks.displayOrder,
-            isFeatured: creditPacks.isFeatured,
-          })
-          .from(creditPacks)
-          .where(eq(creditPacks.isActive, true))
-          .orderBy(asc(creditPacks.displayOrder))
-      : [];
+    // The pack CATALOGUE is public. Buying is still gated on an active
+    // subscription (`topupsLocked`), but hiding the packs from everyone
+    // who has not subscribed yet — which is what this used to do — means
+    // the pricing page cannot show what a subscription unlocks. Better to
+    // show the ladder with a "subscribe first" CTA than to pretend it
+    // does not exist.
+    //
+    // `/v1/store` keeps its own stricter behaviour for the shipped mobile
+    // app; this is the web catalogue and answers a different question.
+    const packRows = await c.var.db
+      .select({
+        id: creditPacks.id,
+        storeProductId: creditPacks.storeProductId,
+        displayName: creditPacks.displayName,
+        credits: creditPacks.credits,
+        bonusCredits: creditPacks.bonusCredits,
+        displayOrder: creditPacks.displayOrder,
+        isFeatured: creditPacks.isFeatured,
+        priceUsd: packProducts.priceUsd,
+        stripeProductId: packProducts.storeProductId,
+      })
+      .from(creditPacks)
+      .leftJoin(
+        packProducts,
+        and(
+          eq(packProducts.packId, creditPacks.id),
+          eq(packProducts.platform, 'stripe'),
+          eq(packProducts.isActive, true),
+        ),
+      )
+      .where(eq(creditPacks.isActive, true))
+      .orderBy(asc(creditPacks.displayOrder));
+
+    const packs = packRows.map((p) => ({
+      id: p.id,
+      storeProductId: p.storeProductId,
+      displayName: p.displayName,
+      credits: p.credits,
+      bonusCredits: p.bonusCredits,
+      /** What the customer actually receives — the number to show. */
+      totalCredits: p.credits + p.bonusCredits,
+      displayOrder: p.displayOrder,
+      isFeatured: p.isFeatured,
+      /** Web price. Null means no Stripe price exists yet. */
+      priceUsd: p.priceUsd != null ? Number(p.priceUsd) : null,
+      /** A pack with no Stripe price cannot be bought, however much the
+       *  catalogue would like it to be. */
+      purchasable: p.stripeProductId != null,
+    }));
 
     return c.json({
       data: {
@@ -385,5 +424,153 @@ billingRoute.post(
     });
 
     return c.json({ data: { url: session.url } });
+  },
+);
+
+// ─── Top-up checkout ────────────────────────────────────────────────
+
+const topupSchema = z
+  .object({
+    packId: z.string().uuid(),
+    successPath: z.string().max(200).optional(),
+    cancelPath: z.string().max(200).optional(),
+  })
+  .strict();
+
+/**
+ * `POST /v1/billing/topup` — buy a credit pack.
+ *
+ * A SEPARATE ROUTE from `/checkout`, not a branch inside it, because
+ * almost everything differs: the Stripe mode, the eligibility rule, the
+ * metadata, and the webhook event that eventually grants. Folding them
+ * together would mean one handler where half the branches are wrong for
+ * whichever request is in flight.
+ *
+ * `mode: 'payment'` is load-bearing. A credit pack is a one-time
+ * purchase; `mode: 'subscription'` here would silently enrol the customer
+ * in a monthly charge for what they believed was a single top-up.
+ *
+ * THE SUBSCRIPTION GATE is the rule that makes top-ups safe to sell:
+ * top-up credits can only be SPENT while subscribed (see the allocator's
+ * `class <> 'topup' OR is_subscribed` guard), so selling them to someone
+ * without a subscription would be selling credits they cannot use. The
+ * gate is deliberately platform-agnostic — an iOS subscriber buying a
+ * top-up here is fine and cannot be double-billed, because a one-time
+ * purchase has nothing to collide with.
+ */
+billingRoute.post(
+  '/topup',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  zValidator('json', topupSchema),
+  async (c) => {
+    const user = c.var.user!;
+    const { packId, successPath, cancelPath } = c.req.valid('json');
+
+    if (!c.env.STRIPE_SECRET_KEY) {
+      return c.json(
+        { error: { code: 'stripe_unconfigured', message: 'Payments are not configured.' } },
+        503,
+      );
+    }
+
+    // Selling credits that cannot be spent is the one outcome worth a
+    // hard 409 here. `admin` is excluded alongside `free` deliberately:
+    // an admin account is not a paying subscription.
+    const isSubscribed = user.entitlement !== 'free' && user.entitlement !== 'admin';
+    if (!isSubscribed) {
+      return c.json(
+        {
+          error: {
+            code: 'topup_requires_subscription',
+            message: 'Credit packs are available on any paid plan. Subscribe first.',
+          },
+        },
+        409,
+      );
+    }
+
+    const pack = await c.var.db.query.creditPacks.findFirst({
+      where: and(eq(creditPacks.id, packId), eq(creditPacks.isActive, true)),
+    });
+    if (!pack) {
+      return c.json({ error: { code: 'pack_not_found', message: 'Pack not found.' } }, 404);
+    }
+
+    const product = await c.var.db.query.packProducts.findFirst({
+      where: and(
+        eq(packProducts.packId, packId),
+        eq(packProducts.platform, 'stripe'),
+        eq(packProducts.isActive, true),
+      ),
+    });
+    if (!product) {
+      // No Stripe price yet. Refuse rather than improvise — a checkout
+      // built on a guessed price id charges the wrong amount.
+      return c.json(
+        {
+          error: {
+            code: 'pack_not_purchasable',
+            message: 'This pack is not available for purchase yet.',
+          },
+        },
+        409,
+      );
+    }
+
+    const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
+    const origin = new URL(c.req.url).origin;
+
+    let customerId = user.stripeCustomerId ?? undefined;
+    if (!customerId) {
+      const created = await stripe.customers.create({
+        email: user.email,
+        name: user.name ?? undefined,
+        metadata: { clickefy_user_id: user.id },
+      });
+      customerId = created.id;
+      await c.var.db
+        .update(users)
+        .set({ stripeCustomerId: customerId })
+        .where(eq(users.id, user.id));
+    }
+
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        customer: customerId,
+        line_items: [{ price: product.storeProductId, quantity: 1 }],
+        client_reference_id: user.id,
+        // The webhook grants from the PACK ROW, looked up by this id — it
+        // never trusts a credit amount carried in metadata. Amounts in
+        // metadata are a copy of the truth, and a copy can be stale if a
+        // pack is re-credited between checkout and payment.
+        payment_intent_data: {
+          metadata: {
+            clickefy_user_id: user.id,
+            clickefy_pack_id: pack.id,
+            clickefy_kind: 'topup',
+          },
+        },
+        metadata: {
+          clickefy_user_id: user.id,
+          clickefy_pack_id: pack.id,
+          clickefy_kind: 'topup',
+        },
+        success_url: safeReturnUrl(
+          c.req.header('origin') ?? origin,
+          successPath,
+          '/billing/success?topup=1',
+        ),
+        cancel_url: safeReturnUrl(c.req.header('origin') ?? origin, cancelPath, '/#pricing'),
+        allow_promotion_codes: true,
+      },
+      {
+        idempotencyKey: `topup:${user.id}:${pack.id}:${Math.floor(Date.now() / 60_000)}`,
+      },
+    );
+
+    return c.json({ data: { url: session.url, sessionId: session.id } });
   },
 );

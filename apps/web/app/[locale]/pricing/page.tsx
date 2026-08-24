@@ -16,6 +16,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { PricingSection } from "@/components/site/pricing-section";
 import { ModelAllowanceTable } from "@/components/site/model-allowance-table";
+import { TopupCard } from "@/components/site/topup-card";
 import { routing } from "@/i18n/routing";
 
 export function generateStaticParams() {
@@ -61,6 +62,8 @@ export default async function PricingPage({
       <div className="mt-12">
         <PricingSection embedded />
       </div>
+
+      <TopupCard />
 
       <ModelAllowanceTable />
 

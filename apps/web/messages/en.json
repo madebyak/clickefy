@@ -162,7 +162,18 @@
     "creditsPerMonthShort": "{count} / mo",
     "creditsOnce": "{count} to start",
     "tableLoading": "Loading models…",
-    "tableFootnote": "Counts assume each model's default quality and clip length, shown under its name. Higher resolutions and longer clips cost more, so your actual mix will vary. Credits refresh every 30 days on every plan, yearly included."
+    "tableFootnote": "Counts assume each model's default quality and clip length, shown under its name. Higher resolutions and longer clips cost more, so your actual mix will vary. Credits refresh every 30 days on every plan, yearly included.",
+    "topupHeading": "Need more credits?",
+    "topupSub": "Top up any time without changing your plan.",
+    "creditsWord": "credits",
+    "topupBonus": "{base} + {bonus} bonus credits",
+    "topupSliderLabel": "Choose a credit pack",
+    "topupAriaValue": "{credits} credits for {price}",
+    "topupPerCredit": "${rate} per credit",
+    "topupCta": "Buy {credits} credits",
+    "topupLocked": "Requires a paid plan",
+    "topupNeedsPlan": "Credit packs are available on any paid plan. Subscribe first.",
+    "topupFootnote": "One-time purchase, not a subscription. Top-up credits last 12 months, and the clock pauses if your plan lapses — so you never lose time you couldn't spend. They are used after your monthly plan credits."
   },
   "footer": {
     "create": "Create",

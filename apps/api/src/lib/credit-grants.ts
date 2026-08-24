@@ -19,6 +19,21 @@ import { sql } from 'drizzle-orm';
 import type { Db } from '@clickfy/db';
 import type { CreditLotClass, CreditLotKind } from '@clickfy/db';
 
+/**
+ * How long a bought credit pack lives.
+ *
+ * Deliberately gentler than the 90 days Higgsfield uses, because we sell
+ * through Apple and Google where "my credits vanished" is a one-tap
+ * refund and a review risk. The clock also PAUSES while the user is
+ * unsubscribed (`pauseTopupClocks`), so nobody loses time they were not
+ * allowed to spend.
+ *
+ * Lives here rather than in a webhook file because two payment paths now
+ * grant top-ups — RevenueCat and Stripe — and a lifetime that differed
+ * between storefronts would be indefensible to the customer who noticed.
+ */
+export const TOPUP_LIFETIME_MS = 365 * 24 * 60 * 60 * 1000;
+
 export interface GrantCreditsInput {
   userId: string;
   /** Which wallet, and therefore how it is gated and ordered when spent. */

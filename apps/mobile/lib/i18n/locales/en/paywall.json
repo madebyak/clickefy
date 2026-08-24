@@ -51,13 +51,13 @@
     "balance": "Your balance",
     "creditsUnit_one": "{{formatted}} credit",
     "creditsUnit_other": "{{formatted}} credits",
-    "lockedTitle": "Credit packs are a Pro perk",
-    "lockedBody": "Top-up credit packs are available with an active Clickefy Pro plan. Subscribe to unlock them — and get a recurring credit allowance too.",
+    "lockedTitle": "Credit packs need a paid plan",
+    "lockedBody": "Top-up credit packs are available on any active Clickefy plan. Subscribe to unlock them — and get a recurring credit allowance too.",
     "lockedCta": "See plans",
     "bonus": "+{{count}} bonus",
     "buy": "Buy credits",
     "emptyBody": "No credit packs available right now. Check back soon.",
-    "neverExpire": "Purchased credits never expire and are spendable while your subscription is active.",
+    "neverExpire": "Purchased credits last 12 months, and the clock pauses whenever you have no active plan. They are spendable while your subscription is active, and are used after your monthly plan credits.",
     "purchasedTitle": "Credits added",
     "purchasedBody": "Your new credits will appear in your balance shortly."
   }

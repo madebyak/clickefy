@@ -135,7 +135,7 @@
     "faqCreditsQ": "What is a credit?",
     "faqCreditsA": "One credit is the unit we bill generations in. A high-quality image costs about 40 credits; a 5-second video costs a few hundred, depending on the model and resolution. You always see the cost before you generate.",
     "faqResetQ": "Do unused credits roll over?",
-    "faqResetA": "Monthly plan credits reset at the start of each billing period. Credits you were given for free never expire, and credits you buy in a pack stay yours for 12 months.",
+    "faqResetA": "Plan credits reset at the start of each 30-day period — unspent plan credits do not roll over. Credits you were given for free never expire. Credits you buy in a top-up pack last 12 months, and that clock pauses whenever you have no active plan, so you never lose time you couldn't use. Top-ups can only be spent while a plan is active.",
     "faqCancelQ": "Can I cancel anytime?",
     "faqCancelA": "Yes. You keep your plan and its credits until the end of the period you have already paid for.",
     "faqMobileQ": "Why does the app cost more?",

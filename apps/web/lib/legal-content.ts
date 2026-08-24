@@ -50,7 +50,7 @@ const TERMS: LegalDoc = {
   slug: 'terms',
   title: 'Terms of Service',
   summary: 'The agreement between you and Clickefy when you use the app.',
-  effectiveDate: '2026-05-14',
+  effectiveDate: '2026-08-24',
   sections: [
     {
       heading: '1. Acceptance of these Terms',
@@ -70,9 +70,12 @@ const TERMS: LegalDoc = {
     {
       heading: '3. Credits, plans, and refunds',
       paragraphs: [
-        'Clickefy operates on a credit system. Credits are consumed when you generate content. Subscription plans grant a recurring monthly credit allotment. One-time top-ups never expire.',
-        'Credit costs per generation are displayed before you confirm a job. Once a generation begins, credits are typically non-refundable. If a generation fails for a reason on our side (provider outage, internal error), the credits are automatically refunded to your balance.',
-        'Subscriptions auto-renew through the App Store or Google Play. You can cancel anytime through the platform\u2019s subscription settings; cancellation takes effect at the end of the current billing period. We do not offer pro-rated refunds for unused time, but you keep the credits already granted until they are spent. Nothing in this clause limits any non-waivable right you may have under UAE Federal Law No. 15 of 2020 on Consumer Protection or any equivalent law in your country of residence.',
+        'Clickefy runs on credits. Every generation costs a number of credits, and that number is shown to you before you confirm it. A paid plan grants a credit allowance every 30 days \u2014 on every plan, including annual ones, which bill once a year but deliver credits monthly. Credits are always spent in expiry order, closest-to-expiring first, so you are not left holding credits you can no longer use.',
+        'There are three kinds of credit and they behave differently. Credits we grant you for free never expire. Plan credits are replaced by a fresh allowance at each 30-day refresh: unspent plan credits do not roll over. Top-up credits you buy last 12 months from the date of purchase, and that clock PAUSES for any period in which you hold no active plan, so you never lose time you were not able to use. Top-up credits can only be spent while a plan is active.',
+        'If a generation fails for a reason on our side \u2014 a provider outage or an internal error \u2014 its credits are returned to your balance automatically. Credits consumed by a generation that completed are not returned.',
+        `Plans bought on our website are billed by Stripe and can be changed or cancelled at any time from Settings \u2192 Manage subscription. Plans bought inside the iOS or Android app are billed by Apple or Google, must be managed in that platform\u2019s own subscription settings, and cannot be cancelled or refunded by us on your behalf. A cancelled plan continues until the end of the period you have already paid for. When that period ends your account returns to the free tier and any unspent PLAN credits expire; your free credits and top-up credits are not taken, although top-up credits cannot be spent again until you hold an active plan.`,
+        'Refunds. A plan may be refunded within 7 days of payment, provided that none of that period\u2019s credits have been spent \u2014 once a generation runs we have already paid the model provider for it, and that cost cannot be recovered. Purchases of top-up credits are not refundable, because the credits are delivered and immediately spendable at the moment of purchase. Where a refund is issued, the corresponding credits are removed from your balance and the plan is cancelled. Nothing in this clause limits any non-waivable right you may have under UAE Federal Law No. 15 of 2020 on Consumer Protection or any equivalent law in your country of residence.',
+        'If a renewal payment fails we will retry it. If payment has still not succeeded 24 hours after the first failure, the plan is cancelled: your account returns to the free tier and unspent plan credits expire. You can subscribe again at any time.',
       ],
     },
     {

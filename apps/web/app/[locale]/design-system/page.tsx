@@ -188,7 +188,7 @@ const SURFACES: Swatch[] = [
   { name: "Surface 3", token: "--surface-3", hex: "#1C1C22", cls: "bg-surface-3" },
 ];
 const BRAND: Swatch[] = [
-  { name: "Yellow — Primary", token: "--brand-yellow", hex: "#F2E20B", cls: "bg-brand-yellow" },
+  { name: "Green — Primary", token: "--brand-green", hex: "#42D676", cls: "bg-brand-green" },
   { name: "Purple — Secondary", token: "--brand-purple", hex: "#6303E0", cls: "bg-brand-purple" },
 ];
 const ACCENTS: Swatch[] = [
@@ -197,7 +197,7 @@ const ACCENTS: Swatch[] = [
 ];
 const STATUS: Swatch[] = [
   { name: "Red", token: "--status-red", hex: "#EF0744", cls: "bg-status-red" },
-  { name: "Green", token: "--status-green", hex: "#07DD44", cls: "bg-status-green" },
+  { name: "Green — Status", token: "--status-green", hex: "#07DD44", cls: "bg-status-green" },
 ];
 const TEXT: Swatch[] = [
   { name: "Foreground", token: "--foreground", hex: "#FAFAFA", cls: "bg-foreground" },
@@ -397,7 +397,7 @@ export default function DesignSystemPage() {
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-6 gap-y-2 px-6 py-4">
           <div className="mr-auto flex items-center gap-2">
-            <div className="grid size-7 place-items-center rounded-md bg-brand-yellow">
+            <div className="grid size-7 place-items-center rounded-md bg-brand-green">
               <Sparkle weight="fill" className="size-4 text-black" />
             </div>
             <span className="font-semibold tracking-tight">Clickefy</span>
@@ -424,7 +424,7 @@ export default function DesignSystemPage() {
       <main className="mx-auto max-w-[90rem] px-6 pb-24">
         {/* intro */}
         <div className="py-12 lg:py-16">
-          <p className="font-mono text-xs uppercase tracking-widest text-brand-yellow">
+          <p className="font-mono text-xs uppercase tracking-widest text-brand-green">
             Foundations
           </p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight sm:text-5xl">Design System</h1>
@@ -470,7 +470,7 @@ export default function DesignSystemPage() {
         <Section
           id="colors"
           title="Colors"
-          description="Black-first palette. Full black is the main background; three surface shades build elevation. Yellow drives primary actions; purple, turquoise and pink are brand accents; red and green are status."
+          description="Black-first palette. Full black is the main background; three surface shades build elevation. Brand green drives primary actions; purple, turquoise and pink are brand accents; red and a near-identical green are status \u2014 tell them apart by placement, not hue."
         >
           <div className="space-y-8">
             <div>
@@ -600,9 +600,9 @@ export default function DesignSystemPage() {
             {SPACING.map((s) => (
               <div key={s.token} className="flex items-center gap-6">
                 <div className="w-12 shrink-0 font-mono text-xs text-foreground">{s.token}</div>
-                <div className="w-16 shrink-0 font-mono text-xs text-brand-yellow">p-{s.util}</div>
+                <div className="w-16 shrink-0 font-mono text-xs text-brand-green">p-{s.util}</div>
                 <div className="w-12 shrink-0 font-mono text-xs text-muted-foreground">{s.px}px</div>
-                <div className="h-4 rounded-sm bg-brand-yellow" style={{ width: `${s.px}px` }} />
+                <div className="h-4 rounded-sm bg-brand-green" style={{ width: `${s.px}px` }} />
               </div>
             ))}
           </div>
@@ -626,7 +626,7 @@ export default function DesignSystemPage() {
               <tbody>
                 {BREAKPOINTS.map((b) => (
                   <tr key={b.token} className="border-b border-border/50 last:border-0">
-                    <td className="px-4 py-3 font-mono text-brand-yellow">{b.token}</td>
+                    <td className="px-4 py-3 font-mono text-brand-green">{b.token}</td>
                     <td className="px-4 py-3 font-mono text-muted-foreground">
                       {b.px === "0" ? "0" : `${b.px}px`}
                     </td>
@@ -663,7 +663,7 @@ export default function DesignSystemPage() {
             <div className="flex flex-wrap gap-8">
               {WEIGHT_ROW.map((w) => (
                 <div key={w} className="text-center">
-                  <MagicWand weight={w} className="size-8 text-brand-yellow" />
+                  <MagicWand weight={w} className="size-8 text-brand-green" />
                   <p className="mt-2 font-mono text-xs capitalize text-muted-foreground">{w}</p>
                 </div>
               ))}
@@ -721,7 +721,7 @@ export default function DesignSystemPage() {
               <h3 className="mb-4 text-sm font-medium text-muted-foreground">Badge</h3>
               <div className="flex flex-wrap items-center gap-3">
                 <Badge>Default</Badge>
-                <Badge variant="yellow">Yellow</Badge>
+                <Badge variant="green">Green</Badge>
                 <Badge variant="purple">Purple</Badge>
                 <Badge variant="turquoise">Turquoise</Badge>
                 <Badge variant="pink">Pink</Badge>

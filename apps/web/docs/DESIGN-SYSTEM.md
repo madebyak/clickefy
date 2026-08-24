@@ -13,16 +13,16 @@
 | Surface 3 (elevated/popovers) | `--surface-3` | `#1C1C22` |
 | Foreground | `--foreground` | `#FAFAFA` |
 | Muted text | `--muted-foreground` | `#9B9BA4` |
-| **Yellow — primary** (buttons) | `--brand-yellow` | `#F2E20B` (black text on it) |
+| **Green — primary** (buttons) | `--brand-green` | `#42D676` (black text on it) |
 | **Purple — secondary** | `--brand-purple` | `#6303E0` |
 | Turquoise — accent | `--accent-turquoise` | `#00DCAE` |
 | Pink — accent | `--accent-pink` | `#DB0078` |
 | Red — status/destructive | `--status-red` | `#EF0744` |
 | Green — status/success | `--status-green` | `#07DD44` |
 | Border / input | `--border` / `--input` | `#26262D` |
-| Focus ring | `--ring` | `#F2E20B` |
+| Focus ring | `--ring` | `#42D676` |
 
-Utilities: `bg-background`, `bg-surface-2`, `bg-brand-yellow`, `text-accent-turquoise`, etc.
+Utilities: `bg-background`, `bg-surface-2`, `bg-brand-green`, `text-accent-turquoise`, etc.
 shadcn semantic tokens (`--primary`, `--card`, `--muted`…) are wired so shadcn components inherit the theme. Light mode is deferred (theme is forced dark/black).
 
 ## Typography — Geist
@@ -75,8 +75,8 @@ Base `--radius: 0.75rem` → `rounded-sm` 7 · `rounded-md` 10 · `rounded-lg` 1
 
 Built on the tokens above (CVA + `cn`), themed, accessible, RTL-safe. In `components/ui/`:
 
-- **Button** — variants `primary` (yellow), `secondary` (purple), `outline`, `ghost`, `destructive`; sizes `sm/md/lg/icon`; icon support.
-- **Badge** — `default`, `yellow`, `purple`, `turquoise`, `pink`, `outline`, `success`, `danger`.
+- **Button** — variants `primary` (green), `secondary` (purple), `outline`, `ghost`, `destructive`; sizes `sm/md/lg/icon`; icon support.
+- **Badge** — `default`, `green`, `purple`, `turquoise`, `pink`, `outline`, `success`, `danger`.
 - **Input**, **Textarea** — bordered fields with focus ring.
 - **Switch** — accessible toggle (`role="switch"`), RTL-aware thumb.
 - **Checkbox** — accessible (`role="checkbox"`) with Phosphor check.

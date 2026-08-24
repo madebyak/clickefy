@@ -55,7 +55,7 @@
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
-  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-green: var(--brand-green);
   --color-brand-purple: var(--brand-purple);
   --color-accent-turquoise: var(--accent-turquoise);
   --color-accent-pink: var(--accent-pink);
@@ -102,20 +102,29 @@
   --secondary: var(--surface-2);
   --secondary-foreground: #fafafa;
 
-  /* Actions — yellow primary (dark text), purple secondary brand.
-     `--brand-yellow` below is the single source of truth; --primary and
+  /* Actions — green primary (dark text), purple secondary brand.
+     `--brand-green` below is the single source of truth; --primary and
      --ring derive from it so the brand colour can never half-change. */
-  --primary: var(--brand-yellow);
+  --primary: var(--brand-green);
   --primary-foreground: #000000;
 
   /* Brand palette */
-  /* Citron: a warmer, golden volt. Deliberately off the yellow-green
-     "acid" hue (63°) that reads as generic AI-tool chrome; 55° keeps the
-     same punch on black while feeling less borrowed. Black text on it
-     stays comfortably above WCAG AA. Duplicated (by necessity) in
-     lib/clerk-appearance.ts and the brand SVGs — grep the hex when
-     changing it. */
-  --brand-yellow: #f2e20b;
+  /* Spring green at 142°. Replaced the citron yellow (#f2e20b) in
+     2026-08. Black text on it is 11.1:1 and it holds 9.0:1 as text on
+     our lightest surface, so it is safe for labels as well as buttons —
+     but NEVER put white on it (1.9:1), which is why --primary-foreground
+     is pinned to black.
+
+     NOTE the deliberate collision below: --status-green (#07dd44) is
+     almost the same colour (1.03:1 apart). Brand green means "this is
+     the action"; status green means "that worked". Do not use one for
+     the other's job — on a success toast next to a primary button they
+     are indistinguishable, so lean on placement and iconography to tell
+     them apart rather than hue.
+
+     Duplicated (by necessity) in lib/clerk-appearance.ts and the brand
+     SVGs — grep the hex when changing it. */
+  --brand-green: #42d676;
   --brand-purple: #6303e0;
   --accent-turquoise: #00dcae;
   --accent-pink: #db0078;
@@ -129,7 +138,7 @@
   /* Lines & focus */
   --border: #26262d;
   --input: #26262d;
-  --ring: var(--brand-yellow);
+  --ring: var(--brand-green);
 }
 
 /*

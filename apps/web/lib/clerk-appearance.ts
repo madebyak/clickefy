@@ -17,7 +17,7 @@ export const clerkAppearance: Appearance = {
   // overlay the Clickefy tokens.
   baseTheme: dark,
   variables: {
-    colorPrimary: "#f2e20b",
+    colorPrimary: "#42d676",
     colorPrimaryForeground: "#000000",
     colorBackground: "#0a0a0c", // surface-1 — card body
     colorForeground: "#fafafa",
@@ -26,7 +26,7 @@ export const clerkAppearance: Appearance = {
     colorInput: "#131317",
     colorInputForeground: "#fafafa",
     colorBorder: "#26262d",
-    colorRing: "#f2e20b",
+    colorRing: "#42d676",
     colorDanger: "#ef0744",
     colorSuccess: "#07dd44",
     colorModalBackdrop: "rgba(0, 0, 0, 0.7)",

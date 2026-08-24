@@ -21,7 +21,7 @@ export async function VideoBanner() {
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/55" />
 
         <div className="relative z-10 flex min-h-[320px] flex-col items-center justify-center px-6 py-16 text-center sm:min-h-[400px] lg:min-h-[480px]">
-          <p className="font-mono text-xs uppercase tracking-widest text-brand-yellow">
+          <p className="font-mono text-xs uppercase tracking-widest text-brand-green">
             {t("bannerLabel")}
           </p>
           <h2 className="mt-4 max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">

@@ -70,7 +70,7 @@ export function HomeHero() {
           className="min-h-[520px] lg:col-span-7 lg:min-h-[42rem]"
         >
           <div className="flex h-full flex-col p-6 sm:p-8">
-            <p className="font-mono text-xs uppercase tracking-widest text-brand-yellow">
+            <p className="font-mono text-xs uppercase tracking-widest text-brand-green">
               {t("imageStudio")}
             </p>
             <h2 className="mt-4 max-w-lg text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl xl:text-6xl">
@@ -95,7 +95,7 @@ export function HomeHero() {
             className="min-h-[220px]"
           >
             <div className="relative flex h-full flex-col p-6">
-              <span className="absolute end-4 top-4 rounded-md bg-brand-yellow px-2 py-0.5 text-[11px] font-semibold text-black">
+              <span className="absolute end-4 top-4 rounded-md bg-brand-green px-2 py-0.5 text-[11px] font-semibold text-black">
                 {t("new")}
               </span>
               <h3 className="text-2xl font-semibold tracking-tight">{t("createVideo")}</h3>

@@ -75,7 +75,7 @@ function EmptyState({ kind }: { kind: "image" | "video" }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
       <div className="grid size-14 place-items-center rounded-2xl bg-surface-3">
-        <Sparkle weight="fill" className="size-6 text-brand-yellow" />
+        <Sparkle weight="fill" className="size-6 text-brand-green" />
       </div>
       <h1 className="mt-5 text-2xl font-semibold tracking-tight">{t("startNewProject")}</h1>
       <p className="mt-2 max-w-md text-muted-foreground">
@@ -186,7 +186,7 @@ function ProjectView({
       {showIntro && (
         <div className="flex flex-col items-center py-8 text-center">
           <div className="grid size-12 place-items-center rounded-2xl bg-surface-3">
-            <Sparkle weight="fill" className="size-5 text-brand-yellow" />
+            <Sparkle weight="fill" className="size-5 text-brand-green" />
           </div>
           <h1 className="mt-4 text-2xl font-semibold tracking-tight">{project.name}</h1>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">{t("projectHint")}</p>

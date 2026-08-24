@@ -55,8 +55,14 @@ interface LotRow {
   class: string;
   amount_granted: number;
   amount_remaining: number;
-  created_at: string;
+  /** The neon driver hands back a Date for timestamptz, not a string. */
+  created_at: string | Date;
   source_ref: string | null;
+}
+
+/** YYYY-MM-DD, whichever of the two shapes the driver returns. */
+function day(v: string | Date): string {
+  return (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10);
 }
 
 async function main() {
@@ -97,7 +103,7 @@ async function main() {
 
   console.log('\n── SUBSCRIPTION ──────────────────────────────────────');
   if (lot) {
-    console.log(`  granted   ${lot.amount_granted.toLocaleString()} credits on ${lot.created_at.slice(0, 10)}`);
+    console.log(`  granted   ${lot.amount_granted.toLocaleString()} credits on ${day(lot.created_at)}`);
     console.log(`  remaining ${lot.amount_remaining.toLocaleString()}`);
     console.log(`  spent     ${verdict.creditsUsed.toLocaleString()}`);
     console.log(`  age       ${verdict.daysSinceGrant} day(s)  (window: ${SUBSCRIPTION_REFUND_WINDOW_DAYS})`);
@@ -127,7 +133,7 @@ async function main() {
     console.log(`\n  ${topLots.length} live pack(s), ${held.toLocaleString()} credits still held:`);
     for (const l of topLots) {
       console.log(
-        `    ${l.created_at.slice(0, 10)}  ${l.amount_remaining.toLocaleString()} of ` +
+        `    ${day(l.created_at)}  ${l.amount_remaining.toLocaleString()} of ` +
           `${l.amount_granted.toLocaleString()} left`,
       );
     }

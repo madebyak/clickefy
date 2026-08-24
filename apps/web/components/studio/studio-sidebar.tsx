@@ -2,9 +2,10 @@
 
 import { useTranslations } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
-import { Plus, FolderSimple, Heart, CaretUpDown } from "@phosphor-icons/react";
+import { Plus, Heart, CaretUpDown } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { ProjectRow } from "@/components/studio/project-row";
+import { FolderTree } from "@/components/studio/folder-tree";
 import { useSession } from "@/lib/use-session";
 import { cn } from "@/lib/utils";
 
@@ -77,23 +78,20 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
           {t("createNewProject")}
         </button>
 
-        <nav className="mt-4 space-y-1">
-          <button
-            type="button"
-            onClick={() => {
+        {/* Folders live here now rather than behind a navigation to
+            /projects — browsing your own work should not cost you the
+            canvas you are looking at. The page survives as "Show all". */}
+        <div className="mt-4">
+          <FolderTree
+            onOpenProject={openProject}
+            onShowAll={() => {
               router.push("/projects");
               onClose();
             }}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-              inBrowser
-                ? "bg-surface-3 text-foreground"
-                : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
-            )}
-          >
-            <FolderSimple className="size-[18px]" weight={inBrowser ? "fill" : "regular"} />
-            {t("myProjects")}
-          </button>
+          />
+        </div>
+
+        <nav className="mt-1 space-y-1">
           <button
             type="button"
             onClick={() => {

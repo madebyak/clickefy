@@ -356,7 +356,10 @@
     "soundOff": "معطّل",
     "sound": "الصوت",
     "reuseShort": "إعادة استخدام",
-    "reuseNothingToRestore": "لا يوجد نص لإعادة استخدامه هنا"
+    "reuseNothingToRestore": "لا يوجد نص لإعادة استخدامه هنا",
+    "noFoldersHint": "لا توجد مجلدات بعد. استخدم + لتجميع مشاريعك.",
+    "showAllFolders": "عرض الكل (+{count})",
+    "filterFavorites": "المفضلة"
   },
   "projects": {
     "heading": "مشاريعي",

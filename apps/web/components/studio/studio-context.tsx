@@ -179,7 +179,8 @@ type StudioValue = {
   // projects & folders (all persisted server-side)
   setActiveProject: (id: string | null) => void;
   createProject: (folderId?: string | null) => Promise<string>;
-  createFolder: (name: string) => Promise<void>;
+  /** Resolves to the new folder id, or null if the create failed. */
+  createFolder: (name: string) => Promise<string | null>;
   renameFolder: (folderId: string, name: string) => void;
   deleteFolder: (folderId: string) => Promise<void>;
   moveProjectToFolder: (projectId: string, folderId: string | null) => void;
@@ -400,15 +401,23 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [queryClient, invalidateProjects, t],
   );
 
+  /**
+   * Returns the new folder's id so the caller can act on it — the sidebar
+   * drops a freshly created folder straight into rename mode, which it
+   * cannot do without knowing which row is new. `null` on failure; the
+   * toast has already fired by then.
+   */
   const createFolder = useCallback(
-    async (name: string) => {
+    async (name: string): Promise<string | null> => {
+      let created: string | null = null;
       try {
-        await getSDK().projects.createFolder(name);
+        created = (await getSDK().projects.createFolder(name)).id;
       } catch {
         toast.error(t("toastCreateFolderFailed"));
-        return;
+        return null;
       }
       invalidateProjects();
+      return created;
     },
     [invalidateProjects, t],
   );

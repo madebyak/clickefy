@@ -81,7 +81,7 @@ function MasonryTileDemo() {
           onFilterChange={() => {}}
           gridSize={size}
           onGridSizeChange={setSize}
-          counts={{ image: 4, video: 2 }}
+          counts={{ image: 4, video: 2, favorite: 3 }}
         />
       </div>
       <Masonry
@@ -147,7 +147,7 @@ function CanvasToolbarDemo() {
         onFilterChange={setFilter}
         gridSize={gridSize}
         onGridSizeChange={setGridSize}
-        counts={{ image: 6, video: 3 }}
+        counts={{ image: 6, video: 3, favorite: 5 }}
       />
     </div>
   );

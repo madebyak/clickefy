@@ -269,17 +269,22 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
     () => ({
       image: activeAssets.filter((a) => a.type === "image").length,
       video: activeAssets.filter((a) => a.type === "video").length,
+      favorite: activeAssets.filter((a) => a.favorited).length,
     }),
     [activeAssets],
   );
-  const visibleAssets = useMemo(
-    () => (filter === "all" ? activeAssets : activeAssets.filter((a) => a.type === filter)),
-    [activeAssets, filter],
-  );
+  const visibleAssets = useMemo(() => {
+    if (filter === "all") return activeAssets;
+    // `favorite` is not an asset TYPE, so it cannot go through the same
+    // comparison as image/video — it reads a different field entirely.
+    if (filter === "favorite") return activeAssets.filter((a) => a.favorited);
+    return activeAssets.filter((a) => a.type === filter);
+  }, [activeAssets, filter]);
 
   // A filter that hides everything is a dead end the user can't diagnose
-  // from an empty canvas — drop back to All when the kind they picked
-  // stops existing (last video deleted, project switched).
+  // from an empty canvas — drop back to All when the thing they picked
+  // stops existing (last video deleted, last favourite un-hearted,
+  // project switched).
   useEffect(() => {
     if (filter !== "all" && kindCounts[filter] === 0) setFilter("all");
   }, [filter, kindCounts]);

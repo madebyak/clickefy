@@ -16,9 +16,9 @@
  * WHAT THE TREE DOES NOT DO, and why:
  *   - No nesting. `StudioFolder` is flat — no `parentId` — so a folder
  *     inside a folder is not expressible without a schema change.
- *   - No manual ordering. There is no position column, so folders are
- *     listed oldest-first, which at least keeps them from reshuffling
- *     under the cursor whenever one is renamed.
+ *   - No manual ordering. There is no position column, so folders arrive
+ *     newest-first from the API — which at least means a folder you just
+ *     created is at the top, where you are already looking.
  *
  * Expansion state is intentionally in memory rather than localStorage.
  * Reading storage during render would mismatch the server-rendered HTML,
@@ -44,16 +44,48 @@ import { useStudio } from "@/components/studio/studio-context";
 /** Folders shown before the list defers to the full browser. */
 const VISIBLE_FOLDERS = 5;
 
-export function FolderTree({
+/**
+ * Connected wrapper. Everything below is a pure view over props, which is
+ * what lets the tree be rendered — and looked at — outside the auth-gated
+ * studio it normally lives in. A bug reported as "projects do not appear
+ * inside folders" is not one you want to debug by reasoning alone.
+ */
+export function FolderTree(props: {
+  onOpenProject: (projectId: string) => void;
+  onShowAll: () => void;
+}) {
+  const { folders, projects, createFolder, renameFolder, deleteFolder } = useStudio();
+  return (
+    <FolderTreeView
+      {...props}
+      folders={folders}
+      projects={projects}
+      onCreateFolder={createFolder}
+      onRenameFolder={renameFolder}
+      onDeleteFolder={deleteFolder}
+    />
+  );
+}
+
+export function FolderTreeView({
+  folders,
+  projects,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
   onOpenProject,
   onShowAll,
 }: {
+  folders: StudioFolder[];
+  projects: StudioProject[];
+  onCreateFolder: (name: string) => Promise<string | null>;
+  onRenameFolder: (folderId: string, name: string) => void;
+  onDeleteFolder: (folderId: string) => void;
   onOpenProject: (projectId: string) => void;
   onShowAll: () => void;
 }) {
   const t = useTranslations("studio");
   const tp = useTranslations("projects");
-  const { folders, projects, createFolder, renameFolder, deleteFolder } = useStudio();
 
   const [sectionOpen, setSectionOpen] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -92,7 +124,7 @@ export function FolderTree({
     if (creating) return;
     setCreating(true);
     setSectionOpen(true);
-    const id = await createFolder(tp("defaultFolderName"));
+    const id = await onCreateFolder(tp("defaultFolderName"));
     setCreating(false);
     if (id) setEditingId(id);
   };
@@ -147,10 +179,10 @@ export function FolderTree({
                 onRename={(name) => {
                   setEditingId(null);
                   const trimmed = name.trim();
-                  if (trimmed && trimmed !== f.name) renameFolder(f.id, trimmed);
+                  if (trimmed && trimmed !== f.name) onRenameFolder(f.id, trimmed);
                 }}
                 onCancelRename={() => setEditingId(null)}
-                onDelete={() => void deleteFolder(f.id)}
+                onDelete={() => onDeleteFolder(f.id)}
                 onOpenProject={onOpenProject}
               />
             ))
@@ -223,10 +255,19 @@ function FolderNode({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-start text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-start text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
         >
+          {/* The disclosure caret. A folder row without one reads as a
+              destination rather than a container — there is nothing to
+              suggest the projects inside are one click away, so they get
+              reported as "not appearing". */}
+          {open ? (
+            <CaretDown className="size-3 shrink-0 opacity-70" weight="bold" />
+          ) : (
+            <CaretRight className="size-3 shrink-0 opacity-70 rtl:-scale-x-100" weight="bold" />
+          )}
           <FolderSimple
-            className="size-[18px] shrink-0"
+            className="size-[17px] shrink-0"
             weight={open ? "fill" : "regular"}
           />
           {editing ? (

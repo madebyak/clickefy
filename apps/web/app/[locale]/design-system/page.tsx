@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { notFound } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { FolderTreeView } from "@/components/studio/folder-tree";
 import {
   Sparkle,
   Image as ImageIcon,
@@ -148,6 +149,40 @@ function CanvasToolbarDemo() {
         gridSize={gridSize}
         onGridSizeChange={setGridSize}
         counts={{ image: 6, video: 3, favorite: 5 }}
+      />
+    </div>
+  );
+}
+
+/**
+ * The sidebar folder tree, over fixture data.
+ *
+ * It normally lives inside the auth-gated studio, where it cannot be
+ * looked at without signing in — which is exactly how "projects do not
+ * appear inside folders" went unnoticed. Rendering the pure view here
+ * means the tree can be seen, and its states compared, without a session.
+ */
+function FolderTreeDemo() {
+  const folders = [
+    { id: "f1", name: "Clickefy App", createdAt: "2026-08-01T00:00:00Z" },
+    { id: "f2", name: "Clickefy-Banners", createdAt: "2026-08-02T00:00:00Z" },
+    { id: "f3", name: "Work for testing", createdAt: "2026-08-03T00:00:00Z" },
+  ];
+  const projects = [
+    { id: "p1", name: "Clickefy campaign", folderId: "f1", assetCount: 2, cover: null, createdAt: "", updatedAt: "" },
+    { id: "p2", name: "Launch teasers", folderId: "f1", assetCount: 9, cover: null, createdAt: "", updatedAt: "" },
+    { id: "p3", name: "Unfiled sketches", folderId: null, assetCount: 4, cover: null, createdAt: "", updatedAt: "" },
+  ];
+  return (
+    <div className="w-[264px] rounded-xl border border-border bg-surface-1 p-3">
+      <FolderTreeView
+        folders={folders}
+        projects={projects}
+        onCreateFolder={async () => null}
+        onRenameFolder={() => {}}
+        onDeleteFolder={() => {}}
+        onOpenProject={() => {}}
+        onShowAll={() => {}}
       />
     </div>
   );
@@ -790,6 +825,7 @@ export default function DesignSystemPage() {
               Studio canvas toolbar
             </h3>
             <CanvasToolbarDemo />
+            <FolderTreeDemo />
           </div>
 
           <div className="mt-10">

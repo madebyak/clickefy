@@ -91,7 +91,14 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
           />
         </div>
 
-        <nav className="mt-1 space-y-1">
+        {/* The folder tree is a variable-height list; "All favorites" is a
+            fixed destination. Without a rule between them the last folder
+            and the favorites row read as one continuous list. Same weight
+            as the rule above Recent projects, so the sidebar has one
+            grammar rather than two. */}
+        <div className="my-3 h-px bg-white/[0.06]" />
+
+        <nav className="space-y-1">
           <button
             type="button"
             onClick={() => {

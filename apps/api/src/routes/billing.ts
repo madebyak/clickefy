@@ -28,7 +28,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 
-import { creditPacks, planProducts, plans, users } from '@clickfy/db';
+import { creditPacks, planProducts, plans, providerModels, users } from '@clickfy/db';
 
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
@@ -47,6 +47,66 @@ async function welcomeCredits(db: AppEnv['Variables']['db']): Promise<number> {
   return policy?.amount ?? 0;
 }
 
+/**
+ * The model line-up, shaped for the public pricing table.
+ *
+ * The pricing page turns credits into something people can picture — "how
+ * many videos does 4,500 credits actually buy me?" — which only works if
+ * these numbers are the SAME ones the job route charges. So they come
+ * from `provider_models`, never from a constant in the web app.
+ *
+ * Three deliberate exclusions:
+ *   - `deprecated` models: still in the table so old jobs render, but
+ *     nobody should be choosing one from a pricing page.
+ *   - unpriced models (`cost_credits = 0`): dividing by zero would
+ *     advertise unlimited generations, which is the single worst number
+ *     to get wrong on a page where people are deciding whether to pay.
+ *   - `cost_per_call_usd`: that is what the PROVIDER charges us. It is
+ *     margin data and has no business leaving the server.
+ *
+ * The price quoted is the model's DEFAULT quality and, for video, its
+ * default clip length — the cost of pressing Generate without changing a
+ * setting. Anything else would quote a number most people never pay.
+ */
+function marketingModels(rows: Array<typeof providerModels.$inferSelect>) {
+  return rows
+    .filter((m) => m.status !== 'deprecated' && m.costCredits > 0)
+    .map((m) => {
+      const caps = m.capabilities as Record<string, unknown>;
+      const kind = caps.kind === 'video' ? 'video' : 'image';
+
+      // `modes` carries the quality tiers. The default key is what we
+      // price at; `labels` maps an internal key like `std` to what a
+      // customer would recognise ("720p").
+      const modes = (caps.modes ?? null) as {
+        default?: string;
+        labels?: Record<string, string>;
+      } | null;
+      const defaultMode = modes?.default ?? null;
+      const quality = defaultMode ? (modes?.labels?.[defaultMode] ?? defaultMode) : null;
+
+      const duration = (caps.duration ?? null) as { default?: number } | null;
+
+      return {
+        key: m.modelKey,
+        name: m.displayName,
+        kind,
+        /** Credits for one generation at the default quality and length. */
+        credits: m.costCredits,
+        quality,
+        /** Clip length the price is quoted at. Null for images. */
+        seconds: kind === 'video' ? (duration?.default ?? null) : null,
+        /** Not yet general release — worth marking rather than hiding. */
+        preview: m.status === 'preview',
+      };
+    })
+    // Images first, then video; cheapest first within each. Reads as a
+    // ladder rather than an inventory.
+    .sort((a, b) =>
+      a.kind === b.kind ? a.credits - b.credits : a.kind === 'image' ? -1 : 1,
+    );
+}
+
 billingRoute.get(
   '/plans',
   withAuth({ required: false }),
@@ -60,7 +120,7 @@ billingRoute.get(
       ? await c.var.db.query.users.findFirst({ where: eq(users.clerkUserId, clerkId) })
       : null;
 
-    const [rows, products, welcome] = await Promise.all([
+    const [rows, products, welcome, models] = await Promise.all([
       c.var.db
         .select()
         .from(plans)
@@ -68,6 +128,7 @@ billingRoute.get(
         .orderBy(asc(plans.displayOrder)),
       c.var.db.select().from(planProducts).where(eq(planProducts.isActive, true)),
       welcomeCredits(c.var.db),
+      c.var.db.select().from(providerModels),
     ]);
 
     const productsByPlan = new Map<string, Record<string, string>>();
@@ -115,6 +176,12 @@ billingRoute.get(
         plans: catalogue,
         /** What a brand-new account is given, straight from the live policy. */
         freeCredits: welcome,
+        /**
+         * Every sellable model with its real credit price, so the pricing
+         * page can show what each plan actually buys instead of asking
+         * people to do the division themselves.
+         */
+        models: marketingModels(models),
         /**
          * The user's live subscription, or null. `platform` is the field
          * that prevents double-billing: a client running somewhere else

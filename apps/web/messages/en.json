@@ -147,7 +147,22 @@
     "successBody": "Your plan is active and your credits have been added.",
     "successCta": "Start creating",
     "successPending": "Confirming your payment…",
-    "successPendingBody": "This usually takes a couple of seconds."
+    "successPendingBody": "This usually takes a couple of seconds.",
+    "pageHeading": "Pick a plan. Start creating.",
+    "pageSub": "Every plan unlocks every model. The only thing that changes is how much you make.",
+    "metaTitle": "Pricing — Clickefy",
+    "metaDescription": "Plans from $19/month. Every model included on every plan. See exactly how many images and videos your credits buy.",
+    "tableHeading": "How far your credits go",
+    "tableSub": "Real numbers, straight from the same prices we charge. No model is locked to a higher plan.",
+    "tableModelCol": "Model",
+    "groupImages": "Images",
+    "groupVideo": "Video",
+    "preview": "Preview",
+    "perGeneration": "{count} cr",
+    "creditsPerMonthShort": "{count} / mo",
+    "creditsOnce": "{count} to start",
+    "tableLoading": "Loading models…",
+    "tableFootnote": "Counts assume each model's default quality and clip length, shown under its name. Higher resolutions and longer clips cost more, so your actual mix will vary. Credits refresh every 30 days on every plan, yearly included."
   },
   "footer": {
     "create": "Create",

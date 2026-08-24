@@ -18,7 +18,7 @@ const NAV_LINKS = [
   { key: "cinemaStudio", href: "#" },
   { key: "aiUgc", href: "#" },
   { key: "templates", href: "/templates" },
-  { key: "pricing", href: "/#pricing" },
+  { key: "pricing", href: "/pricing" },
 ] as const;
 
 export function Navbar() {

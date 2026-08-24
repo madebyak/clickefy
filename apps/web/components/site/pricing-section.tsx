@@ -20,7 +20,7 @@
  * twice.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
@@ -104,12 +104,43 @@ function useResumeCheckout(startCheckout: (planId: string) => void, ready: boole
   }, [params, ready, isLoaded, isSignedIn, router, startCheckout]);
 }
 
-export function PricingSection() {
+/**
+ * `embedded` is for the dedicated /pricing page, which supplies its own
+ * headline and puts the FAQ after the model table. Without it that page
+ * would carry two competing headings and an FAQ stranded mid-page.
+ */
+/**
+ * Renders nothing. Exists so `useSearchParams` is isolated behind its own
+ * Suspense boundary.
+ *
+ * That hook SUSPENDS during prerender, and a statically generated page
+ * that calls it without a boundary fails its production build outright —
+ * while working perfectly in `next dev`, where routes render on demand.
+ * The home page is dynamic and never tripped it; /pricing is static and
+ * broke the build the moment it existed.
+ *
+ * Wrapping the whole section instead would have been the obvious fix and
+ * the wrong one: the fallback would replace the CARDS in the static HTML,
+ * costing the pricing page its server-rendered content. Isolating the
+ * hook here keeps every card prerendered and confines the boundary to a
+ * component that renders nothing anyway.
+ */
+function ResumeCheckout({
+  startCheckout,
+  ready,
+}: {
+  startCheckout: (planId: string) => void;
+  ready: boolean;
+}) {
+  useResumeCheckout(startCheckout, ready);
+  return null;
+}
+
+export function PricingSection({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useTranslations("pricing");
   const [interval, setInterval] = useState<PlanInterval>("month");
   const { data, isLoading } = usePlans();
   const { startCheckout, pendingPlanId } = useBillingActions();
-  useResumeCheckout(startCheckout, !isLoading);
 
   const { canBuy, managedOn } = purchaseState(data?.current ?? null);
   const byTier = new Map<string, CataloguePlan>();
@@ -118,16 +149,25 @@ export function PricingSection() {
   }
 
   return (
-    <section id="pricing" className="mx-auto mt-20 max-w-[90rem] px-4 sm:px-6">
-      <div className="mx-auto max-w-2xl text-center">
-        <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t("heading")}</h2>
-        <p className="mt-3 text-muted-foreground">{t("sub")}</p>
-      </div>
+    <section
+      id="pricing"
+      className={cn("mx-auto max-w-[90rem] px-4 sm:px-6", embedded ? "mt-0" : "mt-20")}
+    >
+      <Suspense fallback={null}>
+        <ResumeCheckout startCheckout={startCheckout} ready={!isLoading} />
+      </Suspense>
+
+      {!embedded && (
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t("heading")}</h2>
+          <p className="mt-3 text-muted-foreground">{t("sub")}</p>
+        </div>
+      )}
 
       {/* Monthly / yearly toggle. The saving is stated as "2 months free"
           rather than a percentage — it is the same offer, and people can
           picture two months in a way they cannot picture 16.7%. */}
-      <div className="mt-8 flex items-center justify-center">
+      <div className={cn("flex items-center justify-center", embedded ? "mt-0" : "mt-8")}>
         <div className="inline-flex rounded-full bg-surface-2 p-1">
           {(["month", "year"] as const).map((opt) => (
             <button
@@ -306,8 +346,9 @@ export function PricingSection() {
       </div>
 
       {/* The questions people actually ask before paying — especially why
-          the app costs more, which is better answered than left to guess. */}
-      <div className="mx-auto mt-16 max-w-3xl">
+          the app costs more, which is better answered than left to guess.
+          The dedicated page renders this itself, after the model table. */}
+      <div className={cn("mx-auto mt-16 max-w-3xl", embedded && "hidden")}>
         <h3 className="text-center text-xl font-semibold">{t("faqTitle")}</h3>
         <dl className="mt-6 space-y-4">
           {(["Credits", "Reset", "Cancel", "Mobile"] as const).map((k) => (

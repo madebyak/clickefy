@@ -40,8 +40,23 @@ export interface CurrentSubscription {
   expiresAt: string | null;
 }
 
+/** One model as the pricing table shows it: real price, default settings. */
+export interface CatalogueModel {
+  key: string;
+  name: string;
+  kind: "image" | "video";
+  /** Credits for one generation at the default quality and clip length. */
+  credits: number;
+  /** Default quality tier, already labelled for humans ("720p", "1K"). */
+  quality: string | null;
+  /** Clip length the price is quoted at. Null for images. */
+  seconds: number | null;
+  preview: boolean;
+}
+
 export interface PlansResponse {
   plans: CataloguePlan[];
+  models: CatalogueModel[];
   freeCredits: number;
   current: CurrentSubscription | null;
   entitlement: string | null;

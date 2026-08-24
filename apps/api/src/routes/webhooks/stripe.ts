@@ -47,6 +47,13 @@ import { creditPacks, planProducts, plans, stripeEvents, users } from '@clickfy/
 import { evaluateSubscriptionRefund } from '@clickfy/types';
 
 import {
+  DUNNING_GRACE_HOURS,
+  MAX_PAYMENT_ATTEMPTS,
+  cancelSubscription,
+  cancelSubscriptionsForCustomer,
+} from '../../lib/dunning';
+
+import {
   TOPUP_LIFETIME_MS,
   closeSubscriptionLots,
   grantCredits,
@@ -197,10 +204,7 @@ stripeWebhookRoute.post('/', async (c) => {
         note = await applySubscriptionDeleted(c, userRow.id);
         break;
       case 'invoice.payment_failed':
-        // Recorded only. Stripe's Smart Retries get several attempts
-        // before a subscription is actually cancelled; revoking here would
-        // cut off customers whose card just needed a retry.
-        note = 'payment failed — awaiting Stripe retries, access unchanged';
+        note = await applyPaymentFailed(c, stripe, event);
         break;
       case 'checkout.session.completed':
         note = await applyCheckoutCompleted(c, userRow.id, event);
@@ -383,6 +387,65 @@ async function applySubscriptionDeleted(
   if (forfeited > 0) notes.push(`forfeited ${forfeited}`);
   if (paused > 0) notes.push(`paused ${paused} topup clock(s)`);
   return notes.join('; ');
+}
+
+/**
+ * `invoice.payment_failed` — a renewal did not go through.
+ *
+ * Stripe gets `MAX_PAYMENT_ATTEMPTS` tries, then the subscription ends.
+ * This used to record the event and change nothing, on the reasoning that
+ * Smart Retries usually recover a card. True, but the cost of being wrong
+ * is asymmetric: every generation bills a model provider in real money
+ * the moment it runs, so weeks of "past due but still working" is weeks
+ * of us paying BytePlus and Google for someone whose card has declined.
+ *
+ * The FIRST failure is still a warning, not a cancellation — cards fail
+ * for reasons that resolve themselves within a day, and cutting someone
+ * off over a bank's fraud check would be its own kind of wrong.
+ *
+ * Cancelling is done IN STRIPE, not here. Stripe's
+ * `customer.subscription.deleted` then performs the teardown, so exactly
+ * one code path ever forfeits credits. Marking the user free here instead
+ * would leave an active subscription in Stripe, and the next successful
+ * invoice would silently re-grant a month of credits to an account we
+ * believed was cancelled.
+ *
+ * The hourly sweep in `enforceDunningDeadline` is the real guarantee —
+ * `attempt_count` depends on a retry schedule that lives in dashboard
+ * configuration and can drift. This is the fast path, not the safety net.
+ */
+async function applyPaymentFailed(
+  c: { var: AppEnv['Variables'] },
+  stripe: Stripe,
+  event: Stripe.Event,
+): Promise<string> {
+  const invoice = event.data.object as unknown as Record<string, unknown>;
+  const attempts = typeof invoice.attempt_count === 'number' ? invoice.attempt_count : 0;
+
+  const subId =
+    typeof invoice.subscription === 'string'
+      ? invoice.subscription
+      : ((invoice.subscription as { id?: string } | null)?.id ?? null);
+
+  if (attempts < MAX_PAYMENT_ATTEMPTS) {
+    return (
+      `payment failed (attempt ${attempts} of ${MAX_PAYMENT_ATTEMPTS}) — ` +
+      `access continues until ${DUNNING_GRACE_HOURS}h from first failure`
+    );
+  }
+
+  if (!subId) {
+    return `payment failed (attempt ${attempts}) but no subscription on the invoice — sweep will catch it`;
+  }
+
+  const cancelled = await cancelSubscription(
+    stripe,
+    subId,
+    `Payment failed ${attempts} times — exceeds the ${MAX_PAYMENT_ATTEMPTS}-attempt limit`,
+  );
+  return cancelled
+    ? `payment failed ${attempts}x — subscription cancelled in Stripe; teardown follows on subscription.deleted`
+    : `payment failed ${attempts}x — subscription already gone`;
 }
 
 /**
@@ -622,8 +685,42 @@ async function applyChargeRefunded(
     },
   });
 
+  // A refunded month is not a month of service, so the subscription ends
+  // with it. Without this the customer keeps their plan — and the next
+  // invoice would grant a fresh month of credits they have been refunded
+  // for. Cancelling in STRIPE (not here) means the existing
+  // `customer.subscription.deleted` handler does the teardown, keeping
+  // credit forfeiture in exactly one place.
+  //
+  // Only on a FULL refund. A partial refund is a price adjustment or a
+  // goodwill gesture, and ending someone's plan because they were given
+  // $5 back would be a considerably worse outcome than the complaint that
+  // prompted it.
+  let cancelNote = '';
+  const fullyRefunded = refunded >= total;
+  if (fullyRefunded) {
+    const customerId =
+      typeof charge.customer === 'string' ? charge.customer : (charge.customer?.id ?? null);
+    if (customerId) {
+      try {
+        const n = await cancelSubscriptionsForCustomer(
+          stripe,
+          customerId,
+          `Subscription refunded in full (charge ${charge.id})`,
+        );
+        cancelNote = n > 0 ? ` Subscription cancelled (${n}).` : ' No live subscription to cancel.';
+      } catch (err) {
+        // The clawback already succeeded; a cancellation failure must not
+        // make Stripe retry the whole refund and double-revoke. The hourly
+        // sweep does not cover this case, so it is logged loudly instead.
+        console.error('[stripe webhook] refund cancel failed', err);
+        cancelNote = ' WARNING: could not cancel the subscription — cancel it manually.';
+      }
+    }
+  }
+
   return (
     `subscription refund: reclaimed ${clawed} of ${toReclaim} credits ` +
-    `(${Math.round(share * 100)}% of charge). ${verdict.summary}`
+    `(${Math.round(share * 100)}% of charge). ${verdict.summary}${cancelNote}`
   );
 }

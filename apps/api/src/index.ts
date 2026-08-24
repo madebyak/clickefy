@@ -41,6 +41,7 @@ import {
 } from './routes/uploads';
 import { clerkWebhookRoute } from './routes/webhooks/clerk';
 import { stripeWebhookRoute } from './routes/webhooks/stripe';
+import { enforceDunningDeadline } from './lib/dunning';
 import { revenuecatWebhookRoute } from './routes/webhooks/revenuecat';
 import type { AppEnv, Bindings } from './types';
 
@@ -158,11 +159,37 @@ app.onError((err, c) => {
  */
 const handler = {
   fetch: (request, env, ctx) => app.fetch(request, env, ctx),
-  // Retention cron (see wrangler.toml [triggers]): purge the R2 assets of
-  // users whose 30-day post-deletion grace window has elapsed. Guarded to
-  // only ever match soft-deleted rows — see `purgeDeletedUserAssets`.
-  scheduled: (_event, env, ctx) => {
-    ctx.waitUntil(purgeDeletedUserAssets(env));
+  /**
+   * Cron (see wrangler.toml [triggers]). Runs HOURLY, and does two jobs.
+   *
+   *  - Every hour: cancel subscriptions that have been failing payment
+   *    for more than 24 hours. Hourly rather than daily because a daily
+   *    sweep turns a 24-hour policy into anything up to 48, and every
+   *    extra hour is us paying model providers for someone whose card
+   *    has already declined.
+   *
+   *  - At 03:00 UTC only: purge the R2 assets of users whose 30-day
+   *    post-deletion grace window has elapsed. Guarded to only ever match
+   *    soft-deleted rows — see `purgeDeletedUserAssets`.
+   *
+   * Both run under `waitUntil` and neither can block the other: a Stripe
+   * outage during the sweep must not skip that day's retention purge,
+   * which has its own legal clock.
+   */
+  scheduled: (event, env, ctx) => {
+    ctx.waitUntil(
+      enforceDunningDeadline(env)
+        .then((r) => {
+          if (r.cancelled > 0 || r.errors > 0) {
+            console.log('[dunning]', JSON.stringify(r));
+          }
+        })
+        .catch((err) => console.error('[dunning] sweep failed', err)),
+    );
+
+    if (new Date(event.scheduledTime).getUTCHours() === 3) {
+      ctx.waitUntil(purgeDeletedUserAssets(env));
+    }
   },
 } satisfies ExportedHandler<Bindings>;
 

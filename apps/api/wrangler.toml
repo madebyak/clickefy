@@ -75,12 +75,18 @@ binding = "OUTPUTS"
 bucket_name = "clickfy-outputs"
 remote = true
 
-# ── Retention cron ───────────────────────────────────────────────
-# Daily at 03:00 UTC: the `scheduled` handler purges R2 assets of users
-# whose 30-day post-deletion grace window has elapsed (see
-# src/lib/purge-assets.ts). Only ever matches soft-deleted rows.
+# ── Cron ─────────────────────────────────────────────────────────
+# HOURLY, and the `scheduled` handler does two jobs:
+#
+#   every hour  — cancel subscriptions that have been failing payment for
+#                 more than 24h (src/lib/dunning.ts). Hourly rather than
+#                 daily because a daily sweep turns a 24-hour policy into
+#                 anything up to 48.
+#   03:00 UTC   — purge R2 assets of users whose 30-day post-deletion
+#                 grace window has elapsed (src/lib/purge-assets.ts).
+#                 Only ever matches soft-deleted rows.
 [triggers]
-crons = ["0 3 * * *"]
+crons = ["0 * * * *"]
 
 # ── Rate limiting (native binding) ───────────────────────────────
 # Each `[[ratelimits]]` block declares a fixed-window counter that

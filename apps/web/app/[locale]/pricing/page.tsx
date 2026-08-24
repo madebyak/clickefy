@@ -14,6 +14,8 @@
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import { Navbar } from "@/components/site/navbar";
+import { Footer } from "@/components/site/footer";
 import { PricingSection } from "@/components/site/pricing-section";
 import { ModelAllowanceTable } from "@/components/site/model-allowance-table";
 import { TopupCard } from "@/components/site/topup-card";
@@ -46,7 +48,14 @@ export default async function PricingPage({
   const t = await getTranslations({ locale, namespace: "pricing" });
 
   return (
-    <main className="pb-24">
+    // Navbar and Footer are rendered per-page in this app rather than in
+    // a layout — the homepage, /templates and the legal pages all do the
+    // same. This page shipped without them, so it had no header and no
+    // footer at all.
+    <div className="min-h-dvh bg-background text-foreground">
+      <Navbar />
+
+      <main className="pb-24">
       {/* Headline. Deliberately short: the plans are the content, and a
           paragraph of positioning above them just delays the answer
           someone came here for. */}
@@ -80,6 +89,9 @@ export default async function PricingPage({
           ))}
         </dl>
       </section>
-    </main>
+      </main>
+
+      <Footer />
+    </div>
   );
 }

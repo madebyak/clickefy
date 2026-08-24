@@ -22,6 +22,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, CircleNotch } from "@phosphor-icons/react";
 
 import { Link } from "@/i18n/navigation";
+import { Navbar } from "@/components/site/navbar";
+import { Footer } from "@/components/site/footer";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ME_QUERY_KEY, useSession } from "@/lib/use-session";
@@ -73,7 +75,12 @@ function BillingSuccessContent() {
   }, [confirmed, queryClient]);
 
   return (
-    <main className="mx-auto flex min-h-[70vh] max-w-lg flex-col items-center justify-center px-6 text-center">
+    // Same per-page Navbar/Footer pattern as every other public page.
+    // Without them this was a bare card on an empty page — at the exact
+    // moment someone has just paid and wants to get into the product.
+    <div className="min-h-dvh bg-background text-foreground">
+      <Navbar />
+      <main className="mx-auto flex min-h-[70vh] max-w-lg flex-col items-center justify-center px-6 text-center">
       {confirmed ? (
         <>
           <CheckCircle weight="fill" className="size-14 text-primary" />
@@ -102,7 +109,9 @@ function BillingSuccessContent() {
           )}
         </>
       )}
-    </main>
+      </main>
+      <Footer />
+    </div>
   );
 }
 

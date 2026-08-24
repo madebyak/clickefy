@@ -268,7 +268,23 @@ async function applyInvoicePaid(
   const plan = await c.var.db.query.plans.findFirst({ where: eq(plans.id, product.planId) });
   if (!plan) throw new Error(`plan_products row points at a missing plan (${product.planId})`);
 
-  const periodEnd = invoice.period_end ? new Date(invoice.period_end * 1000) : null;
+  // THE LINE ITEM's period, not the invoice's.
+  //
+  // `invoice.period_end` is the period the INVOICE covers, and on the
+  // first invoice of a subscription that is the instant it was created —
+  // so using it set every new subscriber's renewal date to roughly "now".
+  // Verified against real invoices: period_end 2026-08-24 09:50 against a
+  // line period ending 2026-09-24 09:50, a month apart.
+  //
+  // It never broke access (entitlement gates that, not this date) but it
+  // is what Settings renders as "Renews on", and showing a paying
+  // customer a date in the past is its own kind of broken.
+  const linePeriodEnd = line?.period?.end ?? null;
+  const periodEnd = linePeriodEnd
+    ? new Date(linePeriodEnd * 1000)
+    : invoice.period_end
+      ? new Date(invoice.period_end * 1000)
+      : null;
   // Credits are per 30 DAYS even on a yearly plan — a yearly subscriber is
   // topped up by `refresh-subscription-credits`, not handed a year at once.
   const creditsExpireAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);

@@ -6,7 +6,7 @@
  * "Mark all read" and "Clear all" mirror the standard inbox affordances.
  */
 
-import { Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
+import { HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import type { AppNotification } from '@clickfy/sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -178,7 +178,7 @@ function NotificationRow({ item, onPress }: { item: AppNotification; onPress: ()
 // ─── Empty ──────────────────────────────────────────────────────────
 
 function EmptyState({ insets }: { insets: { bottom: number } }) {
-  const { colors, accent } = useTheme();
+  const { accent } = useTheme();
   const { t } = useTranslation('notifications');
   return (
     <View

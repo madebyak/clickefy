@@ -18,7 +18,7 @@ import { Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import type { StoreCreditPack } from '@clickfy/sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -60,28 +60,43 @@ export default function BuyCreditsScreen() {
   });
 
   const catalog = catalogQuery.data;
-  const packages = offeringQuery.data?.availablePackages ?? [];
+  // Memoised for the same reason `packRows` below is: a fresh array every
+  // render would defeat that memo entirely.
+  const packages = useMemo(
+    () => offeringQuery.data?.availablePackages ?? [],
+    [offeringQuery.data?.availablePackages],
+  );
 
   // Match each DB credit-pack to its RevenueCat package by store product id.
   // The DB is the source of truth for "this product is a credit pack" (+ how
   // many credits it grants); RevenueCat supplies the localised price.
-  const packRows: PackRow[] = [];
-  for (const pack of catalog?.packs ?? []) {
-    const pkg = packages.find((p) => p.product.identifier === pack.storeProductId);
-    if (pkg) packRows.push({ pack, pkg });
-  }
+  //
+  // Memoised because this array fed an effect: rebuilt on every render, it
+  // re-ran that effect on every render too.
+  const packRows: PackRow[] = useMemo(() => {
+    const rows: PackRow[] = [];
+    for (const pack of catalog?.packs ?? []) {
+      const pkg = packages.find((p) => p.product.identifier === pack.storeProductId);
+      if (pkg) rows.push({ pack, pkg });
+    }
+    return rows;
+  }, [catalog?.packs, packages]);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `null` means "the user has not picked yet", so the default is DERIVED
+  // rather than written by an effect. The effect version needed a
+  // `!selectedId` guard to avoid overwriting the user's choice every time
+  // the catalogue refetched; deriving it removes the failure mode instead
+  // of guarding against it.
+  const [chosenId, setChosenId] = useState<string | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
-  useEffect(() => {
-    if (!selectedId && packRows.length > 0) {
-      // Default to the featured pack, else the first.
-      const featured = packRows.find((r) => r.pack.isFeatured) ?? packRows[0];
-      if (featured) setSelectedId(featured.pkg.identifier);
-    }
-  }, [packRows, selectedId]);
+  const defaultId = useMemo(() => {
+    const featured = packRows.find((r) => r.pack.isFeatured) ?? packRows[0];
+    return featured?.pkg.identifier ?? null;
+  }, [packRows]);
+
+  const selectedId = chosenId ?? defaultId;
 
   const handleBuy = async () => {
     const row = packRows.find((r) => r.pkg.identifier === selectedId);
@@ -247,7 +262,7 @@ export default function BuyCreditsScreen() {
               return (
                 <Pressable
                   key={pkg.identifier}
-                  onPress={() => setSelectedId(pkg.identifier)}
+                  onPress={() => setChosenId(pkg.identifier)}
                   haptic="selection"
                   pressedOpacity={0.92}
                   accessibilityRole="radio"

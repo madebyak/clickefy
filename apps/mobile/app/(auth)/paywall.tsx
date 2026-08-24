@@ -25,7 +25,7 @@
 import { Button, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -77,20 +77,28 @@ export default function PaywallScreen() {
     staleTime: 5 * 60_000,
   });
 
-  const packages = offeringQuery.data?.availablePackages ?? [];
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Memoised: a fresh array on every render made the default-selection
+  // effect below re-run on every render too.
+  const packages = useMemo(
+    () => offeringQuery.data?.availablePackages ?? [],
+    [offeringQuery.data?.availablePackages],
+  );
+  const [chosenId, setChosenId] = useState<string | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
-  // Default-select the annual plan (best value), else monthly, else first.
-  useEffect(() => {
-    if (selectedId || packages.length === 0) return;
+  // Annual is pre-selected (best value), else monthly, else the first.
+  // DERIVED rather than written by an effect: `null` means "the user has
+  // not picked yet", so a refetch can no longer overwrite a real choice.
+  const defaultId = useMemo(() => {
     const preferred =
       packages.find((p) => p.packageType === 'ANNUAL') ??
       packages.find((p) => p.packageType === 'MONTHLY') ??
       packages[0];
-    if (preferred) setSelectedId(preferred.identifier);
-  }, [packages, selectedId]);
+    return preferred?.identifier ?? null;
+  }, [packages]);
+
+  const selectedId = chosenId ?? defaultId;
 
   const creditsFor = (storeProductId: string): number | undefined =>
     catalogQuery.data?.subscriptions.find((s) => s.storeProductId === storeProductId)
@@ -245,7 +253,7 @@ export default function PaywallScreen() {
                 pkg={pkg}
                 credits={creditsFor(pkg.product.identifier)}
                 selected={selectedId === pkg.identifier}
-                onSelect={() => setSelectedId(pkg.identifier)}
+                onSelect={() => setChosenId(pkg.identifier)}
               />
             ))
           )}

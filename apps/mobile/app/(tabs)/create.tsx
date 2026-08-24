@@ -76,9 +76,14 @@ export default function CreateScreen() {
     queryFn: () => sdk.models.listModels(),
     staleTime: 5 * 60_000,
   });
-  const models = modelsQuery.data ?? [];
+  // Memoised: a fresh array on every render made both the `selectedModel`
+  // memo and the default-selection effect below recompute every render.
+  const models = useMemo(() => modelsQuery.data ?? [], [modelsQuery.data]);
 
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // `null` means "the user has not picked a model yet", so the default is
+  // DERIVED below rather than written by an effect — a refetch of the
+  // roster can no longer reset a choice the user already made.
+  const [chosenKey, setChosenKey] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState<string | undefined>(undefined);
   const [duration, setDuration] = useState<number | undefined>(undefined);
@@ -99,15 +104,13 @@ export default function CreateScreen() {
   const [showConsent, setShowConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Falls back to the first model once the roster loads.
+  const selectedKey = chosenKey ?? models[0]?.modelKey ?? null;
+
   const selectedModel = useMemo<GenModel | undefined>(
     () => models.find((m) => m.modelKey === selectedKey),
     [models, selectedKey],
   );
-
-  // Default to the first model once the roster loads.
-  useEffect(() => {
-    if (!selectedKey && models.length > 0) setSelectedKey(models[0]!.modelKey);
-  }, [models, selectedKey]);
 
   // Reset all model-dependent controls when the model changes.
   useEffect(() => {
@@ -522,7 +525,7 @@ export default function CreateScreen() {
         visible={modelSheet}
         models={models}
         selectedKey={selectedKey}
-        onSelect={setSelectedKey}
+        onSelect={setChosenKey}
         onClose={() => setModelSheet(false)}
       />
       <AiConsentSheet

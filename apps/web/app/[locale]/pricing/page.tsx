@@ -72,7 +72,7 @@ export default async function PricingPage({
       <section className="mx-auto mt-24 max-w-3xl px-4 sm:px-6">
         <h2 className="text-center text-xl font-semibold">{t("faqTitle")}</h2>
         <dl className="mt-6 space-y-4">
-          {(["Credits", "Reset", "Cancel", "Mobile"] as const).map((k) => (
+          {(["Credits", "Reset", "Cancel", "Refund", "Mobile"] as const).map((k) => (
             <div key={k} className="rounded-xl bg-surface-2 p-5">
               <dt className="font-medium">{t(`faq${k}Q`)}</dt>
               <dd className="mt-2 text-sm text-muted-foreground">{t(`faq${k}A`)}</dd>

@@ -44,6 +44,7 @@ import { eq } from 'drizzle-orm';
 import type Stripe from 'stripe';
 
 import { creditPacks, planProducts, plans, stripeEvents, users } from '@clickfy/db';
+import { evaluateSubscriptionRefund } from '@clickfy/types';
 
 import {
   TOPUP_LIFETIME_MS,
@@ -481,11 +482,26 @@ async function applyCheckoutCompleted(
 }
 
 /**
- * `charge.refunded` — claw back, clamped at what is left.
+ * `charge.refunded` — money went back, so credits must come back too.
  *
- * Tracing a charge to what it paid for is a multi-hop walk in Stripe:
- * charge → payment_intent → invoice → subscription. Worth doing properly
- * once; guessing from the amount would reclaim the wrong credits.
+ * THE RULES THIS ENFORCES (see `lib/refund-policy.ts` for the why):
+ *   1. Top-ups are NON-REFUNDABLE. If one is refunded anyway — a manual
+ *      goodwill refund, or a card network resolving a dispute — the
+ *      credits are reclaimed in full. Money back and goods kept is not an
+ *      outcome we leave on the table.
+ *   2. A subscription refund reclaims from SUBSCRIPTION credits only.
+ *      Never top-ups, never the free welcome grant: those were paid for
+ *      separately, or given, and have nothing to do with this month.
+ *   3. A subscription period is only *meant* to be refunded when nothing
+ *      has been spent and it is within 7 days. We cannot block a refund
+ *      that already happened, so an out-of-policy one is applied and
+ *      LABELLED, making "we refunded a fully-spent Ultimate month"
+ *      findable in the ledger instead of invisible.
+ *
+ * Which wallet is decided by the payment-intent metadata the top-up route
+ * writes at checkout. Subscription charges never carry it, so ABSENCE
+ * means subscription — the unknown case degrades to the behaviour this
+ * handler has always had rather than to something new and untested.
  */
 async function applyChargeRefunded(
   c: { var: AppEnv['Variables'] },
@@ -498,18 +514,6 @@ async function applyChargeRefunded(
   const total = charge.amount ?? 0;
   if (total <= 0 || refunded <= 0) return 'nothing refunded';
 
-  // WHICH PURCHASE was refunded decides which wallet to reclaim from, and
-  // getting it wrong is not cosmetic. Before top-ups existed this always
-  // reclaimed `subscription`; once packs are sellable that becomes a
-  // double fault — a refunded $250 pack would take back a month of PLAN
-  // credits the customer still paid for, while leaving the 30,000 top-up
-  // credits they were just refunded for sitting in their balance.
-  //
-  // The discriminator is the payment-intent metadata the top-up route
-  // wrote at checkout (`clickefy_kind: 'topup'`). Subscription charges
-  // never carry it, so ABSENCE means subscription — which is also the
-  // pre-top-up behaviour, making the unknown case degrade to what this
-  // handler has always done rather than to something new and untested.
   let isTopup = false;
   let packCredits: number | null = null;
 
@@ -517,8 +521,7 @@ async function applyChargeRefunded(
   if (piId) {
     try {
       const pi = await stripe.paymentIntents.retrieve(piId);
-      const kind = pi.metadata?.clickefy_kind;
-      if (kind === 'topup') {
+      if (pi.metadata?.clickefy_kind === 'topup') {
         isTopup = true;
         const packId = pi.metadata?.clickefy_pack_id;
         if (packId) {
@@ -527,51 +530,100 @@ async function applyChargeRefunded(
           });
           if (pack) packCredits = pack.credits + pack.bonusCredits;
         }
-      } else if (kind) {
-        isTopup = false;
       }
     } catch {
-      // A lookup failure must not strand the refund. Fall back to the
-      // invoice heuristic, which is right in the ordinary case.
+      // A lookup failure must not strand the refund. Fall through to the
+      // subscription path, which is the ordinary case.
     }
   }
 
+  const share = Math.min(1, refunded / total);
   const targetClass = isTopup ? ('topup' as const) : ('subscription' as const);
 
+  // Newest first. For a subscription this is the period being refunded —
+  // the 7-day window makes any older one ineligible on its own terms. For
+  // a top-up it is the pack just bought.
   const lots = await c.var.db.query.creditLots.findMany({
-    where: (cl, { and: a, eq: e, gt }) =>
-      a(e(cl.userId, userId), e(cl.class, targetClass), gt(cl.amountRemaining, 0)),
+    where: (cl, { and: a, eq: e }) => a(e(cl.userId, userId), e(cl.class, targetClass)),
+    orderBy: (cl, { desc }) => [desc(cl.createdAt)],
+    limit: 10,
   });
-  const outstanding = lots.reduce((n, l) => n + l.amountRemaining, 0);
-  if (outstanding <= 0) {
-    return `nothing left to reclaim from ${targetClass} (credits already spent)`;
+  const live = lots.filter((l) => l.amountRemaining > 0);
+  const outstanding = live.reduce((n, l) => n + l.amountRemaining, 0);
+
+  if (isTopup) {
+    // Non-refundable by policy, so any refund here is an exception. Take
+    // back everything that pack still has, proportional to how much money
+    // actually went back.
+    if (outstanding <= 0) {
+      return `TOP-UP REFUND (against policy) — nothing left to reclaim, credits already spent`;
+    }
+    const basis = packCredits ?? outstanding;
+    const toReclaim = Math.min(outstanding, Math.floor(basis * share));
+    if (toReclaim <= 0) return 'refund too small to reclaim a whole credit';
+
+    const clawed = await revokeCredits(c.var.db, {
+      userId,
+      class: 'topup',
+      amount: toReclaim,
+      reason: 'admin_adjust',
+      note: `Stripe refund ${charge.id} (top-up — against policy)`,
+      metadata: {
+        stripeRefund: true,
+        chargeId: charge.id,
+        wallet: 'topup',
+        againstPolicy: true,
+        policy: 'top-ups are non-refundable',
+        amountRefunded: refunded,
+        amountTotal: total,
+        sharePct: Math.round(share * 100),
+        ...(packCredits != null ? { packCredits } : {}),
+      },
+    });
+    return `TOP-UP REFUND (against policy): reclaimed ${clawed} of ${toReclaim} credits`;
   }
 
-  const share = Math.min(1, refunded / total);
+  // ── Subscription ──────────────────────────────────────────────────
+  const period = lots[0] ?? null;
+  const verdict = evaluateSubscriptionRefund(period);
 
-  // For a top-up we know exactly how many credits THAT purchase granted,
-  // so the clawback is scoped to it. Proportioning across every top-up
-  // lot instead would let a refund on one pack eat into a different pack
-  // the customer still owns.
-  const basis = packCredits ?? outstanding;
+  if (outstanding <= 0) {
+    // Fully spent. Nothing to take, and by policy this should never have
+    // been refunded — say so plainly in the ledger note.
+    return (
+      `SUBSCRIPTION REFUND but nothing left to reclaim — ${verdict.summary} ` +
+      `(credits already spent; refund should not have been issued)`
+    );
+  }
+
+  // Scope to the period being refunded rather than every subscription lot
+  // the user has ever held, so one refunded month cannot eat into another.
+  const basis = period ? period.amountGranted : outstanding;
   const toReclaim = Math.min(outstanding, Math.floor(basis * share));
   if (toReclaim <= 0) return 'refund too small to reclaim a whole credit';
 
   const clawed = await revokeCredits(c.var.db, {
     userId,
-    class: targetClass,
+    class: 'subscription',
     amount: toReclaim,
     reason: 'admin_adjust',
-    note: `Stripe refund ${charge.id}`,
+    note: `Stripe refund ${charge.id}${verdict.eligible ? '' : ' (against policy)'}`,
     metadata: {
       stripeRefund: true,
       chargeId: charge.id,
+      wallet: 'subscription',
+      againstPolicy: !verdict.eligible,
+      policyReasons: verdict.reasons,
+      creditsUsedThisPeriod: verdict.creditsUsed,
+      daysSinceGrant: verdict.daysSinceGrant,
       amountRefunded: refunded,
       amountTotal: total,
       sharePct: Math.round(share * 100),
-      wallet: targetClass,
-      ...(packCredits != null ? { packCredits } : {}),
     },
   });
-  return `refund clawback from ${targetClass} (${clawed} of ${toReclaim} reclaimed, ${Math.round(share * 100)}% of charge)`;
+
+  return (
+    `subscription refund: reclaimed ${clawed} of ${toReclaim} credits ` +
+    `(${Math.round(share * 100)}% of charge). ${verdict.summary}`
+  );
 }

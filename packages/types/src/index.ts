@@ -6,3 +6,4 @@ export * from './localization';
 export * from './template';
 export * from './user';
 export * from './pricing';
+export * from './refund-policy';

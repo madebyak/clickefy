@@ -173,7 +173,9 @@
     "topupCta": "Buy {credits} credits",
     "topupLocked": "Requires a paid plan",
     "topupNeedsPlan": "Credit packs are available on any paid plan. Subscribe first.",
-    "topupFootnote": "One-time purchase, not a subscription. Top-up credits last 12 months, and the clock pauses if your plan lapses — so you never lose time you couldn't spend. They are used after your monthly plan credits."
+    "topupFootnote": "One-time purchase, not a subscription. Credits are added instantly and are non-refundable. They last 12 months, and the clock pauses if your plan lapses — so you never lose time you couldn't spend. Top-up credits are used after your monthly plan credits.",
+    "faqRefundQ": "Can I get a refund?",
+    "faqRefundA": "A plan can be refunded within 7 days, as long as none of that period's credits have been used — once a generation runs we've already paid the model provider for it. Credit top-ups are non-refundable, because the credits are delivered and spendable the moment you buy them."
   },
   "footer": {
     "create": "Create",

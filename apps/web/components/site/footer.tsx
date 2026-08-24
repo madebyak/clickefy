@@ -30,7 +30,7 @@ const HREFS: Record<string, string> = {
   linkCreateImage: "/create",
   linkCreateVideo: "/create-video",
   linkTemplates: "/templates",
-  linkPricing: "/#pricing",
+  linkPricing: "/pricing",
   linkPrivacy: "/privacy",
   linkTerms: "/terms",
   linkAccountDeletion: "/account-deletion",

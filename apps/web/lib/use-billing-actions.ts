@@ -67,8 +67,11 @@ export function useBillingActions() {
    */
   async function startCheckout(planId: string) {
     if (!isSignedIn) {
+      // Back to the dedicated pricing page, not the homepage section —
+      // that is where the plans, top-ups and allowance table all are, and
+      // the resume hook runs on both.
       window.location.href = `/sign-up?redirect_url=${encodeURIComponent(
-        `/?plan=${planId}#pricing`,
+        `/pricing?plan=${planId}`,
       )}`;
       return;
     }
@@ -82,7 +85,7 @@ export function useBillingActions() {
         // already subscribed, so "are they still on the free tier" cannot
         // tell whether the new plan has arrived yet.
         successPath: `/billing/success?plan=${encodeURIComponent(planId)}`,
-        cancelPath: "/#pricing",
+        cancelPath: "/pricing",
       });
       if (!result.ok) {
         // The one case worth its own copy: they already pay through a
@@ -113,7 +116,8 @@ export function useBillingActions() {
    */
   async function startTopup(packId: string) {
     if (!isSignedIn) {
-      window.location.href = `/sign-up?redirect_url=${encodeURIComponent("/pricing")}`;
+      // Straight back to the top-up card they were looking at.
+      window.location.href = `/sign-up?redirect_url=${encodeURIComponent("/pricing#topup")}`;
       return;
     }
     setPendingPackId(packId);

@@ -74,18 +74,21 @@ export function CreditMenu() {
               </span>
             </div>
           </div>
-          {/* Web billing (Stripe) is a later phase — until then both CTAs
-              land on the marketing pricing section. */}
+          {/* Both go to the dedicated /pricing page, not the homepage
+              section: that is where the plan cards, the top-up slider and
+              the model allowance table all live. "Buy credits" deep-links
+              to the top-up card itself, since someone who clicked it has
+              already decided they want credits rather than a plan. */}
           <div className="mt-2 flex flex-col gap-1.5">
             <Link
-              href="/#pricing"
+              href="/pricing#topup"
               onClick={close}
               className={cn(buttonVariants({ size: "sm" }), "w-full")}
             >
               <Plus className="size-4" /> {t("buyCredits")}
             </Link>
             <Link
-              href="/#pricing"
+              href="/pricing"
               onClick={close}
               className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "w-full justify-between")}
             >

@@ -28,7 +28,7 @@ import { Check, ArrowUpRight } from "@phosphor-icons/react";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
-import { Link, useRouter } from "@/i18n/navigation";
+import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import { useBillingActions } from "@/lib/use-billing-actions";
 import {
   purchaseState,
@@ -93,15 +93,20 @@ function useResumeCheckout(startCheckout: (planId: string) => void, ready: boole
   const { isLoaded, isSignedIn } = useAuth();
   const params = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const fired = useRef(false);
 
   useEffect(() => {
     const planId = params.get("plan");
     if (!planId || fired.current || !ready || !isLoaded || !isSignedIn) return;
     fired.current = true;
-    router.replace("/#pricing");
+    // Strip the parameter from WHEREVER we are, rather than assuming the
+    // homepage. This component renders on /pricing too, and hard-coding
+    // "/#pricing" navigated a /pricing visitor to the homepage mid-resume
+    // — losing their place on the page they were actually reading.
+    router.replace(pathname === "/" ? "/#pricing" : pathname);
     startCheckout(planId);
-  }, [params, ready, isLoaded, isSignedIn, router, startCheckout]);
+  }, [params, ready, isLoaded, isSignedIn, router, pathname, startCheckout]);
 }
 
 /**
@@ -151,7 +156,7 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
   return (
     <section
       id="pricing"
-      className={cn("mx-auto w-full max-w-site site-px", embedded ? "mt-0" : "mt-20")}
+      className={cn("mx-auto w-full max-w-site scroll-mt-24 site-px", embedded ? "mt-0" : "mt-20")}
     >
       <Suspense fallback={null}>
         <ResumeCheckout startCheckout={startCheckout} ready={!isLoading} />

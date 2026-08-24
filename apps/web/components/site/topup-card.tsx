@@ -90,7 +90,7 @@ export function TopupCard() {
   const busy = pendingPackId !== null;
 
   return (
-    <section className="mx-auto mt-24 w-full max-w-site site-px">
+    <section id="topup" className="mx-auto mt-24 w-full max-w-site scroll-mt-24 site-px">
       <div className="mx-auto max-w-3xl overflow-hidden rounded-2xl bg-surface-2 p-6 ring-1 ring-border sm:p-8">
         <div className="flex items-start justify-between gap-4">
           <div>

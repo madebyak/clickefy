@@ -17,6 +17,7 @@ import {
 } from "@phosphor-icons/react";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
+import { downloadAsset } from "@/lib/download-asset";
 import type { Asset } from "@/components/studio/studio-context";
 import { DEFAULT_GRID_SIZE, type GridSize } from "@/components/studio/canvas-toolbar";
 
@@ -53,15 +54,6 @@ const TILE_GAP: Record<GridSize, string> = {
   2: "mb-2.5",
   3: "mb-2",
 };
-
-function downloadAsset(a: Asset) {
-  const el = document.createElement("a");
-  el.href = a.src;
-  el.download = a.src.split("/").pop() ?? "asset";
-  document.body.appendChild(el);
-  el.click();
-  el.remove();
-}
 
 function OverlayButton({
   label,
@@ -258,17 +250,35 @@ export function Masonry({
                 </OverlayButton>
               </div>
             )}
-            {/* Everything the tile can do, in one menu. Details and
-                Download used to be their own hover buttons; with the
-                heart added that was three icons plus two pills fighting
-                over a tile that can be 150px wide at high density. The
-                menu portals out because the tile is `overflow-hidden`
-                and would otherwise clip it. */}
+            {/* Download, beside the heart. It was only in the menu, which
+                made saving a file a two-click hunt for the single most
+                common thing anyone does with a finished render. Hover-only
+                because, unlike the heart, it carries no state worth
+                showing when idle. */}
             <div
               className={cn(
                 "absolute top-2 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
-                // Shift clear of the always-on heart when there is one.
                 onToggleFavorite ? "end-12" : "end-2",
+              )}
+            >
+              <OverlayButton
+                label={t("download")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  downloadAsset(a);
+                }}
+              >
+                <DownloadSimple className="size-4" />
+              </OverlayButton>
+            </div>
+            {/* Everything else the tile can do, in one menu. It portals
+                out because the tile is `overflow-hidden` and would
+                otherwise clip it. */}
+            <div
+              className={cn(
+                "absolute top-2 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+                // Clear of the always-on heart AND the download beside it.
+                onToggleFavorite ? "end-[5.5rem]" : "end-12",
               )}
             >
               <Menu
@@ -342,15 +352,6 @@ export function Masonry({
                         {t("assetInfo")}
                       </MenuItem>
                     )}
-                    <MenuItem
-                      onClick={() => {
-                        downloadAsset(a);
-                        close();
-                      }}
-                    >
-                      <DownloadSimple className="size-4 text-muted-foreground" />
-                      {t("download")}
-                    </MenuItem>
                   </>
                 )}
               </Menu>

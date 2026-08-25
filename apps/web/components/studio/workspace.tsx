@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { getSDK } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { downloadAsset, downloadAssets } from "@/lib/download-asset";
 import {
   useStudio,
   type Asset,
@@ -31,15 +32,6 @@ import { AssetInfoPanel } from "@/components/studio/asset-info-panel";
 import { SelectionBar } from "@/components/studio/selection-bar";
 import { PromptBar } from "@/components/generate/prompt-bar";
 import { useTimeLabel } from "@/lib/time-label";
-
-function downloadAsset(a: Asset) {
-  const el = document.createElement("a");
-  el.href = a.src;
-  el.download = a.src.split("/").pop() ?? "asset";
-  document.body.appendChild(el);
-  el.click();
-  el.remove();
-}
 
 const GRID_SIZE_STORAGE_KEY = "clickefy:studio:gridSize";
 
@@ -300,8 +292,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
     ? folders.find((f) => f.id === activeProject.folderId)?.name
     : null;
 
-  const downloadAll = () =>
-    activeAssets.forEach((a, i) => setTimeout(() => downloadAsset(a), i * 250));
+  const downloadAll = () => downloadAssets(activeAssets);
 
   return (
     <main className="relative flex min-w-0 flex-1 flex-col">

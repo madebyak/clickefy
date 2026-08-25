@@ -34,6 +34,7 @@
 
 import { Hono } from 'hono';
 
+import { attachmentDisposition, wantsDownload } from '../lib/content-disposition';
 import type { AppEnv } from '../types';
 
 export const outputsRoute = new Hono<AppEnv>();
@@ -108,6 +109,11 @@ outputsRoute.get('/:key{.+}', async (c) => {
       headers.set('cache-control', 'public, max-age=31536000, immutable');
       headers.set('cross-origin-resource-policy', 'cross-origin');
       headers.set('access-control-allow-origin', '*');
+      // Same on a 206: a download that starts with a Range request (some
+      // managers do) must still be told to save rather than display.
+      if (wantsDownload(c.req.query('download'))) {
+        headers.set('content-disposition', attachmentDisposition(c.req.query('name'), key));
+      }
       return new Response(ranged.body, { status: 206, headers });
     }
   }
@@ -130,6 +136,14 @@ outputsRoute.get('/:key{.+}', async (c) => {
   headers.set('cache-control', 'public, max-age=31536000, immutable');
   headers.set('cross-origin-resource-policy', 'cross-origin');
   headers.set('access-control-allow-origin', '*');
+  // `?download=1` flips the response from "show this" to "save this".
+  // Cross-origin <a download> is ignored by browsers, so this header is
+  // what actually makes the studio's download buttons save a file — see
+  // lib/content-disposition.ts. The query string is part of the cache
+  // key, so the inline and attachment variants cache independently.
+  if (wantsDownload(c.req.query('download'))) {
+    headers.set('content-disposition', attachmentDisposition(c.req.query('name'), key));
+  }
 
   return new Response(obj.body, { headers });
 });
@@ -149,6 +163,14 @@ outputsRoute.on('HEAD', '/:key{.+}', async (c) => {
   headers.set('cache-control', 'public, max-age=31536000, immutable');
   headers.set('cross-origin-resource-policy', 'cross-origin');
   headers.set('access-control-allow-origin', '*');
+  // `?download=1` flips the response from "show this" to "save this".
+  // Cross-origin <a download> is ignored by browsers, so this header is
+  // what actually makes the studio's download buttons save a file — see
+  // lib/content-disposition.ts. The query string is part of the cache
+  // key, so the inline and attachment variants cache independently.
+  if (wantsDownload(c.req.query('download'))) {
+    headers.set('content-disposition', attachmentDisposition(c.req.query('name'), key));
+  }
   return new Response(null, { status: 200, headers });
 });
 

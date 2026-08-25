@@ -13,6 +13,7 @@ import {
 import { useStudio } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
+import { downloadAssets } from "@/lib/download-asset";
 
 function ProjectPicker({
   label,
@@ -106,19 +107,8 @@ export function SelectionBar() {
   const selected = activeAssets.filter((a) => selectedAssetIds.includes(a.id));
   const allFavorited = selected.length > 0 && selected.every((a) => a.favorited);
 
-  const downloadSelected = () => {
-    const chosen = activeAssets.filter((a) => selectedAssetIds.includes(a.id));
-    chosen.forEach((a, i) =>
-      setTimeout(() => {
-        const el = document.createElement("a");
-        el.href = a.src;
-        el.download = a.src.split("/").pop() ?? "asset";
-        document.body.appendChild(el);
-        el.click();
-        el.remove();
-      }, i * 250),
-    );
-  };
+  const downloadSelected = () =>
+    downloadAssets(activeAssets.filter((a) => selectedAssetIds.includes(a.id)));
 
   return (
     <div className="mb-3 flex items-center gap-2 rounded-2xl bg-surface-3 p-2 shadow-2xl shadow-black/40">

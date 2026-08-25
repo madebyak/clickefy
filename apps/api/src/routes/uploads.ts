@@ -22,6 +22,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
+import { attachmentDisposition, wantsDownload } from '../lib/content-disposition';
 import type { AppEnv } from '../types';
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
@@ -314,6 +315,11 @@ uploadsPublicRoute.get(
       headers.set('cache-control', 'public, max-age=31536000, immutable');
       headers.set('cross-origin-resource-policy', 'cross-origin');
       headers.set('access-control-allow-origin', '*');
+      // Same on a 206: a download that starts with a Range request (some
+      // managers do) must still be told to save rather than display.
+      if (wantsDownload(c.req.query('download'))) {
+        headers.set('content-disposition', attachmentDisposition(c.req.query('name'), key));
+      }
       return new Response(ranged.body, { status: 206, headers });
     }
     // Unparseable Range — fall through to a full GET. RFC 9110 allows this.
@@ -339,6 +345,14 @@ uploadsPublicRoute.get(
   // `secureHeaders()` middleware in src/index.ts.
   headers.set('cross-origin-resource-policy', 'cross-origin');
   headers.set('access-control-allow-origin', '*');
+  // `?download=1` flips the response from "show this" to "save this".
+  // Cross-origin <a download> is ignored by browsers, so this header is
+  // what actually makes the studio's download buttons save a file — see
+  // lib/content-disposition.ts. The query string is part of the cache
+  // key, so the inline and attachment variants cache independently.
+  if (wantsDownload(c.req.query('download'))) {
+    headers.set('content-disposition', attachmentDisposition(c.req.query('name'), key));
+  }
   return new Response(obj.body, { headers });
 });
 
@@ -358,6 +372,14 @@ uploadsPublicRoute.on('HEAD', '/:key{.+}', withRateLimit((env) => env.RL_PUBLIC_
   headers.set('cache-control', 'public, max-age=31536000, immutable');
   headers.set('cross-origin-resource-policy', 'cross-origin');
   headers.set('access-control-allow-origin', '*');
+  // `?download=1` flips the response from "show this" to "save this".
+  // Cross-origin <a download> is ignored by browsers, so this header is
+  // what actually makes the studio's download buttons save a file — see
+  // lib/content-disposition.ts. The query string is part of the cache
+  // key, so the inline and attachment variants cache independently.
+  if (wantsDownload(c.req.query('download'))) {
+    headers.set('content-disposition', attachmentDisposition(c.req.query('name'), key));
+  }
   return new Response(null, { status: 200, headers });
 });
 

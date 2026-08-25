@@ -49,6 +49,7 @@ import {
   useMediaLibrary,
   type UploadingFile,
 } from "@/lib/use-media-library";
+import { useStudioMaybe } from "@/components/studio/studio-context";
 
 /** Tile sizes, largest tiles first. Four steps, same as the canvas grid. */
 const TILE_COLUMNS = [2, 3, 4, 6] as const;
@@ -63,7 +64,6 @@ export function MyAssetsModal({
   onClose,
   mode = "browse",
   onPick,
-  activeProjectId = null,
   pickDisabledReason,
 }: {
   open: boolean;
@@ -72,8 +72,6 @@ export function MyAssetsModal({
   mode?: "browse" | "pick";
   /** Commit the selection as prompt references. */
   onPick?: (assets: MediaAsset[]) => void;
-  /** The canvas to place files onto. Null when no project is open. */
-  activeProjectId?: string | null;
   /** Set when the current model cannot take references at all. */
   pickDisabledReason?: string | null;
 }) {
@@ -104,6 +102,46 @@ export function MyAssetsModal({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingAssetId, setRenamingAssetId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  /**
+   * Where "Add to project" sends files.
+   *
+   * FROM CONTEXT, NOT A PROP. This used to be drilled in by each call
+   * site, and the sidebar simply forgot — leaving the button greyed out
+   * there permanently with no way to see why. The studio already knows
+   * which project is open; asking it directly removes the whole class of
+   * bug.
+   *
+   * Null only when the modal is mounted outside the studio (the
+   * standalone composer), where there is no canvas at all — so the
+   * button is hidden rather than disabled.
+   */
+  const studio = useStudioMaybe();
+  const [placing, setPlacing] = useState(false);
+
+  /**
+   * A project is created LAZILY on the first generation, so a fresh
+   * /create genuinely has none. Rather than refuse, create one the same
+   * way a generation would: starting a project from your own brand
+   * images instead of from a prompt is a real way to work, not an error.
+   */
+  const addToProject = useCallback(
+    async (payload: { assetIds?: string[]; folderId?: string }) => {
+      if (!studio || placing) return;
+      setPlacing(true);
+      try {
+        const projectId = studio.activeProjectId ?? (await studio.createProject(null));
+        placeInProject({ projectId, ...payload });
+        setSelected(new Set());
+      } catch {
+        // `createProject` has already said so; a second toast would only
+        // repeat it.
+      } finally {
+        setPlacing(false);
+      }
+    },
+    [studio, placing, placeInProject],
+  );
 
   const view = useMediaBrowse(folders, assets, currentFolderId, search);
   const trail = useBreadcrumb(folders, currentFolderId);
@@ -265,12 +303,11 @@ export function MyAssetsModal({
               one gesture — the case where selecting forty tiles by hand is
               the wrong interaction. Only inside a folder: at the root it
               would mean "the entire library", which nobody means. */}
-          {currentFolderId && activeProjectId && !search && (
+          {currentFolderId && studio && !search && (
             <button
               type="button"
-              onClick={() =>
-                placeInProject({ projectId: activeProjectId, folderId: currentFolderId })
-              }
+              disabled={placing}
+              onClick={() => void addToProject({ folderId: currentFolderId })}
               className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
             >
               <Stack className="size-4" />
@@ -442,24 +479,24 @@ export function MyAssetsModal({
 
             {/* Add to the canvas. Available in both modes — organising and
                 placing are the same gesture from the user's side. */}
-            <button
-              type="button"
-              disabled={!activeProjectId}
-              title={activeProjectId ? undefined : t("openProjectFirst")}
-              onClick={() => {
-                if (!activeProjectId) return;
-                placeInProject({ projectId: activeProjectId, assetIds: [...selected] });
-                setSelected(new Set());
-              }}
-              className={cn(
-                buttonVariants({ variant: "outline", size: "sm" }),
-                "gap-1.5",
-                !activeProjectId && "pointer-events-none opacity-40",
-              )}
-            >
-              <Stack className="size-4" />
-              {t("addToProject")}
-            </button>
+            {/* Hidden, not disabled, outside the studio: there is no
+                canvas to add to there, and a permanently grey button
+                explains nothing. */}
+            {studio && (
+              <button
+                type="button"
+                disabled={placing}
+                onClick={() => void addToProject({ assetIds: [...selected] })}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "gap-1.5",
+                  placing && "opacity-60",
+                )}
+              >
+                <Stack className="size-4" />
+                {t("addToProject")}
+              </button>
+            )}
 
             {/* Only in the composer: there is no prompt to attach to from
                 the sidebar. */}

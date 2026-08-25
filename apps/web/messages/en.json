@@ -532,7 +532,6 @@
     "deleteConfirmBody": "This permanently deletes the file and the stored media. Files already added to a project keep working. This can't be undone.",
     "deleteConfirmAction": "Delete permanently",
     "cancel": "Cancel",
-    "fileOptions": "File options",
-    "openProjectFirst": "Open a project first to add files to it"
+    "fileOptions": "File options"
   }
 }

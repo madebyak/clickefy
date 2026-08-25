@@ -934,7 +934,6 @@ export function PromptBar({
               pickDisabledReason={
                 attachCeiling === 0 ? t("modelTakesNoReferences") : null
               }
-              activeProjectId={studio?.activeProjectId ?? null}
               onPick={(picked) => {
                 // Only images can be references today — the same rule
                 // `addAttachment` enforces. Saying so beats a silent no-op.

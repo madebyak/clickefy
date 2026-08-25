@@ -121,6 +121,34 @@ export function useMediaLibrary() {
     onError: () => toast.error(t("deleteFailed")),
   });
 
+  /**
+   * Put files onto a project's canvas.
+   *
+   * Invalidates the PROJECT asset queries rather than the library: nothing
+   * about the library changed — the same file is now also rendered
+   * somewhere else, sharing one R2 object.
+   */
+  const placeInProject = useMutation({
+    mutationFn: (input: { projectId: string; assetIds?: string[]; folderId?: string }) =>
+      getSDK().media.place(input),
+    onSuccess: (res, vars) => {
+      void queryClient.invalidateQueries({ queryKey: ["project-assets", vars.projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      if (res.placed > 0) toast.success(t("placedCount", { count: res.placed }));
+      // Silence is wrong when nothing happened — "already there" is a
+      // result, not a failure, and the user needs to know which it was.
+      else if (res.skipped > 0) toast.info(t("alreadyInProject"));
+    },
+    onError: () => toast.error(t("placeFailed")),
+  });
+
+  const renameAsset = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      getSDK().media.updateAsset(id, { name }),
+    onSuccess: invalidate,
+    onError: () => toast.error(t("renameFailed")),
+  });
+
   const moveAsset = useMutation({
     mutationFn: ({ id, folderId }: { id: string; folderId: string | null }) =>
       getSDK().media.updateAsset(id, { folderId }),
@@ -215,6 +243,9 @@ export function useMediaLibrary() {
     deleteFolder: deleteFolder.mutate,
     deleteAssets: deleteAssets.mutate,
     moveAsset: moveAsset.mutate,
+    renameAsset: renameAsset.mutate,
+    placeInProject: placeInProject.mutate,
+    placing: placeInProject.isPending,
   };
 }
 

@@ -934,19 +934,30 @@ export function PromptBar({
               pickDisabledReason={
                 attachCeiling === 0 ? t("modelTakesNoReferences") : null
               }
-              onPick={(asset) => {
+              activeProjectId={studio?.activeProjectId ?? null}
+              onPick={(picked) => {
                 // Only images can be references today — the same rule
-                // `addAttachment` enforces. Saying so beats a click that
-                // silently does nothing.
-                if (asset.kind !== "image") {
+                // `addAttachment` enforces. Saying so beats a silent no-op.
+                const images = picked.filter((a) => a.kind === "image");
+                if (images.length < picked.length) {
                   toast.error(t("videoNotAReference"));
-                  return;
                 }
-                if (attachments.length >= attachCeiling) {
+                if (images.length === 0) return;
+
+                // Attach up to the model's ceiling and say what was left
+                // behind. Silently dropping the tail of a multi-select is
+                // the kind of thing people only notice after generating.
+                const room = Math.max(0, attachCeiling - attachments.length);
+                if (room === 0) {
                   toast.error(t("maxAttachments", { max: attachCeiling }));
                   return;
                 }
-                studio?.addAttachment({ id: asset.id, type: "image", src: asset.url });
+                images.slice(0, room).forEach((a) =>
+                  studio?.addAttachment({ id: a.id, type: "image", src: a.url }),
+                );
+                if (images.length > room) {
+                  toast.info(t("attachedSome", { added: room, max: attachCeiling }));
+                }
                 setAssetsOpen(false);
               }}
             />

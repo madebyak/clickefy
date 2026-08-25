@@ -258,7 +258,8 @@
     "uploadImage": "Upload image",
     "importFromAssets": "Import from My Assets",
     "modelTakesNoReferences": "This model doesn't take reference images — pick a different model to use one.",
-    "videoNotAReference": "Video can't be used as a reference yet"
+    "videoNotAReference": "Video can't be used as a reference yet",
+    "attachedSome": "Added {added} — this model takes {max} references"
   },
   "account": {
     "availableCredits": "Available credits",
@@ -363,7 +364,8 @@
     "reuseNothingToRestore": "No prompt to re-use for this one",
     "noFoldersHint": "No folders yet. Use + to group your projects.",
     "showAllFolders": "Show all ({count} more)",
-    "filterFavorites": "Favorites"
+    "filterFavorites": "Favorites",
+    "fromLibraryBadge": "My Assets"
   },
   "projects": {
     "heading": "My Projects",
@@ -515,6 +517,22 @@
     "moveFailed": "Couldn't move that file",
     "uploadingBadge": "Uploading",
     "uploadingLabel": "Uploading…",
-    "uploadErrorShort": "Failed"
+    "uploadErrorShort": "Failed",
+    "placedCount": "{count, plural, one {Added # file to the project} other {Added # files to the project}}",
+    "alreadyInProject": "Already in this project",
+    "placeFailed": "Couldn't add to the project",
+    "renameFailed": "Couldn't rename that file",
+    "addAsReference": "Add as reference",
+    "addToProject": "Add to project",
+    "addFolderToProject": "Add whole folder",
+    "moveTo": "Move to…",
+    "moveToRoot": "All files (root)",
+    "renameFile": "Rename",
+    "deleteConfirmTitle": "Delete {count, plural, one {this file} other {# files}}?",
+    "deleteConfirmBody": "This permanently deletes the file and the stored media. Files already added to a project keep working. This can't be undone.",
+    "deleteConfirmAction": "Delete permanently",
+    "cancel": "Cancel",
+    "fileOptions": "File options",
+    "openProjectFirst": "Open a project first to add files to it"
   }
 }

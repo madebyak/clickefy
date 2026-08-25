@@ -328,7 +328,19 @@ export interface MediaClient {
     input: { name?: string; folderId?: string | null },
   ): Promise<{ id: string; name: string; folderId: string | null }>;
   /** Deletes the rows AND the R2 objects behind them. */
-  deleteAssets(assetIds: string[]): Promise<{ deleted: number }>;
+  deleteAssets(assetIds: string[]): Promise<{ deleted: number; objectsKept: number }>;
+  /**
+   * Put library files onto a project's canvas.
+   *
+   * Shares the R2 object rather than copying it, so this costs no extra
+   * storage. Pass `assetIds`, or `folderId` to place everything inside a
+   * folder and its sub-folders.
+   */
+  place(input: {
+    projectId: string;
+    assetIds?: string[];
+    folderId?: string;
+  }): Promise<{ placed: number; skipped: number }>;
 }
 
 export interface LibraryClient {

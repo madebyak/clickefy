@@ -29,6 +29,9 @@ import {
   FolderSimple,
   MagnifyingGlass,
   Trash,
+  Check,
+  Images,
+  Stack,
   UploadSimple,
   VideoCamera,
   X,
@@ -38,6 +41,7 @@ import type { MediaAsset, MediaFolder } from "@clickfy/sdk";
 import { formatBytes } from "@clickfy/types";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   MEDIA_ACCEPT,
   useBreadcrumb,
@@ -59,13 +63,17 @@ export function MyAssetsModal({
   onClose,
   mode = "browse",
   onPick,
+  activeProjectId = null,
   pickDisabledReason,
 }: {
   open: boolean;
   onClose: () => void;
   /** `pick` returns a file to the caller; `browse` just manages them. */
   mode?: "browse" | "pick";
-  onPick?: (asset: MediaAsset) => void;
+  /** Commit the selection as prompt references. */
+  onPick?: (assets: MediaAsset[]) => void;
+  /** The canvas to place files onto. Null when no project is open. */
+  activeProjectId?: string | null;
   /** Set when the current model cannot take references at all. */
   pickDisabledReason?: string | null;
 }) {
@@ -84,6 +92,9 @@ export function MyAssetsModal({
     renameFolder,
     deleteFolder,
     deleteAssets,
+    moveAsset,
+    renameAsset,
+    placeInProject,
   } = useMediaLibrary();
 
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -91,6 +102,8 @@ export function MyAssetsModal({
   const [tile, setTile] = useState<TileSize>(DEFAULT_TILE);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renamingAssetId, setRenamingAssetId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const view = useMediaBrowse(folders, assets, currentFolderId, search);
   const trail = useBreadcrumb(folders, currentFolderId);
@@ -248,6 +261,23 @@ export function MyAssetsModal({
             <span className="hidden sm:inline">{t("newFolder")}</span>
           </button>
 
+          {/* Everything in the open folder, including its sub-folders, in
+              one gesture — the case where selecting forty tiles by hand is
+              the wrong interaction. Only inside a folder: at the root it
+              would mean "the entire library", which nobody means. */}
+          {currentFolderId && activeProjectId && !search && (
+            <button
+              type="button"
+              onClick={() =>
+                placeInProject({ projectId: activeProjectId, folderId: currentFolderId })
+              }
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+            >
+              <Stack className="size-4" />
+              <span className="hidden sm:inline">{t("addFolderToProject")}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -360,10 +390,17 @@ export function MyAssetsModal({
                 <AssetTile
                   key={a.id}
                   asset={a}
-                  mode={mode}
                   selected={selected.has(a.id)}
+                  renaming={renamingAssetId === a.id}
+                  folders={folders}
                   onToggleSelect={() => toggleSelected(a.id)}
-                  onPick={() => onPick?.(a)}
+                  onStartRename={() => setRenamingAssetId(a.id)}
+                  onRename={(name) => {
+                    setRenamingAssetId(null);
+                    const trimmed = name.trim();
+                    if (trimmed && trimmed !== a.name) renameAsset({ id: a.id, name: trimmed });
+                  }}
+                  onMove={(folderId) => moveAsset({ id: a.id, folderId })}
                 />
               ))}
 
@@ -371,13 +408,18 @@ export function MyAssetsModal({
           )}
         </div>
 
-        {/* ── selection bar ──────────────────────────────────────── */}
+        {/* ── selection bar ──────────────────────────────────────
+            Selection drives BOTH modes rather than pick-mode clicking
+            through immediately. One mental model, and the only shape in
+            which multi-select works at all: a click that fires an action
+            can never mean "and also this one". */}
         {selected.size > 0 && (
-          <footer className="flex items-center gap-3 border-t border-border px-5 py-3">
+          <footer className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3">
             <span className="text-sm text-muted-foreground">
               {t("selectedCount", { count: selected.size })}
             </span>
             <div className="flex-1" />
+
             <button
               type="button"
               onClick={() => setSelected(new Set())}
@@ -385,19 +427,72 @@ export function MyAssetsModal({
             >
               {t("clearSelection")}
             </button>
+
             <button
               type="button"
-              onClick={() => {
-                deleteAssets([...selected]);
-                setSelected(new Set());
-              }}
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5 text-status-red")}
+              onClick={() => setConfirmDelete(true)}
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "sm" }),
+                "gap-1.5 text-status-red",
+              )}
             >
               <Trash className="size-4" />
               {t("delete")}
             </button>
+
+            {/* Add to the canvas. Available in both modes — organising and
+                placing are the same gesture from the user's side. */}
+            <button
+              type="button"
+              disabled={!activeProjectId}
+              title={activeProjectId ? undefined : t("openProjectFirst")}
+              onClick={() => {
+                if (!activeProjectId) return;
+                placeInProject({ projectId: activeProjectId, assetIds: [...selected] });
+                setSelected(new Set());
+              }}
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "gap-1.5",
+                !activeProjectId && "pointer-events-none opacity-40",
+              )}
+            >
+              <Stack className="size-4" />
+              {t("addToProject")}
+            </button>
+
+            {/* Only in the composer: there is no prompt to attach to from
+                the sidebar. */}
+            {mode === "pick" && (
+              <button
+                type="button"
+                onClick={() => {
+                  const picked = assets.filter((a) => selected.has(a.id));
+                  onPick?.(picked);
+                  setSelected(new Set());
+                }}
+                className={cn(buttonVariants({ variant: "primary", size: "sm" }), "gap-1.5")}
+              >
+                <Images className="size-4" weight="bold" />
+                {t("addAsReference")}
+              </button>
+            )}
           </footer>
         )}
+
+        <ConfirmDialog
+          open={confirmDelete}
+          title={t("deleteConfirmTitle", { count: selected.size })}
+          body={t("deleteConfirmBody")}
+          confirmLabel={t("deleteConfirmAction")}
+          cancelLabel={t("cancel")}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            deleteAssets([...selected]);
+            setSelected(new Set());
+            setConfirmDelete(false);
+          }}
+        />
       </div>
     </dialog>
   );
@@ -635,53 +730,192 @@ function FolderTile({
 
 function AssetTile({
   asset,
-  mode,
   selected,
+  renaming,
+  folders,
   onToggleSelect,
-  onPick,
+  onStartRename,
+  onRename,
+  onMove,
 }: {
   asset: MediaAsset;
-  mode: "browse" | "pick";
   selected: boolean;
+  renaming: boolean;
+  folders: MediaFolder[];
   onToggleSelect: () => void;
-  onPick: () => void;
+  onStartRename: () => void;
+  onRename: (name: string) => void;
+  onMove: (folderId: string | null) => void;
 }) {
   const t = useTranslations("media");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [movingOpen, setMovingOpen] = useState(false);
+  const [draft, setDraft] = useState(asset.name);
+
+  // Stable, so React does not detach and re-attach the ref every render —
+  // which would re-run select() after each keystroke and leave you typing
+  // over your own text. Learned the hard way on the folder rename.
+  const focusInput = useCallback((el: HTMLInputElement | null) => {
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  }, []);
+
   return (
-    <button
-      type="button"
-      onClick={mode === "pick" ? onPick : onToggleSelect}
+    <div
       className={cn(
-        "group relative block overflow-hidden rounded-xl bg-surface-2 text-start outline-none ring-primary transition-shadow focus-visible:ring-2",
-        selected && "ring-2 ring-primary",
+        "group relative overflow-hidden rounded-xl bg-surface-2 ring-primary transition-shadow",
+        selected && "ring-2",
       )}
     >
-      <div className="relative aspect-square overflow-hidden">
-        {asset.kind === "video" ? (
-          <>
-            <video src={asset.url} muted playsInline className="size-full object-cover" />
-            <span className="absolute start-2 top-2 grid size-6 place-items-center rounded-md bg-black/60 text-white backdrop-blur">
-              <VideoCamera className="size-3.5" weight="fill" />
-            </span>
-          </>
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={asset.url} alt={asset.name} loading="lazy" className="size-full object-cover" />
-        )}
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        aria-pressed={selected}
+        className="block w-full text-start outline-none"
+      >
+        <div className="relative aspect-square overflow-hidden">
+          {asset.kind === "video" ? (
+            <>
+              <video
+                src={asset.url}
+                muted
+                playsInline
+                preload="metadata"
+                className="size-full object-cover"
+              />
+              <span className="absolute start-2 top-2 grid size-6 place-items-center rounded-md bg-black/60 text-white backdrop-blur">
+                <VideoCamera className="size-3.5" weight="fill" />
+              </span>
+            </>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={asset.url} alt={asset.name} loading="lazy" className="size-full object-cover" />
+          )}
 
-        {mode === "pick" && (
-          <span className="absolute inset-0 grid place-items-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-            <span className={cn(buttonVariants({ variant: "primary", size: "sm" }))}>
-              {t("use")}
-            </span>
+          {/* A tick that is always visible once selected, and appears on
+              hover otherwise — so it is obvious the tile is selectable
+              before you click, not only after. */}
+          <span
+            className={cn(
+              "absolute end-2 top-2 grid size-6 place-items-center rounded-full border transition-all",
+              selected
+                ? "border-primary bg-primary text-black"
+                : "border-white/60 bg-black/40 text-transparent opacity-0 group-hover:opacity-100",
+            )}
+          >
+            <Check className="size-3.5" weight="bold" />
           </span>
-        )}
-      </div>
+        </div>
+      </button>
 
-      <div className="px-3 py-2">
-        <p className="truncate text-sm">{asset.name}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{formatBytes(asset.sizeBytes)}</p>
+      <div className="flex items-center gap-1 px-3 py-2">
+        <div className="min-w-0 flex-1">
+          {renaming ? (
+            <input
+              ref={focusInput}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => onRename(draft)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onRename(draft);
+                if (e.key === "Escape") {
+                  setDraft(asset.name);
+                  onRename(asset.name);
+                }
+                e.stopPropagation();
+              }}
+              className="w-full rounded bg-surface-1 px-1 py-0.5 text-sm outline-none ring-1 ring-primary"
+            />
+          ) : (
+            <p className="truncate text-sm">{asset.name}</p>
+          )}
+          <p className="mt-0.5 text-xs text-muted-foreground">{formatBytes(asset.sizeBytes)}</p>
+        </div>
+
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label={t("fileOptions")}
+            className={cn(
+              "grid size-7 place-items-center rounded-md text-muted-foreground transition-opacity hover:bg-surface-3 hover:text-foreground",
+              menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+            )}
+          >
+            <DotsThree className="size-4" weight="bold" />
+          </button>
+
+          {menuOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setMovingOpen(false);
+                }}
+                aria-hidden
+              />
+              <div className="absolute end-0 bottom-9 z-50 max-h-64 w-48 overflow-y-auto rounded-lg bg-surface-3 py-1 shadow-lg ring-1 ring-white/10">
+                {movingOpen ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onMove(null);
+                        setMenuOpen(false);
+                        setMovingOpen(false);
+                      }}
+                      className="block w-full truncate px-3 py-1.5 text-start text-sm transition-colors hover:bg-surface-2"
+                    >
+                      {t("moveToRoot")}
+                    </button>
+                    {folders.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => {
+                          onMove(f.id);
+                          setMenuOpen(false);
+                          setMovingOpen(false);
+                        }}
+                        className="block w-full truncate px-3 py-1.5 text-start text-sm transition-colors hover:bg-surface-2"
+                        // Indented by depth so the flat list still reads
+                        // as the tree it came from.
+                        style={{ paddingInlineStart: `${12 + f.depth * 12}px` }}
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setDraft(asset.name);
+                        onStartRename();
+                      }}
+                      className="block w-full px-3 py-1.5 text-start text-sm transition-colors hover:bg-surface-2"
+                    >
+                      {t("renameFile")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMovingOpen(true)}
+                      className="block w-full px-3 py-1.5 text-start text-sm transition-colors hover:bg-surface-2"
+                    >
+                      {t("moveTo")}
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </button>
+    </div>
   );
 }

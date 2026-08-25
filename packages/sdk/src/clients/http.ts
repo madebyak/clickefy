@@ -931,7 +931,14 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
       async deleteAssets(assetIds) {
         // POST rather than DELETE: a bulk delete carries a body, and
         // DELETE-with-body is inconsistently supported across proxies.
-        return mutateJson<{ deleted: number }>('POST', '/v1/media/assets/delete', { assetIds });
+        return mutateJson<{ deleted: number; objectsKept: number }>(
+          'POST',
+          '/v1/media/assets/delete',
+          { assetIds },
+        );
+      },
+      async place(input) {
+        return mutateJson<{ placed: number; skipped: number }>('POST', '/v1/media/place', input);
       },
     },
     projects: {

@@ -8,6 +8,7 @@ import {
   DotsThree,
   Heart,
   X,
+  Images,
   Play,
   Check,
   ImageSquare,
@@ -218,6 +219,18 @@ export function Masonry({
                 )}
               </span>
             )}
+
+              {/* Placed from My Assets rather than generated here. Its own
+                  corner, and it does NOT fade on hover: this is the fact
+                  that explains why the tile has no prompt and no Re-use, so
+                  it must be readable exactly when someone goes looking for
+                  them. */}
+              {a.fromLibrary && (
+                <span className="pointer-events-none absolute end-2 bottom-2 flex items-center gap-1 rounded-md bg-primary/85 px-1.5 py-1 text-[10px] font-semibold text-black backdrop-blur">
+                  <Images weight="fill" className="size-3 shrink-0" />
+                  {t("fromLibraryBadge")}
+                </span>
+              )}
 
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
             {/* The heart sits outside the hover group on purpose: once an

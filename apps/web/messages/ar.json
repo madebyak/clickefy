@@ -258,7 +258,8 @@
     "uploadImage": "رفع صورة",
     "importFromAssets": "استيراد من أصولي",
     "modelTakesNoReferences": "هذا النموذج لا يقبل صوراً مرجعية — اختر نموذجاً آخر لاستخدام واحدة.",
-    "videoNotAReference": "لا يمكن استخدام الفيديو كمرجع بعد"
+    "videoNotAReference": "لا يمكن استخدام الفيديو كمرجع بعد",
+    "attachedSome": "أُضيفت {added} — هذا النموذج يقبل {max} مراجع"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",
@@ -363,7 +364,8 @@
     "reuseNothingToRestore": "لا يوجد نص لإعادة استخدامه هنا",
     "noFoldersHint": "لا توجد مجلدات بعد. استخدم + لتجميع مشاريعك.",
     "showAllFolders": "عرض الكل (+{count})",
-    "filterFavorites": "المفضلة"
+    "filterFavorites": "المفضلة",
+    "fromLibraryBadge": "أصولي"
   },
   "projects": {
     "heading": "مشاريعي",
@@ -515,6 +517,22 @@
     "moveFailed": "تعذّر نقل الملف",
     "uploadingBadge": "جارٍ الرفع",
     "uploadingLabel": "جارٍ الرفع…",
-    "uploadErrorShort": "فشل"
+    "uploadErrorShort": "فشل",
+    "placedCount": "{count, plural, one {أُضيف ملف واحد إلى المشروع} other {أُضيفت # ملفات إلى المشروع}}",
+    "alreadyInProject": "موجود في هذا المشروع بالفعل",
+    "placeFailed": "تعذّرت الإضافة إلى المشروع",
+    "renameFailed": "تعذّرت إعادة تسمية الملف",
+    "addAsReference": "إضافة كمرجع",
+    "addToProject": "إضافة إلى المشروع",
+    "addFolderToProject": "إضافة المجلد كاملاً",
+    "moveTo": "نقل إلى…",
+    "moveToRoot": "كل الملفات (الجذر)",
+    "renameFile": "إعادة تسمية",
+    "deleteConfirmTitle": "حذف {count, plural, one {هذا الملف} other {# ملفات}}؟",
+    "deleteConfirmBody": "سيُحذف الملف والوسائط المخزّنة نهائياً. الملفات المضافة إلى مشروع ستظل تعمل. لا يمكن التراجع.",
+    "deleteConfirmAction": "حذف نهائي",
+    "cancel": "إلغاء",
+    "fileOptions": "خيارات الملف",
+    "openProjectFirst": "افتح مشروعاً أولاً لإضافة الملفات إليه"
   }
 }

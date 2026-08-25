@@ -254,7 +254,11 @@
     "optional": "Optional",
     "addImage": "Add image",
     "referencesLabel": "References",
-    "referencesCount": "{count} of {max}"
+    "referencesCount": "{count} of {max}",
+    "uploadImage": "Upload image",
+    "importFromAssets": "Import from My Assets",
+    "modelTakesNoReferences": "This model doesn't take reference images — pick a different model to use one.",
+    "videoNotAReference": "Video can't be used as a reference yet"
   },
   "account": {
     "availableCredits": "Available credits",
@@ -475,5 +479,39 @@
     "loadFailed": "Could not open that image.",
     "notAnImage": "That file is not an image.",
     "saveFailed": "Could not save the drawing."
+  },
+  "media": {
+    "title": "My Assets",
+    "pickTitle": "Import from My Assets",
+    "usageLine": "{used} of {quota} used",
+    "close": "Close",
+    "searchPlaceholder": "Search folders and files…",
+    "tileSize": "Tile size",
+    "newFolder": "New folder",
+    "newFolderName": "Untitled folder",
+    "maxDepthReached": "Folders can only go three levels deep",
+    "upload": "Upload",
+    "allFiles": "All files",
+    "itemCount": "{count, plural, =0 {Empty} one {# item} other {# items}}",
+    "selectedCount": "{count, plural, one {# selected} other {# selected}}",
+    "clearSelection": "Clear",
+    "delete": "Delete",
+    "rename": "Rename",
+    "deleteFolder": "Delete folder",
+    "folderOptions": "Folder options",
+    "use": "Use",
+    "emptyTitle": "Nothing here yet",
+    "emptyBody": "Upload images and video you reuse often — logos, brand shots, reference footage — and pull them into any project.",
+    "noResults": "No matches",
+    "noResultsBody": "Nothing here matches that. Try a different word, or clear the search to browse.",
+    "unsupportedType": "{name} isn't a supported file type",
+    "fileTooLarge": "{name} is over the {max} limit",
+    "quotaExceeded": "Not enough storage left — {remaining} free",
+    "uploadFailed": "Couldn't upload {name}",
+    "folderCreateFailed": "Couldn't create the folder",
+    "folderRenameFailed": "Couldn't rename the folder",
+    "folderDeleteFailed": "Couldn't delete the folder",
+    "deleteFailed": "Couldn't delete — try again",
+    "moveFailed": "Couldn't move that file"
   }
 }

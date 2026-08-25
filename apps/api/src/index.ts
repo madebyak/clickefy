@@ -12,7 +12,7 @@ import { catalog } from './routes/catalog';
 import { categoriesRoute } from './routes/categories';
 import { jobsRoute } from './routes/jobs';
 import { assetsRoute, foldersRoute, projectsRoute } from './routes/projects';
-import { libraryRoute } from './routes/library';
+import { mediaLibraryRoute } from './routes/media-library';
 import { modelsRoute } from './routes/models';
 import { notificationsRoute } from './routes/notifications';
 import { templatesRoute } from './routes/templates';
@@ -103,7 +103,7 @@ app.route('/v1/folders', foldersRoute);
 app.route('/v1/assets', assetsRoute);
 app.route('/v1/models', modelsRoute);
 app.route('/v1/notifications', notificationsRoute);
-app.route('/v1/library', libraryRoute);
+app.route('/v1/media', mediaLibraryRoute);
 app.route('/v1/reports', reportsRoute);
 app.route('/v1/users', usersRoute);
 // `/v1/uploads/user` MUST be registered before the public GET route

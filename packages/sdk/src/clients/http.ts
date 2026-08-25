@@ -38,6 +38,10 @@ import type {
   AssetDetail,
   FavoriteAssetsResponse,
   ProjectAssetsResponse,
+  MediaAsset,
+  MediaFolder,
+  MediaLibraryResponse,
+  MediaUsage,
   ProjectsListResponse,
   SDKClient,
   StoreCatalog,
@@ -889,6 +893,47 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
       },
     },
 
+    media: {
+      // "My Assets" — the user's uploaded source media. Distinct from
+      // `library`, which is the mobile Library tab of past GENERATIONS.
+      // Everything here is server-scoped to the caller.
+      async list() {
+        const json = await get<ApiEnvelope<MediaLibraryResponse>>('/v1/media', { auth: true });
+        return json.data;
+      },
+      async usage() {
+        const json = await get<ApiEnvelope<MediaUsage>>('/v1/media/usage', { auth: true });
+        return json.data;
+      },
+      async createFolder(input) {
+        return mutateJson<MediaFolder>('POST', '/v1/media/folders', input);
+      },
+      async renameFolder(folderId, name) {
+        return mutateJson<{ id: string; name: string }>(
+          'PATCH',
+          `/v1/media/folders/${folderId}`,
+          { name },
+        );
+      },
+      async deleteFolder(folderId) {
+        return mutateJson<{ id: string }>('DELETE', `/v1/media/folders/${folderId}`);
+      },
+      async register(input) {
+        return mutateJson<MediaAsset>('POST', '/v1/media/register', input);
+      },
+      async updateAsset(assetId, input) {
+        return mutateJson<{ id: string; name: string; folderId: string | null }>(
+          'PATCH',
+          `/v1/media/assets/${assetId}`,
+          input,
+        );
+      },
+      async deleteAssets(assetIds) {
+        // POST rather than DELETE: a bulk delete carries a body, and
+        // DELETE-with-body is inconsistently supported across proxies.
+        return mutateJson<{ deleted: number }>('POST', '/v1/media/assets/delete', { assetIds });
+      },
+    },
     projects: {
       // The web studio's persistent projects layer. Thin wrappers over
       // /v1/projects + /v1/folders + /v1/assets; all server-scoped to

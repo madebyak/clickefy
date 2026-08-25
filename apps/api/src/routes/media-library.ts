@@ -1,5 +1,10 @@
 /**
- * `/v1/library` — "My Assets", a durable per-user media library.
+ * `/v1/media` — "My Assets", a durable per-user media library.
+ *
+ * NOT to be confused with the SDK's `library` client, which is the MOBILE
+ * app's Library tab — past generations, backed by `/v1/jobs`. Two things
+ * called "library" in one codebase is a trap; this one is the media the
+ * user uploaded, that one is the work they generated.
  *
  * WHAT IT IS NOT
  *   Not an upload endpoint. Bytes still go through `POST /v1/uploads/user`
@@ -33,7 +38,7 @@ import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 import type { AppEnv } from '../types';
 
-export const libraryRoute = new Hono<AppEnv>();
+export const mediaLibraryRoute = new Hono<AppEnv>();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (s: string) => UUID_RE.test(s);
@@ -71,14 +76,14 @@ function publicUrl(origin: string, key: string): string {
 // ─── Tree + files ───────────────────────────────────────────────────
 
 /**
- * `GET /v1/library` — the whole tree and every file.
+ * `GET /v1/media` — the whole tree and every file.
  *
  * Returned WHOLE rather than paginated per folder. A media library is
  * browsed by moving between folders constantly, and a request per hop
  * makes that feel like a website instead of a file manager. The payload is
  * small: rows carry keys and dimensions, never bytes.
  */
-libraryRoute.get('/', ...readChain, async (c) => {
+mediaLibraryRoute.get('/', ...readChain, async (c) => {
   const user = c.var.user!;
   const origin = new URL(c.req.url).origin;
 
@@ -126,8 +131,8 @@ libraryRoute.get('/', ...readChain, async (c) => {
   });
 });
 
-/** `GET /v1/library/usage` — cheap enough to call before every upload. */
-libraryRoute.get('/usage', ...readChain, async (c) => {
+/** `GET /v1/media/usage` — cheap enough to call before every upload. */
+mediaLibraryRoute.get('/usage', ...readChain, async (c) => {
   const user = c.var.user!;
   return c.json({
     data: {
@@ -147,7 +152,7 @@ const createFolderSchema = z
   })
   .strict();
 
-libraryRoute.post('/folders', ...writeChain, zValidator('json', createFolderSchema), async (c) => {
+mediaLibraryRoute.post('/folders', ...writeChain, zValidator('json', createFolderSchema), async (c) => {
   const user = c.var.user!;
   const { name, parentId } = c.req.valid('json');
 
@@ -206,7 +211,7 @@ const updateFolderSchema = z
  * descendant would land below the limit. Renaming covers the need people
  * actually have; moving can come with the sub-tree rewrite it requires.
  */
-libraryRoute.patch('/folders/:id', ...writeChain, zValidator('json', updateFolderSchema), async (c) => {
+mediaLibraryRoute.patch('/folders/:id', ...writeChain, zValidator('json', updateFolderSchema), async (c) => {
   const user = c.var.user!;
   const id = c.req.param('id');
   if (!isUuid(id)) return c.json({ error: { code: 'not_found', message: 'Not found.' } }, 404);
@@ -229,7 +234,7 @@ libraryRoute.patch('/folders/:id', ...writeChain, zValidator('json', updateFolde
  * Deleting a folder is a filing decision, not a decision to destroy the
  * media — and a user who wanted the files gone can select and delete them.
  */
-libraryRoute.delete('/folders/:id', ...writeChain, async (c) => {
+mediaLibraryRoute.delete('/folders/:id', ...writeChain, async (c) => {
   const user = c.var.user!;
   const id = c.req.param('id');
   if (!isUuid(id)) return c.json({ error: { code: 'not_found', message: 'Not found.' } }, 404);
@@ -260,13 +265,13 @@ const registerSchema = z
   .strict();
 
 /**
- * `POST /v1/library/register` — file an already-uploaded object.
+ * `POST /v1/media/register` — file an already-uploaded object.
  *
  * The key must live under this user's own upload prefix. Without that check
  * a caller could register someone else's object and both see it and count
  * it against their own quota.
  */
-libraryRoute.post('/register', ...writeChain, zValidator('json', registerSchema), async (c) => {
+mediaLibraryRoute.post('/register', ...writeChain, zValidator('json', registerSchema), async (c) => {
   const user = c.var.user!;
   const body = c.req.valid('json');
   const origin = new URL(c.req.url).origin;
@@ -361,7 +366,7 @@ const updateAssetSchema = z
     message: 'Nothing to update.',
   });
 
-libraryRoute.patch('/assets/:id', ...writeChain, zValidator('json', updateAssetSchema), async (c) => {
+mediaLibraryRoute.patch('/assets/:id', ...writeChain, zValidator('json', updateAssetSchema), async (c) => {
   const user = c.var.user!;
   const id = c.req.param('id');
   if (!isUuid(id)) return c.json({ error: { code: 'not_found', message: 'Not found.' } }, 404);
@@ -406,7 +411,7 @@ const deleteAssetsSchema = z
  * key recorded in its job input. Deleting here breaks that thumbnail — the
  * same as deleting any upload does today.
  */
-libraryRoute.post('/assets/delete', ...writeChain, zValidator('json', deleteAssetsSchema), async (c) => {
+mediaLibraryRoute.post('/assets/delete', ...writeChain, zValidator('json', deleteAssetsSchema), async (c) => {
   const user = c.var.user!;
   const { assetIds } = c.req.valid('json');
 
@@ -436,12 +441,12 @@ libraryRoute.post('/assets/delete', ...writeChain, zValidator('json', deleteAsse
 // ─── Root listing helper ────────────────────────────────────────────
 
 /**
- * `GET /v1/library/root` — files with no folder.
+ * `GET /v1/media/root` — files with no folder.
  *
  * Exists so a client that only wants the unfiled tray does not have to
  * fetch the whole library to find it.
  */
-libraryRoute.get('/root', ...readChain, async (c) => {
+mediaLibraryRoute.get('/root', ...readChain, async (c) => {
   const user = c.var.user!;
   const origin = new URL(c.req.url).origin;
   const rows = await c.var.db

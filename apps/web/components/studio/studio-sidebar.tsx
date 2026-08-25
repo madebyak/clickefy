@@ -1,16 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
-import { Plus, Heart, CaretUpDown } from "@phosphor-icons/react";
+import { Plus, Heart, CaretUpDown, Images } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { ProjectRow } from "@/components/studio/project-row";
 import { FolderTree } from "@/components/studio/folder-tree";
+import { MyAssetsModal } from "@/components/media/my-assets-modal";
 import { useSession } from "@/lib/use-session";
 import { cn } from "@/lib/utils";
 
 export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useTranslations("studio");
+  const tm = useTranslations("media");
+  const [assetsOpen, setAssetsOpen] = useState(false);
   const ta = useTranslations("account");
   const router = useRouter();
   const pathname = usePathname();
@@ -145,13 +149,28 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
           ))}
         </div>
 
+        {/* My Assets sits at the FOOT of the sidebar, above the profile:
+            it is a place you visit occasionally to organise, not a
+            destination you switch between while working. */}
+        <button
+          type="button"
+          onClick={() => {
+            setAssetsOpen(true);
+            onClose();
+          }}
+          className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+        >
+          <Images className="size-[18px]" />
+          {tm("title")}
+        </button>
+
         <button
           type="button"
           onClick={() => {
             router.push("/settings");
             onClose();
           }}
-          className="mt-2 flex items-center gap-3 rounded-lg p-2 text-start transition-colors hover:bg-surface-2"
+          className="mt-1 flex items-center gap-3 rounded-lg p-2 text-start transition-colors hover:bg-surface-2"
         >
           {user?.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -174,6 +193,8 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
           <CaretUpDown className="size-4 shrink-0 text-muted-foreground" />
         </button>
       </aside>
+
+      <MyAssetsModal open={assetsOpen} onClose={() => setAssetsOpen(false)} />
     </>
   );
 }

@@ -29,6 +29,7 @@ import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
 import { cn } from "@/lib/utils";
 import { useModels } from "@/lib/use-models";
 import { useStudioMaybe, type PromptAttachment } from "@/components/studio/studio-context";
+import { MyAssetsModal } from "@/components/media/my-assets-modal";
 import { DrawModal } from "@/components/generate/draw-modal";
 import { modelLogo } from "@/lib/model-logos";
 
@@ -605,6 +606,8 @@ export function PromptBar({
   }, [pendingSetup, setupStage]);
 
   const [focused, setFocused] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [assetsOpen, setAssetsOpen] = useState(false);
   const basePlaceholder = t(isVideo ? "placeholderVideo" : "placeholderImage");
   const examples = useMemo(
     () => t.raw(isVideo ? "examplesVideo" : "examplesImage") as string[],
@@ -868,21 +871,85 @@ export function PromptBar({
                 e.target.value = "";
               }}
             />
-            <button
-              type="button"
-              aria-label={t("addReference")}
-              // Frames mode has its own labelled slots; a second, unlabelled
-              // entry point there would just reintroduce the ambiguity.
-              hidden={isFrames}
-              disabled={!model || attachments.length >= attachCeiling}
-              onClick={() => fileInput.current?.click()}
-              className={cn(
-                "grid shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-30",
-                compact ? "size-8" : "size-9",
+            {/* Two ways to add a reference, so + is a menu rather than a
+                single action. Uploading and re-using something already
+                uploaded are equally common, and burying the second behind
+                its own control makes the library something people forget
+                they have. */}
+            <div className="relative shrink-0" hidden={isFrames}>
+              <button
+                type="button"
+                aria-label={t("addReference")}
+                aria-expanded={attachMenuOpen}
+                disabled={!model || attachments.length >= attachCeiling}
+                onClick={() => setAttachMenuOpen((v) => !v)}
+                className={cn(
+                  "grid shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-30",
+                  compact ? "size-8" : "size-9",
+                )}
+              >
+                <Plus className={compact ? "size-4" : "size-5"} />
+              </button>
+
+              {attachMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setAttachMenuOpen(false)}
+                    aria-hidden
+                  />
+                  <div className="absolute bottom-full start-0 z-50 mb-2 w-56 overflow-hidden rounded-xl bg-surface-3 py-1 shadow-lg ring-1 ring-white/10">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        fileInput.current?.click();
+                      }}
+                      className="block w-full px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2"
+                    >
+                      {t("uploadImage")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        setAssetsOpen(true);
+                      }}
+                      className="block w-full px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2"
+                    >
+                      {t("importFromAssets")}
+                    </button>
+                  </div>
+                </>
               )}
-            >
-              <Plus className={compact ? "size-4" : "size-5"} />
-            </button>
+            </div>
+
+            {/* The library, in pick mode. Mounted here so it sits in the
+                same subtree as the composer it feeds; <dialog> renders in
+                the browser's top layer regardless of where it lives. */}
+            <MyAssetsModal
+              open={assetsOpen}
+              onClose={() => setAssetsOpen(false)}
+              mode="pick"
+              pickDisabledReason={
+                attachCeiling === 0 ? t("modelTakesNoReferences") : null
+              }
+              onPick={(asset) => {
+                // Only images can be references today — the same rule
+                // `addAttachment` enforces. Saying so beats a click that
+                // silently does nothing.
+                if (asset.kind !== "image") {
+                  toast.error(t("videoNotAReference"));
+                  return;
+                }
+                if (attachments.length >= attachCeiling) {
+                  toast.error(t("maxAttachments", { max: attachCeiling }));
+                  return;
+                }
+                studio?.addAttachment({ id: asset.id, type: "image", src: asset.url });
+                setAssetsOpen(false);
+              }}
+            />
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}

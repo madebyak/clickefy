@@ -254,7 +254,11 @@
     "optional": "اختياري",
     "addImage": "أضف صورة",
     "referencesLabel": "المراجع",
-    "referencesCount": "{count} من {max}"
+    "referencesCount": "{count} من {max}",
+    "uploadImage": "رفع صورة",
+    "importFromAssets": "استيراد من أصولي",
+    "modelTakesNoReferences": "هذا النموذج لا يقبل صوراً مرجعية — اختر نموذجاً آخر لاستخدام واحدة.",
+    "videoNotAReference": "لا يمكن استخدام الفيديو كمرجع بعد"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",
@@ -475,5 +479,39 @@
     "loadFailed": "تعذّر فتح هذه الصورة.",
     "notAnImage": "هذا الملف ليس صورة.",
     "saveFailed": "تعذّر حفظ الرسم."
+  },
+  "media": {
+    "title": "أصولي",
+    "pickTitle": "استيراد من أصولي",
+    "usageLine": "{used} من {quota} مستخدمة",
+    "close": "إغلاق",
+    "searchPlaceholder": "ابحث في المجلدات والملفات…",
+    "tileSize": "حجم المربعات",
+    "newFolder": "مجلد جديد",
+    "newFolderName": "مجلد بلا عنوان",
+    "maxDepthReached": "لا يمكن تجاوز ثلاثة مستويات من المجلدات",
+    "upload": "رفع",
+    "allFiles": "كل الملفات",
+    "itemCount": "{count, plural, =0 {فارغ} one {عنصر واحد} other {# عناصر}}",
+    "selectedCount": "{count, plural, one {عنصر محدد} other {# محددة}}",
+    "clearSelection": "إلغاء التحديد",
+    "delete": "حذف",
+    "rename": "إعادة تسمية",
+    "deleteFolder": "حذف المجلد",
+    "folderOptions": "خيارات المجلد",
+    "use": "استخدام",
+    "emptyTitle": "لا يوجد شيء هنا بعد",
+    "emptyBody": "ارفع الصور والفيديوهات التي تستخدمها كثيراً — الشعارات، صور العلامة، اللقطات المرجعية — واستدعها في أي مشروع.",
+    "noResults": "لا توجد نتائج",
+    "noResultsBody": "لا شيء هنا يطابق ذلك. جرّب كلمة أخرى أو امسح البحث للتصفح.",
+    "unsupportedType": "{name} ليس نوع ملف مدعوم",
+    "fileTooLarge": "{name} يتجاوز الحد {max}",
+    "quotaExceeded": "لا توجد مساحة كافية — المتبقي {remaining}",
+    "uploadFailed": "تعذّر رفع {name}",
+    "folderCreateFailed": "تعذّر إنشاء المجلد",
+    "folderRenameFailed": "تعذّرت إعادة التسمية",
+    "folderDeleteFailed": "تعذّر حذف المجلد",
+    "deleteFailed": "تعذّر الحذف — حاول مرة أخرى",
+    "moveFailed": "تعذّر نقل الملف"
   }
 }

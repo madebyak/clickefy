@@ -257,6 +257,80 @@ export interface UserClient {
   deleteAccount(): Promise<void>;
 }
 
+// ─── My Assets (media library) ──────────────────────────────────────
+
+/** A folder in the media library. Depth 0-2; three levels, no deeper. */
+export interface MediaFolder {
+  id: string;
+  parentId: string | null;
+  name: string;
+  depth: number;
+  createdAt: string;
+}
+
+/** An uploaded file in the media library. */
+export interface MediaAsset {
+  id: string;
+  folderId: string | null;
+  name: string;
+  kind: 'image' | 'video';
+  /** Ready to render, or to hand back as a prompt reference. */
+  url: string;
+  /** The R2 object key — what an attachment actually needs. */
+  r2Key: string;
+  mimeType: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+  createdAt: string;
+}
+
+export interface MediaUsage {
+  usedBytes: number;
+  quotaBytes: number;
+}
+
+export interface MediaLibraryResponse {
+  folders: MediaFolder[];
+  assets: MediaAsset[];
+  usage: MediaUsage;
+}
+
+/**
+ * "My Assets" — the user's own uploaded media.
+ *
+ * DISTINCT from `LibraryClient` above, which is the mobile Library tab of
+ * past GENERATIONS. This is the source material they brought with them.
+ */
+export interface MediaClient {
+  /** The whole tree, every file, and current usage, in one call. */
+  list(): Promise<MediaLibraryResponse>;
+  usage(): Promise<MediaUsage>;
+  createFolder(input: { name: string; parentId?: string | null }): Promise<MediaFolder>;
+  renameFolder(folderId: string, name: string): Promise<{ id: string; name: string }>;
+  /** Sub-folders cascade; files inside reappear at the library root. */
+  deleteFolder(folderId: string): Promise<{ id: string }>;
+  /** File an already-uploaded object into the library. */
+  register(input: {
+    r2Key: string;
+    name: string;
+    kind: 'image' | 'video';
+    mimeType: string;
+    sizeBytes: number;
+    folderId?: string | null;
+    width?: number | null;
+    height?: number | null;
+    durationSeconds?: number | null;
+  }): Promise<MediaAsset>;
+  updateAsset(
+    assetId: string,
+    input: { name?: string; folderId?: string | null },
+  ): Promise<{ id: string; name: string; folderId: string | null }>;
+  /** Deletes the rows AND the R2 objects behind them. */
+  deleteAssets(assetIds: string[]): Promise<{ deleted: number }>;
+}
+
 export interface LibraryClient {
   /**
    * Paginated list of the user's past generations (newest first).
@@ -539,6 +613,8 @@ export interface SDKClient {
   generation: GenerationClient;
   projects: ProjectsClient;
   library: LibraryClient;
+  /** "My Assets" — uploaded source media. See MediaClient. */
+  media: MediaClient;
   models: ModelsClient;
   notifications: NotificationsClient;
   store: StoreClient;

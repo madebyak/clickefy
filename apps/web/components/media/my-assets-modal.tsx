@@ -663,13 +663,19 @@ function FolderTile({
   const preview = inside.slice(0, 4);
 
   return (
-    <div className="group relative">
+    <div className="group relative rounded-xl bg-surface-2 transition-colors hover:bg-surface-3">
+      {/* The button covers the MOSAIC ONLY. It used to wrap the name row
+          as well, which put the rename <input> inside a <button> — and a
+          button is activated by Space, so typing "Test Folder" committed
+          the name and opened the folder the moment you hit the space bar.
+          Nesting interactive content inside a button is invalid HTML for
+          exactly this reason. */}
       <button
         type="button"
         onClick={onOpen}
-        className="block w-full overflow-hidden rounded-xl bg-surface-2 text-start outline-none ring-primary transition-colors hover:bg-surface-3 focus-visible:ring-2"
+        className="block w-full rounded-t-xl text-start outline-none ring-primary focus-visible:ring-2"
       >
-        <div className="grid aspect-square grid-cols-2 grid-rows-2 gap-px bg-surface-3/60">
+        <div className="grid aspect-square grid-cols-2 grid-rows-2 gap-px overflow-hidden rounded-t-xl bg-surface-3/60">
           {preview.length === 0 ? (
             <div className="col-span-2 row-span-2 grid place-items-center bg-surface-2">
               <FolderSimple className="size-8 text-muted-foreground/40" />
@@ -693,32 +699,40 @@ function FolderTile({
           )}
         </div>
 
-        <div className="px-3 py-2">
-          {renaming ? (
-            <input
-              ref={focusInput}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => onRename(draft)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onRename(draft);
-                if (e.key === "Escape") {
-                  setDraft(folder.name);
-                  onRename(folder.name);
-                }
-                e.stopPropagation();
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full rounded bg-surface-1 px-1 py-0.5 text-sm outline-none ring-1 ring-primary"
-            />
-          ) : (
-            <p className="truncate text-sm font-medium">{folder.name}</p>
-          )}
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {t("itemCount", { count: inside.length })}
-          </p>
-        </div>
       </button>
+
+      {/* Sibling of the button, not a child. The name stays clickable in
+          its own right, so the whole tile still opens the folder. */}
+      <div className="px-3 py-2">
+        {renaming ? (
+          <input
+            ref={focusInput}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => onRename(draft)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onRename(draft);
+              if (e.key === "Escape") {
+                setDraft(folder.name);
+                onRename(folder.name);
+              }
+              e.stopPropagation();
+            }}
+            className="w-full rounded bg-surface-1 px-1 py-0.5 text-sm outline-none ring-1 ring-primary"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="block w-full truncate text-start text-sm font-medium outline-none"
+          >
+            {folder.name}
+          </button>
+        )}
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {t("itemCount", { count: inside.length })}
+        </p>
+      </div>
 
       <div className="absolute end-2 top-2">
         <button

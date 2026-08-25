@@ -33,7 +33,11 @@ export const updateProjectSchema = z
   );
 export type UpdateProjectBody = z.infer<typeof updateProjectSchema>;
 
-export const createFolderSchema = z.object({ name: nameSchema });
+export const createFolderSchema = z.object({
+  name: nameSchema,
+  /** Omit or null for a top-level folder. Three levels deep at most. */
+  parentId: z.string().uuid().nullable().optional(),
+});
 export type CreateFolderBody = z.infer<typeof createFolderSchema>;
 
 export const updateFolderSchema = z.object({ name: nameSchema });

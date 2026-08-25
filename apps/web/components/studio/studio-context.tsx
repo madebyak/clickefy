@@ -186,7 +186,7 @@ type StudioValue = {
   setActiveProject: (id: string | null) => void;
   createProject: (folderId?: string | null) => Promise<string>;
   /** Resolves to the new folder id, or null if the create failed. */
-  createFolder: (name: string) => Promise<string | null>;
+  createFolder: (name: string, parentId?: string | null) => Promise<string | null>;
   renameFolder: (folderId: string, name: string) => void;
   deleteFolder: (folderId: string) => Promise<void>;
   moveProjectToFolder: (projectId: string, folderId: string | null) => void;
@@ -414,11 +414,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
    * toast has already fired by then.
    */
   const createFolder = useCallback(
-    async (name: string): Promise<string | null> => {
+    async (name: string, parentId?: string | null): Promise<string | null> => {
       let created: string | null = null;
       try {
-        created = (await getSDK().projects.createFolder(name)).id;
+        created = (await getSDK().projects.createFolder(name, parentId ?? null)).id;
       } catch {
+        // Includes `max_depth` — the fourth level the database refuses.
         toast.error(t("toastCreateFolderFailed"));
         return null;
       }

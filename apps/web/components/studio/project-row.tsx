@@ -22,6 +22,7 @@ import {
 import { getSDK } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useTimeLabel } from "@/lib/time-label";
+import { foldersInTreeOrder } from "@/lib/folder-order";
 import type { StudioProject, StudioFolder } from "@/components/studio/studio-context";
 
 type Asset = { id: string; kind: "image" | "video"; url: string };
@@ -59,6 +60,7 @@ export function ProjectRow({
   project,
   folders,
   active,
+  compact = false,
   onOpen,
   onRename,
   onMoveToFolder,
@@ -68,6 +70,13 @@ export function ProjectRow({
   project: StudioProject;
   folders: StudioFolder[];
   active: boolean;
+  /**
+   * Nested inside the folder tree, where every level costs horizontal
+   * room. Smaller thumbnail, tighter padding, and the "N assets · 2h ago"
+   * line dropped — at three levels deep the name is the only part still
+   * worth the width.
+   */
+  compact?: boolean;
   onOpen: () => void;
   onRename: (name: string) => void;
   onMoveToFolder: (folderId: string | null) => void;
@@ -139,7 +148,8 @@ export function ProjectRow({
     <div ref={wrapRef} className="group/row relative">
       <div
         className={cn(
-          "flex w-full items-center gap-3 rounded-lg p-2 transition-colors",
+          "flex w-full items-center rounded-lg transition-colors",
+          compact ? "gap-2 p-1.5" : "gap-3 p-2",
           active ? "bg-surface-3" : "hover:bg-surface-2",
         )}
       >
@@ -147,9 +157,17 @@ export function ProjectRow({
           type="button"
           onClick={onOpen}
           disabled={editing}
-          className="flex min-w-0 flex-1 items-center gap-3 text-start outline-none"
+          className={cn(
+            "flex min-w-0 flex-1 items-center text-start outline-none",
+            compact ? "gap-2" : "gap-3",
+          )}
         >
-          <span className="size-9 shrink-0 overflow-hidden rounded-md bg-surface-3">
+          <span
+            className={cn(
+              "shrink-0 overflow-hidden rounded-md bg-surface-3",
+              compact ? "size-7" : "size-9",
+            )}
+          >
             {project.cover &&
               (project.cover.kind === "video" ? (
                 <video
@@ -186,9 +204,11 @@ export function ProjectRow({
             ) : (
               <span className="block truncate text-sm font-medium">{project.name}</span>
             )}
-            <span className="block truncate text-xs text-muted-foreground">
-              {t("assets", { count: project.assetCount })} · {timeLabel(project.updatedAt)}
-            </span>
+            {!compact && (
+              <span className="block truncate text-xs text-muted-foreground">
+                {t("assets", { count: project.assetCount })} · {timeLabel(project.updatedAt)}
+              </span>
+            )}
           </span>
         </button>
 
@@ -313,17 +333,21 @@ export function ProjectRow({
                 >
                   {t("noFolder")}
                 </Item>
-                {folders.map((f) => (
-                  <Item
-                    key={f.id}
-                    icon={<FolderSimple className="size-4" />}
-                    onClick={() => {
-                      onMoveToFolder(f.id);
-                      setMenuOpen(false);
-                    }}
-                  >
-                    {f.name}
-                  </Item>
+                {/* Tree order, indented by depth. The API returns folders
+                    newest-first with no regard for parentage, so indenting
+                    the raw order would draw children above their parents. */}
+                {foldersInTreeOrder(folders).map((f) => (
+                  <div key={f.id} style={{ paddingInlineStart: f.depth * 12 }}>
+                    <Item
+                      icon={<FolderSimple className="size-4" />}
+                      onClick={() => {
+                        onMoveToFolder(f.id);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      {f.name}
+                    </Item>
+                  </div>
                 ))}
               </div>
             </>

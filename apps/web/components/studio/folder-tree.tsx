@@ -8,17 +8,24 @@
  * still exists behind "Show all", but browsing your own folders should not
  * cost a navigation away from the canvas you are working on.
  *
- * NOTHING NEW IS PERSISTED. `folders`, `projects` and every mutation
- * (`createFolder`, `renameFolder`, `deleteFolder`, `moveProjectToFolder`)
- * already exist on the studio context and already write server-side. This
- * component is presentation over data that was always there.
+ * THREE LEVELS, enforced by the database (migration 0036) rather than by
+ * this component: a composite foreign key ties every folder to a parent
+ * exactly one level shallower, so a fourth level — and every cycle — is
+ * unrepresentable however the API is called. The UI hides the "New
+ * sub-folder" action at the bottom level because a control that always
+ * fails is worse than no control, not because hiding it is what stops the
+ * write.
  *
- * WHAT THE TREE DOES NOT DO, and why:
- *   - No nesting. `StudioFolder` is flat — no `parentId` — so a folder
- *     inside a folder is not expressible without a schema change.
- *   - No manual ordering. There is no position column, so folders arrive
- *     newest-first from the API — which at least means a folder you just
- *     created is at the top, where you are already looking.
+ * PROJECTS INSIDE A FOLDER ARE FULL `ProjectRow`s — same thumbnail, same
+ * action menu as the Recent Projects list below. They used to be bare text
+ * buttons, which meant a project you filed away could no longer be
+ * renamed, re-covered, moved back out or deleted without first finding it
+ * somewhere else. Filing something should not take away what you can do
+ * with it.
+ *
+ * WHAT THE TREE STILL DOES NOT DO: manual ordering. There is no position
+ * column, so folders arrive newest-first from the API — which at least
+ * means a folder you just created is at the top, where you are looking.
  *
  * Expansion state is intentionally in memory rather than localStorage.
  * Reading storage during render would mismatch the server-rendered HTML,
@@ -33,16 +40,22 @@ import {
   CaretDown,
   CaretRight,
   DotsThree,
+  FolderPlus,
   FolderSimple,
   Plus,
 } from "@phosphor-icons/react";
 
 import type { StudioFolder, StudioProject } from "@clickfy/sdk";
 import { cn } from "@/lib/utils";
+import { foldersInTreeOrder } from "@/lib/folder-order";
 import { useStudio } from "@/components/studio/studio-context";
+import { ProjectRow } from "@/components/studio/project-row";
 
-/** Folders shown before the list defers to the full browser. */
+/** Top-level folders shown before the list defers to the full browser. */
 const VISIBLE_FOLDERS = 5;
+
+/** Deepest folder level. Matches the CHECK constraint in migration 0036. */
+const MAX_DEPTH = 2;
 
 /**
  * Connected wrapper. Everything below is a pure view over props, which is
@@ -54,33 +67,80 @@ export function FolderTree(props: {
   onOpenProject: (projectId: string) => void;
   onShowAll: () => void;
 }) {
-  const { folders, projects, createFolder, renameFolder, deleteFolder } = useStudio();
+  const {
+    folders,
+    projects,
+    activeProjectId,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    renameProject,
+    moveProjectToFolder,
+    setProjectCover,
+    deleteProject,
+  } = useStudio();
   return (
     <FolderTreeView
       {...props}
       folders={folders}
       projects={projects}
+      activeProjectId={activeProjectId}
       onCreateFolder={createFolder}
       onRenameFolder={renameFolder}
       onDeleteFolder={deleteFolder}
+      onRenameProject={renameProject}
+      onMoveProject={moveProjectToFolder}
+      onSetProjectCover={setProjectCover}
+      onDeleteProject={(id) => void deleteProject(id)}
     />
   );
+}
+
+/** Everything a node needs, bundled so recursion stays one prop deep. */
+interface TreeCtx {
+  folders: StudioFolder[];
+  childrenOf: Map<string, StudioFolder[]>;
+  byFolder: Map<string, StudioProject[]>;
+  expanded: Set<string>;
+  editingId: string | null;
+  activeProjectId: string | null;
+  toggle: (id: string) => void;
+  startRename: (id: string) => void;
+  commitRename: (folder: StudioFolder, name: string) => void;
+  cancelRename: () => void;
+  removeFolder: (id: string) => void;
+  addSubfolder: (parentId: string) => void;
+  openProject: (id: string) => void;
+  renameProject: (id: string, name: string) => void;
+  moveProject: (id: string, folderId: string | null) => void;
+  setCover: (id: string, assetId: string | null) => void;
+  removeProject: (id: string) => void;
 }
 
 export function FolderTreeView({
   folders,
   projects,
+  activeProjectId = null,
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
+  onRenameProject,
+  onMoveProject,
+  onSetProjectCover,
+  onDeleteProject,
   onOpenProject,
   onShowAll,
 }: {
   folders: StudioFolder[];
   projects: StudioProject[];
-  onCreateFolder: (name: string) => Promise<string | null>;
+  activeProjectId?: string | null;
+  onCreateFolder: (name: string, parentId?: string | null) => Promise<string | null>;
   onRenameFolder: (folderId: string, name: string) => void;
   onDeleteFolder: (folderId: string) => void;
+  onRenameProject: (projectId: string, name: string) => void;
+  onMoveProject: (projectId: string, folderId: string | null) => void;
+  onSetProjectCover: (projectId: string, assetId: string | null) => void;
+  onDeleteProject: (projectId: string) => void;
   onOpenProject: (projectId: string) => void;
   onShowAll: () => void;
 }) {
@@ -103,16 +163,39 @@ export function FolderTreeView({
     return map;
   }, [projects]);
 
-  const visible = folders.slice(0, VISIBLE_FOLDERS);
-  const hidden = folders.length - visible.length;
+  const childrenOf = useMemo(() => {
+    const map = new Map<string, StudioFolder[]>();
+    for (const f of folders) {
+      if (!f.parentId) continue;
+      const list = map.get(f.parentId);
+      if (list) list.push(f);
+      else map.set(f.parentId, [f]);
+    }
+    return map;
+  }, [folders]);
 
-  const toggleFolder = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  /**
+   * Only ROOTS count against the visible limit. Counting sub-folders too
+   * would let one folder you happened to expand push its own siblings
+   * behind "Show all".
+   */
+  const roots = useMemo(() => folders.filter((f) => !f.parentId), [folders]);
+  const visible = roots.slice(0, VISIBLE_FOLDERS);
+  const hidden = roots.length - visible.length;
+
+  /** Ordered for the "move to folder" menu: parents before their children. */
+  const ordered = useMemo(() => foldersInTreeOrder(folders), [folders]);
+
+  const toggle = useCallback(
+    (id: string) =>
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    [],
+  );
 
   /**
    * Create, then immediately rename. A folder called "New folder" that you
@@ -120,13 +203,44 @@ export function FolderTreeView({
    * and the second step is the one people skip — which is how you end up
    * with four folders all called "New folder".
    */
-  const addFolder = async () => {
-    if (creating) return;
-    setCreating(true);
-    setSectionOpen(true);
-    const id = await onCreateFolder(tp("defaultFolderName"));
-    setCreating(false);
-    if (id) setEditingId(id);
+  const addFolder = useCallback(
+    async (parentId?: string) => {
+      if (creating) return;
+      setCreating(true);
+      setSectionOpen(true);
+      // Open the parent BEFORE the request: a sub-folder created into a
+      // collapsed folder would land in rename mode somewhere invisible,
+      // and the rename would commit on the first outside click.
+      if (parentId) setExpanded((prev) => new Set(prev).add(parentId));
+      const id = await onCreateFolder(tp("defaultFolderName"), parentId ?? null);
+      setCreating(false);
+      if (id) setEditingId(id);
+    },
+    [creating, onCreateFolder, tp],
+  );
+
+  const ctx: TreeCtx = {
+    folders: ordered,
+    childrenOf,
+    byFolder,
+    expanded,
+    editingId,
+    activeProjectId,
+    toggle,
+    startRename: setEditingId,
+    commitRename: (folder, name) => {
+      setEditingId(null);
+      const trimmed = name.trim();
+      if (trimmed && trimmed !== folder.name) onRenameFolder(folder.id, trimmed);
+    },
+    cancelRename: () => setEditingId(null),
+    removeFolder: onDeleteFolder,
+    addSubfolder: (parentId) => void addFolder(parentId),
+    openProject: onOpenProject,
+    renameProject: onRenameProject,
+    moveProject: onMoveProject,
+    setCover: onSetProjectCover,
+    removeProject: onDeleteProject,
   };
 
   return (
@@ -147,7 +261,7 @@ export function FolderTreeView({
         </button>
         <button
           type="button"
-          onClick={addFolder}
+          onClick={() => void addFolder()}
           disabled={creating}
           aria-label={tp("newFolder")}
           title={tp("newFolder")}
@@ -159,7 +273,7 @@ export function FolderTreeView({
 
       {sectionOpen && (
         <div className="mt-0.5 space-y-0.5">
-          {folders.length === 0 ? (
+          {roots.length === 0 ? (
             // A folder is not required to use the product — projects work
             // fine unfiled — so this explains the button rather than
             // nagging about an empty state.
@@ -167,25 +281,7 @@ export function FolderTreeView({
               {t("noFoldersHint")}
             </p>
           ) : (
-            visible.map((f) => (
-              <FolderNode
-                key={f.id}
-                folder={f}
-                projects={byFolder.get(f.id) ?? []}
-                open={expanded.has(f.id)}
-                editing={editingId === f.id}
-                onToggle={() => toggleFolder(f.id)}
-                onStartRename={() => setEditingId(f.id)}
-                onRename={(name) => {
-                  setEditingId(null);
-                  const trimmed = name.trim();
-                  if (trimmed && trimmed !== f.name) onRenameFolder(f.id, trimmed);
-                }}
-                onCancelRename={() => setEditingId(null)}
-                onDelete={() => onDeleteFolder(f.id)}
-                onOpenProject={onOpenProject}
-              />
-            ))
+            visible.map((f) => <FolderNode key={f.id} folder={f} ctx={ctx} />)
           )}
 
           {hidden > 0 && (
@@ -203,32 +299,16 @@ export function FolderTreeView({
   );
 }
 
-function FolderNode({
-  folder,
-  projects,
-  open,
-  editing,
-  onToggle,
-  onStartRename,
-  onRename,
-  onCancelRename,
-  onDelete,
-  onOpenProject,
-}: {
-  folder: StudioFolder;
-  projects: StudioProject[];
-  open: boolean;
-  editing: boolean;
-  onToggle: () => void;
-  onStartRename: () => void;
-  onRename: (name: string) => void;
-  onCancelRename: () => void;
-  onDelete: () => void;
-  onOpenProject: (id: string) => void;
-}) {
+function FolderNode({ folder, ctx }: { folder: StudioFolder; ctx: TreeCtx }) {
   const tp = useTranslations("projects");
   const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState(folder.name);
+
+  const open = ctx.expanded.has(folder.id);
+  const editing = ctx.editingId === folder.id;
+  const children = ctx.childrenOf.get(folder.id) ?? [];
+  const projects = ctx.byFolder.get(folder.id) ?? [];
+  const canNest = folder.depth < MAX_DEPTH;
 
   // Select the whole name on entry, so a freshly created folder is renamed
   // by typing rather than by clearing first.
@@ -243,6 +323,20 @@ function FolderNode({
     }
   }, []);
 
+  /** Caret + folder icon, identical in both the editing and resting rows. */
+  const leading = (
+    <>
+      {open ? (
+        <CaretDown className="size-3 shrink-0 opacity-70" weight="bold" />
+      ) : (
+        <CaretRight className="size-3 shrink-0 opacity-70 rtl:-scale-x-100" weight="bold" />
+      )}
+      <FolderSimple className="size-[17px] shrink-0" weight={open ? "fill" : "regular"} />
+    </>
+  );
+
+  const childCount = children.length + projects.length;
+
   return (
     <div>
       <div
@@ -251,52 +345,44 @@ function FolderNode({
           open ? "bg-surface-2/60" : "hover:bg-surface-2",
         )}
       >
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-start text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
-        >
-          {/* The disclosure caret. A folder row without one reads as a
-              destination rather than a container — there is nothing to
-              suggest the projects inside are one click away, so they get
-              reported as "not appearing". */}
-          {open ? (
-            <CaretDown className="size-3 shrink-0 opacity-70" weight="bold" />
-          ) : (
-            <CaretRight className="size-3 shrink-0 opacity-70 rtl:-scale-x-100" weight="bold" />
-          )}
-          <FolderSimple
-            className="size-[17px] shrink-0"
-            weight={open ? "fill" : "regular"}
-          />
-          {editing ? (
+        {editing ? (
+          // NOT inside the row button while renaming. A <button> is
+          // activated by Space, so an <input> nested in one commits the
+          // name and toggles the folder the moment you type a space —
+          // "Test Folder" was impossible to type.
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-sm text-muted-foreground">
+            {leading}
             <input
               ref={focusInput}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => onRename(draft)}
+              onBlur={() => ctx.commitRename(folder, draft)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") onRename(draft);
+                if (e.key === "Enter") ctx.commitRename(folder, draft);
                 if (e.key === "Escape") {
                   setDraft(folder.name);
-                  onCancelRename();
+                  ctx.cancelRename();
                 }
               }}
-              // The row is a button; without this a click to place the
-              // caret would collapse the folder instead.
-              onClick={(e) => e.stopPropagation()}
               className="w-full min-w-0 rounded bg-surface-1 px-1 py-0.5 text-sm text-foreground outline-none ring-1 ring-primary"
             />
-          ) : (
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => ctx.toggle(folder.id)}
+            aria-expanded={open}
+            className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-start text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
+          >
+            {leading}
             <span className="truncate">{folder.name}</span>
-          )}
-          {!editing && projects.length > 0 && (
-            <span className="shrink-0 text-xs tabular-nums text-muted-foreground/60">
-              {projects.length}
-            </span>
-          )}
-        </button>
+            {childCount > 0 && (
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground/60">
+                {childCount}
+              </span>
+            )}
+          </button>
+        )}
 
         <div className="relative shrink-0">
           <button
@@ -304,10 +390,9 @@ function FolderNode({
             onClick={() => setMenuOpen((v) => !v)}
             aria-label={tp("folderOptions")}
             className={cn(
-              "grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary",
-              // Revealed on hover/focus so five folders are five names,
-              // not five names and five buttons.
-              menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+              "grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-all hover:bg-white/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary",
+              // Pointer-only reveal would strand touch users.
+              menuOpen ? "opacity-100" : "opacity-0 max-lg:opacity-100 group-hover:opacity-100",
             )}
           >
             <DotsThree className="size-4" weight="bold" />
@@ -320,13 +405,28 @@ function FolderNode({
                 onClick={() => setMenuOpen(false)}
                 aria-hidden
               />
-              <div className="absolute end-0 top-8 z-50 w-40 overflow-hidden rounded-lg bg-surface-3 py-1 shadow-lg ring-1 ring-white/10">
+              <div className="absolute end-0 top-8 z-50 w-44 overflow-hidden rounded-lg bg-surface-3 py-1 shadow-lg ring-1 ring-white/10">
+                {/* Absent at the bottom level rather than shown failing:
+                    the database refuses a fourth level outright. */}
+                {canNest && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      ctx.addSubfolder(folder.id);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-start text-sm text-foreground transition-colors hover:bg-surface-2"
+                  >
+                    <FolderPlus className="size-4 shrink-0" />
+                    {tp("newSubfolder")}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
                     setDraft(folder.name);
-                    onStartRename();
+                    ctx.startRename(folder.id);
                   }}
                   className="block w-full px-3 py-1.5 text-start text-sm text-foreground transition-colors hover:bg-surface-2"
                 >
@@ -336,7 +436,7 @@ function FolderNode({
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
-                    onDelete();
+                    ctx.removeFolder(folder.id);
                   }}
                   className="block w-full px-3 py-1.5 text-start text-sm text-status-red transition-colors hover:bg-surface-2"
                 >
@@ -349,22 +449,30 @@ function FolderNode({
       </div>
 
       {open && (
-        <div className="ms-[26px] space-y-0.5 border-s border-border ps-2">
-          {projects.length === 0 ? (
+        <div className="ms-4 space-y-0.5 border-s border-border ps-1.5">
+          {children.map((child) => (
+            <FolderNode key={child.id} folder={child} ctx={ctx} />
+          ))}
+
+          {projects.map((p) => (
+            <ProjectRow
+              key={p.id}
+              project={p}
+              folders={ctx.folders}
+              active={ctx.activeProjectId === p.id}
+              compact
+              onOpen={() => ctx.openProject(p.id)}
+              onRename={(name) => ctx.renameProject(p.id, name)}
+              onMoveToFolder={(folderId) => ctx.moveProject(p.id, folderId)}
+              onSetCover={(assetId) => ctx.setCover(p.id, assetId)}
+              onDelete={() => ctx.removeProject(p.id)}
+            />
+          ))}
+
+          {childCount === 0 && (
             <p className="px-2 py-1.5 text-xs leading-relaxed text-muted-foreground/70">
               {tp("emptyFolder")}
             </p>
-          ) : (
-            projects.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => onOpenProject(p.id)}
-                className="block w-full truncate rounded-md px-2 py-1.5 text-start text-sm text-muted-foreground outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                {p.name}
-              </button>
-            ))
           )}
         </div>
       )}

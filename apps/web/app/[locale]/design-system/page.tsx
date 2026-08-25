@@ -166,13 +166,16 @@ function CanvasToolbarDemo() {
  */
 function FolderTreeDemo() {
   const folders = [
-    { id: "f1", name: "Clickefy App", createdAt: "2026-08-01T00:00:00Z" },
-    { id: "f2", name: "Clickefy-Banners", createdAt: "2026-08-02T00:00:00Z" },
-    { id: "f3", name: "Work for testing", createdAt: "2026-08-03T00:00:00Z" },
+    { id: "f1", name: "Clickefy App", parentId: null, depth: 0, createdAt: "2026-08-01T00:00:00Z" },
+    { id: "f1a", name: "Brand", parentId: "f1", depth: 1, createdAt: "2026-08-01T01:00:00Z" },
+    { id: "f1a1", name: "Logo runs", parentId: "f1a", depth: 2, createdAt: "2026-08-01T02:00:00Z" },
+    { id: "f2", name: "Clickefy-Banners", parentId: null, depth: 0, createdAt: "2026-08-02T00:00:00Z" },
+    { id: "f3", name: "Work for testing", parentId: null, depth: 0, createdAt: "2026-08-03T00:00:00Z" },
   ];
   const projects = [
     { id: "p1", name: "Clickefy campaign", folderId: "f1", assetCount: 2, cover: null, createdAt: "", updatedAt: "" },
     { id: "p2", name: "Launch teasers", folderId: "f1", assetCount: 9, cover: null, createdAt: "", updatedAt: "" },
+    { id: "p4", name: "Wordmark v3", folderId: "f1a1", assetCount: 6, cover: null, createdAt: "", updatedAt: "" },
     { id: "p3", name: "Unfiled sketches", folderId: null, assetCount: 4, cover: null, createdAt: "", updatedAt: "" },
   ];
   return (
@@ -180,9 +183,14 @@ function FolderTreeDemo() {
       <FolderTreeView
         folders={folders}
         projects={projects}
+        activeProjectId="p1"
         onCreateFolder={async () => null}
         onRenameFolder={() => {}}
         onDeleteFolder={() => {}}
+        onRenameProject={() => {}}
+        onMoveProject={() => {}}
+        onSetProjectCover={() => {}}
+        onDeleteProject={() => {}}
         onOpenProject={() => {}}
         onShowAll={() => {}}
       />

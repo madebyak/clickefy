@@ -454,6 +454,10 @@ export interface CreditsClient {
 export interface StudioFolder {
   id: string;
   name: string;
+  /** Null at the top level. Three levels deep at most — see migration 0036. */
+  parentId: string | null;
+  /** 0 = top level, 1 = sub-folder, 2 = sub-sub-folder. */
+  depth: number;
   createdAt: string;
 }
 
@@ -589,7 +593,7 @@ export interface ProjectsClient {
    * rejected. The studio's heart button sends a one-element array.
    */
   setAssetsFavorite(assetIds: string[], favorited: boolean): Promise<void>;
-  createFolder(name: string): Promise<StudioFolder>;
+  createFolder(name: string, parentId?: string | null): Promise<StudioFolder>;
   renameFolder(folderId: string, name: string): Promise<Pick<StudioFolder, 'id' | 'name'>>;
   /** Projects inside fall back to "unfiled" — never deleted. */
   deleteFolder(folderId: string): Promise<void>;

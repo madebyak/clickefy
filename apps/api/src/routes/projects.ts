@@ -245,6 +245,8 @@ projectsRoute.get('/', ...readChain, async (c) => {
       folders: folderRows.map((f) => ({
         id: f.id,
         name: f.name,
+        parentId: f.parentId,
+        depth: f.depth,
         createdAt: f.createdAt.toISOString(),
       })),
       projects: page.map((p) => {
@@ -903,12 +905,51 @@ assetsRoute.delete('/', ...writeChain, zValidator('json', deleteAssetsSchema), a
 
 // ─── Folders ────────────────────────────────────────────────────────
 
+/** 0 = top level, 1 = sub-folder, 2 = sub-sub-folder. Matches the CHECK. */
+const MAX_FOLDER_DEPTH = 2;
+
 foldersRoute.post('/', ...writeChain, zValidator('json', createFolderSchema), async (c) => {
   const user = c.var.user!;
-  const { name } = c.req.valid('json');
-  const [row] = await c.var.db.insert(folders).values({ userId: user.id, name }).returning();
+  const { name, parentId } = c.req.valid('json');
+
+  let depth = 0;
+  if (parentId) {
+    const [parent] = await c.var.db
+      .select({ id: folders.id, depth: folders.depth })
+      .from(folders)
+      .where(and(eq(folders.id, parentId), eq(folders.userId, user.id)))
+      .limit(1);
+    // A foreign or unknown parent 404s rather than silently creating a
+    // root folder — the same rule project creation already applies.
+    if (!parent) {
+      return c.json({ error: { code: 'folder_not_found', message: 'Folder not found.' } }, 404);
+    }
+    if (parent.depth >= MAX_FOLDER_DEPTH) {
+      // The database would refuse this too — the composite FK makes a
+      // fourth level unrepresentable. Answering here turns a constraint
+      // violation into a message the UI can show.
+      return c.json(
+        { error: { code: 'max_depth', message: 'Folders can only be three levels deep.' } },
+        409,
+      );
+    }
+    depth = parent.depth + 1;
+  }
+
+  const [row] = await c.var.db
+    .insert(folders)
+    .values({ userId: user.id, name, parentId: parentId ?? null, depth })
+    .returning();
   return c.json(
-    { data: { id: row!.id, name: row!.name, createdAt: row!.createdAt.toISOString() } },
+    {
+      data: {
+        id: row!.id,
+        name: row!.name,
+        parentId: row!.parentId,
+        depth: row!.depth,
+        createdAt: row!.createdAt.toISOString(),
+      },
+    },
     201,
   );
 });

@@ -371,6 +371,7 @@
     "heading": "My Projects",
     "sub": "Organize your work into folders.",
     "newFolder": "New folder",
+    "newSubfolder": "New sub-folder",
     "newProject": "New project",
     "unfiled": "General",
     "moveToFolder": "Move to folder",

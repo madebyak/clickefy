@@ -1009,8 +1009,11 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           assetIds,
         });
       },
-      async createFolder(name) {
-        return mutateJson<StudioFolder>('POST', '/v1/folders', { name });
+      async createFolder(name, parentId) {
+        return mutateJson<StudioFolder>('POST', '/v1/folders', {
+          name,
+          ...(parentId ? { parentId } : {}),
+        });
       },
       async renameFolder(folderId, name) {
         return mutateJson('PATCH', `/v1/folders/${folderId}`, { name });

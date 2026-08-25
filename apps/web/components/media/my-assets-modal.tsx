@@ -43,6 +43,7 @@ import {
   useBreadcrumb,
   useMediaBrowse,
   useMediaLibrary,
+  type UploadingFile,
 } from "@/lib/use-media-library";
 
 /** Tile sizes, largest tiles first. Four steps, same as the canvas grid. */
@@ -321,13 +322,19 @@ export function MyAssetsModal({
                 <div key={i} className="aspect-square animate-pulse rounded-xl bg-surface-2" />
               ))}
             </div>
-          ) : view.folders.length === 0 && view.assets.length === 0 ? (
+          ) : view.folders.length === 0 &&
+            view.assets.length === 0 &&
+            uploading.length === 0 ? (
             <EmptyState searching={view.searching} onUpload={() => fileInputRef.current?.click()} />
           ) : (
             <div
               className="grid gap-3"
               style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
             >
+              {uploading.map((u) => (
+                <UploadingTile key={u.id} file={u} />
+              ))}
+
               {view.folders.map((f) => (
                 <FolderTile
                   key={f.id}
@@ -360,22 +367,6 @@ export function MyAssetsModal({
                 />
               ))}
 
-              {uploading.map((u) => (
-                <div
-                  key={u.id}
-                  className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl bg-surface-2 p-3"
-                >
-                  <div className="h-1.5 w-3/4 overflow-hidden rounded-full bg-surface-3">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${Math.max(4, u.progress * 100)}%` }}
-                    />
-                  </div>
-                  <span className="w-full truncate text-center text-[11px] text-muted-foreground">
-                    {u.name}
-                  </span>
-                </div>
-              ))}
             </div>
           )}
         </div>
@@ -413,6 +404,42 @@ export function MyAssetsModal({
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * A file mid-upload.
+ *
+ * Deliberately the same SHAPE as a real tile so the grid does not reflow
+ * when it lands — and deliberately loud about being unfinished, because
+ * the doubt this removes is "did it even take my file?".
+ */
+function UploadingTile({ file }: { file: UploadingFile }) {
+  const t = useTranslations("media");
+  const pct = Math.round(file.progress * 100);
+  return (
+    <div className="overflow-hidden rounded-xl bg-surface-2 ring-1 ring-primary/30">
+      <div className="relative grid aspect-square place-items-center bg-surface-3/40">
+        <div className="w-3/4 text-center">
+          <div className="mx-auto h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-200"
+              style={{ width: `${Math.max(4, pct)}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs font-medium tabular-nums text-primary">
+            {file.status === "error" ? t("uploadErrorShort") : `${pct}%`}
+          </p>
+        </div>
+        <span className="absolute start-2 top-2 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+          {t("uploadingBadge")}
+        </span>
+      </div>
+      <div className="px-3 py-2">
+        <p className="truncate text-sm">{file.name}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("uploadingLabel")}</p>
+      </div>
+    </div>
+  );
+}
 
 function EmptyState({ searching, onUpload }: { searching: boolean; onUpload: () => void }) {
   const t = useTranslations("media");
@@ -470,6 +497,22 @@ function FolderTile({
   const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState(folder.name);
 
+  /**
+   * Focus and select the name once, on mount.
+   *
+   * `useCallback` with no deps is load-bearing. An INLINE ref callback gets
+   * a fresh identity every render, so React detaches and re-attaches it
+   * after each keystroke — and the re-attach re-ran `select()`, leaving the
+   * whole name highlighted so the next character REPLACED it. Typing
+   * "Clickefy" left you with "y".
+   */
+  const focusInput = useCallback((el: HTMLInputElement | null) => {
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  }, []);
+
   const descendantIds = useMemo(() => {
     const ids = new Set([folder.id]);
     // Three levels deep at most, so two passes always closes the set.
@@ -521,12 +564,7 @@ function FolderTile({
         <div className="px-3 py-2">
           {renaming ? (
             <input
-              ref={(el) => {
-                if (el) {
-                  el.focus();
-                  el.select();
-                }
-              }}
+              ref={focusInput}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={() => onRename(draft)}

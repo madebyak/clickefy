@@ -512,6 +512,9 @@
     "folderRenameFailed": "Couldn't rename the folder",
     "folderDeleteFailed": "Couldn't delete the folder",
     "deleteFailed": "Couldn't delete — try again",
-    "moveFailed": "Couldn't move that file"
+    "moveFailed": "Couldn't move that file",
+    "uploadingBadge": "Uploading",
+    "uploadingLabel": "Uploading…",
+    "uploadErrorShort": "Failed"
   }
 }

@@ -188,6 +188,10 @@ export function useMediaLibrary() {
               sizeBytes: ref.sizeBytes,
               folderId,
             });
+            // Refresh after EACH file, not once at the end. Uploading ten
+            // images and seeing nothing appear until the tenth finishes
+            // reads as a hang; landing them one by one reads as progress.
+            invalidate();
           } catch {
             toast.error(t("uploadFailed", { name: file.name }));
           } finally {
@@ -195,7 +199,6 @@ export function useMediaLibrary() {
           }
         }),
       );
-      invalidate();
     },
     [usage, invalidate, t],
   );

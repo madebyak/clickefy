@@ -512,6 +512,9 @@
     "folderRenameFailed": "تعذّرت إعادة التسمية",
     "folderDeleteFailed": "تعذّر حذف المجلد",
     "deleteFailed": "تعذّر الحذف — حاول مرة أخرى",
-    "moveFailed": "تعذّر نقل الملف"
+    "moveFailed": "تعذّر نقل الملف",
+    "uploadingBadge": "جارٍ الرفع",
+    "uploadingLabel": "جارٍ الرفع…",
+    "uploadErrorShort": "فشل"
   }
 }

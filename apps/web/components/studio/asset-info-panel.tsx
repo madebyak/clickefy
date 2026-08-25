@@ -128,7 +128,11 @@ export function AssetInfoPanel({
             <p className="mt-4 text-xs text-muted-foreground">{t("detailsUnavailable")}</p>
           )}
 
-          {detail && (
+            {/* A file placed from My Assets has no prompt and no settings
+                behind it, so "Copy prompt" and "Re-use" have nothing to act
+                on. Hidden rather than disabled: a permanently dead button is
+                worse than an absent one. */}
+          {detail && detail.generation && (
             <>
               {/* Prompt, or the template it came from. A template's prompt
                   is ours, not the user's, so it is never shown. */}

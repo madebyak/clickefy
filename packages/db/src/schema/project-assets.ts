@@ -30,6 +30,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { jobs } from './jobs';
+import { libraryAssets } from './asset-library';
 import { projects } from './projects';
 import { users } from './users';
 
@@ -54,6 +55,18 @@ export const projectAssets = pgTable(
     height: integer('height'),
     durationSec: real('duration_sec'),
     posterR2Key: text('poster_r2_key'),
+    /**
+     * Set when this asset was placed from "My Assets" rather than
+     * generated (0035). Distinguishes "never had a job" from "the job was
+     * deleted" — both leave `jobId` null, but only the latter should read
+     * as a lost generation.
+     *
+     * SET NULL on delete: removing the library file must not remove the
+     * copy already placed in a project, which keeps its own `r2Key`.
+     */
+    libraryAssetId: uuid('library_asset_id').references(() => libraryAssets.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),

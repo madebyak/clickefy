@@ -71,6 +71,11 @@ export type Asset = {
   poster?: string;
   favorited: boolean;
   /**
+   * Placed from "My Assets" rather than generated — so there is no prompt
+   * behind it, and Re-use has nothing to restore.
+   */
+  fromLibrary: boolean;
+  /**
    * Which project the asset lives in. Only set on the Favorites grid,
    * which is cross-project and has to label each tile; inside a project
    * it would be the same string on every tile, so it is left off.
@@ -141,6 +146,7 @@ const toAsset = (a: StudioAsset): Asset => ({
   src: rebaseAssetUrl(a.url),
   poster: a.posterUrl && a.kind === "video" ? undefined : (a.posterUrl ?? undefined),
   favorited: a.isFavorited,
+  fromLibrary: a.fromLibrary ?? false,
 });
 
 const toFavoriteAsset = (a: FavoriteAsset): Asset => ({

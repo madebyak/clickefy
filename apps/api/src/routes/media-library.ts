@@ -31,7 +31,7 @@ import { and, asc, desc, eq, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 
-import { assetFolders, libraryAssets } from '@clickfy/db';
+import { assetFolders, libraryAssets, projectAssets } from '@clickfy/db';
 import { fitsInQuota, storageQuotaFor } from '@clickfy/types';
 
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
@@ -415,6 +415,25 @@ mediaLibraryRoute.post('/assets/delete', ...writeChain, zValidator('json', delet
   const user = c.var.user!;
   const { assetIds } = c.req.valid('json');
 
+  // Which of these are still rendered by a project? Placing a library file
+  // into a project SHARES its r2_key rather than copying the object (the
+  // same thing `copyAssets` does between projects), so deleting the object
+  // here would blank a canvas tile somewhere else. Asked BEFORE the rows
+  // go, while `library_asset_id` still points at them.
+  const stillInUse = new Set(
+    (
+      await c.var.db
+        .select({ key: projectAssets.r2Key })
+        .from(projectAssets)
+        .where(
+          and(
+            eq(projectAssets.userId, user.id),
+            inArray(projectAssets.libraryAssetId, assetIds),
+          ),
+        )
+    ).map((r) => r.key),
+  );
+
   const rows = await c.var.db
     .delete(libraryAssets)
     .where(and(eq(libraryAssets.userId, user.id), inArray(libraryAssets.id, assetIds)))
@@ -425,17 +444,28 @@ mediaLibraryRoute.post('/assets/delete', ...writeChain, zValidator('json', delet
   const bucket = c.env.UPLOADS;
   if (bucket) {
     await Promise.all(
-      rows.map((r) =>
-        bucket.delete(r.r2Key).catch((err) => {
-          console.error('[library] R2 delete failed, object orphaned', r.r2Key, err);
-        }),
-      ),
+      rows
+        // Keep the bytes for anything a project still shows. The library
+        // row is gone either way, so the quota frees up regardless; what
+        // survives is the object a canvas tile depends on.
+        .filter((r) => !stillInUse.has(r.r2Key))
+        .map((r) =>
+          bucket.delete(r.r2Key).catch((err) => {
+            console.error('[library] R2 delete failed, object orphaned', r.r2Key, err);
+          }),
+        ),
     );
   } else {
     console.error('[library] UPLOADS binding missing — orphaned', rows.length, 'object(s)');
   }
 
-  return c.json({ data: { deleted: rows.length } });
+  return c.json({
+    data: {
+      deleted: rows.length,
+      /** Objects kept because a project still renders them. */
+      objectsKept: rows.filter((r) => stillInUse.has(r.r2Key)).length,
+    },
+  });
 });
 
 // ─── Root listing helper ────────────────────────────────────────────
@@ -467,4 +497,123 @@ mediaLibraryRoute.get('/root', ...readChain, async (c) => {
       createdAt: a.createdAt.toISOString(),
     })),
   });
+});
+
+// ─── Placing files into a project ───────────────────────────────────
+
+const placeSchema = z
+  .object({
+    projectId: z.string().uuid(),
+    /** Files to place. Either these, or `folderId` for everything inside. */
+    assetIds: z.array(z.string().uuid()).max(200).optional(),
+    /** Place every file in this folder AND its sub-folders. */
+    folderId: z.string().uuid().optional(),
+  })
+  .strict()
+  .refine((v) => (v.assetIds?.length ?? 0) > 0 || v.folderId, {
+    message: 'Pass assetIds or folderId.',
+  });
+
+/**
+ * `POST /v1/media/place` — put library files on a project's canvas.
+ *
+ * SHARES THE R2 KEY rather than copying the object, exactly as
+ * `copyAssets` does between projects. Placing a 7MB logo into ten projects
+ * costs one 7MB object, and the storage quota does not move — the file is
+ * still filed once in the library.
+ *
+ * `job_id` stays NULL and `library_asset_id` is set. Both facts matter to
+ * the canvas: no job means no prompt to re-use, and the library reference
+ * is what separates "placed from My Assets" from "the generation was
+ * deleted", which is the other way an asset ends up job-less.
+ *
+ * Idempotent per (project, asset): placing the same file twice leaves one
+ * tile, because a second identical row would be a duplicate the user did
+ * not ask for and cannot tell apart.
+ */
+mediaLibraryRoute.post('/place', ...writeChain, zValidator('json', placeSchema), async (c) => {
+  const user = c.var.user!;
+  const { projectId, assetIds, folderId } = c.req.valid('json');
+
+  const project = await c.var.db.query.projects.findFirst({
+    where: (p, { and: a, eq: e }) => a(e(p.id, projectId), e(p.userId, user.id)),
+  });
+  if (!project) {
+    return c.json({ error: { code: 'project_not_found', message: 'Project not found.' } }, 404);
+  }
+
+  // Resolve which files to place.
+  let rows: (typeof libraryAssets.$inferSelect)[];
+  if (folderId) {
+    // Everything in the folder AND below it. Three levels, so two widening
+    // passes always close the set — no recursive query needed.
+    const all = await c.var.db
+      .select()
+      .from(assetFolders)
+      .where(eq(assetFolders.userId, user.id));
+    const ids = new Set([folderId]);
+    for (let i = 0; i < 2; i++) {
+      for (const f of all) if (f.parentId && ids.has(f.parentId)) ids.add(f.id);
+    }
+    rows = await c.var.db
+      .select()
+      .from(libraryAssets)
+      .where(
+        and(eq(libraryAssets.userId, user.id), inArray(libraryAssets.folderId, [...ids])),
+      );
+  } else {
+    rows = await c.var.db
+      .select()
+      .from(libraryAssets)
+      .where(and(eq(libraryAssets.userId, user.id), inArray(libraryAssets.id, assetIds!)));
+  }
+
+  if (rows.length === 0) {
+    return c.json({ data: { placed: 0, skipped: 0 } });
+  }
+
+  // Already on this canvas? Placing again should be a no-op, not a
+  // duplicate tile the user cannot tell from the first.
+  const existing = new Set(
+    (
+      await c.var.db
+        .select({ libraryAssetId: projectAssets.libraryAssetId })
+        .from(projectAssets)
+        .where(
+          and(
+            eq(projectAssets.projectId, projectId),
+            inArray(
+              projectAssets.libraryAssetId,
+              rows.map((r) => r.id),
+            ),
+          ),
+        )
+    ).map((r) => r.libraryAssetId),
+  );
+
+  const toPlace = rows.filter((r) => !existing.has(r.id));
+  if (toPlace.length === 0) {
+    return c.json({ data: { placed: 0, skipped: rows.length } });
+  }
+
+  await c.var.db.insert(projectAssets).values(
+    toPlace.map((r) => ({
+      projectId,
+      userId: user.id,
+      jobId: null,
+      libraryAssetId: r.id,
+      outputIndex: 0,
+      kind: r.kind,
+      r2Key: r.r2Key,
+      width: r.width,
+      height: r.height,
+      durationSec: r.durationSeconds != null ? Number(r.durationSeconds) : null,
+      posterR2Key: null,
+    })),
+  );
+
+  return c.json(
+    { data: { placed: toPlace.length, skipped: rows.length - toPlace.length } },
+    201,
+  );
 });

@@ -344,6 +344,7 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
       durationSec: projectAssets.durationSec,
       createdAt: projectAssets.createdAt,
       jobId: projectAssets.jobId,
+      libraryAssetId: projectAssets.libraryAssetId,
       projectId: projectAssets.projectId,
       favorited: dsql<boolean>`${favoriteAssets.assetId} IS NOT NULL`,
     })
@@ -455,6 +456,7 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
       durationSec: row.durationSec,
       createdAt: row.createdAt.toISOString(),
       isFavorited: row.favorited,
+      fromLibrary: row.libraryAssetId != null,
       // No MIME column exists; the stored key keeps its extension.
       format: formatFromKey(row.r2Key),
       generation,
@@ -618,6 +620,10 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
         durationSec: a.durationSec,
         createdAt: a.createdAt.toISOString(),
         isFavorited: favorited,
+        // Placed from "My Assets" rather than generated. The canvas uses
+        // this to label the tile and to hide Re-use, which has no meaning
+        // without a prompt behind it.
+        fromLibrary: a.libraryAssetId != null,
       })),
       nextCursor,
     },
@@ -831,6 +837,9 @@ assetsRoute.get('/favorites', ...readChain, async (c) => {
         // DTO is identical to the project asset list and the studio can
         // render both through one component.
         isFavorited: true,
+          // Same reason as the project list: a favourited library file
+          // has no prompt behind it either, so this view hides Re-use too.
+          fromLibrary: a.libraryAssetId != null,
         // Cross-project view, so each tile says where it came from.
         projectName,
       })),

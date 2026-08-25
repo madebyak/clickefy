@@ -66,6 +66,8 @@ function MasonryTileDemo() {
       type: (i % 3 === 0 ? "video" : "image") as Asset["type"],
       src: PIXEL,
       favorited: i === 1,
+      // One tile placed from My Assets, so the badge shows up here too.
+      fromLibrary: i === 4,
       projectName: `Project ${i + 1}`,
     })),
   );

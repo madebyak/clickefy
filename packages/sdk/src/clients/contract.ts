@@ -474,6 +474,15 @@ export interface StudioAsset {
   createdAt: string;
   /** Whether the caller has hearted this asset. */
   isFavorited: boolean;
+  /**
+   * Placed from "My Assets" rather than generated.
+   *
+   * Distinct from `jobId === null`, which ALSO means "no generation" but
+   * for the opposite reason: the job was deleted. One is a file that never
+   * had a prompt; the other is a lost one. Only the first should hide
+   * Re-use rather than say details are unavailable.
+   */
+  fromLibrary?: boolean;
 }
 
 /**

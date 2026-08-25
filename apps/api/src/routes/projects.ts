@@ -33,6 +33,8 @@ import { and, desc, eq, inArray, sql as dsql } from 'drizzle-orm';
 
 import { favoriteAssets, folders, jobs, projectAssets, projects, templates } from '@clickfy/db';
 
+import { assetUrl } from '../lib/asset-url';
+
 import type { JobInputValue } from '@clickfy/types';
 import {
   CREATE_PROMPT_KEY,
@@ -81,30 +83,20 @@ function parseKeysetCursor(cursor: string | undefined): { ts: string; id: string
   return { ts, id };
 }
 
-/** Mint a delivery URL for an asset r2Key against the live origin. */
-const assetUrl = (origin: string, r2Key: string) => `${origin}/v1/outputs/${r2Key}`;
-
 /**
- * URL for a key that may live in EITHER R2 bucket.
+ * Both URL builders this file used to carry are now one import.
  *
- * Generated artifacts sit in OUTPUTS under `jobs/<jobId>/…` and are
- * served by `/v1/outputs`; anything a user or admin uploaded sits in
- * UPLOADS and is served by `/v1/uploads`. The two are different buckets
- * behind different routes, so serving an upload key from the outputs
- * route 404s — which is exactly what every reference image in the asset
- * info panel did.
+ * `mediaUrl` already dispatched on the key's prefix — it was written for
+ * this exact bug on reference images. `assetUrl`, three lines above it,
+ * stayed hard-coded to `/v1/outputs/` and kept working only because every
+ * `project_assets` row came from a generation. The moment "Add from My
+ * Assets" filed an upload key into that table, the tiles and covers 404'd
+ * in precisely the way the comment on `mediaUrl` described.
  *
- * Reference images are always uploads in practice (attaching a generated
- * asset re-uploads its bytes to get a real `r2Key`), but this dispatches
- * on the key's own prefix rather than trusting that, so a future path
- * that references an output directly still resolves.
+ * Two functions answering the same question, one of them right, is how
+ * that happened. Now there is one, in lib/asset-url.ts.
  */
-const UPLOAD_KEY_PREFIXES = ['user-uploads/', 'avatars/', 'categories/', 'templates/'];
-
-function mediaUrl(origin: string, r2Key: string): string {
-  const isUpload = UPLOAD_KEY_PREFIXES.some((p) => r2Key.startsWith(p));
-  return `${origin}/v1/${isUpload ? 'uploads' : 'outputs'}/${r2Key}`;
-}
+const mediaUrl = assetUrl;
 
 /**
  * Reference slots to look for on a create job. `buildCreateStage` emits

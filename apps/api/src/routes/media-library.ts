@@ -34,6 +34,7 @@ import { z } from 'zod';
 import { assetFolders, libraryAssets, projectAssets } from '@clickfy/db';
 import { fitsInQuota, storageQuotaFor } from '@clickfy/types';
 
+import { assetUrl } from '../lib/asset-url';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 import type { AppEnv } from '../types';
@@ -69,9 +70,14 @@ async function usedBytes(db: AppEnv['Variables']['db'], userId: string): Promise
   return Number(row?.total ?? 0);
 }
 
-function publicUrl(origin: string, key: string): string {
-  return `${origin}/v1/uploads/${key}`;
-}
+/**
+ * Library keys are always `user-uploads/…`, so this always resolves to
+ * `/v1/uploads/`. It goes through the shared resolver anyway: this file
+ * hard-coding the right route while `projects.ts` hard-coded the wrong
+ * one is what made the mismatch so hard to see — the same image rendered
+ * here and 404'd on the canvas.
+ */
+const publicUrl = assetUrl;
 
 // ─── Tree + files ───────────────────────────────────────────────────
 

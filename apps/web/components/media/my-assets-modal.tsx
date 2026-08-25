@@ -133,6 +133,11 @@ export function MyAssetsModal({
         const projectId = studio.activeProjectId ?? (await studio.createProject(null));
         placeInProject({ projectId, ...payload });
         setSelected(new Set());
+        // Close on the way out. The point of adding to a project is to go
+        // look at it, and leaving the library covering the canvas hides
+        // the very thing that just changed — the toast reports the
+        // outcome, so nothing is lost by leaving.
+        onClose();
       } catch {
         // `createProject` has already said so; a second toast would only
         // repeat it.
@@ -140,7 +145,7 @@ export function MyAssetsModal({
         setPlacing(false);
       }
     },
-    [studio, placing, placeInProject],
+    [studio, placing, placeInProject, onClose],
   );
 
   const view = useMediaBrowse(folders, assets, currentFolderId, search);

@@ -219,7 +219,10 @@ function toServerPayload(
     payload.generation = sanitizeGeneration(data.generation);
   }
   if (data.output !== undefined) payload.output = data.output;
-  if (data.costCredits !== undefined) payload.costCredits = data.costCredits;
+  // costCredits is never sent. The server owns it — it recomputes the
+  // total from the pipeline on every save and ignores anything we put
+  // here. Echoing the stored value back is what made an expensive
+  // template unsaveable once its cost passed the old request-schema cap.
   if (data.sortOrder !== undefined) payload.sortOrder = data.sortOrder;
   // Non-English overrides. Only sent when the form actually carries the
   // key (loaded from the row or edited in the Arabic fields) so a bare

@@ -276,7 +276,21 @@ export const createTemplateSchema = z.object({
   generation: templateGenerationSchema,
   output: templateOutputSchema,
 
-  costCredits: z.number().int().min(0).max(1000).default(1),
+  // costCredits is DELIBERATELY ABSENT.
+  //
+  // The handler ignores whatever the form sends and recomputes the total
+  // from per-stage model pricing (`computeTemplateCost`), because a
+  // manual override would let the catalogue and the charge disagree.
+  // Validating it here anyway made the API reject requests over a field
+  // it was about to throw away — and worse, permanently: the server
+  // stores its computed total with no cap, the admin loads that value
+  // into the form and sends it back, so any template costing more than
+  // the old max(1000) could never be saved again. A 15s Seedance 2.5
+  // stage is 1041cr, and that is a normal template, not an absurd one.
+  //
+  // The object is not `.strict()`, so a client still sending the field
+  // has it stripped silently — which is exactly what the handler did
+  // with it anyway.
   sortOrder: z.number().int().min(0).default(0),
 
   // Optional non-English overrides. Absent on most payloads; when

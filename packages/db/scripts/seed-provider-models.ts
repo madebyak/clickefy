@@ -126,10 +126,14 @@ const COST_PER_CALL_USD: Record<string, string> = {
   'kling/kling-o1': '0.4200', // 720p $0.084/s × 5s
 
   // Seedream image (same ModelArk account and key as Seedance video).
-  // Flat per image across every resolution tier — only 5.0 pro, which we
-  // don't carry, is pixel-tiered.
+  // Flat per image across every resolution tier, except 5.0 pro which
+  // is pixel-tiered ($0.045 at ≤1.5K / $0.09 above) — we target its 2K
+  // default, so the reference cost is the upper tier. 5.0 pro also
+  // bills input images ($0.003 from the 2nd), which cost_credits
+  // carries headroom for.
   'seedance/seedream-4-0-250828': '0.0300',
   'seedance/seedream-5-0-260128': '0.0350',
+  'seedance/dola-seedream-5-0-pro-260628': '0.0900',
 
   // Seedance video (BytePlus ModelArk) — each model's DEFAULT tier,
   // i.e. 720p at 5s with no input video, taken from BytePlus's own rate

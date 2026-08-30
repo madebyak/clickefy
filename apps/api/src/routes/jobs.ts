@@ -497,11 +497,14 @@ jobsRoute.post(
         maxPromptChars: caps.maxPromptChars,
         allowedAspectRatios,
         allowedDurations,
+        bareStartFrameDurations: caps.bareStartFrameDurations,
         requiresStartFrame: def.requiresStartFrame,
         acceptsStartEndImage: caps.acceptsStartEndImage ?? false,
         referenceVideo: caps.referenceVideo,
         referenceAudio: caps.referenceAudio,
         audioRefRequiresVisual: caps.audioRefRequiresVisual,
+        supportsVideoTasks:
+          caps.supportsOmniTaskType === true && caps.referenceVideo !== undefined,
         framesAndReferencesExclusive: caps.provider === 'seedance' && caps.kind === 'video',
       },
     });
@@ -519,12 +522,21 @@ jobsRoute.post(
       body.sound === true &&
       caps.supportsSound === true &&
       !(caps.nativeAudioRequiresTier && mode !== caps.nativeAudioRequiresTier);
+    // Edit tasks pin the output length to the source clip (duration -1
+    // on the wire), so the billed output term IS the probed input
+    // length, rounded up in the house's favour.
+    const billedDuration =
+      body.task === 'edit'
+        ? Math.max(1, Math.ceil(inputVideoSeconds))
+        : typeof body.duration === 'number'
+          ? body.duration
+          : refDuration;
     const cost = resolveCreditCost({
       baseCredits: priceRow.costCredits,
       tierPricing: priceRow.tierPricing ?? null,
       mode,
       sound: soundServed,
-      duration: typeof body.duration === 'number' ? body.duration : refDuration,
+      duration: billedDuration,
       defaultDuration: refDuration,
       inputVideoSeconds,
       inputVideoFactor: caps.inputVideoDurationFactor,
@@ -583,12 +595,17 @@ jobsRoute.post(
     });
 
     const options = {
-      aspectRatio: body.aspectRatio,
+      // Task requests force `adaptive` on the wire — a client-sent ratio
+      // would only mislead whoever reads the job row later.
+      aspectRatio: body.task ? undefined : body.aspectRatio,
       duration: body.duration,
       sound: body.sound,
       // Resolved quality tier — persisted so the worker compiles the
       // stage at exactly the tier the user was charged for.
       mode,
+      // Omni sub-task (edit/extend) — the worker passes it into the
+      // synthesized stage.
+      task: body.task,
     };
 
     // ── Atomic debit + insert (isolated create CTE) ────────────────

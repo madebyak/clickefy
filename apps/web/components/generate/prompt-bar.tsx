@@ -22,6 +22,8 @@ import {
   X,
   FilmStrip,
   ImagesSquare,
+  PencilSimpleLine,
+  FastForward,
 } from "@phosphor-icons/react";
 import { resolveCreditCost } from "@clickfy/types";
 import type { GenModel } from "@clickfy/sdk";
@@ -540,13 +542,17 @@ export function PromptBar({
   const [dragActive, setDragActive] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   /**
-   * Which kind of image input the user is supplying.
+   * Which kind of input the user is supplying.
    *
-   * Some models accept only one kind; Seedance accepts both but forbids
-   * mixing them in a single request, so this is a choice rather than two
-   * coexisting affordances.
+   * Some models accept only one kind; Seedance accepts frames OR
+   * references but forbids mixing them in a single request, so this is
+   * a choice rather than coexisting affordances. `edit` / `extend` are
+   * Seedance 2.5's omni sub-tasks: a source video plus an instruction
+   * prompt, riding the same reference plumbing.
    */
-  const [attachMode, setAttachMode] = useState<"frames" | "references">("references");
+  const [attachMode, setAttachMode] = useState<
+    "frames" | "references" | "edit" | "extend"
+  >("references");
 
   const MAX_OUTPUTS = 4;
   // Video providers (Kling) REQUIRE an explicit aspect ratio for
@@ -686,11 +692,45 @@ export function PromptBar({
     model?.tiers?.find((x) => x.mode === model.soundRequiresTier)?.label ??
     model?.soundRequiresTier ??
     "";
+  const readyAttachments = attachments.filter((a) => a.status === "ready");
+  const uploadsInFlight = attachments.some((a) => a.status === "uploading");
+  const maxImages = model?.maxImages ?? 0;
+  // Reference-clip budgets (Seedance). Zero when the model takes none.
+  const maxVideoRefs = model?.referenceVideo?.max ?? 0;
+  const maxAudioRefs = model?.referenceAudio?.max ?? 0;
+  const needsStartFrame = !!model?.requiresStartFrame && readyAttachments.length === 0;
+
+  // A model offering "seedance" accepts either kind, so the user picks;
+  // the others are fixed and the dropdown is hidden.
+  const modeIsChoosable = model?.attachments === "seedance";
+  const isTask = modeIsChoosable && (attachMode === "edit" || attachMode === "extend");
+  const isFrames = model ? (modeIsChoosable ? attachMode === "frames" : model.attachments !== "references") : false;
+  // Edit works on exactly one source clip; extend chains up to the
+  // model's video budget.
+  const effMaxVideos = attachMode === "edit" ? Math.min(1, maxVideoRefs) : maxVideoRefs;
+
+  // Task modes need their source clip before anything can run.
+  const needsTaskVideo =
+    isTask && !readyAttachments.some((a) => a.kind === "video");
+  const canGenerate =
+    !!model &&
+    prompt.trim().length > 0 &&
+    !submitting &&
+    !uploadsInFlight &&
+    !needsStartFrame &&
+    !needsTaskVideo;
+
+  // Video references are billed by their length (Seedance). The
+  // client-probed durations preview the charge; the server derives the
+  // authoritative figure from the uploaded bytes.
+  const videoSecondsAttached = attachments.reduce(
+    (sum, a) => (a.kind === "video" ? sum + (a.durationSec ?? 0) : sum),
+    0,
+  );
   // Same resolver the server bills with, so the number on the button is
-  // the number charged. Showing only the tier price under-stated every
-  // clip longer than the model's default — a 15s Kling 3.0 job read
-  // "168" and cost 504. The map carries the `${tier}_audio` keys so a
-  // sound-on Kling job prices at the audio rate, exactly like the server.
+  // the number charged. The map carries the `${tier}_audio` keys so a
+  // sound-on Kling job prices at the audio rate; edit tasks bill the
+  // source clip's length as the output term, exactly like the server.
   const costPerJob = model
     ? resolveCreditCost({
         baseCredits: model.costCredits,
@@ -706,33 +746,15 @@ export function PromptBar({
           : null,
         mode: tier,
         sound: sound && !soundGated,
-        duration,
+        duration:
+          attachMode === "edit" && isTask
+            ? Math.max(1, Math.ceil(videoSecondsAttached))
+            : duration,
         defaultDuration: model.defaultDuration,
-        // Video references are billed by their length (Seedance). The
-        // client-probed durations preview the charge; the server derives
-        // the authoritative figure from the uploaded bytes.
-        inputVideoSeconds: attachments.reduce(
-          (sum, a) => (a.kind === "video" ? sum + (a.durationSec ?? 0) : sum),
-          0,
-        ),
+        inputVideoSeconds: videoSecondsAttached,
         inputVideoFactor: model.inputVideoFactor,
       })
     : 0;
-
-  const readyAttachments = attachments.filter((a) => a.status === "ready");
-  const uploadsInFlight = attachments.some((a) => a.status === "uploading");
-  const maxImages = model?.maxImages ?? 0;
-  // Reference-clip budgets (Seedance). Zero when the model takes none.
-  const maxVideoRefs = model?.referenceVideo?.max ?? 0;
-  const maxAudioRefs = model?.referenceAudio?.max ?? 0;
-  const needsStartFrame = !!model?.requiresStartFrame && readyAttachments.length === 0;
-
-  const canGenerate =
-    !!model &&
-    prompt.trim().length > 0 &&
-    !submitting &&
-    !uploadsInFlight &&
-    !needsStartFrame;
 
   /**
    * Single validated entry point for attachments — used by both the file
@@ -743,9 +765,10 @@ export function PromptBar({
   const addFiles = (incoming: File[]) => {
     if (!model || !studio || incoming.length === 0) return;
     // Frames are images by definition; references also take video/audio
-    // clips on models with the matching budget (Seedance).
-    const videoOk = !isFrames && maxVideoRefs > 0;
-    const audioOk = !isFrames && maxAudioRefs > 0;
+    // clips on models with the matching budget (Seedance). Task modes
+    // (edit/extend) take video + optional images, no audio.
+    const videoOk = !isFrames && effMaxVideos > 0;
+    const audioOk = !isFrames && !isTask && maxAudioRefs > 0;
     const usable = incoming.filter(
       (f) =>
         ACCEPTED_IMAGE_TYPES.includes(f.type) ||
@@ -760,7 +783,7 @@ export function PromptBar({
     let room = Math.max(0, attachCeiling - attachments.length);
     let videoRoom = Math.max(
       0,
-      maxVideoRefs - attachments.filter((a) => a.kind === "video").length,
+      effMaxVideos - attachments.filter((a) => a.kind === "video").length,
     );
     let audioRoom = Math.max(
       0,
@@ -774,7 +797,7 @@ export function PromptBar({
       }
       if (ACCEPTED_VIDEO_TYPES.includes(f.type)) {
         if (videoRoom <= 0) {
-          toast.error(t("maxVideoRefs", { max: maxVideoRefs }));
+          toast.error(t("maxVideoRefs", { max: effMaxVideos }));
           continue;
         }
         videoRoom -= 1;
@@ -800,22 +823,34 @@ export function PromptBar({
   // Enter/leave fire for every child element the pointer crosses, so a
   // plain boolean flickers. Track depth and only clear at zero.
   const dragDepth = useRef(0);
-  // A model offering "seedance" accepts either kind, so the user picks;
-  // the others are fixed and the dropdown is hidden.
-  const modeIsChoosable = model?.attachments === "seedance";
-  const isFrames = model ? (modeIsChoosable ? attachMode === "frames" : model.attachments !== "references") : false;
   // Frames take at most two images regardless of the model's total
   // budget; references sum the image budget with the model's video and
-  // audio clip budgets (Seedance).
+  // audio clip budgets (Seedance); task modes drop audio and cap videos
+  // per the sub-task.
   const attachCeiling = isFrames
     ? model?.supportsEndFrame
       ? 2
       : 1
-    : maxImages + maxVideoRefs + maxAudioRefs;
+    : maxImages + effMaxVideos + (isTask ? 0 : maxAudioRefs);
   // A start frame pins the output shape on these providers — the ratio
   // picker would be a control that does nothing, so it locks instead.
   const aspectLocked =
     !!model?.aspectLockedByStartFrame && isFrames && !!attachments[0];
+
+  // Kling O1: a bare start frame (no end frame) collapses the legal
+  // durations — filter the picker and snap the selection.
+  const bareFrameCollapse =
+    !!model?.bareStartFrameDurations && isFrames && !!attachments[0] && !attachments[1];
+  const availableDurations = bareFrameCollapse
+    ? (model!.durations.filter((d) => model!.bareStartFrameDurations!.includes(d)) ?? [])
+    : (model?.durations ?? []);
+  useEffect(() => {
+    if (!bareFrameCollapse || duration == null) return;
+    if (!availableDurations.includes(duration)) {
+      setDuration(availableDurations[0] ?? null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- snap once per collapse-state change
+  }, [bareFrameCollapse, duration]);
 
   // Register the selected model's attachment rules with the studio, so
   // every attach entry point the composer does not own (tile buttons,
@@ -829,15 +864,15 @@ export function PromptBar({
     setAttachmentPolicy({
       modelName,
       acceptsImages: hasModel && attachCeiling > 0,
-      // Clips ride the references mode only — frames are images.
-      acceptsVideos: !isFrames && maxVideoRefs > 0,
-      acceptsAudio: !isFrames && maxAudioRefs > 0,
+      // Clips ride the references and task modes — frames are images.
+      acceptsVideos: !isFrames && effMaxVideos > 0,
+      acceptsAudio: !isFrames && !isTask && maxAudioRefs > 0,
       ceiling: attachCeiling,
-      maxVideos: isFrames ? 0 : maxVideoRefs,
-      maxAudio: isFrames ? 0 : maxAudioRefs,
+      maxVideos: isFrames ? 0 : effMaxVideos,
+      maxAudio: isFrames || isTask ? 0 : maxAudioRefs,
     });
     return () => setAttachmentPolicy(null);
-  }, [setAttachmentPolicy, modelName, hasModel, attachCeiling, isFrames, maxVideoRefs, maxAudioRefs]);
+  }, [setAttachmentPolicy, modelName, hasModel, attachCeiling, isFrames, isTask, effMaxVideos, maxAudioRefs]);
   const canAttach = !!model && !!studio && attachments.length < attachCeiling;
   // Only react to actual file drags — ignore text/link drags.
   const isFileDrag = (e: React.DragEvent) => e.dataTransfer?.types?.includes("Files");
@@ -916,10 +951,16 @@ export function PromptBar({
         input: {
           modelKey: model.modelKey,
           prompt: prompt.trim().slice(0, model.maxPromptChars),
-          aspectRatio: aspect !== "Auto" ? aspect : undefined,
-          duration: model.kind === "video" ? (duration ?? undefined) : undefined,
+          // Task requests pin the ratio to the source clip (adaptive on
+          // the wire); edit output length follows the clip too.
+          aspectRatio: isTask || aspect === "Auto" ? undefined : aspect,
+          duration:
+            model.kind === "video" && attachMode !== "edit"
+              ? (duration ?? undefined)
+              : undefined,
           quality: tier ?? undefined,
           sound: model.supportsSound ? sound && !soundGated : undefined,
+          task: isTask ? (attachMode as "edit" | "extend") : undefined,
           references: frames ? undefined : media,
           startFrame: frames ? frameMedia[0] : undefined,
           endFrame: frames && model.supportsEndFrame ? frameMedia[1] : undefined,
@@ -1043,6 +1084,12 @@ export function PromptBar({
       {/* start-frame hint (image-to-video models) */}
       {model?.requiresStartFrame && readyAttachments.length === 0 && (
         <p className="mb-2 text-xs text-muted-foreground">{t("startFrameNeeded")}</p>
+      )}
+      {/* task-mode hint: the source clip is the whole point */}
+      {needsTaskVideo && (
+        <p className="mb-2 text-xs text-muted-foreground">
+          {t(attachMode === "edit" ? "editNeedsVideo" : "extendNeedsVideo")}
+        </p>
       )}
 
       <div className={cn("flex flex-col sm:flex-row", compact ? "gap-2" : "gap-3")}>
@@ -1181,13 +1228,31 @@ export function PromptBar({
             {modeIsChoosable && (
               <Dropdown
                 panelClassName="min-w-72"
-                trigger={({ toggle }) => (
-                  <Pill onClick={toggle} active className={pillCls}>
-                    {isFrames ? <FilmStrip className="size-4" /> : <ImagesSquare className="size-4" />}
-                    {t(isFrames ? "modeFrames" : "modeReferences")}
-                    <CaretDown className="size-3.5 text-muted-foreground" />
-                  </Pill>
-                )}
+                trigger={({ toggle }) => {
+                  const TriggerIcon =
+                    attachMode === "frames"
+                      ? FilmStrip
+                      : attachMode === "edit"
+                        ? PencilSimpleLine
+                        : attachMode === "extend"
+                          ? FastForward
+                          : ImagesSquare;
+                  return (
+                    <Pill onClick={toggle} active className={pillCls}>
+                      <TriggerIcon className="size-4" />
+                      {t(
+                        attachMode === "frames"
+                          ? "modeFrames"
+                          : attachMode === "edit"
+                            ? "modeEdit"
+                            : attachMode === "extend"
+                              ? "modeExtend"
+                              : "modeReferences",
+                      )}
+                      <CaretDown className="size-3.5 text-muted-foreground" />
+                    </Pill>
+                  );
+                }}
               >
                 {({ close }) => (
                   <>
@@ -1196,16 +1261,24 @@ export function PromptBar({
                       [
                         ["frames", "modeFrames", "modeFramesHint", FilmStrip],
                         ["references", "modeReferences", "modeReferencesHint", ImagesSquare],
+                        // Edit/Extend are Seedance 2.5 sub-tasks — only
+                        // models declaring the capability show them.
+                        ...(model?.supportsVideoTasks
+                          ? ([
+                              ["edit", "modeEdit", "modeEditHint", PencilSimpleLine],
+                              ["extend", "modeExtend", "modeExtendHint", FastForward],
+                            ] as const)
+                          : []),
                       ] as const
                     ).map(([mode, label, hint, Icon]) => (
                       <MenuItem
                         key={mode}
-                        selected={isFrames === (mode === "frames")}
+                        selected={attachMode === mode}
                         onClick={() => {
-                          // The two modes are mutually exclusive upstream,
-                          // so anything already attached belongs to the old
+                          // The modes are mutually exclusive upstream, so
+                          // anything already attached belongs to the old
                           // one and cannot carry over.
-                          if (isFrames !== (mode === "frames")) {
+                          if (attachMode !== mode) {
                             for (const a of attachments) studio?.removeAttachment(a.id);
                           }
                           setAttachMode(mode);
@@ -1275,10 +1348,12 @@ export function PromptBar({
               )}
             </Dropdown>
 
-            {/* aspect. With a start frame attached, providers that derive
-                the frame size from it (Kling; Seedance 2.5) ignore an
-                explicit ratio — show that instead of a dead dropdown. */}
-            {aspectLocked ? (
+            {/* aspect. Task modes inherit the source clip's ratio, so
+                the control disappears entirely. With a start frame
+                attached, providers that derive the frame size from it
+                (Kling; Seedance 2.5) ignore an explicit ratio — show
+                that instead of a dead dropdown. */}
+            {isTask ? null : aspectLocked ? (
               <Pill disabled className={cn(pillCls, "opacity-60")}>
                 <RatioGlyph ratio="Auto" className="text-muted-foreground" />
                 {t("aspectFromFrame")}
@@ -1350,8 +1425,12 @@ export function PromptBar({
               </Dropdown>
             )}
 
-            {/* duration (video) */}
-            {isVideo && (model?.durations.length ?? 0) > 0 && (
+            {/* duration (video). Edit output follows the source clip, so
+                the picker disappears there. With a bare start frame,
+                Kling O1 collapses the legal list (5s/10s) — filter
+                rather than offer values the server would have to
+                refuse. */}
+            {isVideo && attachMode !== "edit" && (model?.durations.length ?? 0) > 0 && (
               <Dropdown
                 panelClassName="min-w-40"
                 trigger={({ toggle }) => (
@@ -1364,7 +1443,7 @@ export function PromptBar({
                 {({ close }) => (
                   <>
                     <MenuLabel>{t("duration")}</MenuLabel>
-                    {model!.durations.map((d) => (
+                    {availableDurations.map((d) => (
                       <MenuItem
                         key={d}
                         selected={d === duration}

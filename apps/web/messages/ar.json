@@ -263,7 +263,13 @@
     "soundNeedsTier": "الصوت يتطلب {tier}",
     "aspectFromFrame": "من إطار البداية",
     "maxVideoRefs": "هذا النموذج يقبل حتى {max} من مقاطع الفيديو المرجعية",
-    "maxAudioRefs": "هذا النموذج يقبل حتى {max} من المقاطع الصوتية"
+    "maxAudioRefs": "هذا النموذج يقبل حتى {max} من المقاطع الصوتية",
+    "modeEdit": "تعديل الفيديو",
+    "modeEditHint": "غيّر عناصر في مقطع موجود",
+    "modeExtend": "تمديد الفيديو",
+    "modeExtendHint": "أكمل المقطع أو اربط عدة مقاطع معًا",
+    "editNeedsVideo": "أرفق الفيديو الذي تريد تعديله — تبقى النتيجة بنفس الطول والأبعاد",
+    "extendNeedsVideo": "أرفق الفيديو الذي تريد تمديده"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",

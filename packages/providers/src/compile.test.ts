@@ -1235,6 +1235,49 @@ describe('compile() — apiModelId indirection', () => {
 // Each of these encodes a vendor behaviour discovered by calling the real
 // API — the docs either omitted or contradicted all three.
 
+describe('compile() — Kling O1 bare-first-frame duration collapse', () => {
+  const o1Stage = (duration: number) =>
+    makeStage({
+      provider: 'kling',
+      model: 'kling-o1',
+      prompt: 'animate this shot',
+      config: { duration, mode: 'std', aspectRatio: '16:9' },
+    });
+
+  it('clamps an illegal duration down with a warning', () => {
+    const { request, warnings } = compile(
+      makeCtx({
+        stage: o1Stage(7),
+        templateInputs: [imageField('subject')],
+        inputValues: {
+          subject: { kind: 'image', r2Key: 'first', mimeType: 'image/png', bytes: new Uint8Array([1]) },
+        },
+      }),
+    );
+    expect((request as { duration?: number }).duration).toBe(5);
+    expect(warnings.some((w) => w.code === 'config_clamped' && /5s\/10s/.test(w.message))).toBe(
+      true,
+    );
+  });
+
+  it('leaves legal durations and non-bare requests alone', () => {
+    const legal = compile(
+      makeCtx({
+        stage: o1Stage(10),
+        templateInputs: [imageField('subject')],
+        inputValues: {
+          subject: { kind: 'image', r2Key: 'first', mimeType: 'image/png', bytes: new Uint8Array([1]) },
+        },
+      }),
+    );
+    expect((legal.request as { duration?: number }).duration).toBe(10);
+
+    // No start frame at all → the collapse does not apply.
+    const bareText = compile(makeCtx({ stage: o1Stage(7) }));
+    expect((bareText.request as { duration?: number }).duration).toBe(7);
+  });
+});
+
 describe('compile() — Seedream', () => {
   const seedreamStage = (model: string, config: Record<string, unknown> = {}) =>
     makeStage({

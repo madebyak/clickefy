@@ -390,6 +390,14 @@ export interface SeedanceStageConfig {
   frameSlots?: SeedanceFrameSlots;
   /** Used when `seedanceMode === 'reference'`. */
   referenceSlots?: SeedanceReferenceSlot[];
+  /**
+   * Explicit omni sub-task for models with `supportsOmniTaskType`
+   * (Seedance 2.5): `edit` reworks the attached reference video per the
+   * prompt; `extend` continues/stitches it. Absent = plain `reference`
+   * when reference slots exist. Declaring it makes BytePlus validate
+   * the task shape at submit instead of failing an already-paid job.
+   */
+  omniReferenceTaskType?: 'reference' | 'edit' | 'extend';
   /** Other Seedance config keys (resolution, audio, etc.) live alongside. */
   [otherConfigKey: string]: unknown;
 }

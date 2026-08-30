@@ -129,6 +129,13 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     supportsEndFrame: false,
   },
   {
+    modelKey: 'dola-seedream-5-0-pro-260628',
+    name: 'Seedream 5 Pro',
+    attachments: 'references',
+    requiresStartFrame: false,
+    supportsEndFrame: false,
+  },
+  {
     modelKey: 'dreamina-seedance-2-5-260628',
     name: 'Seedance 2.5',
     attachments: 'seedance',
@@ -182,6 +189,12 @@ export interface CreateModelDTO {
   aspectRatios: string[];
   /** Video durations in seconds; empty for image models. */
   durations: number[];
+  /**
+   * Kling O1: the collapsed duration list that applies while the
+   * composer holds a start frame and nothing else — the picker filters
+   * to it so the server never has to 422.
+   */
+  bareStartFrameDurations?: number[];
   /**
    * The length `costCredits` is quoted at. Clients need it to show the
    * same price the server will charge — without it the composer can
@@ -260,6 +273,11 @@ export interface CreateModelDTO {
   };
   /** Seedance 2.0 family: audio refs need an image/video alongside. */
   audioRefRequiresVisual?: boolean;
+  /**
+   * Seedance 2.5: the model takes `task: 'edit' | 'extend'` requests —
+   * the composer offers its Edit/Extend modes only when this is true.
+   */
+  supportsVideoTasks?: boolean;
 }
 
 /**
@@ -315,6 +333,9 @@ export function buildCreateModelDTO(
     maxPromptChars: caps.maxPromptChars ?? DEFAULT_CREATE_PROMPT_CHARS,
     aspectRatios,
     durations,
+    bareStartFrameDurations: caps.bareStartFrameDurations
+      ? [...caps.bareStartFrameDurations]
+      : undefined,
     defaultDuration: caps.kind === 'video' ? caps.duration?.default : undefined,
     maxImages: caps.maxImagesTotal,
     attachments: def.attachments,
@@ -332,5 +353,9 @@ export function buildCreateModelDTO(
     referenceVideo: caps.referenceVideo ? { ...caps.referenceVideo } : undefined,
     referenceAudio: caps.referenceAudio ? { ...caps.referenceAudio } : undefined,
     audioRefRequiresVisual: caps.audioRefRequiresVisual,
+    supportsVideoTasks:
+      caps.supportsOmniTaskType === true && caps.referenceVideo !== undefined
+        ? true
+        : undefined,
   };
 }

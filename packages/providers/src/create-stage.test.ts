@@ -337,6 +337,62 @@ describe('buildCreateStage — Seedance (video)', () => {
     expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
   });
 
+  it('edit task pins the documented constraints onto the wire', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'Video edit: remove everyone except the protagonist.',
+      // A client-sent ratio/duration must not survive an edit request.
+      aspectRatio: '16:9',
+      duration: 10,
+      referenceCount: 1,
+      referenceKinds: ['video'],
+      task: 'edit',
+    });
+    expect(built.stage.config.omniReferenceTaskType).toBe('edit');
+    expect(built.stage.config.aspectRatio).toBe('adaptive');
+    expect(built.stage.config.duration).toBe(-1);
+
+    const { request } = run(built, {
+      [createReferenceKey(0)]: {
+        kind: 'video',
+        r2Key: 'source',
+        mimeType: 'video/mp4',
+        bytes: new Uint8Array([1]),
+      },
+    });
+    const s = request as SeedanceCompiledRequest;
+    expect(s.omniReferenceTaskType).toBe('edit');
+    expect(s.ratio).toBe('adaptive');
+    expect(s.duration).toBe(-1);
+  });
+
+  it('extend task keeps the chosen output duration', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'Extend @Video1: keep moving through the gallery.',
+      duration: 12,
+      referenceCount: 2,
+      referenceKinds: ['video', 'video'],
+      task: 'extend',
+    });
+    expect(built.stage.config.omniReferenceTaskType).toBe('extend');
+    expect(built.stage.config.aspectRatio).toBe('adaptive');
+    expect(built.stage.config.duration).toBe(12);
+  });
+
+  it('ignores a task on models without supportsOmniTaskType', () => {
+    // The 2.0 family auto-detects tasks from the prompt; declaring the
+    // param there would be an invalid field on the wire.
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-0-260128',
+      prompt: 'Video edit: swap the cat for a lion.',
+      referenceCount: 1,
+      referenceKinds: ['video'],
+      task: 'edit',
+    });
+    expect(built.stage.config.omniReferenceTaskType).toBeUndefined();
+  });
+
   it('defaults missing kinds to image, byte-identical to the old shape', () => {
     const built = buildCreateStage({
       modelKey: 'dreamina-seedance-2-0-260128',

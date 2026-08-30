@@ -106,6 +106,15 @@ export interface ModelCapabilities {
   /** Video-only. Seconds. */
   duration?: { values: readonly number[]; default: number };
 
+  /**
+   * Kling O1: with a bare first frame — no last frame, no reference
+   * images, no elements — the endpoint collapses the legal durations to
+   * this list (documented as "5 or 10 only"). Enforced as a create-flow
+   * 422 and a composer filter; the compiler clamps down as a safety net
+   * for template stages.
+   */
+  bareStartFrameDurations?: readonly number[];
+
   /** Quality preset (GPT Image 2). */
   quality?: { values: readonly string[]; default: string };
 
@@ -915,10 +924,11 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     kind: 'video',
     sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
     outputs: { min: 1, max: 1, default: 1 },
-    // 3-10s, unlike the 3-15s of the rest of the 3.0 family. Note the
-    // docs add: a first frame with no other reference collapses this to
-    // 5 or 10 only — a conditional we do not model yet.
+    // 3-10s, unlike the 3-15s of the rest of the 3.0 family.
     duration: { values: KLING_O1_DURATIONS, default: 5 },
+    // A first frame with no other reference collapses the legal
+    // durations to 5s/10s — see the field's doc.
+    bareStartFrameDurations: [5, 10],
     // See the kling-v2-6 note — API 2.0 has no negative_prompt field.
     negativePrompt: false,
     refAddressing: 'at',
@@ -1155,6 +1165,41 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // 4.x rejects the `output_format` field outright — see the flag's doc.
     supportsOutputFormat: false,
     notes: 'Cheapest Seedream. Only one accepting 1K. jpeg output only.',
+  },
+  'dola-seedream-5-0-pro-260628': {
+    provider: 'seedance',
+    modelKey: 'dola-seedream-5-0-pro-260628',
+    displayName: 'Seedream 5.0 Pro',
+    status: 'active',
+    kind: 'image',
+    // 1K / 1.5K / 2K only — the one Seedream with NO 4K. Its pixel
+    // ceiling (4,624,220) sits just above 2048², so the 2K default is
+    // reachable and anything larger is not.
+    sizing: { mode: 'aspect', values: SEEDREAM_ASPECT_RATIOS, resolutions: ['1K', '1.5K', '2K'] },
+    pixelSizing: {
+      minPixels: 921_600,
+      maxPixels: 4_624_220,
+      minRatio: 1 / 16,
+      maxRatio: 16,
+      // 2048² — the model's own default keyword (2K) and the tier the
+      // price is set at ($0.09 above 1.5K; $0.045 at or below).
+      targetPixels: 4_194_304,
+      divisibleBy: 16,
+    },
+    // `sequential_image_generation` is NOT available on 5.0 pro — one
+    // image per call, unlike the rest of the family.
+    outputs: { min: 1, max: 1, default: 1 },
+    refAddressing: 'ordinal',
+    // Documented max is 10 (the rest of the family takes 14). Also the
+    // only Seedream that BILLS input images — $0.003 each from the 2nd —
+    // which is why its credit price carries headroom over a bare 2x.
+    maxReferences: 10,
+    maxSubjects: 10,
+    maxImagesTotal: 10,
+    maxPromptChars: 2500,
+    supportsOutputFormat: true,
+    notes:
+      'Top Seedream: strongest quality/instruction-following. 1K-2K only (no 4K), max 10 refs, input images billed from the 2nd. Supports layer decomposition (not wired).',
   },
   'seedream-5-0-260128': {
     provider: 'seedance',

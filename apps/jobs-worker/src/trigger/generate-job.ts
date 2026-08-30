@@ -168,6 +168,8 @@ export const generateJob = task({
         // Gemini 1K/2K/4K, OpenAI low/medium/high) and the old Kling-shaped
         // union described only one of them.
         mode?: string;
+        // Omni sub-task (Seedance 2.5 edit/extend).
+        task?: 'edit' | 'extend';
       };
       const rawInputs = jobRow.inputs as Record<string, { kind?: string }>;
       const rawInputKeys = Object.keys(rawInputs);
@@ -193,6 +195,7 @@ export const generateJob = task({
           hasEndFrame: rawInputKeys.includes(CREATE_END_FRAME_KEY),
           referenceCount: refKeys.length,
           referenceKinds,
+          task: opts.task,
         });
         stages = [built.stage];
         stageTemplateInputs = built.templateInputs;

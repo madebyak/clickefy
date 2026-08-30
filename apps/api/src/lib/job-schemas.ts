@@ -108,6 +108,10 @@ export const createUserJobSchema = z.object({
   // `aspectRatio` above. The handler rejects any key the selected model
   // does not declare; the charge uses `provider_models.tier_pricing[quality]`.
   quality: z.string().min(1).max(16).optional(),
+  // Omni sub-task (Seedance 2.5): `edit` reworks the attached reference
+  // video per the prompt; `extend` continues/stitches it. Validated
+  // against the model's `supportsOmniTaskType` + video budget.
+  task: z.enum(['edit', 'extend']).optional(),
   startFrame: jobInputImageSchema.optional(),
   endFrame: jobInputImageSchema.optional(),
   // References: images everywhere; video and audio clips on Seedance

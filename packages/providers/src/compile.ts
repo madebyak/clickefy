@@ -878,10 +878,32 @@ function compileKling(
       message: `${stage.model} does not honor aspect_ratio; the field will be omitted from the request.`,
     });
   }
-  const duration =
+  let duration =
     typeof stage.config.duration === 'number'
       ? stage.config.duration
       : capabilities.duration?.default;
+  // Kling O1: a bare first frame (no last frame, no references, no
+  // elements) collapses the legal durations to 5s/10s. The create flow
+  // rejects this at submit; for template stages, clamp DOWN with a
+  // warning — the duration is the billed unit, so serving longer than
+  // charged is not ours to give, and the provider would hard-reject the
+  // unclamped value after the debit anyway.
+  const bare = capabilities.bareStartFrameDurations;
+  if (
+    bare &&
+    typeof duration === 'number' &&
+    !bare.includes(duration) &&
+    subjects.length === 1 &&
+    stage.references.length === 0 &&
+    configuredElements.length === 0
+  ) {
+    const clamped = [...bare].reverse().find((d) => d <= duration!) ?? bare[0]!;
+    warnings.push({
+      code: 'config_clamped',
+      message: `${stage.model} only supports ${bare.join('s/')}s clips with a bare start frame; duration ${duration}s was clamped to ${clamped}s.`,
+    });
+    duration = clamped;
+  }
   const cfgScale =
     typeof stage.config.cfgScale === 'number' ? stage.config.cfgScale : undefined;
   const mode = typeof stage.config.mode === 'string'
@@ -1845,9 +1867,16 @@ function compileSeedance(
 
   // Declare the omni sub-task when we know it, so an incompatible
   // combination is rejected at submit rather than failing asynchronously
-  // on a task that is already queued and already paid for.
+  // on a task that is already queued and already paid for. An explicit
+  // config value ('edit' / 'extend' — the create flow's Edit mode) wins
+  // over the inferred 'reference'.
+  const cfgTask = (cfg as { omniReferenceTaskType?: unknown }).omniReferenceTaskType;
   const omniReferenceTaskType =
-    capabilities.supportsOmniTaskType && refs.length > 0 ? ('reference' as const) : undefined;
+    capabilities.supportsOmniTaskType && refs.length > 0
+      ? cfgTask === 'edit' || cfgTask === 'extend'
+        ? cfgTask
+        : ('reference' as const)
+      : undefined;
 
   const request: SeedanceCompiledRequest = {
     provider: 'seedance',

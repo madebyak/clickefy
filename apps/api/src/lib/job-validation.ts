@@ -59,7 +59,9 @@ export type JobValidationErrorCode =
   | 'audio_reference_unreadable'
   | 'audio_reference_duration'
   | 'audio_references_too_long'
-  | 'audio_reference_needs_visual';
+  | 'audio_reference_needs_visual'
+  | 'video_task_not_supported'
+  | 'video_task_needs_video';
 
 export interface JobValidationError {
   code: JobValidationErrorCode;
@@ -308,6 +310,12 @@ export interface CreateValidationContext {
     allowedAspectRatios: string[];
     /** Video durations in seconds ([] = not a video model). */
     allowedDurations: number[];
+    /**
+     * Kling O1: the collapsed duration list that applies when the
+     * request has a start frame and nothing else (no end frame, no
+     * references). Absent = no conditional.
+     */
+    bareStartFrameDurations?: readonly number[];
     /** True when the model is image-to-video only (needs a start frame). */
     requiresStartFrame: boolean;
     /** Whether an end frame is meaningful for this model. */
@@ -318,6 +326,11 @@ export interface CreateValidationContext {
     referenceAudio?: ReferenceClipBudget;
     /** Seedance 2.0 family: audio refs need an image or video alongside. */
     audioRefRequiresVisual?: boolean;
+    /**
+     * Seedance 2.5: the model exposes `omni_reference_task_type`, so
+     * the create flow may request an `edit` / `extend` task.
+     */
+    supportsVideoTasks?: boolean;
     /**
      * Seedance: BytePlus forbids start/end frames and omni references
      * in one request. Enforced as a 422 rather than the old silent
@@ -461,6 +474,42 @@ export async function validateCreateSubmission(
     });
   }
 
+  // ── Edit / Extend sub-tasks (Seedance 2.5) ─────────────────────
+  if (body.task) {
+    if (!model.supportsVideoTasks) {
+      return fail({
+        code: 'video_task_not_supported',
+        message: 'This model cannot edit or extend videos.',
+      });
+    }
+    if (videoRefs.length === 0) {
+      return fail({
+        code: 'video_task_needs_video',
+        message:
+          body.task === 'edit'
+            ? 'Attach the video you want to edit.'
+            : 'Attach the video you want to extend.',
+      });
+    }
+    // v1 keeps edit to a single source clip — BytePlus's own edit
+    // examples use exactly one, and "which video gets the edit" has no
+    // UI answer for several. Extend legitimately chains clips.
+    if (body.task === 'edit' && videoRefs.length > 1) {
+      return fail({
+        code: 'video_task_needs_video',
+        message: 'Editing works on one video at a time.',
+      });
+    }
+    // Edit output length follows the source clip (duration is pinned to
+    // -1 on the wire) — a duration pick would be a lie.
+    if (body.task === 'edit' && body.duration !== undefined) {
+      return fail({
+        code: 'duration_not_allowed',
+        message: 'Edited videos keep the length of the source clip.',
+      });
+    }
+  }
+
   // ── R2 ownership (prefix) + existence (parallel HEADs) ─────────
   const expectedPrefix = `user-uploads/${ctx.userId}/`;
   for (const a of attachments) {
@@ -500,6 +549,9 @@ export async function validateCreateSubmission(
   let inputVideoSeconds = 0;
   if (model.referenceVideo && videoRefs.length > 0) {
     const budget = model.referenceVideo;
+    // BytePlus raises the floor for edit tasks: the clip being edited
+    // must be at least 4s (general references allow 2s).
+    const minClip = body.task === 'edit' ? Math.max(4, budget.minClipSeconds) : budget.minClipSeconds;
     const durations = await Promise.all(
       videoRefs.map((a) =>
         probeVideoDurationSeconds(ctx.uploadsBucket, a.val.r2Key, a.val.sizeBytes),
@@ -516,10 +568,10 @@ export async function validateCreateSubmission(
           fieldKey,
         });
       }
-      if (seconds < budget.minClipSeconds || seconds > budget.maxClipSeconds) {
+      if (seconds < minClip || seconds > budget.maxClipSeconds) {
         return fail({
           code: 'video_reference_duration',
-          message: `Video references must be ${budget.minClipSeconds}–${budget.maxClipSeconds} seconds long.`,
+          message: `${body.task === 'edit' ? 'Videos to edit' : 'Video references'} must be ${minClip}–${budget.maxClipSeconds} seconds long.`,
           fieldKey,
           details: { seconds: Math.round(seconds * 10) / 10 },
         });
@@ -601,6 +653,23 @@ export async function validateCreateSubmission(
         code: 'duration_not_allowed',
         message: `Duration ${body.duration}s is not supported by this model.`,
         details: { submitted: body.duration, allowed: model.allowedDurations },
+      });
+    }
+    // Kling O1: a bare start frame collapses the legal durations. A 422
+    // here beats a provider rejection after the debit.
+    if (
+      model.bareStartFrameDurations &&
+      body.startFrame &&
+      !body.endFrame &&
+      body.references.length === 0 &&
+      !model.bareStartFrameDurations.includes(body.duration)
+    ) {
+      return fail({
+        code: 'duration_not_allowed',
+        message: `With only a start frame, this model supports ${model.bareStartFrameDurations.join(
+          's or ',
+        )}s clips.`,
+        details: { submitted: body.duration, allowed: [...model.bareStartFrameDurations] },
       });
     }
   }

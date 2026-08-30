@@ -263,7 +263,13 @@
     "soundNeedsTier": "Sound needs {tier}",
     "aspectFromFrame": "From start frame",
     "maxVideoRefs": "This model takes up to {max} video reference(s)",
-    "maxAudioRefs": "This model takes up to {max} audio clip(s)"
+    "maxAudioRefs": "This model takes up to {max} audio clip(s)",
+    "modeEdit": "Edit video",
+    "modeEditHint": "Change things in an existing clip",
+    "modeExtend": "Extend video",
+    "modeExtendHint": "Continue a clip, or stitch clips together",
+    "editNeedsVideo": "Attach the video you want to edit — the result keeps its length and shape",
+    "extendNeedsVideo": "Attach the video you want to extend"
   },
   "account": {
     "availableCredits": "Available credits",

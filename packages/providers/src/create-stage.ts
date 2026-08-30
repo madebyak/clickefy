@@ -86,6 +86,15 @@ export interface BuildCreateStageInput {
    * which keeps every pre-existing caller byte-identical.
    */
   referenceKinds?: ReadonlyArray<'image' | 'video' | 'audio'>;
+  /**
+   * Seedance 2.5 omni sub-task: `edit` reworks the attached video per
+   * the prompt (output length follows the source — duration is forced
+   * to -1 and ratio to adaptive, per BytePlus's own constraints);
+   * `extend` continues/stitches it (ratio adaptive, duration free).
+   * Only meaningful with `referenceCount > 0` on a model that has
+   * `supportsOmniTaskType`.
+   */
+  task?: 'edit' | 'extend';
 }
 
 export interface BuiltCreateStage {
@@ -153,6 +162,15 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
   if (provider === 'seedance' && !isImage) {
     const seedance = config as SeedanceStageConfig;
     if (typeof input.duration === 'number') seedance.duration = input.duration;
+    // Edit / Extend (Seedance 2.5): declare the sub-task so BytePlus
+    // validates the shape at submit, and pin the constraints the docs
+    // force — ratio must be `adaptive` for both; edit output length
+    // follows the source clip, so duration must be -1.
+    if (input.task && refCount > 0 && caps.supportsOmniTaskType) {
+      seedance.omniReferenceTaskType = input.task;
+      seedance.aspectRatio = 'adaptive';
+      if (input.task === 'edit') seedance.duration = -1;
+    }
     // Seedance's audio switch is `generateAudio` — the `sound` key the
     // Kling branch writes is not read by the Seedance compiler, so the
     // toggle silently did nothing here. Always explicit: the ModelArk

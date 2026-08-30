@@ -359,6 +359,12 @@ export interface GenModel {
   /** Video durations in seconds; empty for image models. */
   durations: number[];
   /**
+   * Kling O1: the collapsed duration list that applies while the
+   * composer holds a start frame and nothing else — filter the picker
+   * to it in that state.
+   */
+  bareStartFrameDurations?: number[];
+  /**
    * The clip length `costCredits` is quoted at. Video models bill per
    * second, so the composer scales the displayed price by
    * `chosen / defaultDuration` — see `resolveCreditCost`.
@@ -428,6 +434,11 @@ export interface GenModel {
   };
   /** Seedance 2.0 family: audio refs need an image/video alongside. */
   audioRefRequiresVisual?: boolean;
+  /**
+   * Seedance 2.5: the model takes `task: 'edit' | 'extend'` requests —
+   * the composer offers its Edit/Extend modes only when this is true.
+   */
+  supportsVideoTasks?: boolean;
 }
 
 // ─── Notifications (in-app inbox) ────────────────────────────────────
@@ -470,6 +481,12 @@ export interface CreateGenerationInput {
    * so narrowing here would only break every new provider on arrival.
    */
   quality?: string;
+  /**
+   * Omni sub-task (Seedance 2.5): `edit` reworks the attached reference
+   * video per the prompt (send no duration — output follows the clip);
+   * `extend` continues/stitches the attached clip(s).
+   */
+  task?: 'edit' | 'extend';
   startFrame?: Extract<JobInputValue, { kind: 'image' }>;
   endFrame?: Extract<JobInputValue, { kind: 'image' }>;
   /**

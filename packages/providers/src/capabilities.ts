@@ -257,9 +257,13 @@ export interface ModelCapabilities {
    * type a raw prompt (the mobile create screen). Values reflect provider
    * limits: Kling caps the API at 2 500 chars; Gemini image models are
    * token-based and effectively unbounded for a mobile box, so we set a
-   * comfortable soft cap; Seedance's exact cap is unpublished so we use a
-   * safe 2 500. When omitted, the client falls back to a conservative
-   * default. Templates ignore this (their prompts are admin-authored).
+   * comfortable soft cap; Seedance's exact cap is unpublished — 8 000
+   * gives its long-form prompts room (2.5's own 30s examples are
+   * timestamp-segmented, and multi-reference prompts cite @Video1…N per
+   * aspect); an upstream rejection would surface as a failed job, so
+   * revisit if BytePlus ever publishes a hard cap. When omitted, the
+   * client falls back to a conservative default. Templates ignore this
+   * (their prompts are admin-authored).
    */
   maxPromptChars?: number;
 
@@ -1007,7 +1011,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       default: '720p',
       labels: { '4k': '4K' },
     },
-    maxPromptChars: 2500,
+    maxPromptChars: 8000,
     notes:
       'BytePlus Seedance 2.0 Standard — the only model in the line above 720p (480p/720p/1080p/4k). T2V, I2V, first/last frame, up to 9 references, native audio with lip-sync. 4–15s. Reference images and start/end frames cannot be combined.',
   },
@@ -1040,7 +1044,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       values: ['480p', '720p'],
       default: '720p',
     },
-    maxPromptChars: 2500,
+    maxPromptChars: 8000,
     notes:
       'Fast tier of Seedance 2.0 — ~20% cheaper, slightly lower fidelity. 480p/720p only, unlike Standard. Otherwise the same parameter surface.',
   },
@@ -1087,7 +1091,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       values: SEEDANCE_RESOLUTIONS_25,
       default: '720p',
     },
-    maxPromptChars: 2500,
+    maxPromptChars: 8000,
     notes:
       'BytePlus Seedance 2.5. Up to 30s and 30 reference images, plus reference video (<=10, <=30s total) and reference audio (<=10 clips, <=30s total). 480p/720p/1080p (1080p is 10-bit H.265). Also supports edit and extend task types via omni_reference_task_type. Billed per second of output.',
   },
@@ -1119,7 +1123,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       values: ['480p', '720p'],
       default: '720p',
     },
-    maxPromptChars: 2500,
+    maxPromptChars: 8000,
     notes:
       'Cheapest tier of the Seedance 2.0 line. 480p/720p, 4-15s, up to 9 references. Same parameter surface as Fast.',
   },

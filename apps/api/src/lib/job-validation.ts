@@ -25,6 +25,7 @@
 
 import type { TemplateInputField } from '@clickfy/db';
 import type { CreateJobBody, CreateUserJobBody, JobInputValueParsed } from './job-schemas';
+import { probeAudioDurationSeconds, probeVideoDurationSeconds } from './media-duration';
 
 export type JobValidationErrorCode =
   | 'template_not_published'
@@ -45,7 +46,20 @@ export type JobValidationErrorCode =
   | 'model_requires_image'
   | 'end_frame_not_supported'
   | 'too_many_images'
-  | 'duration_not_allowed';
+  | 'duration_not_allowed'
+  // ── Reference-clip codes (Seedance video/audio references) ──
+  | 'frames_and_references_exclusive'
+  | 'video_reference_not_supported'
+  | 'too_many_video_references'
+  | 'video_reference_unreadable'
+  | 'video_reference_duration'
+  | 'video_references_too_long'
+  | 'audio_reference_not_supported'
+  | 'too_many_audio_references'
+  | 'audio_reference_unreadable'
+  | 'audio_reference_duration'
+  | 'audio_references_too_long'
+  | 'audio_reference_needs_visual';
 
 export interface JobValidationError {
   code: JobValidationErrorCode;
@@ -268,6 +282,14 @@ function expectedInputKind(type: TemplateInputField['type']): 'image' | 'video' 
 
 // ─── Create-flow (prompt-first) validation ──────────────────────────
 
+/** Per-kind reference-clip budget (Seedance video/audio references). */
+export interface ReferenceClipBudget {
+  max: number;
+  maxTotalSeconds: number;
+  minClipSeconds: number;
+  maxClipSeconds: number;
+}
+
 export interface CreateValidationContext {
   userId: string;
   uploadsBucket: R2Bucket;
@@ -290,10 +312,29 @@ export interface CreateValidationContext {
     requiresStartFrame: boolean;
     /** Whether an end frame is meaningful for this model. */
     acceptsStartEndImage: boolean;
-    /** Flat per-model cost in credits. */
-    cost: number;
+    /** Reference VIDEO budget; absent = the model takes no video refs. */
+    referenceVideo?: ReferenceClipBudget;
+    /** Reference AUDIO budget; absent = the model takes no audio refs. */
+    referenceAudio?: ReferenceClipBudget;
+    /** Seedance 2.0 family: audio refs need an image or video alongside. */
+    audioRefRequiresVisual?: boolean;
+    /**
+     * Seedance: BytePlus forbids start/end frames and omni references
+     * in one request. Enforced as a 422 rather than the old silent
+     * frame-drop in `buildCreateStage`.
+     */
+    framesAndReferencesExclusive?: boolean;
   };
-  currentCreditsBalance: number;
+}
+
+/**
+ * Successful validation yields what the ROUTE needs to price the job:
+ * the summed input-video seconds, probed from the actual bytes in R2 —
+ * never from a client claim, because the provider bills on the real
+ * clip and `resolveCreditCost` turns this number into credits.
+ */
+export interface CreateValidationOk {
+  inputVideoSeconds: number;
 }
 
 /** Conservative fallback when a model declares no `maxPromptChars`. */
@@ -308,65 +349,127 @@ const DEFAULT_MAX_PROMPT_CHARS = 2500;
 export async function validateCreateSubmission(
   body: CreateUserJobBody,
   ctx: CreateValidationContext,
-): Promise<JobValidationError | null> {
+): Promise<{ error: JobValidationError } | { ok: CreateValidationOk }> {
   const { model } = ctx;
+  const fail = (error: JobValidationError) => ({ error });
 
   // ── Prompt ─────────────────────────────────────────────────────
   const prompt = body.prompt.trim();
   if (prompt.length === 0) {
-    return { code: 'prompt_empty', message: 'Enter a prompt to generate.' };
+    return fail({ code: 'prompt_empty', message: 'Enter a prompt to generate.' });
   }
   const promptCap = model.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
   if (body.prompt.length > promptCap) {
-    return {
+    return fail({
       code: 'prompt_too_long',
       message: `Prompt exceeds the ${promptCap.toLocaleString()}-character limit for this model.`,
       details: { maxLength: promptCap, actual: body.prompt.length },
-    };
+    });
   }
 
   // ── Assemble attachments (canonical field keys for error copy) ──
-  const attachments: Array<{ fieldKey: string; val: Extract<JobInputValueParsed, { kind: 'image' }> }> = [];
+  type MediaVal = Extract<JobInputValueParsed, { kind: 'image' | 'video' | 'audio' }>;
+  const attachments: Array<{ fieldKey: string; val: MediaVal }> = [];
   if (body.startFrame) attachments.push({ fieldKey: 'start_frame', val: body.startFrame });
   if (body.endFrame) attachments.push({ fieldKey: 'end_frame', val: body.endFrame });
   body.references.forEach((r, i) => attachments.push({ fieldKey: `ref_${i}`, val: r }));
 
-  // ── Image-budget rules ─────────────────────────────────────────
-  if (model.maxImagesTotal === 0 && attachments.length > 0) {
-    return {
+  const imageAttachments = attachments.filter((a) => a.val.kind === 'image');
+  const videoRefs = attachments.filter((a) => a.val.kind === 'video');
+  const audioRefs = attachments.filter((a) => a.val.kind === 'audio');
+
+  // ── Per-kind budget rules ──────────────────────────────────────
+  if (model.maxImagesTotal === 0 && imageAttachments.length > 0) {
+    return fail({
       code: 'model_no_images',
       message: 'This model does not accept input images.',
-    };
+    });
   }
   if (model.requiresStartFrame && !body.startFrame) {
-    return {
+    return fail({
       code: 'model_requires_image',
       message: 'This model needs a start image to animate. Attach one to continue.',
-    };
+    });
   }
   if (body.endFrame && !model.acceptsStartEndImage) {
-    return {
+    return fail({
       code: 'end_frame_not_supported',
       message: 'This model does not support an end frame.',
-    };
+    });
   }
-  if (attachments.length > model.maxImagesTotal) {
-    return {
+  if (imageAttachments.length > model.maxImagesTotal) {
+    return fail({
       code: 'too_many_images',
       message: `This model accepts at most ${model.maxImagesTotal} image(s).`,
-      details: { max: model.maxImagesTotal, actual: attachments.length },
-    };
+      details: { max: model.maxImagesTotal, actual: imageAttachments.length },
+    });
+  }
+
+  // Seedance: frames and omni references cannot share a request. A 422
+  // here beats the old behavior (buildCreateStage silently dropped the
+  // frames), which billed the user for a request that ignored half of
+  // what they attached.
+  if (
+    model.framesAndReferencesExclusive &&
+    (body.startFrame || body.endFrame) &&
+    body.references.length > 0
+  ) {
+    return fail({
+      code: 'frames_and_references_exclusive',
+      message:
+        'This model takes either start/end frames or reference files — not both in one generation.',
+    });
+  }
+
+  if (videoRefs.length > 0 && !model.referenceVideo) {
+    return fail({
+      code: 'video_reference_not_supported',
+      message: 'This model does not accept video references.',
+    });
+  }
+  if (model.referenceVideo && videoRefs.length > model.referenceVideo.max) {
+    return fail({
+      code: 'too_many_video_references',
+      message: `This model accepts at most ${model.referenceVideo.max} video reference(s).`,
+      details: { max: model.referenceVideo.max, actual: videoRefs.length },
+    });
+  }
+  if (audioRefs.length > 0 && !model.referenceAudio) {
+    return fail({
+      code: 'audio_reference_not_supported',
+      message: 'This model does not accept audio references.',
+    });
+  }
+  if (model.referenceAudio && audioRefs.length > model.referenceAudio.max) {
+    return fail({
+      code: 'too_many_audio_references',
+      message: `This model accepts at most ${model.referenceAudio.max} audio reference(s).`,
+      details: { max: model.referenceAudio.max, actual: audioRefs.length },
+    });
+  }
+  // Seedance 2.0 family: audio-only input is a 2.5-exclusive — audio
+  // refs need at least one visual (image or video) alongside.
+  if (
+    model.audioRefRequiresVisual &&
+    audioRefs.length > 0 &&
+    imageAttachments.length === 0 &&
+    videoRefs.length === 0
+  ) {
+    return fail({
+      code: 'audio_reference_needs_visual',
+      message: 'This model needs at least one image or video alongside an audio reference.',
+    });
   }
 
   // ── R2 ownership (prefix) + existence (parallel HEADs) ─────────
   const expectedPrefix = `user-uploads/${ctx.userId}/`;
   for (const a of attachments) {
     if (!a.val.r2Key.startsWith(expectedPrefix)) {
-      return {
+      return fail({
         code: 'forbidden_r2_key',
-        message: 'An attached image does not belong to you.',
+        message: 'An attached file does not belong to you.',
         fieldKey: a.fieldKey,
-      };
+      });
     }
   }
   const heads = await Promise.all(
@@ -378,51 +481,132 @@ export async function validateCreateSubmission(
   );
   const missing = heads.find((h) => !h.exists);
   if (missing) {
-    return {
+    return fail({
       code: 'r2_key_not_found',
-      message: 'An attached image could not be found in storage.',
+      message: 'An attached file could not be found in storage.',
       fieldKey: missing.fieldKey,
       details: { r2Key: missing.r2Key },
-    };
+    });
+  }
+
+  // ── Reference-clip durations, probed from the bytes in R2 ──────
+  //
+  // Video durations feed BILLING (`inputVideoSeconds` scales the
+  // charge), so an unreadable clip is a rejection, never a zero —
+  // otherwise understating the input is free money against us. Audio
+  // durations only guard the provider's own caps, which it enforces
+  // AFTER we have debited; catching a violation here turns a
+  // failed-and-refunded job into an instant 422.
+  let inputVideoSeconds = 0;
+  if (model.referenceVideo && videoRefs.length > 0) {
+    const budget = model.referenceVideo;
+    const durations = await Promise.all(
+      videoRefs.map((a) =>
+        probeVideoDurationSeconds(ctx.uploadsBucket, a.val.r2Key, a.val.sizeBytes),
+      ),
+    );
+    for (let i = 0; i < videoRefs.length; i++) {
+      const seconds = durations[i];
+      const fieldKey = videoRefs[i]!.fieldKey;
+      if (seconds == null) {
+        return fail({
+          code: 'video_reference_unreadable',
+          message:
+            'A video reference could not be read. Use a standard (non-fragmented) MP4 or MOV file.',
+          fieldKey,
+        });
+      }
+      if (seconds < budget.minClipSeconds || seconds > budget.maxClipSeconds) {
+        return fail({
+          code: 'video_reference_duration',
+          message: `Video references must be ${budget.minClipSeconds}–${budget.maxClipSeconds} seconds long.`,
+          fieldKey,
+          details: { seconds: Math.round(seconds * 10) / 10 },
+        });
+      }
+      inputVideoSeconds += seconds;
+    }
+    if (inputVideoSeconds > budget.maxTotalSeconds) {
+      return fail({
+        code: 'video_references_too_long',
+        message: `Video references can total at most ${budget.maxTotalSeconds} seconds for this model.`,
+        details: { maxTotalSeconds: budget.maxTotalSeconds },
+      });
+    }
+  }
+  if (model.referenceAudio && audioRefs.length > 0) {
+    const budget = model.referenceAudio;
+    let totalAudio = 0;
+    const durations = await Promise.all(
+      audioRefs.map((a) =>
+        probeAudioDurationSeconds(
+          ctx.uploadsBucket,
+          a.val.r2Key,
+          a.val.sizeBytes,
+          a.val.mimeType,
+        ),
+      ),
+    );
+    for (let i = 0; i < audioRefs.length; i++) {
+      const seconds = durations[i];
+      const fieldKey = audioRefs[i]!.fieldKey;
+      if (seconds == null) {
+        return fail({
+          code: 'audio_reference_unreadable',
+          message: 'An audio reference could not be read. Use a standard MP3 or WAV file.',
+          fieldKey,
+        });
+      }
+      if (seconds < budget.minClipSeconds || seconds > budget.maxClipSeconds) {
+        return fail({
+          code: 'audio_reference_duration',
+          message: `Audio references must be ${budget.minClipSeconds}–${budget.maxClipSeconds} seconds long.`,
+          fieldKey,
+          details: { seconds: Math.round(seconds * 10) / 10 },
+        });
+      }
+      totalAudio += seconds;
+    }
+    if (totalAudio > budget.maxTotalSeconds) {
+      return fail({
+        code: 'audio_references_too_long',
+        message: `Audio references can total at most ${budget.maxTotalSeconds} seconds for this model.`,
+        details: { maxTotalSeconds: budget.maxTotalSeconds },
+      });
+    }
   }
 
   // ── Aspect ratio ───────────────────────────────────────────────
   if (body.aspectRatio !== undefined && model.allowedAspectRatios.length > 0) {
     if (!model.allowedAspectRatios.includes(body.aspectRatio)) {
-      return {
+      return fail({
         code: 'aspect_not_allowed',
         message: `Aspect ratio "${body.aspectRatio}" is not supported by this model.`,
         details: { submitted: body.aspectRatio, allowed: model.allowedAspectRatios },
-      };
+      });
     }
   }
 
   // ── Duration ───────────────────────────────────────────────────
   if (body.duration !== undefined) {
     if (model.kind !== 'video' || model.allowedDurations.length === 0) {
-      return {
+      return fail({
         code: 'duration_not_allowed',
         message: 'This model does not support a duration setting.',
         details: { submitted: body.duration },
-      };
+      });
     }
     if (!model.allowedDurations.includes(body.duration)) {
-      return {
+      return fail({
         code: 'duration_not_allowed',
         message: `Duration ${body.duration}s is not supported by this model.`,
         details: { submitted: body.duration, allowed: model.allowedDurations },
-      };
+      });
     }
   }
 
-  // ── Credit balance (pre-check; the CTE re-checks authoritatively) ─
-  if (ctx.currentCreditsBalance < model.cost) {
-    return {
-      code: 'insufficient_credits',
-      message: 'Not enough credits.',
-      details: { required: model.cost, available: ctx.currentCreditsBalance },
-    };
-  }
-
-  return null;
+  // Credit balance is checked by the ROUTE after this returns: the cost
+  // depends on `inputVideoSeconds`, which only exists once the clips
+  // above have been probed.
+  return { ok: { inputVideoSeconds } };
 }

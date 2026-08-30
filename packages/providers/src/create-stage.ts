@@ -78,6 +78,14 @@ export interface BuildCreateStageInput {
   hasEndFrame?: boolean;
   /** Number of reference images attached (keys `ref_0..ref_{n-1}`). */
   referenceCount?: number;
+  /**
+   * Media kind per reference, in `ref_i` order. Seedance accepts video
+   * and audio references alongside images and the slot's `assetKind` is
+   * what routes each one to the right `content[]` role. Absent (or
+   * shorter than `referenceCount`) defaults the remainder to `image`,
+   * which keeps every pre-existing caller byte-identical.
+   */
+  referenceKinds?: ReadonlyArray<'image' | 'video' | 'audio'>;
 }
 
 export interface BuiltCreateStage {
@@ -151,13 +159,16 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
     // default is TRUE and audio is billed.
     if (caps.supportsSound) seedance.generateAudio = input.sound === true;
     if (refCount > 0) {
-      // Reference mode — bind each image to a user_input slot.
+      // Reference mode — bind each attachment to a user_input slot with
+      // its actual media kind, so the compiler enforces the right
+      // per-kind budget and the adapter emits the right content[] role
+      // (reference_image / reference_video / reference_audio).
       seedance.seedanceMode = 'reference';
       seedance.referenceSlots = Array.from(
         { length: refCount },
         (_, i): SeedanceReferenceSlot => ({
           id: createReferenceKey(i),
-          assetKind: 'image',
+          assetKind: input.referenceKinds?.[i] ?? 'image',
           source: { kind: 'user_input', fieldKey: createReferenceKey(i) },
         }),
       );

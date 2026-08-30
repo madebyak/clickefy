@@ -261,7 +261,9 @@
     "videoNotAReference": "لا يمكن استخدام الفيديو كمرجع بعد",
     "attachedSome": "أُضيفت {added} — هذا النموذج يقبل {max} مراجع",
     "soundNeedsTier": "الصوت يتطلب {tier}",
-    "aspectFromFrame": "من إطار البداية"
+    "aspectFromFrame": "من إطار البداية",
+    "maxVideoRefs": "هذا النموذج يقبل حتى {max} من مقاطع الفيديو المرجعية",
+    "maxAudioRefs": "هذا النموذج يقبل حتى {max} من المقاطع الصوتية"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",
@@ -412,7 +414,8 @@
     "attachVideoUnsupported": "{model} لا يقبل مقاطع الفيديو كمرفقات",
     "attachVideoUnsupportedGeneric": "هذا النموذج لا يقبل مقاطع الفيديو كمرفقات",
     "attachImageUnsupported": "{model} لا يقبل الصور كمرفقات",
-    "attachLimitReached": "هذا النموذج يقبل حتى {max} مرفقات"
+    "attachLimitReached": "هذا النموذج يقبل حتى {max} مرفقات",
+    "attachVideoLimitReached": "حتى {max} من مقاطع الفيديو المرجعية لهذا النموذج"
   },
   "auth": {
     "panelBadge": "استوديو كليكفاي",

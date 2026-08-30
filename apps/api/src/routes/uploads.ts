@@ -99,6 +99,16 @@ const USER_ALLOWED_VIDEO_MIME = new Set([
   'video/mp4',
   'video/quicktime',
 ]);
+// Seedance reference-audio formats (wav/mp3). BytePlus caps audio clips
+// at 15MB; enforcing it at upload beats a rejected job later.
+const USER_ALLOWED_AUDIO_MIME = new Set([
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/wave',
+]);
+const USER_MAX_AUDIO_BYTES = 15 * 1024 * 1024;
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -108,6 +118,11 @@ const EXT_BY_MIME: Record<string, string> = {
   'image/heif': 'heif',
   'video/mp4': 'mp4',
   'video/quicktime': 'mov',
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/wave': 'wav',
 };
 
 /**
@@ -172,6 +187,19 @@ function detectMimeFromBytes(bytes: Uint8Array): string | null {
     String.fromCharCode(bytes[offset]!, bytes[offset + 1]!, bytes[offset + 2]!, bytes[offset + 3]!);
   if (ascii4(0) === 'RIFF' && ascii4(8) === 'WEBP') {
     return 'image/webp';
+  }
+
+  // WAV — "RIFF" + 4 size bytes + "WAVE"
+  if (ascii4(0) === 'RIFF' && ascii4(8) === 'WAVE') {
+    return 'audio/wav';
+  }
+
+  // MP3 — "ID3" tag header, or a bare MPEG frame sync (FF Ex)
+  if (
+    (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) ||
+    (bytes[0] === 0xff && (bytes[1]! & 0xe0) === 0xe0)
+  ) {
+    return 'audio/mpeg';
   }
 
   // ISOBMFF (HEIC/HEIF/MP4/MOV) — "ftyp" at offset 4, brand at offset 8
@@ -631,8 +659,13 @@ uploadsUserRoute.post(
     const file = entry;
     const isImage = USER_ALLOWED_IMAGE_MIME.has(file.type);
     const isVideo = USER_ALLOWED_VIDEO_MIME.has(file.type);
-    if (!isImage && !isVideo) {
-      const allowed = [...USER_ALLOWED_IMAGE_MIME, ...USER_ALLOWED_VIDEO_MIME].join(', ');
+    const isAudio = USER_ALLOWED_AUDIO_MIME.has(file.type);
+    if (!isImage && !isVideo && !isAudio) {
+      const allowed = [
+        ...USER_ALLOWED_IMAGE_MIME,
+        ...USER_ALLOWED_VIDEO_MIME,
+        ...USER_ALLOWED_AUDIO_MIME,
+      ].join(', ');
       return c.json(
         {
           error: {
@@ -643,12 +676,13 @@ uploadsUserRoute.post(
         400,
       );
     }
-    if (file.size > USER_MAX_BYTES) {
+    const maxBytes = isAudio ? USER_MAX_AUDIO_BYTES : USER_MAX_BYTES;
+    if (file.size > maxBytes) {
       return c.json(
         {
           error: {
             code: 'file_too_large',
-            message: `Max upload size is ${USER_MAX_BYTES / 1024 / 1024}MB.`,
+            message: `Max upload size is ${maxBytes / 1024 / 1024}MB.`,
           },
         },
         413,

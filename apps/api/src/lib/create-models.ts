@@ -240,6 +240,26 @@ export interface CreateModelDTO {
    * is priced via `videoInCostCredits` (Kling) or not accepted at all.
    */
   inputVideoFactor?: number;
+  /**
+   * Reference VIDEO clips the model accepts (Seedance). The composer
+   * gates its attachment policy and pre-checks clip durations on this;
+   * absent = the model takes no video references.
+   */
+  referenceVideo?: {
+    max: number;
+    maxTotalSeconds: number;
+    minClipSeconds: number;
+    maxClipSeconds: number;
+  };
+  /** Reference AUDIO clips (Seedance); absent = none accepted. */
+  referenceAudio?: {
+    max: number;
+    maxTotalSeconds: number;
+    minClipSeconds: number;
+    maxClipSeconds: number;
+  };
+  /** Seedance 2.0 family: audio refs need an image/video alongside. */
+  audioRefRequiresVisual?: boolean;
 }
 
 /**
@@ -309,5 +329,8 @@ export function buildCreateModelDTO(
         ? true
         : undefined,
     inputVideoFactor: caps.inputVideoDurationFactor,
+    referenceVideo: caps.referenceVideo ? { ...caps.referenceVideo } : undefined,
+    referenceAudio: caps.referenceAudio ? { ...caps.referenceAudio } : undefined,
+    audioRefRequiresVisual: caps.audioRefRequiresVisual,
   };
 }

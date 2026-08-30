@@ -463,23 +463,7 @@ jobsRoute.post(
     // model's default.
     const refDuration = caps.kind === 'video' ? caps.duration?.default : undefined;
     const baseCost = (mode ? priceRow?.tierPricing?.[mode] : undefined) ?? priceRow?.costCredits ?? 0;
-    // Charge audio only when it will actually be SERVED: on a tier below
-    // `nativeAudioRequiresTier` the compiler drops the audio rather than
-    // upgrading the resolution, so the charge must drop with it. This
-    // mirrors the composer's own gating — same inputs, same figure.
-    const soundServed =
-      body.sound === true &&
-      caps.supportsSound === true &&
-      !(caps.nativeAudioRequiresTier && mode !== caps.nativeAudioRequiresTier);
-    const cost = resolveCreditCost({
-      baseCredits: priceRow?.costCredits ?? 0,
-      tierPricing: priceRow?.tierPricing ?? null,
-      mode,
-      sound: soundServed,
-      duration: typeof body.duration === 'number' ? body.duration : refDuration,
-      defaultDuration: refDuration,
-    });
-    if (!priceRow || baseCost <= 0 || cost <= 0) {
+    if (!priceRow || baseCost <= 0) {
       return c.json(
         { error: { code: 'model_unpriced', message: 'That model is not available right now.' } },
         422,
@@ -497,11 +481,13 @@ jobsRoute.post(
 
     // ── Semantic validation (model-adaptive) ───────────────────────
     // Same accessor the roster uses — otherwise the picker can offer a
-    // ratio that validation then rejects.
+    // ratio that validation then rejects. Runs BEFORE pricing because
+    // the cost depends on `inputVideoSeconds`, which validation probes
+    // from the actual clips in R2.
     const allowedAspectRatios = aspectRatiosFor(caps);
     const allowedDurations =
       caps.kind === 'video' && caps.duration ? [...caps.duration.values] : [];
-    const validationError = await validateCreateSubmission(body, {
+    const validation = await validateCreateSubmission(body, {
       userId: user.id,
       uploadsBucket: uploads,
       model: {
@@ -513,17 +499,51 @@ jobsRoute.post(
         allowedDurations,
         requiresStartFrame: def.requiresStartFrame,
         acceptsStartEndImage: caps.acceptsStartEndImage ?? false,
-        cost,
+        referenceVideo: caps.referenceVideo,
+        referenceAudio: caps.referenceAudio,
+        audioRefRequiresVisual: caps.audioRefRequiresVisual,
+        framesAndReferencesExclusive: caps.provider === 'seedance' && caps.kind === 'video',
       },
-      currentCreditsBalance: spendableCredits(user),
     });
-    if (validationError) {
-      const status = validationError.code === 'insufficient_credits' ? 402 : 422;
-      const payload =
-        validationError.code === 'insufficient_credits'
-          ? creditErrorFor(user, validationError)
-          : validationError;
-      return c.json({ error: payload }, status);
+    if ('error' in validation) {
+      return c.json({ error: validation.error }, 422);
+    }
+    const { inputVideoSeconds } = validation.ok;
+
+    // ── Price (tier + duration + audio + input video) ──────────────
+    // Charge audio only when it will actually be SERVED: on a tier below
+    // `nativeAudioRequiresTier` the compiler drops the audio rather than
+    // upgrading the resolution, so the charge must drop with it. This
+    // mirrors the composer's own gating — same inputs, same figure.
+    const soundServed =
+      body.sound === true &&
+      caps.supportsSound === true &&
+      !(caps.nativeAudioRequiresTier && mode !== caps.nativeAudioRequiresTier);
+    const cost = resolveCreditCost({
+      baseCredits: priceRow.costCredits,
+      tierPricing: priceRow.tierPricing ?? null,
+      mode,
+      sound: soundServed,
+      duration: typeof body.duration === 'number' ? body.duration : refDuration,
+      defaultDuration: refDuration,
+      inputVideoSeconds,
+      inputVideoFactor: caps.inputVideoDurationFactor,
+    });
+    if (cost <= 0) {
+      return c.json(
+        { error: { code: 'model_unpriced', message: 'That model is not available right now.' } },
+        422,
+      );
+    }
+
+    // ── Credit balance (pre-check; the CTE re-checks authoritatively) ─
+    if (spendableCredits(user) < cost) {
+      const err = {
+        code: 'insufficient_credits',
+        message: 'Not enough credits.',
+        details: { required: cost, available: spendableCredits(user) },
+      };
+      return c.json({ error: creditErrorFor(user, err) }, 402);
     }
 
     // ── Project ownership (web studio) ─────────────────────────────

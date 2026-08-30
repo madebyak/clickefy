@@ -308,6 +308,7 @@ export interface GenerationRequest {
 export type JobInputValue =
   | { kind: 'image'; r2Key: string; mimeType: string; sizeBytes: number }
   | { kind: 'video'; r2Key: string; mimeType: string; sizeBytes: number }
+  | { kind: 'audio'; r2Key: string; mimeType: string; sizeBytes: number }
   | { kind: 'text'; value: string };
 
 export interface JobSubmission {
@@ -408,6 +409,25 @@ export interface GenModel {
    * preview matches the server's charge.
    */
   inputVideoFactor?: number;
+  /**
+   * Reference VIDEO clips the model accepts (Seedance); absent = none.
+   * Drives the composer's attachment policy and client-side clip checks.
+   */
+  referenceVideo?: {
+    max: number;
+    maxTotalSeconds: number;
+    minClipSeconds: number;
+    maxClipSeconds: number;
+  };
+  /** Reference AUDIO clips (Seedance); absent = none accepted. */
+  referenceAudio?: {
+    max: number;
+    maxTotalSeconds: number;
+    minClipSeconds: number;
+    maxClipSeconds: number;
+  };
+  /** Seedance 2.0 family: audio refs need an image/video alongside. */
+  audioRefRequiresVisual?: boolean;
 }
 
 // ─── Notifications (in-app inbox) ────────────────────────────────────
@@ -452,7 +472,11 @@ export interface CreateGenerationInput {
   quality?: string;
   startFrame?: Extract<JobInputValue, { kind: 'image' }>;
   endFrame?: Extract<JobInputValue, { kind: 'image' }>;
-  references?: Array<Extract<JobInputValue, { kind: 'image' }>>;
+  /**
+   * Reference files: images everywhere; video and audio clips on models
+   * that declare `referenceVideo` / `referenceAudio` budgets (Seedance).
+   */
+  references?: Array<Extract<JobInputValue, { kind: 'image' | 'video' | 'audio' }>>;
   idempotencyKey?: string;
   /** Web-studio project to file the outputs into (omitted on mobile). */
   projectId?: string;

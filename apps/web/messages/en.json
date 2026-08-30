@@ -261,7 +261,9 @@
     "videoNotAReference": "Video can't be used as a reference yet",
     "attachedSome": "Added {added} — this model takes {max} references",
     "soundNeedsTier": "Sound needs {tier}",
-    "aspectFromFrame": "From start frame"
+    "aspectFromFrame": "From start frame",
+    "maxVideoRefs": "This model takes up to {max} video reference(s)",
+    "maxAudioRefs": "This model takes up to {max} audio clip(s)"
   },
   "account": {
     "availableCredits": "Available credits",
@@ -412,7 +414,8 @@
     "attachVideoUnsupported": "{model} doesn't accept video attachments",
     "attachVideoUnsupportedGeneric": "This model doesn't accept video attachments",
     "attachImageUnsupported": "{model} doesn't accept image attachments",
-    "attachLimitReached": "This model accepts up to {max} attachments"
+    "attachLimitReached": "This model accepts up to {max} attachments",
+    "attachVideoLimitReached": "Up to {max} video references for this model"
   },
   "auth": {
     "panelBadge": "Clickefy Studio",

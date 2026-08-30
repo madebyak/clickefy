@@ -416,7 +416,7 @@ export interface TemplateStats {
 // ── Job state ───────────────────────────────────────────────────────
 
 export type JobInputValue =
-  | { kind: 'image' | 'video'; r2Key: string; mimeType: string; sizeBytes: number }
+  | { kind: 'image' | 'video' | 'audio'; r2Key: string; mimeType: string; sizeBytes: number }
   | { kind: 'text'; value: string };
 
 export interface JobProgress {

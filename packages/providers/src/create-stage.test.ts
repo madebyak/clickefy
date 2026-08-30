@@ -252,6 +252,101 @@ describe('buildCreateStage — Seedance (video)', () => {
     expect(s.startImage).toBeUndefined();
     expect(s.endImage).toBeUndefined();
   });
+
+  it('mixed reference kinds route each clip by its own assetKind', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'a launch film in the style of these',
+      referenceCount: 3,
+      referenceKinds: ['image', 'video', 'audio'],
+    });
+    const slots = (built.stage.config as { referenceSlots?: Array<{ assetKind: string }> })
+      .referenceSlots;
+    expect(slots?.map((sl) => sl.assetKind)).toEqual(['image', 'video', 'audio']);
+
+    const { request, warnings } = run(built, {
+      [createReferenceKey(0)]: img('r0'),
+      [createReferenceKey(1)]: {
+        kind: 'video',
+        r2Key: 'clip',
+        mimeType: 'video/mp4',
+        bytes: new Uint8Array([4]),
+      },
+      [createReferenceKey(2)]: {
+        kind: 'audio',
+        r2Key: 'voice',
+        mimeType: 'audio/mpeg',
+        bytes: new Uint8Array([5]),
+      },
+    });
+    const s = request as SeedanceCompiledRequest;
+    const mimes = (s.referenceImages ?? []).map((p) => p.mimeType);
+    expect(mimes).toContain('video/mp4');
+    expect(mimes).toContain('audio/mpeg');
+    // Nothing was clamped or dropped — the budgets allow this mix.
+    expect(warnings.filter((w) => w.code === 'config_clamped')).toHaveLength(0);
+  });
+
+  it('honours per-model clip budgets from the registry (2.5 takes >3 videos)', () => {
+    // The compiler used to hardcode 3 videos/3 audio for every model,
+    // which silently under-served Seedance 2.5's documented 10/10.
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'stitch these takes',
+      referenceCount: 5,
+      referenceKinds: ['video', 'video', 'video', 'video', 'video'],
+    });
+    const inputs = Object.fromEntries(
+      Array.from({ length: 5 }, (_, i) => [
+        createReferenceKey(i),
+        {
+          kind: 'video' as const,
+          r2Key: `clip-${i}`,
+          mimeType: 'video/mp4',
+          bytes: new Uint8Array([1]),
+        },
+      ]),
+    );
+    const { request, warnings } = run(built, inputs);
+    const s = request as SeedanceCompiledRequest;
+    expect((s.referenceImages ?? []).length).toBe(5);
+    expect(warnings.filter((w) => w.code === 'config_clamped')).toHaveLength(0);
+  });
+
+  it('still clamps the 2.0 family at its own 3-video budget', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-0-260128',
+      prompt: 'stitch these takes',
+      referenceCount: 4,
+      referenceKinds: ['video', 'video', 'video', 'video'],
+    });
+    const inputs = Object.fromEntries(
+      Array.from({ length: 4 }, (_, i) => [
+        createReferenceKey(i),
+        {
+          kind: 'video' as const,
+          r2Key: `clip-${i}`,
+          mimeType: 'video/mp4',
+          bytes: new Uint8Array([1]),
+        },
+      ]),
+    );
+    const { request, warnings } = run(built, inputs);
+    const s = request as SeedanceCompiledRequest;
+    expect((s.referenceImages ?? []).length).toBe(3);
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+
+  it('defaults missing kinds to image, byte-identical to the old shape', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-0-260128',
+      prompt: 'combine these looks',
+      referenceCount: 2,
+    });
+    const slots = (built.stage.config as { referenceSlots?: Array<{ assetKind: string }> })
+      .referenceSlots;
+    expect(slots?.map((sl) => sl.assetKind)).toEqual(['image', 'image']);
+  });
 });
 
 // ─── The billed tier must reach the provider ────────────────────────

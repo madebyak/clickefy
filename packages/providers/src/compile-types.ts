@@ -35,7 +35,7 @@ import type { ModelCapabilities } from './capabilities';
 export type RuntimeInputValue =
   | { kind: 'text'; value: string }
   | {
-      kind: 'image' | 'video';
+      kind: 'image' | 'video' | 'audio';
       r2Key: string;
       mimeType: string;
       /** Optional inline binary — set when the executor has already loaded the bytes. */

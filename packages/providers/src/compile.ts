@@ -1440,7 +1440,7 @@ function resolveFrameSlot(
   if (binding.kind === 'user_input') {
     const field = ctx.templateInputs.find((f) => f.fieldKey === binding.fieldKey);
     const value = ctx.inputValues[binding.fieldKey];
-    if (!value || (value.kind !== 'image' && value.kind !== 'video')) {
+    if (!value || value.kind === 'text') {
       warnings.push({
         code: 'unknown_variable',
         message: `${provider} slot bound to user input "${binding.fieldKey}" — no usable value provided.`,
@@ -1640,11 +1640,13 @@ function compileSeedance(
 
     const slots = cfg.referenceSlots ?? [];
 
-    // Per-asset-kind limits enforced by BytePlus.
+    // Per-asset-kind limits enforced by BytePlus — from the registry,
+    // because they differ per model (2.5 takes 10 videos/10 audio, the
+    // 2.0 family 3/3). The old hardcoded 3/3 silently under-served 2.5.
     const limits: Record<'image' | 'video' | 'audio', number> = {
       image: capabilities.maxReferences ?? 9,
-      video: 3,
-      audio: 3,
+      video: capabilities.referenceVideo?.max ?? 3,
+      audio: capabilities.referenceAudio?.max ?? 3,
     };
     const counts: Record<'image' | 'video' | 'audio', number> = {
       image: 0,

@@ -121,8 +121,12 @@ export type AttachmentPolicy = {
   modelName: string | null;
   acceptsImages: boolean;
   acceptsVideos: boolean;
+  acceptsAudio: boolean;
   /** Max attachments the current model+mode combination takes. */
   ceiling: number;
+  /** Per-kind clip caps (Seedance reference budgets); 0 = none. */
+  maxVideos: number;
+  maxAudio: number;
 };
 
 /** A past generation's settings, handed to the composer to restore. */
@@ -153,8 +157,18 @@ export type { StudioAsset, StudioFolder, StudioProject };
  */
 export type PromptAttachment = {
   id: string;
+  /** What the attachment IS — routes it to the right reference role. */
+  kind: "image" | "video" | "audio";
   /** Local object URL (or asset URL) for the thumbnail. */
   previewUrl: string;
+  /** Original filename — the audio chip's only visual identity. */
+  name?: string;
+  /**
+   * Clip length, probed client-side from the file's metadata. Feeds the
+   * price preview (video input is billed); the server re-derives it
+   * from the actual bytes, so this is display-only.
+   */
+  durationSec?: number;
   status: "uploading" | "ready" | "error";
   /** 0–1 upload progress. */
   progress: number;
@@ -756,10 +770,33 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const attachFile = useCallback(
     (file: File) => {
       const id = `att-${seq.current++}`;
+      const kind: PromptAttachment["kind"] = file.type.startsWith("video/")
+        ? "video"
+        : file.type.startsWith("audio/")
+          ? "audio"
+          : "image";
+      const previewUrl = URL.createObjectURL(file);
       setAttachments((prev) => [
         ...prev,
-        { id, previewUrl: URL.createObjectURL(file), status: "uploading", progress: 0 },
+        { id, kind, previewUrl, name: file.name, status: "uploading", progress: 0 },
       ]);
+      // Clip length for the price preview (video input is billed) and
+      // the audio chip label. Display-only — the server re-derives the
+      // billing figure from the uploaded bytes.
+      if (kind !== "image") {
+        const el = document.createElement(kind === "video" ? "video" : "audio");
+        el.preload = "metadata";
+        el.onloadedmetadata = () => {
+          const durationSec = Number.isFinite(el.duration) ? el.duration : undefined;
+          if (durationSec) {
+            setAttachments((prev) =>
+              prev.map((a) => (a.id === id ? { ...a, durationSec } : a)),
+            );
+          }
+          el.src = "";
+        };
+        el.src = previewUrl;
+      }
       uploadAttachment(id, file, file.name);
     },
     [uploadAttachment],
@@ -826,18 +863,45 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         toast.error(t("attachImageUnsupported", { model: policy.modelName ?? "" }));
         return;
       }
-      // Same ceiling the composer enforces on file picks — an asset
-      // attached from a tile must not slip past it.
+      // Same ceilings the composer enforces on file picks — an asset
+      // attached from a tile must not slip past them.
       if (policy && attachments.length >= policy.ceiling) {
         toast.error(t("attachLimitReached", { max: policy.ceiling }));
+        return;
+      }
+      if (
+        policy &&
+        asset.type === "video" &&
+        attachments.filter((a) => a.kind === "video").length >= policy.maxVideos
+      ) {
+        toast.error(t("attachVideoLimitReached", { max: policy.maxVideos }));
         return;
       }
       const id = `att-${seq.current++}`;
       setAttachments((prev) =>
         prev.some((a) => a.previewUrl === asset.src)
           ? prev
-          : [...prev, { id, previewUrl: asset.src, status: "uploading", progress: 0 }],
+          : [
+              ...prev,
+              { id, kind: asset.type, previewUrl: asset.src, status: "uploading", progress: 0 },
+            ],
       );
+      // Clip length for the price preview — canvas videos are served
+      // with permissive CORS, so metadata loads fine.
+      if (asset.type === "video") {
+        const el = document.createElement("video");
+        el.preload = "metadata";
+        el.onloadedmetadata = () => {
+          const durationSec = Number.isFinite(el.duration) ? el.duration : undefined;
+          if (durationSec) {
+            setAttachments((prev) =>
+              prev.map((a) => (a.id === id ? { ...a, durationSec } : a)),
+            );
+          }
+          el.src = "";
+        };
+        el.src = asset.src;
+      }
       // Canvas assets are URLs (generated outputs served by the Worker
       // with permissive CORS) — fetch the bytes and re-upload so the
       // generation request gets a real r2Key.

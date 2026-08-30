@@ -42,6 +42,9 @@ import { modelLogo } from "@/lib/model-logos";
 
 /** Mirrors the file input's `accept`; also enforced on drop. */
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+/** Seedance reference-clip formats (models with the matching budget). */
+const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/quicktime"];
+const ACCEPTED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave"];
 
 const PROVIDER_STYLE: Record<string, string> = {
   gemini: "bg-accent-turquoise/20 text-accent-turquoise",
@@ -371,6 +374,39 @@ function AttachmentThumb({
   removeLabel: string;
   compact?: boolean;
 }) {
+  // Audio has no frame to show — a labelled chip beats a broken <img>.
+  if (attachment.kind === "audio") {
+    return (
+      <div
+        className={cn(
+          "group/att relative flex items-center gap-1.5 overflow-hidden rounded-lg bg-surface-3 px-2",
+          compact ? "h-11 max-w-32" : "h-14 max-w-40",
+          attachment.status !== "ready" && "opacity-60",
+        )}
+      >
+        <SpeakerHigh weight="fill" className="size-4 shrink-0 text-accent-turquoise" />
+        <span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
+          {attachment.name ?? "audio"}
+        </span>
+        {attachment.durationSec != null && (
+          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+            {Math.round(attachment.durationSec)}s
+          </span>
+        )}
+        {attachment.status === "error" && (
+          <Warning weight="fill" className="size-3.5 shrink-0 text-status-red" />
+        )}
+        <button
+          type="button"
+          aria-label={removeLabel}
+          onClick={onRemove}
+          className="grid size-4 shrink-0 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-black"
+        >
+          <X className="size-2.5" weight="bold" />
+        </button>
+      </div>
+    );
+  }
   return (
     <div
       className={cn(
@@ -378,15 +414,33 @@ function AttachmentThumb({
         compact ? "size-11" : "size-14",
       )}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={attachment.previewUrl}
-        alt=""
-        className={cn(
-          "size-full object-cover transition-opacity",
-          attachment.status !== "ready" && "opacity-40",
-        )}
-      />
+      {attachment.kind === "video" ? (
+        <video
+          src={attachment.previewUrl}
+          muted
+          playsInline
+          preload="metadata"
+          className={cn(
+            "size-full object-cover transition-opacity",
+            attachment.status !== "ready" && "opacity-40",
+          )}
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={attachment.previewUrl}
+          alt=""
+          className={cn(
+            "size-full object-cover transition-opacity",
+            attachment.status !== "ready" && "opacity-40",
+          )}
+        />
+      )}
+      {attachment.kind === "video" && attachment.durationSec != null && (
+        <span className="pointer-events-none absolute bottom-0.5 start-0.5 rounded bg-black/70 px-1 text-[9px] tabular-nums text-white">
+          {Math.round(attachment.durationSec)}s
+        </span>
+      )}
       {attachment.status === "uploading" && (
         <div className="absolute inset-x-1 bottom-1 h-1 overflow-hidden rounded-full bg-black/50">
           <div
@@ -654,12 +708,23 @@ export function PromptBar({
         sound: sound && !soundGated,
         duration,
         defaultDuration: model.defaultDuration,
+        // Video references are billed by their length (Seedance). The
+        // client-probed durations preview the charge; the server derives
+        // the authoritative figure from the uploaded bytes.
+        inputVideoSeconds: attachments.reduce(
+          (sum, a) => (a.kind === "video" ? sum + (a.durationSec ?? 0) : sum),
+          0,
+        ),
+        inputVideoFactor: model.inputVideoFactor,
       })
     : 0;
 
   const readyAttachments = attachments.filter((a) => a.status === "ready");
   const uploadsInFlight = attachments.some((a) => a.status === "uploading");
   const maxImages = model?.maxImages ?? 0;
+  // Reference-clip budgets (Seedance). Zero when the model takes none.
+  const maxVideoRefs = model?.referenceVideo?.max ?? 0;
+  const maxAudioRefs = model?.referenceAudio?.max ?? 0;
   const needsStartFrame = !!model?.requiresStartFrame && readyAttachments.length === 0;
 
   const canGenerate =
@@ -677,13 +742,53 @@ export function PromptBar({
    */
   const addFiles = (incoming: File[]) => {
     if (!model || !studio || incoming.length === 0) return;
-    const images = incoming.filter((f) => ACCEPTED_IMAGE_TYPES.includes(f.type));
-    if (images.length < incoming.length) toast.error(t("unsupportedFileType"));
-    if (images.length === 0) return;
+    // Frames are images by definition; references also take video/audio
+    // clips on models with the matching budget (Seedance).
+    const videoOk = !isFrames && maxVideoRefs > 0;
+    const audioOk = !isFrames && maxAudioRefs > 0;
+    const usable = incoming.filter(
+      (f) =>
+        ACCEPTED_IMAGE_TYPES.includes(f.type) ||
+        (videoOk && ACCEPTED_VIDEO_TYPES.includes(f.type)) ||
+        (audioOk && ACCEPTED_AUDIO_TYPES.includes(f.type)),
+    );
+    if (usable.length < incoming.length) toast.error(t("unsupportedFileType"));
+    if (usable.length === 0) return;
 
-    const room = Math.max(0, attachCeiling - attachments.length);
-    if (images.length > room) toast.error(t("maxAttachments", { max: attachCeiling }));
-    images.slice(0, room).forEach((f) => studio.attachFile(f));
+    // Total room first, then the per-kind clip caps — a Seedance 2.5
+    // request can carry 30 images but only 10 video / 10 audio clips.
+    let room = Math.max(0, attachCeiling - attachments.length);
+    let videoRoom = Math.max(
+      0,
+      maxVideoRefs - attachments.filter((a) => a.kind === "video").length,
+    );
+    let audioRoom = Math.max(
+      0,
+      maxAudioRefs - attachments.filter((a) => a.kind === "audio").length,
+    );
+    let dropped = false;
+    for (const f of usable) {
+      if (room <= 0) {
+        dropped = true;
+        break;
+      }
+      if (ACCEPTED_VIDEO_TYPES.includes(f.type)) {
+        if (videoRoom <= 0) {
+          toast.error(t("maxVideoRefs", { max: maxVideoRefs }));
+          continue;
+        }
+        videoRoom -= 1;
+      } else if (ACCEPTED_AUDIO_TYPES.includes(f.type)) {
+        if (audioRoom <= 0) {
+          toast.error(t("maxAudioRefs", { max: maxAudioRefs }));
+          continue;
+        }
+        audioRoom -= 1;
+      }
+      room -= 1;
+      studio.attachFile(f);
+    }
+    if (dropped) toast.error(t("maxAttachments", { max: attachCeiling }));
   };
 
   const onPickFiles = (files: FileList | null) => {
@@ -699,8 +804,14 @@ export function PromptBar({
   // the others are fixed and the dropdown is hidden.
   const modeIsChoosable = model?.attachments === "seedance";
   const isFrames = model ? (modeIsChoosable ? attachMode === "frames" : model.attachments !== "references") : false;
-  // Frames take at most two images regardless of the model's total budget.
-  const attachCeiling = isFrames ? (model?.supportsEndFrame ? 2 : 1) : maxImages;
+  // Frames take at most two images regardless of the model's total
+  // budget; references sum the image budget with the model's video and
+  // audio clip budgets (Seedance).
+  const attachCeiling = isFrames
+    ? model?.supportsEndFrame
+      ? 2
+      : 1
+    : maxImages + maxVideoRefs + maxAudioRefs;
   // A start frame pins the output shape on these providers — the ratio
   // picker would be a control that does nothing, so it locks instead.
   const aspectLocked =
@@ -718,13 +829,15 @@ export function PromptBar({
     setAttachmentPolicy({
       modelName,
       acceptsImages: hasModel && attachCeiling > 0,
-      // No create-eligible model takes a video attachment yet. Becomes
-      // model-driven once Seedance reference-video support is wired.
-      acceptsVideos: false,
+      // Clips ride the references mode only — frames are images.
+      acceptsVideos: !isFrames && maxVideoRefs > 0,
+      acceptsAudio: !isFrames && maxAudioRefs > 0,
       ceiling: attachCeiling,
+      maxVideos: isFrames ? 0 : maxVideoRefs,
+      maxAudio: isFrames ? 0 : maxAudioRefs,
     });
     return () => setAttachmentPolicy(null);
-  }, [setAttachmentPolicy, modelName, hasModel, attachCeiling]);
+  }, [setAttachmentPolicy, modelName, hasModel, attachCeiling, isFrames, maxVideoRefs, maxAudioRefs]);
   const canAttach = !!model && !!studio && attachments.length < attachCeiling;
   // Only react to actual file drags — ignore text/link drags.
   const isFileDrag = (e: React.DragEvent) => e.dataTransfer?.types?.includes("Files");
@@ -788,8 +901,13 @@ export function PromptBar({
     }
     if (!model || !canGenerate) return;
 
-    const media = readyAttachments.map((a) => ({ kind: "image" as const, ...a.media! }));
+    const media = readyAttachments.map((a) => ({ kind: a.kind, ...a.media! }));
     const frames = isFrames;
+    // Frames mode only ever holds images (policy + accept list enforce
+    // it); the filter is what proves that to the type system.
+    const frameMedia = readyAttachments
+      .filter((a) => a.kind === "image")
+      .map((a) => ({ kind: "image" as const, ...a.media! }));
     setSubmitting(true);
     try {
       await studio.startGeneration({
@@ -803,8 +921,8 @@ export function PromptBar({
           quality: tier ?? undefined,
           sound: model.supportsSound ? sound && !soundGated : undefined,
           references: frames ? undefined : media,
-          startFrame: frames ? media[0] : undefined,
-          endFrame: frames && model.supportsEndFrame ? media[1] : undefined,
+          startFrame: frames ? frameMedia[0] : undefined,
+          endFrame: frames && model.supportsEndFrame ? frameMedia[1] : undefined,
         },
       });
       toast.success(t("generationStarted", { count }));
@@ -813,6 +931,11 @@ export function PromptBar({
         toast.error(t("insufficientCredits"));
       } else if (err instanceof RateLimitedError) {
         toast.error(t("rateLimited", { seconds: err.retryAfterSeconds }));
+      } else if (err instanceof JobSubmissionError && err.httpStatus === 422 && err.message) {
+        // Validation refusals (clip too long, wrong mix, …) carry a
+        // human sentence from the server — far more actionable than the
+        // generic failure line.
+        toast.error(err.message);
       } else {
         toast.error(t("submitFailed"));
       }
@@ -929,7 +1052,11 @@ export function PromptBar({
             <input
               ref={fileInput}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept={[
+                ...ACCEPTED_IMAGE_TYPES,
+                ...(!isFrames && maxVideoRefs > 0 ? ACCEPTED_VIDEO_TYPES : []),
+                ...(!isFrames && maxAudioRefs > 0 ? ACCEPTED_AUDIO_TYPES : []),
+              ].join(",")}
               multiple={!isFrames}
               className="hidden"
               onChange={(e) => {
@@ -1001,13 +1128,17 @@ export function PromptBar({
                 attachCeiling === 0 ? t("modelTakesNoReferences") : null
               }
               onPick={(picked) => {
-                // Only images can be references today — the same rule
-                // `addAttachment` enforces. Saying so beats a silent no-op.
-                const images = picked.filter((a) => a.kind === "image");
-                if (images.length < picked.length) {
+                // Images always; videos too on models with a clip budget
+                // (Seedance references). `addAttachment` re-validates
+                // per-kind, so this filter is UX, not enforcement.
+                const videoOk = !isFrames && maxVideoRefs > 0;
+                const usable = picked.filter(
+                  (a) => a.kind === "image" || (videoOk && a.kind === "video"),
+                );
+                if (usable.length < picked.length) {
                   toast.error(t("videoNotAReference"));
                 }
-                if (images.length === 0) return;
+                if (usable.length === 0) return;
 
                 // Attach up to the model's ceiling and say what was left
                 // behind. Silently dropping the tail of a multi-select is
@@ -1017,10 +1148,10 @@ export function PromptBar({
                   toast.error(t("maxAttachments", { max: attachCeiling }));
                   return;
                 }
-                images.slice(0, room).forEach((a) =>
-                  studio?.addAttachment({ id: a.id, type: "image", src: a.url }),
+                usable.slice(0, room).forEach((a) =>
+                  studio?.addAttachment({ id: a.id, type: a.kind, src: a.url }),
                 );
-                if (images.length > room) {
+                if (usable.length > room) {
                   toast.info(t("attachedSome", { added: room, max: attachCeiling }));
                 }
                 setAssetsOpen(false);

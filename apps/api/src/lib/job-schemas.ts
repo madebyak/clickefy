@@ -15,6 +15,9 @@ import { z } from 'zod';
 // (25MB) for images, with extra headroom for short video references.
 const IMAGE_MAX_BYTES = 25 * 1024 * 1024;
 const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
+// BytePlus caps reference-audio clips at 15MB; enforcing the same here
+// turns an over-size clip into a 400 instead of a failed-after-debit job.
+const AUDIO_MAX_BYTES = 15 * 1024 * 1024;
 
 const r2KeyShape = z.string().min(1).max(512);
 const mimeShape = z.string().min(1).max(128);
@@ -33,6 +36,13 @@ const jobInputVideoSchema = z.object({
   sizeBytes: z.number().int().positive().max(VIDEO_MAX_BYTES),
 });
 
+const jobInputAudioSchema = z.object({
+  kind: z.literal('audio'),
+  r2Key: r2KeyShape,
+  mimeType: mimeShape,
+  sizeBytes: z.number().int().positive().max(AUDIO_MAX_BYTES),
+});
+
 const jobInputTextSchema = z.object({
   kind: z.literal('text'),
   // Empty strings allowed for non-required fields the user left blank.
@@ -43,7 +53,15 @@ const jobInputTextSchema = z.object({
 export const jobInputValueSchema = z.discriminatedUnion('kind', [
   jobInputImageSchema,
   jobInputVideoSchema,
+  jobInputAudioSchema,
   jobInputTextSchema,
+]);
+
+/** A create-flow reference: image, or (Seedance) video / audio clip. */
+export const createReferenceSchema = z.discriminatedUnion('kind', [
+  jobInputImageSchema,
+  jobInputVideoSchema,
+  jobInputAudioSchema,
 ]);
 
 export const createJobSchema = z.object({
@@ -92,9 +110,11 @@ export const createUserJobSchema = z.object({
   quality: z.string().min(1).max(16).optional(),
   startFrame: jobInputImageSchema.optional(),
   endFrame: jobInputImageSchema.optional(),
-  // Reference / subject images. Hard ceiling matches the largest model
-  // budget (Gemini = 14); per-model caps are enforced in validation.
-  references: z.array(jobInputImageSchema).max(16).optional().default([]),
+  // References: images everywhere; video and audio clips on Seedance
+  // (role: reference_video / reference_audio). Hard ceiling matches the
+  // largest combined budget (Seedance 2.5 = 30 images + 10 videos + 10
+  // audio); per-model, per-kind caps are enforced in validation.
+  references: z.array(createReferenceSchema).max(50).optional().default([]),
   // Web-studio project to file the outputs into. Ownership is verified
   // in the handler; omitted (mobile) keeps the flat-history behavior.
   projectId: z.string().uuid().optional(),

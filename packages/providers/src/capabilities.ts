@@ -292,6 +292,43 @@ export interface ModelCapabilities {
   supportsOmniTaskType?: boolean;
 
   /**
+   * Seedance: reference VIDEO input budget (`role: reference_video`).
+   *
+   * Verbatim from the BytePlus API reference + per-family tutorials
+   * (2026-08-30): 2.5 takes 0-10 clips, 2-30s each, ≤30s combined; the
+   * 2.0 family takes 0-3 clips, 2-15s each, ≤15s combined. mp4/mov,
+   * ≤200MB (our upload cap of 25MB binds first). Absent = the model
+   * does not accept reference video. Mutually exclusive with start/end
+   * frames — the existing Frames ⇄ References split already models that.
+   */
+  referenceVideo?: {
+    max: number;
+    maxTotalSeconds: number;
+    minClipSeconds: number;
+    maxClipSeconds: number;
+  };
+
+  /**
+   * Seedance: reference AUDIO input budget (`role: reference_audio`).
+   * Same doc source: 2.5 takes 0-10 clips ≤30s combined; 2.0 family
+   * 0-3 clips ≤15s combined. wav/mp3, ≤15MB per clip. Drives voice
+   * timbre for prompt-written dialogue and music/SFX placement.
+   */
+  referenceAudio?: {
+    max: number;
+    maxTotalSeconds: number;
+    minClipSeconds: number;
+    maxClipSeconds: number;
+  };
+
+  /**
+   * Seedance 2.0 family: audio references require at least one visual
+   * reference (image or video) in the same request — audio-only input
+   * is a 2.5-exclusive capability.
+   */
+  audioRefRequiresVisual?: boolean;
+
+  /**
    * Seedance: extra effective output-seconds billed per second of INPUT
    * video (reference_video). BytePlus's token formula charges
    * (input + output duration) x pixels x fps at a ~40%-discounted
@@ -947,6 +984,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     supportsSound: true,
     inputVideoDurationFactor: 0.6,
+    referenceVideo: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
+    referenceAudio: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
+    audioRefRequiresVisual: true,
     // Exact cap unpublished; safe default matching the video peers.
     // Resolution is a PRICED tier here, not a free-form config: BytePlus
     // bills per second and the rate spans 11x between 480p and 4K, so a
@@ -983,6 +1023,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     supportsSound: true,
     inputVideoDurationFactor: 0.6,
+    referenceVideo: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
+    referenceAudio: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
+    audioRefRequiresVisual: true,
     modes: {
       values: ['480p', '720p'],
       default: '720p',
@@ -1023,6 +1066,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     supportsSound: true,
     inputVideoDurationFactor: 0.6,
+    referenceVideo: { max: 10, maxTotalSeconds: 30, minClipSeconds: 2, maxClipSeconds: 30 },
+    referenceAudio: { max: 10, maxTotalSeconds: 30, minClipSeconds: 2, maxClipSeconds: 30 },
     // A first / first+last frame makes 2.5 preserve that frame's own
     // aspect ratio; `ratio` then only accepts `adaptive`. Sending a
     // concrete ratio alongside a frame is rejected — after the debit.
@@ -1057,6 +1102,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     supportsSound: true,
     inputVideoDurationFactor: 0.6,
+    referenceVideo: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
+    referenceAudio: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
+    audioRefRequiresVisual: true,
     modes: {
       values: ['480p', '720p'],
       default: '720p',

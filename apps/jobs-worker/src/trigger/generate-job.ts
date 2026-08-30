@@ -169,8 +169,18 @@ export const generateJob = task({
         // union described only one of them.
         mode?: string;
       };
-      const rawInputKeys = Object.keys(jobRow.inputs as Record<string, unknown>);
-      const referenceCount = rawInputKeys.filter((k) => k.startsWith('ref_')).length;
+      const rawInputs = jobRow.inputs as Record<string, { kind?: string }>;
+      const rawInputKeys = Object.keys(rawInputs);
+      // `ref_i` keys in index order, each carrying its media kind — the
+      // stage's Seedance reference slots route video/audio clips to the
+      // right content[] role from this.
+      const refKeys = rawInputKeys
+        .filter((k) => k.startsWith('ref_'))
+        .sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)));
+      const referenceKinds = refKeys.map((k): 'image' | 'video' | 'audio' => {
+        const kind = rawInputs[k]?.kind;
+        return kind === 'video' || kind === 'audio' ? kind : 'image';
+      });
       try {
         const built = buildCreateStage({
           modelKey: jobRow.modelKey,
@@ -181,7 +191,8 @@ export const generateJob = task({
           mode: opts.mode,
           hasStartFrame: rawInputKeys.includes(CREATE_START_FRAME_KEY),
           hasEndFrame: rawInputKeys.includes(CREATE_END_FRAME_KEY),
-          referenceCount,
+          referenceCount: refKeys.length,
+          referenceKinds,
         });
         stages = [built.stage];
         stageTemplateInputs = built.templateInputs;

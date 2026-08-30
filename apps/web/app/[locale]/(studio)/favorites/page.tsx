@@ -37,7 +37,7 @@ function downloadAsset(a: Asset) {
 export default function FavoritesPage() {
   const t = useTranslations("studio");
   const router = useRouter();
-  const { favorites, favoritesLoading, setAssetsFavorite, addAttachment, reuseSetup } =
+  const { favorites, favoritesLoading, setAssetsFavorite, addAttachment, reuseSetup, deleteAssets } =
     useStudio();
 
   const [infoAsset, setInfoAsset] = useState<Asset | null>(null);
@@ -150,6 +150,7 @@ export default function FavoritesPage() {
               onAssetReuse={handleReuse}
               reusingAssetId={reusingAssetId}
               onToggleFavorite={handleToggleFavorite}
+              onAssetDelete={(a) => deleteAssets(a.projectId, [a.id])}
               exitingIds={exitingIds}
             />
           </div>

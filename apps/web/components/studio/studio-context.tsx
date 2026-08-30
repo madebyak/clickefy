@@ -663,11 +663,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const deleteAssets = useCallback(
     (projectId: string, assetIds: string[]) => {
-      // Cancel an in-flight assets refetch so it can't re-add the rows we
+      // Cancel in-flight refetches so they can't re-add the rows we
       // optimistically remove below.
       void queryClient.cancelQueries({ queryKey: assetsKey(projectId) });
-      // Optimistic removal from the visible grid.
+      void queryClient.cancelQueries({ queryKey: FAVORITES_KEY });
+      // Optimistic removal from the visible grid AND the favorites grid
+      // — a deleted asset used to linger on the Favorites page until its
+      // next unrelated refetch, because only the project cache was
+      // patched.
       queryClient.setQueryData(assetsKey(projectId), (prev: Asset[] | undefined) =>
+        prev ? prev.filter((a) => !assetIds.includes(a.id)) : prev,
+      );
+      queryClient.setQueryData(FAVORITES_KEY, (prev: Asset[] | undefined) =>
         prev ? prev.filter((a) => !assetIds.includes(a.id)) : prev,
       );
       getSDK()
@@ -676,6 +683,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         .finally(() => {
           invalidateAssets(projectId);
           invalidateProjects();
+          void queryClient.invalidateQueries({ queryKey: FAVORITES_KEY });
         });
       setSelectedAssetIds([]);
     },

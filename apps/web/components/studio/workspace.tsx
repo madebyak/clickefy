@@ -147,6 +147,7 @@ function ProjectView({
   onAssetInfo,
   onAssetReuse,
   onToggleFavorite,
+  onAssetDelete,
   reusingAssetId,
   gridSize,
   selectedIds,
@@ -160,6 +161,7 @@ function ProjectView({
   onAssetInfo: (a: Asset) => void;
   onAssetReuse: (a: Asset) => void;
   onToggleFavorite: (a: Asset) => void;
+  onAssetDelete: (a: Asset) => void;
   reusingAssetId: string | null;
   gridSize: GridSize;
   selectedIds: string[];
@@ -194,6 +196,7 @@ function ProjectView({
         onAssetInfo={onAssetInfo}
         onAssetReuse={onAssetReuse}
         onToggleFavorite={onToggleFavorite}
+        onAssetDelete={onAssetDelete}
         reusingAssetId={reusingAssetId}
         gridSize={gridSize}
         selectedIds={selectedIds}
@@ -217,6 +220,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
     toggleAssetSelection,
     reuseSetup,
     setAssetsFavorite,
+    deleteAssets,
   } = useStudio();
 
   const [filter, setFilter] = useState<CanvasFilter>("all");
@@ -225,6 +229,13 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
   const toggleFavorite = useCallback(
     (a: Asset) => setAssetsFavorite([a.id], !a.favorited),
     [setAssetsFavorite],
+  );
+
+  // Single-tile delete from the ⋯ menu — the same optimistic path the
+  // selection bar uses, so the two behave identically.
+  const handleDelete = useCallback(
+    (a: Asset) => deleteAssets(a.projectId, [a.id]),
+    [deleteAssets],
   );
 
   // Which asset the details slide-over is showing, if any.
@@ -372,6 +383,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
               onAssetInfo={(a) => setInfoAssetId(a.id)}
               onAssetReuse={handleReuse}
               onToggleFavorite={toggleFavorite}
+              onAssetDelete={handleDelete}
               reusingAssetId={reusingAssetId}
               gridSize={gridSize}
               selectedIds={selectedAssetIds}

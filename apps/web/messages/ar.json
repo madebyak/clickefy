@@ -380,7 +380,8 @@
     "noFoldersHint": "لا توجد مجلدات بعد. استخدم + لتجميع مشاريعك.",
     "showAllFolders": "عرض الكل (+{count})",
     "filterFavorites": "المفضلة",
-    "fromLibraryBadge": "أصولي"
+    "fromLibraryBadge": "أصولي",
+    "deleteAsset": "حذف"
   },
   "projects": {
     "heading": "مشاريعي",

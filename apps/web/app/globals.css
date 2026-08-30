@@ -241,6 +241,35 @@ body {
 }
 
 /*
+ * `.nice-scroll` — the deliberate scrollbar for content panes that are
+ * MEANT to scroll (the asset-detail prompt box, the detail panels).
+ * Slightly wider and brighter than the global thin default so the
+ * affordance is visible before the user tries; WebKit rules pick up
+ * where `scrollbar-color` leaves off on Chrome/Safari.
+ */
+.nice-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.nice-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.nice-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nice-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.nice-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-3);
+  background-clip: content-box;
+}
+
+/*
  * Clerk component overrides. Most theming flows through the appearance
  * variables (lib/clerk-appearance.ts); these rules cover the few
  * internal elements whose CSS-in-JS wins over appearance/Tailwind —

@@ -380,7 +380,8 @@
     "noFoldersHint": "No folders yet. Use + to group your projects.",
     "showAllFolders": "Show all ({count} more)",
     "filterFavorites": "Favorites",
-    "fromLibraryBadge": "My Assets"
+    "fromLibraryBadge": "My Assets",
+    "deleteAsset": "Delete"
   },
   "projects": {
     "heading": "My Projects",

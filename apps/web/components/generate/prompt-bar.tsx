@@ -44,6 +44,7 @@ import { modelLogo } from "@/lib/model-logos";
 
 /** Mirrors the file input's `accept`; also enforced on drop. */
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const EMPTY_ATTACHMENTS: PromptAttachment[] = [];
 /** Seedance reference-clip formats (models with the matching budget). */
 const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/quicktime"];
 const ACCEPTED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave"];
@@ -522,7 +523,9 @@ export function PromptBar({
   // Null on the marketing page (no StudioProvider) — the bar then acts
   // as a CTA into the studio instead of generating in place.
   const studio = useStudioMaybe();
-  const attachments = studio?.attachments ?? [];
+  // Stable identity for the no-studio (marketing hero) case, so effects
+  // depending on `attachments` don't re-run on every render there.
+  const attachments = studio?.attachments ?? EMPTY_ATTACHMENTS;
 
   // Selected model tracked by key so it survives roster refetches.
   const [modelKey, setModelKey] = useState<string | null>(null);
@@ -767,8 +770,29 @@ export function PromptBar({
     // Frames are images by definition; references also take video/audio
     // clips on models with the matching budget (Seedance). Task modes
     // (edit/extend) take video + optional images, no audio.
-    const videoOk = !isFrames && effMaxVideos > 0;
-    const audioOk = !isFrames && !isTask && maxAudioRefs > 0;
+    //
+    // A video dropped while Seedance sits in its default Frames mode is
+    // not a mistake — flip to References and take it, exactly like the
+    // canvas-drag path. Refuse only when frames are already attached.
+    let framesNow = isFrames;
+    let ceilingNow = attachCeiling;
+    if (
+      framesNow &&
+      modeIsChoosable &&
+      maxVideoRefs > 0 &&
+      incoming.some((f) => ACCEPTED_VIDEO_TYPES.includes(f.type))
+    ) {
+      if (attachments.length > 0) {
+        toast.error(t("framesRefsMixVideo"));
+      } else {
+        setAttachMode("references");
+        toast.info(t("switchedForVideo", { model: model.name }));
+        framesNow = false;
+        ceilingNow = maxImages + maxVideoRefs + maxAudioRefs;
+      }
+    }
+    const videoOk = !framesNow && effMaxVideos > 0;
+    const audioOk = !framesNow && !isTask && maxAudioRefs > 0;
     const usable = incoming.filter(
       (f) =>
         ACCEPTED_IMAGE_TYPES.includes(f.type) ||
@@ -780,7 +804,7 @@ export function PromptBar({
 
     // Total room first, then the per-kind clip caps — a Seedance 2.5
     // request can carry 30 images but only 10 video / 10 audio clips.
-    let room = Math.max(0, attachCeiling - attachments.length);
+    let room = Math.max(0, ceilingNow - attachments.length);
     let videoRoom = Math.max(
       0,
       effMaxVideos - attachments.filter((a) => a.kind === "video").length,
@@ -811,7 +835,7 @@ export function PromptBar({
       room -= 1;
       studio.attachFile(f);
     }
-    if (dropped) toast.error(t("maxAttachments", { max: attachCeiling }));
+    if (dropped) toast.error(t("maxAttachments", { max: ceilingNow }));
   };
 
   const onPickFiles = (files: FileList | null) => {
@@ -870,9 +894,25 @@ export function PromptBar({
       ceiling: attachCeiling,
       maxVideos: isFrames ? 0 : effMaxVideos,
       maxAudio: isFrames || isTask ? 0 : maxAudioRefs,
+      // Seedance parked in its default Frames mode still ACCEPTS videos
+      // — just not in this mode. Flip to References and let the attach
+      // proceed instead of refusing on a technicality; refuse only when
+      // frames are already attached (the modes cannot mix upstream).
+      switchModeForVideo:
+        modeIsChoosable && isFrames && maxVideoRefs > 0
+          ? () => {
+              if (attachments.length > 0) {
+                toast.error(t("framesRefsMixVideo"));
+                return false;
+              }
+              setAttachMode("references");
+              toast.info(t("switchedForVideo", { model: modelName ?? "" }));
+              return true;
+            }
+          : undefined,
     });
     return () => setAttachmentPolicy(null);
-  }, [setAttachmentPolicy, modelName, hasModel, attachCeiling, isFrames, isTask, effMaxVideos, maxAudioRefs]);
+  }, [setAttachmentPolicy, modelName, hasModel, attachCeiling, isFrames, isTask, effMaxVideos, maxVideoRefs, maxAudioRefs, modeIsChoosable, attachments, t]);
   const canAttach = !!model && !!studio && attachments.length < attachCeiling;
   // Only react to actual file drags — ignore text/link drags.
   const isFileDrag = (e: React.DragEvent) => e.dataTransfer?.types?.includes("Files");
@@ -1176,9 +1216,11 @@ export function PromptBar({
               }
               onPick={(picked) => {
                 // Images always; videos too on models with a clip budget
-                // (Seedance references). `addAttachment` re-validates
-                // per-kind, so this filter is UX, not enforcement.
-                const videoOk = !isFrames && maxVideoRefs > 0;
+                // (Seedance) — even from Frames mode, where the policy's
+                // switchModeForVideo flips the composer over on attach.
+                // `addAttachment` re-validates per-kind, so this filter
+                // is UX, not enforcement.
+                const videoOk = maxVideoRefs > 0;
                 const usable = picked.filter(
                   (a) => a.kind === "image" || (videoOk && a.kind === "video"),
                 );

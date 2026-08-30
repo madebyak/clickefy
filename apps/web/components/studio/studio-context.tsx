@@ -127,6 +127,18 @@ export type AttachmentPolicy = {
   /** Per-kind clip caps (Seedance reference budgets); 0 = none. */
   maxVideos: number;
   maxAudio: number;
+  /**
+   * Present when the CURRENT input mode refuses videos but the model
+   * accepts them in another mode (Seedance sitting in its default
+   * Frames mode). Called before refusing a video attach: returns true
+   * after switching the composer to a video-capable mode — the attach
+   * then proceeds — or false (e.g. frames already attached; the modes
+   * cannot mix) to keep the refusal. Without this, "Seedance 2.5
+   * doesn't accept video attachments" fired on a model that absolutely
+   * does — the mode was the problem, and blaming the model taught the
+   * user the feature doesn't exist.
+   */
+  switchModeForVideo?: () => boolean;
 };
 
 /** A past generation's settings, handed to the composer to restore. */
@@ -847,17 +859,25 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const addAttachment = useCallback(
     (asset: AttachableAsset) => {
-      const policy = attachmentPolicy.current;
+      let policy = attachmentPolicy.current;
       // Model-aware refusal with a reason. The old behavior was a bare
       // `return` on anything non-image — "Add as reference" on a video
       // tile looked like a button that simply did nothing.
       if (asset.type === "video" && !(policy?.acceptsVideos ?? false)) {
-        toast.error(
-          policy?.modelName
-            ? t("attachVideoUnsupported", { model: policy.modelName })
-            : t("attachVideoUnsupportedGeneric"),
-        );
-        return;
+        if (policy?.switchModeForVideo?.()) {
+          // The composer just flipped itself to a video-capable mode.
+          // The registered policy is now stale (it re-registers on the
+          // next render), and the switch guarantees an empty slate —
+          // skip the per-mode checks below and attach.
+          policy = null;
+        } else {
+          toast.error(
+            policy?.modelName
+              ? t("attachVideoUnsupported", { model: policy.modelName })
+              : t("attachVideoUnsupportedGeneric"),
+          );
+          return;
+        }
       }
       if (asset.type === "image" && policy && !policy.acceptsImages) {
         toast.error(t("attachImageUnsupported", { model: policy.modelName ?? "" }));

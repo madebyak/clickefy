@@ -269,7 +269,9 @@
     "modeExtend": "Extend video",
     "modeExtendHint": "Continue a clip, or stitch clips together",
     "editNeedsVideo": "Attach the video you want to edit — the result keeps its length and shape",
-    "extendNeedsVideo": "Attach the video you want to extend"
+    "extendNeedsVideo": "Attach the video you want to extend",
+    "switchedForVideo": "Switched to References — {model} takes videos as references",
+    "framesRefsMixVideo": "Frames and video references can't mix — remove the frames or switch the input mode first"
   },
   "account": {
     "availableCredits": "Available credits",

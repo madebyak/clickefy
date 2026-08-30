@@ -772,12 +772,21 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           ),
         ),
       )
-      .catch(() =>
+      .catch((err: unknown) => {
         setAttachments((prev) =>
           prev.map((a) => (a.id === id ? { ...a, status: "error" } : a)),
-        ),
-      );
-  }, []);
+        );
+        // The warn icon on the thumb says THAT it failed; the toast says
+        // WHY. Server refusals carry a human sentence ("Videos can be up
+        // to 200MB.") — show it; anything cryptic gets the generic line.
+        const message = err instanceof Error ? err.message : "";
+        toast.error(
+          message && message.length <= 120 && !/^upload\./.test(message)
+            ? message
+            : t("toastUploadFailed"),
+        );
+      });
+  }, [t]);
 
   const attachFile = useCallback(
     (file: File) => {

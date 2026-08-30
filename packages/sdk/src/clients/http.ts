@@ -1118,7 +1118,17 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           await throwIfRateLimited(presignRes, 'upload.presign');
           if (!presignRes.ok) {
             const text = await presignRes.text().catch(() => '');
-            throw new Error(`upload.presign ${presignRes.status}: ${text.slice(0, 200)}`);
+            // The server's refusals are written for humans ("Videos can
+            // be up to 200MB.") — surface that sentence, not the raw
+            // JSON envelope, so the UI can toast it verbatim.
+            let message = `upload.presign ${presignRes.status}: ${text.slice(0, 200)}`;
+            try {
+              const parsed = JSON.parse(text) as { error?: { message?: string } };
+              if (parsed.error?.message) message = parsed.error.message;
+            } catch {
+              // Not JSON — keep the diagnostic string.
+            }
+            throw new Error(message);
           }
           const presigned = (await presignRes.json()) as {
             data: {

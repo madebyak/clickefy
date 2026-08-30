@@ -271,7 +271,10 @@
     "editNeedsVideo": "Attach the video you want to edit — the result keeps its length and shape",
     "extendNeedsVideo": "Attach the video you want to extend",
     "switchedForVideo": "Switched to References — {model} takes videos as references",
-    "framesRefsMixVideo": "Frames and video references can't mix — remove the frames or switch the input mode first"
+    "framesRefsMixVideo": "Frames and video references can't mix — remove the frames or switch the input mode first",
+    "fileTooLarge_image": "Images can be up to {max}MB",
+    "fileTooLarge_video": "Videos can be up to {max}MB",
+    "fileTooLarge_audio": "Audio files can be up to {max}MB"
   },
   "account": {
     "availableCredits": "Available credits",
@@ -423,7 +426,8 @@
     "attachVideoUnsupportedGeneric": "This model doesn't accept video attachments",
     "attachImageUnsupported": "{model} doesn't accept image attachments",
     "attachLimitReached": "This model accepts up to {max} attachments",
-    "attachVideoLimitReached": "Up to {max} video references for this model"
+    "attachVideoLimitReached": "Up to {max} video references for this model",
+    "toastUploadFailed": "Upload failed — try again"
   },
   "auth": {
     "panelBadge": "Clickefy Studio",

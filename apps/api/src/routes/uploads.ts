@@ -83,11 +83,16 @@ function adminUploadRulesFor(folder: string): {
 }
 
 // ─── User upload limits ─────────────────────────────────────────────
-// Mobile photos straight off the camera (iPhone Pro 48MP HEIC) can be
-// 6–12MB before transcoding, and we want a comfortable headroom for
-// short reference videos. 25MB is a safe ceiling that still rejects
-// pathological uploads, and matches what Lensa / Photoroom enforce.
+// Per media class, matching what the generation pipeline can actually
+// use — one flat cap punished exactly the class that needs room:
+//   images 25MB — iPhone Pro 48MP HEIC runs 6-12MB; ample headroom.
+//   videos 200MB — BytePlus accepts reference clips up to 200MB, and a
+//     normal 30s 1080p H.264 clip alone beats the old 25MB cap. The
+//     presign path never moves the bytes through the Worker, so the
+//     bigger ceiling costs nothing there.
+//   audio 15MB — BytePlus's own per-clip cap for reference audio.
 const USER_MAX_BYTES = 25 * 1024 * 1024;
+const USER_MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const USER_ALLOWED_IMAGE_MIME = new Set([
   'image/jpeg',
   'image/png',
@@ -109,6 +114,36 @@ const USER_ALLOWED_AUDIO_MIME = new Set([
   'audio/wave',
 ]);
 const USER_MAX_AUDIO_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Classify a user-upload content type and return its size ceiling.
+ * ONE function for both upload paths (multipart and presign) so they
+ * can never disagree on what is accepted — the presign route once
+ * missed the audio types the multipart route took, which silently
+ * broke every web audio upload.
+ */
+function userUploadClass(
+  contentType: string,
+): { kind: 'image' | 'video' | 'audio'; maxBytes: number; label: string } | null {
+  if (USER_ALLOWED_IMAGE_MIME.has(contentType)) {
+    return { kind: 'image', maxBytes: USER_MAX_BYTES, label: 'Images' };
+  }
+  if (USER_ALLOWED_VIDEO_MIME.has(contentType)) {
+    return { kind: 'video', maxBytes: USER_MAX_VIDEO_BYTES, label: 'Videos' };
+  }
+  if (USER_ALLOWED_AUDIO_MIME.has(contentType)) {
+    return { kind: 'audio', maxBytes: USER_MAX_AUDIO_BYTES, label: 'Audio files' };
+  }
+  return null;
+}
+
+function userUploadAllowedList(): string {
+  return [
+    ...USER_ALLOWED_IMAGE_MIME,
+    ...USER_ALLOWED_VIDEO_MIME,
+    ...USER_ALLOWED_AUDIO_MIME,
+  ].join(', ');
+}
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -657,32 +692,24 @@ uploadsUserRoute.post(
     }
 
     const file = entry;
-    const isImage = USER_ALLOWED_IMAGE_MIME.has(file.type);
-    const isVideo = USER_ALLOWED_VIDEO_MIME.has(file.type);
-    const isAudio = USER_ALLOWED_AUDIO_MIME.has(file.type);
-    if (!isImage && !isVideo && !isAudio) {
-      const allowed = [
-        ...USER_ALLOWED_IMAGE_MIME,
-        ...USER_ALLOWED_VIDEO_MIME,
-        ...USER_ALLOWED_AUDIO_MIME,
-      ].join(', ');
+    const cls = userUploadClass(file.type);
+    if (!cls) {
       return c.json(
         {
           error: {
             code: 'invalid_mime',
-            message: `Unsupported file type "${file.type}". Allowed: ${allowed}.`,
+            message: `Unsupported file type "${file.type}". Allowed: ${userUploadAllowedList()}.`,
           },
         },
         400,
       );
     }
-    const maxBytes = isAudio ? USER_MAX_AUDIO_BYTES : USER_MAX_BYTES;
-    if (file.size > maxBytes) {
+    if (file.size > cls.maxBytes) {
       return c.json(
         {
           error: {
             code: 'file_too_large',
-            message: `Max upload size is ${maxBytes / 1024 / 1024}MB.`,
+            message: `${cls.label} can be up to ${Math.round(cls.maxBytes / 1024 / 1024)}MB.`,
           },
         },
         413,
@@ -796,28 +823,26 @@ uploadsUserRoute.post(
 
     const { contentType, sizeBytes } = c.req.valid('json');
 
-    // MIME and size validation match the multipart route exactly so
-    // the two upload paths can't disagree on what's accepted.
-    const isImage = USER_ALLOWED_IMAGE_MIME.has(contentType);
-    const isVideo = USER_ALLOWED_VIDEO_MIME.has(contentType);
-    if (!isImage && !isVideo) {
-      const allowed = [...USER_ALLOWED_IMAGE_MIME, ...USER_ALLOWED_VIDEO_MIME].join(', ');
+    // MIME and size validation share one classifier with the multipart
+    // route so the two upload paths can't disagree on what's accepted.
+    const cls = userUploadClass(contentType);
+    if (!cls) {
       return c.json(
         {
           error: {
             code: 'invalid_mime',
-            message: `Unsupported file type "${contentType}". Allowed: ${allowed}.`,
+            message: `Unsupported file type "${contentType}". Allowed: ${userUploadAllowedList()}.`,
           },
         },
         400,
       );
     }
-    if (sizeBytes > USER_MAX_BYTES) {
+    if (sizeBytes > cls.maxBytes) {
       return c.json(
         {
           error: {
             code: 'file_too_large',
-            message: `Max upload size is ${USER_MAX_BYTES / 1024 / 1024}MB.`,
+            message: `${cls.label} can be up to ${Math.round(cls.maxBytes / 1024 / 1024)}MB.`,
           },
         },
         413,

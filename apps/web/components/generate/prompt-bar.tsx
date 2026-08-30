@@ -45,6 +45,23 @@ import { modelLogo } from "@/lib/model-logos";
 /** Mirrors the file input's `accept`; also enforced on drop. */
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const EMPTY_ATTACHMENTS: PromptAttachment[] = [];
+
+/**
+ * Per-kind upload ceilings, mirroring the server's (`uploads.ts`
+ * `userUploadClass`). Checked BEFORE the upload starts so an oversized
+ * file is a toast in 0ms, not a failed request after a progress bar.
+ */
+const MAX_UPLOAD_MB: Record<"image" | "video" | "audio", number> = {
+  image: 25,
+  video: 200,
+  audio: 15,
+};
+
+function uploadKindOf(file: File): "image" | "video" | "audio" {
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "audio";
+  return "image";
+}
 /** Seedance reference-clip formats (models with the matching budget). */
 const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/quicktime"];
 const ACCEPTED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave"];
@@ -793,13 +810,23 @@ export function PromptBar({
     }
     const videoOk = !framesNow && effMaxVideos > 0;
     const audioOk = !framesNow && !isTask && maxAudioRefs > 0;
-    const usable = incoming.filter(
+    const typeOk = incoming.filter(
       (f) =>
         ACCEPTED_IMAGE_TYPES.includes(f.type) ||
         (videoOk && ACCEPTED_VIDEO_TYPES.includes(f.type)) ||
         (audioOk && ACCEPTED_AUDIO_TYPES.includes(f.type)),
     );
-    if (usable.length < incoming.length) toast.error(t("unsupportedFileType"));
+    if (typeOk.length < incoming.length) toast.error(t("unsupportedFileType"));
+    // Size pre-check per kind — the server enforces the same ceilings,
+    // but a refusal before the upload starts beats one after it.
+    const usable = typeOk.filter((f) => {
+      const kind = uploadKindOf(f);
+      if (f.size > MAX_UPLOAD_MB[kind] * 1024 * 1024) {
+        toast.error(t(`fileTooLarge_${kind}`, { max: MAX_UPLOAD_MB[kind] }));
+        return false;
+      }
+      return true;
+    });
     if (usable.length === 0) return;
 
     // Total room first, then the per-kind clip caps — a Seedance 2.5

@@ -271,7 +271,10 @@
     "editNeedsVideo": "أرفق الفيديو الذي تريد تعديله — تبقى النتيجة بنفس الطول والأبعاد",
     "extendNeedsVideo": "أرفق الفيديو الذي تريد تمديده",
     "switchedForVideo": "تم التبديل إلى المراجع — {model} يقبل الفيديو كمرجع",
-    "framesRefsMixVideo": "لا يمكن الجمع بين الإطارات ومراجع الفيديو — أزل الإطارات أو بدّل وضع الإدخال أولًا"
+    "framesRefsMixVideo": "لا يمكن الجمع بين الإطارات ومراجع الفيديو — أزل الإطارات أو بدّل وضع الإدخال أولًا",
+    "fileTooLarge_image": "يمكن أن يصل حجم الصور حتى {max} ميغابايت",
+    "fileTooLarge_video": "يمكن أن يصل حجم الفيديو حتى {max} ميغابايت",
+    "fileTooLarge_audio": "يمكن أن يصل حجم الملفات الصوتية حتى {max} ميغابايت"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",
@@ -423,7 +426,8 @@
     "attachVideoUnsupportedGeneric": "هذا النموذج لا يقبل مقاطع الفيديو كمرفقات",
     "attachImageUnsupported": "{model} لا يقبل الصور كمرفقات",
     "attachLimitReached": "هذا النموذج يقبل حتى {max} مرفقات",
-    "attachVideoLimitReached": "حتى {max} من مقاطع الفيديو المرجعية لهذا النموذج"
+    "attachVideoLimitReached": "حتى {max} من مقاطع الفيديو المرجعية لهذا النموذج",
+    "toastUploadFailed": "فشل الرفع — حاول مرة أخرى"
   },
   "auth": {
     "panelBadge": "استوديو كليكفاي",

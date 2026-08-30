@@ -153,6 +153,12 @@ export interface UserProject {
   title: string;
   /** Provenance — `'user'` drives the Projects "Custom" badge. */
   source: 'user' | 'template';
+  /**
+   * Web-studio project the job files its outputs into; null for mobile
+   * jobs (flat history). The studio uses it to rebuild in-flight
+   * generation tiles after a page reload.
+   */
+  projectId: string | null;
   /** ISO timestamp; client formats `whenLabel` so it stays fresh. */
   createdAt: string;
   /** Friendly relative time, e.g. "2 min ago". Computed by the SDK. */
@@ -367,13 +373,41 @@ export interface GenModel {
   /** Native-audio toggle available (Kling 3 Omni). */
   supportsSound: boolean;
   /**
+   * Minimum tier at which native audio actually plays (Kling 2.6:
+   * 1080p only). Below it the server drops the audio rather than
+   * upgrading the billed tier — the composer gates the toggle.
+   */
+  soundRequiresTier?: string;
+  /**
    * Selectable quality tiers with per-tier prices — Kling resolution
    * (std=720p / pro=1080p / 4k), Gemini output resolution, OpenAI
    * render quality. Absent = fixed quality at `costCredits`.
+   * `soundCostCredits` is the tier's price with native audio ON, where
+   * the provider bills audio higher (Kling); absent = same as silent.
+   * `videoInCostCredits` is the tier's price when the request carries an
+   * input/reference video (Kling's 1.5x video-input rate); absent = no
+   * rate change for video input at this tier.
    */
-  tiers?: { mode: string; label: string; costCredits: number }[];
+  tiers?: {
+    mode: string;
+    label: string;
+    costCredits: number;
+    soundCostCredits?: number;
+    videoInCostCredits?: number;
+  }[];
   /** Pre-selected tier (what `costCredits` reflects). */
   defaultTier?: string;
+  /**
+   * The provider ignores an explicit aspect ratio once a start frame is
+   * attached — the composer disables the ratio picker in that state.
+   */
+  aspectLockedByStartFrame?: boolean;
+  /**
+   * Seedance: extra effective output-seconds billed per second of input
+   * video — feed to `resolveCreditCost.inputVideoFactor` so the price
+   * preview matches the server's charge.
+   */
+  inputVideoFactor?: number;
 }
 
 // ─── Notifications (in-app inbox) ────────────────────────────────────

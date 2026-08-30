@@ -463,10 +463,19 @@ jobsRoute.post(
     // model's default.
     const refDuration = caps.kind === 'video' ? caps.duration?.default : undefined;
     const baseCost = (mode ? priceRow?.tierPricing?.[mode] : undefined) ?? priceRow?.costCredits ?? 0;
+    // Charge audio only when it will actually be SERVED: on a tier below
+    // `nativeAudioRequiresTier` the compiler drops the audio rather than
+    // upgrading the resolution, so the charge must drop with it. This
+    // mirrors the composer's own gating — same inputs, same figure.
+    const soundServed =
+      body.sound === true &&
+      caps.supportsSound === true &&
+      !(caps.nativeAudioRequiresTier && mode !== caps.nativeAudioRequiresTier);
     const cost = resolveCreditCost({
       baseCredits: priceRow?.costCredits ?? 0,
       tierPricing: priceRow?.tierPricing ?? null,
       mode,
+      sound: soundServed,
       duration: typeof body.duration === 'number' ? body.duration : refDuration,
       defaultDuration: refDuration,
     });
@@ -761,6 +770,9 @@ jobsRoute.get(
         source: true,
         modelKey: true,
         inputs: true,
+        // Web-studio project the job files into (null for mobile jobs).
+        // The studio needs it to rebuild in-flight tiles after a reload.
+        projectId: true,
       },
       with: {
         template: {
@@ -870,6 +882,7 @@ jobsRoute.get(
         title,
         // Provenance — drives the mobile "Custom" badge.
         source: isUserJob ? ('user' as const) : ('template' as const),
+        projectId: j.projectId,
         createdAt: j.createdAt.toISOString(),
         whenLabel: '', // formatted by the SDK on the client
         status: sdkStatus,

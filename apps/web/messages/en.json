@@ -259,7 +259,9 @@
     "importFromAssets": "Import from My Assets",
     "modelTakesNoReferences": "This model doesn't take reference images — pick a different model to use one.",
     "videoNotAReference": "Video can't be used as a reference yet",
-    "attachedSome": "Added {added} — this model takes {max} references"
+    "attachedSome": "Added {added} — this model takes {max} references",
+    "soundNeedsTier": "Sound needs {tier}",
+    "aspectFromFrame": "From start frame"
   },
   "account": {
     "availableCredits": "Available credits",
@@ -406,7 +408,11 @@
     "toastCreateProjectFailed": "Couldn't create the project — try again.",
     "toastDeleteProjectFailed": "Couldn't delete the project — try again.",
     "reuseApplied": "Setup restored — tweak and generate",
-    "toastCoverFailed": "Couldn't update the thumbnail"
+    "toastCoverFailed": "Couldn't update the thumbnail",
+    "attachVideoUnsupported": "{model} doesn't accept video attachments",
+    "attachVideoUnsupportedGeneric": "This model doesn't accept video attachments",
+    "attachImageUnsupported": "{model} doesn't accept image attachments",
+    "attachLimitReached": "This model accepts up to {max} attachments"
   },
   "auth": {
     "panelBadge": "Clickefy Studio",

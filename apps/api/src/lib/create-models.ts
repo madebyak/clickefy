@@ -83,6 +83,21 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     supportsEndFrame: true,
   },
   {
+    modelKey: 'kling-v3-turbo',
+    name: 'Kling 3 Turbo',
+    attachments: 'frames',
+    requiresStartFrame: false,
+    // The turbo endpoint's `contents[]` takes prompt + first_frame only.
+    supportsEndFrame: false,
+  },
+  {
+    modelKey: 'kling-o1',
+    name: 'Kling O1',
+    attachments: 'frames',
+    requiresStartFrame: false,
+    supportsEndFrame: true,
+  },
+  {
     modelKey: 'kling-v2-6',
     name: 'Kling 2.6',
     attachments: 'frames',
@@ -90,6 +105,13 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     // optional and IS supported — this said false, which hid the end
     // frame slot on a model that accepts one.
     requiresStartFrame: true,
+    supportsEndFrame: true,
+  },
+  {
+    modelKey: 'kling-v2-5-turbo',
+    name: 'Kling 2.5 Turbo',
+    attachments: 'frames',
+    requiresStartFrame: false,
     supportsEndFrame: true,
   },
   {
@@ -116,6 +138,13 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
   {
     modelKey: 'dreamina-seedance-2-0-260128',
     name: 'Seedance 2',
+    attachments: 'seedance',
+    requiresStartFrame: false,
+    supportsEndFrame: true,
+  },
+  {
+    modelKey: 'dreamina-seedance-2-0-fast-260128',
+    name: 'Seedance 2 Fast',
     attachments: 'seedance',
     requiresStartFrame: false,
     supportsEndFrame: true,
@@ -168,13 +197,49 @@ export interface CreateModelDTO {
   /** Native-audio toggle (Kling 3 Omni `sound`). */
   supportsSound: boolean;
   /**
+   * The minimum tier at which native audio actually plays (Kling 2.6:
+   * 1080p only). Below it the compiler drops the audio rather than
+   * upgrading the billed tier, so the composer must gate the toggle —
+   * otherwise the user pays the silent price and gets a silent clip
+   * with no explanation.
+   */
+  soundRequiresTier?: string;
+  /**
    * Selectable quality tiers with their per-tier prices (models with
    * modes only — Kling std=720p / pro=1080p / 4k). Absent = fixed
    * quality at `costCredits`.
+   *
+   * `soundCostCredits` is the tier's price with native audio ON, where
+   * the provider bills audio at a higher rate (Kling). Absent = sound
+   * costs the same as silent at this tier.
+   *
+   * `videoInCostCredits` is the tier's price when the request carries an
+   * input/reference video (Kling bills video-input at a 1.5x per-second
+   * rate). Absent = no rate change for video input at this tier.
    */
-  tiers?: { mode: string; label: string; costCredits: number }[];
+  tiers?: {
+    mode: string;
+    label: string;
+    costCredits: number;
+    soundCostCredits?: number;
+    videoInCostCredits?: number;
+  }[];
   /** The pre-selected tier (what `costCredits` reflects). */
   defaultTier?: string;
+  /**
+   * The provider ignores/forbids an explicit aspect ratio once a start
+   * frame is attached (Kling omits the field; Seedance 2.5 accepts only
+   * `adaptive`). The composer disables the ratio picker in that state so
+   * it never shows a control that does nothing.
+   */
+  aspectLockedByStartFrame?: boolean;
+  /**
+   * Seedance: extra effective output-seconds billed per second of input
+   * video — the composer's price preview must apply it exactly like the
+   * server (`resolveCreditCost.inputVideoFactor`). Absent = input video
+   * is priced via `videoInCostCredits` (Kling) or not accepted at all.
+   */
+  inputVideoFactor?: number;
 }
 
 /**
@@ -213,6 +278,11 @@ export function buildCreateModelDTO(
         mode: m,
         label: tierLabel(caps, m),
         costCredits: tierPricing?.[m] ?? costCredits,
+        // `${tier}_audio` / `${tier}_videoin` keys in the same
+        // tier_pricing JSONB — see `resolveCreditCost`. Absent key =
+        // no surcharge on that dimension.
+        soundCostCredits: tierPricing?.[`${m}_audio`],
+        videoInCostCredits: tierPricing?.[`${m}_videoin`],
       }))
     : undefined;
 
@@ -231,7 +301,13 @@ export function buildCreateModelDTO(
     requiresStartFrame: def.requiresStartFrame,
     supportsEndFrame: def.supportsEndFrame,
     supportsSound: caps.supportsSound ?? false,
+    soundRequiresTier: caps.nativeAudioRequiresTier,
     tiers,
     defaultTier: caps.modes?.default,
+    aspectLockedByStartFrame:
+      caps.kind === 'video' && (caps.provider === 'kling' || caps.framesRatioAdaptiveOnly === true)
+        ? true
+        : undefined,
+    inputVideoFactor: caps.inputVideoDurationFactor,
   };
 }

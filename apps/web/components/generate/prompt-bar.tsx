@@ -28,7 +28,12 @@ import type { GenModel } from "@clickfy/sdk";
 import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
 import { cn } from "@/lib/utils";
 import { useModels } from "@/lib/use-models";
-import { useStudioMaybe, type PromptAttachment } from "@/components/studio/studio-context";
+import {
+  ASSET_DRAG_TYPE,
+  useStudioMaybe,
+  type AttachableAsset,
+  type PromptAttachment,
+} from "@/components/studio/studio-context";
 import { MyAssetsModal } from "@/components/media/my-assets-modal";
 import { DrawModal } from "@/components/generate/draw-modal";
 import { modelLogo } from "@/lib/model-logos";
@@ -619,17 +624,34 @@ export function PromptBar({
   const typedPlaceholder = useTypewriterPlaceholder(examples, animate);
 
   const selectedTier = model?.tiers?.find((x) => x.mode === tier) ?? null;
+  // Native audio that can't play at the selected tier (Kling 2.6 is
+  // 1080p-only): the server drops the audio rather than upgrading the
+  // billed resolution, so the toggle is gated instead of lying.
+  const soundGated = !!model?.soundRequiresTier && tier !== model.soundRequiresTier;
+  const soundTierLabel =
+    model?.tiers?.find((x) => x.mode === model.soundRequiresTier)?.label ??
+    model?.soundRequiresTier ??
+    "";
   // Same resolver the server bills with, so the number on the button is
   // the number charged. Showing only the tier price under-stated every
   // clip longer than the model's default — a 15s Kling 3.0 job read
-  // "168" and cost 504.
+  // "168" and cost 504. The map carries the `${tier}_audio` keys so a
+  // sound-on Kling job prices at the audio rate, exactly like the server.
   const costPerJob = model
     ? resolveCreditCost({
         baseCredits: model.costCredits,
         tierPricing: model.tiers
-          ? Object.fromEntries(model.tiers.map((t) => [t.mode, t.costCredits]))
+          ? Object.fromEntries(
+              model.tiers.flatMap((t) => [
+                [t.mode, t.costCredits] as [string, number],
+                ...(t.soundCostCredits != null
+                  ? [[`${t.mode}_audio`, t.soundCostCredits] as [string, number]]
+                  : []),
+              ]),
+            )
           : null,
         mode: tier,
+        sound: sound && !soundGated,
         duration,
         defaultDuration: model.defaultDuration,
       })
@@ -679,32 +701,76 @@ export function PromptBar({
   const isFrames = model ? (modeIsChoosable ? attachMode === "frames" : model.attachments !== "references") : false;
   // Frames take at most two images regardless of the model's total budget.
   const attachCeiling = isFrames ? (model?.supportsEndFrame ? 2 : 1) : maxImages;
+  // A start frame pins the output shape on these providers — the ratio
+  // picker would be a control that does nothing, so it locks instead.
+  const aspectLocked =
+    !!model?.aspectLockedByStartFrame && isFrames && !!attachments[0];
+
+  // Register the selected model's attachment rules with the studio, so
+  // every attach entry point the composer does not own (tile buttons,
+  // canvas drag-and-drop) validates against the SAME policy and refuses
+  // with the same copy. See `AttachmentPolicy` in studio-context.
+  const setAttachmentPolicy = studio?.setAttachmentPolicy;
+  const modelName = model?.name ?? null;
+  const hasModel = !!model;
+  useEffect(() => {
+    if (!setAttachmentPolicy) return;
+    setAttachmentPolicy({
+      modelName,
+      acceptsImages: hasModel && attachCeiling > 0,
+      // No create-eligible model takes a video attachment yet. Becomes
+      // model-driven once Seedance reference-video support is wired.
+      acceptsVideos: false,
+      ceiling: attachCeiling,
+    });
+    return () => setAttachmentPolicy(null);
+  }, [setAttachmentPolicy, modelName, hasModel, attachCeiling]);
   const canAttach = !!model && !!studio && attachments.length < attachCeiling;
   // Only react to actual file drags — ignore text/link drags.
   const isFileDrag = (e: React.DragEvent) => e.dataTransfer?.types?.includes("Files");
+  // Canvas tiles dragged from the masonry carry their asset as a typed
+  // payload (see ASSET_DRAG_TYPE). Always accepted as a DROP TARGET —
+  // even over the ceiling or with a video on an image model — because
+  // `addAttachment` owns the refusal and explains it; a drop the browser
+  // rejects silently teaches the user the feature doesn't exist.
+  const isAssetDrag = (e: React.DragEvent) =>
+    e.dataTransfer?.types?.includes(ASSET_DRAG_TYPE);
+  const isDroppable = (e: React.DragEvent) =>
+    (canAttach && isFileDrag(e)) || (!!studio && isAssetDrag(e));
 
   const dragHandlers = {
     onDragEnter: (e: React.DragEvent) => {
-      if (!canAttach || !isFileDrag(e)) return;
+      if (!isDroppable(e)) return;
       e.preventDefault();
       dragDepth.current += 1;
       setDragActive(true);
     },
     onDragOver: (e: React.DragEvent) => {
-      if (!canAttach || !isFileDrag(e)) return;
+      if (!isDroppable(e)) return;
       e.preventDefault(); // required, or the browser opens the file instead
       e.dataTransfer.dropEffect = "copy";
     },
     onDragLeave: (e: React.DragEvent) => {
-      if (!isFileDrag(e)) return;
+      if (!isFileDrag(e) && !isAssetDrag(e)) return;
       dragDepth.current = Math.max(0, dragDepth.current - 1);
       if (dragDepth.current === 0) setDragActive(false);
     },
     onDrop: (e: React.DragEvent) => {
-      if (!canAttach || !isFileDrag(e)) return;
+      if (!isDroppable(e)) return;
       e.preventDefault();
       dragDepth.current = 0;
       setDragActive(false);
+      if (isAssetDrag(e)) {
+        try {
+          const asset = JSON.parse(
+            e.dataTransfer.getData(ASSET_DRAG_TYPE),
+          ) as AttachableAsset;
+          if (asset?.id && asset.src) studio?.addAttachment(asset);
+        } catch {
+          // Malformed payload — nothing sensible to attach.
+        }
+        return;
+      }
       addFiles(Array.from(e.dataTransfer.files));
     },
   };
@@ -735,7 +801,7 @@ export function PromptBar({
           aspectRatio: aspect !== "Auto" ? aspect : undefined,
           duration: model.kind === "video" ? (duration ?? undefined) : undefined,
           quality: tier ?? undefined,
-          sound: model.supportsSound ? sound : undefined,
+          sound: model.supportsSound ? sound && !soundGated : undefined,
           references: frames ? undefined : media,
           startFrame: frames ? media[0] : undefined,
           endFrame: frames && model.supportsEndFrame ? media[1] : undefined,
@@ -1078,7 +1144,15 @@ export function PromptBar({
               )}
             </Dropdown>
 
-            {/* aspect */}
+            {/* aspect. With a start frame attached, providers that derive
+                the frame size from it (Kling; Seedance 2.5) ignore an
+                explicit ratio — show that instead of a dead dropdown. */}
+            {aspectLocked ? (
+              <Pill disabled className={cn(pillCls, "opacity-60")}>
+                <RatioGlyph ratio="Auto" className="text-muted-foreground" />
+                {t("aspectFromFrame")}
+              </Pill>
+            ) : (
             <Dropdown
               panelClassName="max-h-80 min-w-44 overflow-y-auto"
               trigger={({ toggle }) => (
@@ -1109,6 +1183,7 @@ export function PromptBar({
                 </>
               )}
             </Dropdown>
+            )}
 
             {/* quality tier (models that price per tier) */}
             {model?.tiers && model.tiers.length > 0 && (
@@ -1175,10 +1250,22 @@ export function PromptBar({
               </Dropdown>
             )}
 
-            {/* native audio (Kling 3 Omni) */}
+            {/* native audio (Kling). Gated tiers keep the pill visible but
+                inert — tapping it explains the requirement instead of
+                toggling a switch the server would silently ignore. */}
             {model?.supportsSound && (
-              <Pill active={sound} onClick={() => setSound((s) => !s)} className={pillCls}>
-                {sound ? (
+              <Pill
+                active={sound && !soundGated}
+                onClick={() => {
+                  if (soundGated) {
+                    toast.info(t("soundNeedsTier", { tier: soundTierLabel }));
+                    return;
+                  }
+                  setSound((s) => !s);
+                }}
+                className={cn(pillCls, soundGated && "opacity-50")}
+              >
+                {sound && !soundGated ? (
                   <SpeakerHigh weight="fill" className="size-4 text-accent-turquoise" />
                 ) : (
                   <SpeakerSlash className="size-4" />

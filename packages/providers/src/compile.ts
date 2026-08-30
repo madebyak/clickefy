@@ -887,10 +887,23 @@ function compileKling(
   const mode = typeof stage.config.mode === 'string'
     ? (stage.config.mode as 'standard' | 'pro' | 'std' | '4k')
     : undefined;
-  const negativePrompt =
+  // Gated on the capability flag: API 2.0 models have no
+  // `negative_prompt` field (their adapter never sent it — the value
+  // was silently dropped on the wire for every current Kling model), so
+  // a configured one gets a loud warning instead of a quiet no-op.
+  const cfgNegative =
     typeof stage.config.negativePrompt === 'string' && stage.config.negativePrompt.length > 0
       ? stage.config.negativePrompt
       : undefined;
+  let negativePrompt: string | undefined;
+  if (capabilities.negativePrompt) {
+    negativePrompt = cfgNegative;
+  } else if (cfgNegative) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `${stage.model} does not support a negative prompt; the field will be omitted from the request.`,
+    });
+  }
   // Native audio (`sound: on|off` on the omni endpoint). Only emitted
   // for sound-capable models; a truthy config on a non-capable model
   // gets a soft warning instead of a silently-ignored wire field.

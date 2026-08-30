@@ -118,12 +118,21 @@ export async function computeTemplateCost(
     const caps = findCapabilities(s.model);
     const refDuration = caps?.kind === 'video' ? caps.duration?.default : undefined;
     const cfgDuration = typeof cfg.duration === 'number' ? cfg.duration : undefined;
+    // Audio-aware, with the compiler's own gating: on a tier below
+    // `nativeAudioRequiresTier` the audio is dropped, not upgraded, so
+    // the stage costs the silent price.
+    const cfgSound = cfg.sound === true || cfg.sound === 'on';
+    const soundServed =
+      cfgSound &&
+      caps?.supportsSound === true &&
+      !(caps.nativeAudioRequiresTier && tierKey !== caps.nativeAudioRequiresTier);
 
     const cost = found
       ? resolveCreditCost({
           baseCredits: found.base,
           tierPricing: found.tiers,
           mode: tierKey,
+          sound: soundServed,
           duration: cfgDuration ?? refDuration,
           defaultDuration: refDuration,
         })

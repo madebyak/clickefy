@@ -259,7 +259,9 @@
     "importFromAssets": "استيراد من أصولي",
     "modelTakesNoReferences": "هذا النموذج لا يقبل صوراً مرجعية — اختر نموذجاً آخر لاستخدام واحدة.",
     "videoNotAReference": "لا يمكن استخدام الفيديو كمرجع بعد",
-    "attachedSome": "أُضيفت {added} — هذا النموذج يقبل {max} مراجع"
+    "attachedSome": "أُضيفت {added} — هذا النموذج يقبل {max} مراجع",
+    "soundNeedsTier": "الصوت يتطلب {tier}",
+    "aspectFromFrame": "من إطار البداية"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",
@@ -406,7 +408,11 @@
     "toastCreateProjectFailed": "تعذّر إنشاء المشروع — حاول مجددًا.",
     "toastDeleteProjectFailed": "تعذّر حذف المشروع — حاول مجددًا.",
     "reuseApplied": "تمت استعادة الإعدادات — عدّلها ثم أنشئ",
-    "toastCoverFailed": "تعذّر تحديث الصورة المصغّرة"
+    "toastCoverFailed": "تعذّر تحديث الصورة المصغّرة",
+    "attachVideoUnsupported": "{model} لا يقبل مقاطع الفيديو كمرفقات",
+    "attachVideoUnsupportedGeneric": "هذا النموذج لا يقبل مقاطع الفيديو كمرفقات",
+    "attachImageUnsupported": "{model} لا يقبل الصور كمرفقات",
+    "attachLimitReached": "هذا النموذج يقبل حتى {max} مرفقات"
   },
   "auth": {
     "panelBadge": "استوديو كليكفاي",

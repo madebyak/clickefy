@@ -292,6 +292,19 @@ export interface ModelCapabilities {
   supportsOmniTaskType?: boolean;
 
   /**
+   * Seedance: extra effective output-seconds billed per second of INPUT
+   * video (reference_video). BytePlus's token formula charges
+   * (input + output duration) x pixels x fps at a ~40%-discounted
+   * per-token rate whenever a request carries video — validated against
+   * their published with-video price tables, 0.6 covers the worst
+   * observed cost multiplier on every model/resolution with the
+   * catalog's margin intact. Feeds `resolveCreditCost`'s
+   * `inputVideoFactor`. Absent = input video adds no per-second charge
+   * (Kling prices video input as `${tier}_videoin` rate keys instead).
+   */
+  inputVideoDurationFactor?: number;
+
+  /**
    * Seedream: the model's `size` field also accepts an explicit
    * `WIDTHxHEIGHT` (BytePlus "Method 2"), which is the ONLY way to pin
    * an exact aspect ratio — there is no `aspect_ratio` parameter, and a
@@ -634,7 +647,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: KLING_DURATIONS, default: 5 },
-    negativePrompt: true,
+    // API 2.0 has no `negative_prompt` field: the new per-model docs
+    // don't list it and the adapter never sent it, so this flag being
+    // true only produced an admin control whose value was silently
+    // dropped on the wire. False on every `klingApi2` model until a
+    // live probe proves the new API accepts the field.
+    negativePrompt: false,
     refAddressing: 'none',
     maxReferences: 0,
     // Two images: `contents[]` accepts first_frame + last_frame. This was
@@ -675,7 +693,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     sizing: { mode: 'aspect', values: KLING_FIXED_ASPECT },
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: KLING_DURATIONS, default: 5 },
-    negativePrompt: true,
+    // See the kling-v2-6 note — API 2.0 has no negative_prompt field.
+    negativePrompt: false,
     refAddressing: 'none',
     maxReferences: 0,
     // first_frame + last_frame, same as 2.6. See the note there for why
@@ -697,7 +716,11 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     provider: 'kling',
     modelKey: 'kling-v2-master',
     displayName: 'Kling V2 Master',
-    status: 'active',
+    // Kuaishou retires 2.0 Master (with the whole 1.x/2.1 legacy line)
+    // on 2026-09-15 — new calls will fail after that date. Verified
+    // 2026-08-27: zero templates, version snapshots, or jobs reference
+    // it, so deprecating is a pure catalog cleanup.
+    status: 'deprecated',
     kind: 'video',
     sizing: { mode: 'aspect', values: KLING_FIXED_ASPECT },
     outputs: { min: 1, max: 1, default: 1 },
@@ -724,7 +747,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: KLING_3_DURATIONS, default: 5 },
-    negativePrompt: true,
+    // See the kling-v2-6 note — API 2.0 has no negative_prompt field.
+    negativePrompt: false,
     refAddressing: 'at',
     // The omni endpoint caps `image_list` at 7 entries TOTAL (start/end
     // frames included; drops to 4 when a reference video is attached —
@@ -772,7 +796,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: KLING_3_DURATIONS, default: 5 },
-    negativePrompt: true,
+    // See the kling-v2-6 note — API 2.0 has no negative_prompt field.
+    negativePrompt: false,
     // `POST /image-to-video/kling-3.0` accepts `contents[{type:'element'}]`
     // addressed from the prompt as `@name`, capped at 3 by the docs.
     // Elements are pre-registered library entities rather than
@@ -820,7 +845,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: KLING_3_DURATIONS, default: 5 },
-    negativePrompt: true,
+    // See the kling-v2-6 note — API 2.0 has no negative_prompt field.
+    negativePrompt: false,
     refAddressing: 'none',
     maxReferences: 0,
     maxSubjects: 1,
@@ -856,7 +882,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // docs add: a first frame with no other reference collapses this to
     // 5 or 10 only — a conditional we do not model yet.
     duration: { values: KLING_O1_DURATIONS, default: 5 },
-    negativePrompt: true,
+    // See the kling-v2-6 note — API 2.0 has no negative_prompt field.
+    negativePrompt: false,
     refAddressing: 'at',
     // Reference images ride the same 7-image budget as Omni; Elements
     // are library entities and not wired yet.
@@ -919,6 +946,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
     supportsSound: true,
+    inputVideoDurationFactor: 0.6,
     // Exact cap unpublished; safe default matching the video peers.
     // Resolution is a PRICED tier here, not a free-form config: BytePlus
     // bills per second and the rate spans 11x between 480p and 4K, so a
@@ -954,6 +982,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
     supportsSound: true,
+    inputVideoDurationFactor: 0.6,
     modes: {
       values: ['480p', '720p'],
       default: '720p',
@@ -993,6 +1022,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 30,
     acceptsStartEndImage: true,
     supportsSound: true,
+    inputVideoDurationFactor: 0.6,
     // A first / first+last frame makes 2.5 preserve that frame's own
     // aspect ratio; `ratio` then only accepts `adaptive`. Sending a
     // concrete ratio alongside a frame is rejected — after the debit.
@@ -1026,6 +1056,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
     supportsSound: true,
+    inputVideoDurationFactor: 0.6,
     modes: {
       values: ['480p', '720p'],
       default: '720p',

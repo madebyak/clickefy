@@ -91,6 +91,40 @@ export type Asset = {
  */
 export type AttachableAsset = Pick<Asset, "id" | "type" | "src">;
 
+/**
+ * DataTransfer MIME type for a canvas tile dragged toward the composer.
+ * The payload is a JSON-encoded `AttachableAsset`. A custom type (rather
+ * than text/plain) means random text drags can never masquerade as an
+ * asset, and the composer can advertise itself as a drop target only
+ * for drags that actually carry one.
+ */
+export const ASSET_DRAG_TYPE = "application/x-clickfy-asset";
+
+/**
+ * What the currently-selected model accepts as prompt attachments.
+ *
+ * Registered by the composer (which owns the model selection) and
+ * consumed by every attach entry point the composer does NOT own — the
+ * tile's "Add as reference", drag-and-drop from the canvas. Centralising
+ * the rule here means a video dropped on an image-only model gets ONE
+ * consistent, explicit refusal everywhere, instead of the silent no-op
+ * each call site used to improvise.
+ *
+ * `acceptsVideos` is structurally ready but currently always false: no
+ * create-eligible model takes a video attachment yet (Seedance's
+ * reference-video input is the candidate — pending its API wiring). When
+ * that lands, the composer flips this per model and every entry point
+ * follows.
+ */
+export type AttachmentPolicy = {
+  /** Commercial model name, for error copy ("Kling 2.6 doesn't…"). */
+  modelName: string | null;
+  acceptsImages: boolean;
+  acceptsVideos: boolean;
+  /** Max attachments the current model+mode combination takes. */
+  ceiling: number;
+};
+
 /** A past generation's settings, handed to the composer to restore. */
 export type ReuseSetup = {
   /**
@@ -218,6 +252,11 @@ type StudioValue = {
   attachFile: (file: File) => void;
   /** Attach an existing canvas asset as a reference (fetch → re-upload). */
   addAttachment: (asset: AttachableAsset) => void;
+  /**
+   * The selected model's attachment rules — registered by the composer,
+   * enforced in `addAttachment`. Null when no composer is mounted.
+   */
+  setAttachmentPolicy: (policy: AttachmentPolicy | null) => void;
   /**
    * Restore a past generation's setup into the composer — prompt, model,
    * tier, aspect ratio and its reference images — WITHOUT generating.
@@ -761,9 +800,38 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [t],
   );
 
+  // A ref, not state: the policy is read inside callbacks, never
+  // rendered, and the composer re-registers it on every model change —
+  // state would re-render every studio consumer for nothing.
+  const attachmentPolicy = useRef<AttachmentPolicy | null>(null);
+  const setAttachmentPolicy = useCallback((policy: AttachmentPolicy | null) => {
+    attachmentPolicy.current = policy;
+  }, []);
+
   const addAttachment = useCallback(
     (asset: AttachableAsset) => {
-      if (asset.type !== "image") return; // only images can be references/frames
+      const policy = attachmentPolicy.current;
+      // Model-aware refusal with a reason. The old behavior was a bare
+      // `return` on anything non-image — "Add as reference" on a video
+      // tile looked like a button that simply did nothing.
+      if (asset.type === "video" && !(policy?.acceptsVideos ?? false)) {
+        toast.error(
+          policy?.modelName
+            ? t("attachVideoUnsupported", { model: policy.modelName })
+            : t("attachVideoUnsupportedGeneric"),
+        );
+        return;
+      }
+      if (asset.type === "image" && policy && !policy.acceptsImages) {
+        toast.error(t("attachImageUnsupported", { model: policy.modelName ?? "" }));
+        return;
+      }
+      // Same ceiling the composer enforces on file picks — an asset
+      // attached from a tile must not slip past it.
+      if (policy && attachments.length >= policy.ceiling) {
+        toast.error(t("attachLimitReached", { max: policy.ceiling }));
+        return;
+      }
       const id = `att-${seq.current++}`;
       setAttachments((prev) =>
         prev.some((a) => a.previewUrl === asset.src)
@@ -788,7 +856,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           ),
         );
     },
-    [uploadAttachment],
+    [uploadAttachment, attachments, t],
   );
 
   const removeAttachment = useCallback(
@@ -907,6 +975,35 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // ── Rehydrate in-flight tiles after a reload ─────────────────────
+  //
+  // `pending` is plain client state, so a refresh used to eat every
+  // "generating…" tile while the jobs kept running server-side — the
+  // outputs then popped into the grid with no warning. On sign-in, read
+  // the newest jobs once and re-track anything still queued/processing
+  // (in-flight work is by definition recent, so one page is enough).
+  // `trackJob` restores both the tile and the poll subscription.
+  const rehydratedRef = useRef(false);
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || rehydratedRef.current) return;
+    rehydratedRef.current = true;
+    getSDK()
+      .library.listProjects({ limit: 50 })
+      .then(({ items }) => {
+        for (const job of items) {
+          if (job.status !== "queued" && job.status !== "processing") continue;
+          // Mobile jobs have no studio project — nowhere to show a tile.
+          if (!job.projectId) continue;
+          if (unsubs.current.has(job.id)) continue;
+          trackJob(job.id, job.projectId, job.templateKind === "video" ? "video" : "image");
+        }
+      })
+      .catch(() => {
+        // Purely cosmetic restore — the grid still updates on refetch,
+        // so a failed rehydrate is not worth an error surface.
+      });
+  }, [isLoaded, isSignedIn, trackJob]);
+
   const activeAssets = assetsQuery.data ?? EMPTY_ASSETS;
   const favorites = favoritesQuery.data ?? EMPTY_ASSETS;
 
@@ -942,6 +1039,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       attachments,
       attachFile,
       addAttachment,
+      setAttachmentPolicy,
       reuseSetup,
       pendingSetup,
       clearPendingSetup,
@@ -981,6 +1079,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       attachments,
       attachFile,
       addAttachment,
+      setAttachmentPolicy,
       reuseSetup,
       pendingSetup,
       clearPendingSetup,

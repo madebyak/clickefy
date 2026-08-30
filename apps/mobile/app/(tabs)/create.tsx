@@ -164,17 +164,31 @@ export default function CreateScreen() {
     return true;
   }, [selectedModel, submitting, busy, prompt, startFrame]);
 
-  // Cost follows BOTH the quality tier and the clip length — Kling and
-  // Seedance bill per second, so a 10s clip costs twice a 5s one. Uses
-  // the same resolver the server bills with; showing only the tier price
-  // under-stated every duration above the model's default.
+  // Native audio that can't play at the selected tier (Kling 2.6 is
+  // 1080p-only): the server drops the audio rather than upgrading the
+  // billed resolution, so the price (and the submitted flag) follow suit.
+  const soundGated =
+    !!selectedModel?.soundRequiresTier && quality !== selectedModel.soundRequiresTier;
+  // Cost follows the quality tier, the clip length AND the sound toggle —
+  // Kling bills native audio at a higher per-second rate, carried in the
+  // `${tier}_audio` pricing keys. Uses the same resolver the server bills
+  // with; showing only the tier price under-stated every duration above
+  // the model's default.
   const cost = selectedModel
     ? resolveCreditCost({
         baseCredits: selectedModel.costCredits,
         tierPricing: selectedModel.tiers
-          ? Object.fromEntries(selectedModel.tiers.map((t) => [t.mode, t.costCredits]))
+          ? Object.fromEntries(
+              selectedModel.tiers.flatMap((t) => [
+                [t.mode, t.costCredits] as [string, number],
+                ...(t.soundCostCredits != null
+                  ? [[`${t.mode}_audio`, t.soundCostCredits] as [string, number]]
+                  : []),
+              ]),
+            )
           : null,
         mode: quality,
+        sound: sound && !soundGated,
         duration: selectedModel.kind === 'video' ? duration : undefined,
         defaultDuration: selectedModel.defaultDuration,
       })
@@ -193,7 +207,7 @@ export default function CreateScreen() {
         prompt: prompt.trim(),
         aspectRatio: selectedModel.aspectRatios.length > 0 ? aspect : undefined,
         duration: selectedModel.kind === 'video' ? duration : undefined,
-        sound: selectedModel.supportsSound && sound ? true : undefined,
+        sound: selectedModel.supportsSound && sound && !soundGated ? true : undefined,
         quality: selectedModel.tiers ? quality : undefined,
         startFrame: useFrames ? asImage(startFrame) : undefined,
         endFrame: useFrames && selectedModel.supportsEndFrame ? asImage(endFrame) : undefined,

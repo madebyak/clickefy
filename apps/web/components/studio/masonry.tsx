@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Info,
@@ -18,27 +18,48 @@ import {
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import { downloadAsset } from "@/lib/download-asset";
-import type { Asset } from "@/components/studio/studio-context";
+import { ASSET_DRAG_TYPE, type Asset } from "@/components/studio/studio-context";
 import { DEFAULT_GRID_SIZE, type GridSize } from "@/components/studio/canvas-toolbar";
 
 /**
- * Column counts per density step, largest tiles first.
+ * Column counts per density step at [base, md, 2xl] viewports.
  *
- * Written out as whole class strings because Tailwind scans source
- * statically — `columns-${n}` produces nothing at build time. Each step
- * also scales with the viewport, so "smallest" on a laptop is not the
- * same absolute tile size as "smallest" on a 4K display; the control
- * sets relative density, which is what the user is actually choosing.
+ * The grid used to be CSS `columns-*`, which reads TOP-TO-BOTTOM down
+ * each column and rebalances as media loads — so a newest-first asset
+ * list rendered in what looked like random order, and tiles visibly
+ * jumped between columns mid-load. Items are now distributed in code,
+ * round-robin by index, so recency reads LEFT-TO-RIGHT row by row and
+ * an item never changes column once placed.
  *
  * Below `md` every step is two columns: a phone has no room for a third,
- * and the toolbar hides the slider there for the same reason.
+ * and the toolbar hides the slider there for the same reason. The step
+ * scales with the viewport because the control sets relative density,
+ * not an absolute tile size.
  */
-const GRID_COLUMNS: Record<GridSize, string> = {
-  0: "columns-2 md:columns-2 2xl:columns-3",
-  1: "columns-2 md:columns-3 2xl:columns-4",
-  2: "columns-2 md:columns-4 2xl:columns-6",
-  3: "columns-3 md:columns-6 2xl:columns-8",
+const COLUMN_COUNTS: Record<GridSize, readonly [number, number, number]> = {
+  0: [2, 2, 3],
+  1: [2, 3, 4],
+  2: [2, 4, 6],
+  3: [3, 6, 8],
 };
+
+/** 0=base, 1=md (768px), 2=2xl (1536px) — mirrors the old breakpoints. */
+function useBreakpointStep(): 0 | 1 | 2 {
+  const [step, setStep] = useState<0 | 1 | 2>(0);
+  useEffect(() => {
+    const md = window.matchMedia("(min-width: 768px)");
+    const xxl = window.matchMedia("(min-width: 1536px)");
+    const update = () => setStep(xxl.matches ? 2 : md.matches ? 1 : 0);
+    update();
+    md.addEventListener("change", update);
+    xxl.addEventListener("change", update);
+    return () => {
+      md.removeEventListener("change", update);
+      xxl.removeEventListener("change", update);
+    };
+  }, []);
+  return step;
+}
 
 /** Gutters tighten as tiles shrink, so dense grids don't read as gappy. */
 const GRID_GAP: Record<GridSize, string> = {
@@ -46,13 +67,6 @@ const GRID_GAP: Record<GridSize, string> = {
   1: "gap-3",
   2: "gap-2.5",
   3: "gap-2",
-};
-
-const TILE_GAP: Record<GridSize, string> = {
-  0: "mb-4",
-  1: "mb-3",
-  2: "mb-2.5",
-  3: "mb-2",
 };
 
 function OverlayButton({
@@ -141,15 +155,32 @@ export function Masonry({
     setLightbox(a);
   };
 
-  return (
-    <>
-      <div className={cn(GRID_COLUMNS[gridSize], GRID_GAP[gridSize])}>
-        {assets.map((a) => (
+  const breakpointStep = useBreakpointStep();
+  const columnCount = COLUMN_COUNTS[gridSize][breakpointStep];
+  // Round-robin, NOT shortest-column: strict index order is the point —
+  // the caller sorts newest-first and the grid must read that way.
+  const columns = useMemo(() => {
+    const cols: Asset[][] = Array.from({ length: columnCount }, () => []);
+    assets.forEach((a, i) => cols[i % columnCount]!.push(a));
+    return cols;
+  }, [assets, columnCount]);
+
+  const renderTile = (a: Asset) => (
           <div
             key={a.id}
+            draggable
+            onDragStart={(e) => {
+              // Toward the composer — see ASSET_DRAG_TYPE. The composer
+              // validates against the selected model and explains any
+              // refusal, so every tile is draggable, videos included.
+              e.dataTransfer.setData(
+                ASSET_DRAG_TYPE,
+                JSON.stringify({ id: a.id, type: a.type, src: a.src }),
+              );
+              e.dataTransfer.effectAllowed = "copy";
+            }}
             className={cn(
-              "group relative break-inside-avoid overflow-hidden rounded-xl bg-surface-2 transition-all duration-200",
-              TILE_GAP[gridSize],
+              "group relative overflow-hidden rounded-xl bg-surface-2 transition-all duration-200",
               selectedIds?.includes(a.id) && "ring-2 ring-primary ring-offset-2 ring-offset-background",
               exitingIds?.includes(a.id) && "pointer-events-none scale-95 opacity-0",
             )}
@@ -407,6 +438,18 @@ export function Masonry({
               </div>
             )}
 
+          </div>
+  );
+
+  return (
+    <>
+      {/* Explicit flex columns (not CSS `columns-*`): order-preserving —
+          see COLUMN_COUNTS. items-start keeps short columns from
+          stretching their last tile. */}
+      <div className={cn("flex items-start", GRID_GAP[gridSize])}>
+        {columns.map((col, i) => (
+          <div key={i} className={cn("flex min-w-0 flex-1 flex-col", GRID_GAP[gridSize])}>
+            {col.map(renderTile)}
           </div>
         ))}
       </div>

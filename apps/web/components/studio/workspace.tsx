@@ -148,6 +148,7 @@ function ProjectView({
   onAssetReuse,
   onToggleFavorite,
   onAssetDelete,
+  onTurnToVideo,
   reusingAssetId,
   gridSize,
   selectedIds,
@@ -162,6 +163,7 @@ function ProjectView({
   onAssetReuse: (a: Asset) => void;
   onToggleFavorite: (a: Asset) => void;
   onAssetDelete: (a: Asset) => void;
+  onTurnToVideo: (a: Asset) => void;
   reusingAssetId: string | null;
   gridSize: GridSize;
   selectedIds: string[];
@@ -197,6 +199,7 @@ function ProjectView({
         onAssetReuse={onAssetReuse}
         onToggleFavorite={onToggleFavorite}
         onAssetDelete={onAssetDelete}
+        onTurnToVideo={onTurnToVideo}
         reusingAssetId={reusingAssetId}
         gridSize={gridSize}
         selectedIds={selectedIds}
@@ -221,6 +224,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
     reuseSetup,
     setAssetsFavorite,
     deleteAssets,
+    startImageToVideo,
   } = useStudio();
 
   const [filter, setFilter] = useState<CanvasFilter>("all");
@@ -236,6 +240,14 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
   const handleDelete = useCallback(
     (a: Asset) => deleteAssets(a.projectId, [a.id]),
     [deleteAssets],
+  );
+
+  // "Turn into video" — the composer sits at the bottom of this same
+  // page, so no navigation: the baton flips it to video mode with the
+  // image attached as the start frame.
+  const handleTurnToVideo = useCallback(
+    (a: Asset) => startImageToVideo(a.src),
+    [startImageToVideo],
   );
 
   // Which asset the details slide-over is showing, if any.
@@ -384,6 +396,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
               onAssetReuse={handleReuse}
               onToggleFavorite={toggleFavorite}
               onAssetDelete={handleDelete}
+              onTurnToVideo={handleTurnToVideo}
               reusingAssetId={reusingAssetId}
               gridSize={gridSize}
               selectedIds={selectedAssetIds}
@@ -410,6 +423,10 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
           onToggleFavorite={() => infoAsset && toggleFavorite(infoAsset)}
           onReuse={(detail) => {
             reuseSetup(detail);
+            setInfoAssetId(null);
+          }}
+          onTurnToVideo={(detail) => {
+            startImageToVideo(detail.url);
             setInfoAssetId(null);
           }}
         />

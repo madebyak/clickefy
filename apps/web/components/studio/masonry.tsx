@@ -115,6 +115,7 @@ export function Masonry({
   reusingAssetId,
   onToggleFavorite,
   onAssetDelete,
+  onTurnToVideo,
   showProjectName = false,
   exitingIds,
   gridSize = DEFAULT_GRID_SIZE,
@@ -140,6 +141,11 @@ export function Masonry({
    * grid itself never decides whether deletion is available here.
    */
   onAssetDelete?: (asset: Asset) => void;
+  /**
+   * "Turn into video" from the expanded view — flips the composer to
+   * video mode with this image as the start frame.
+   */
+  onTurnToVideo?: (asset: Asset) => void;
   /** Cross-project grids (Favorites) label each tile with its project. */
   showProjectName?: boolean;
   /**
@@ -482,6 +488,7 @@ export function Masonry({
           onClose={() => setLightbox(null)}
           onToggleFavorite={onToggleFavorite}
           onAssetReuse={onAssetReuse}
+          onTurnToVideo={onTurnToVideo}
         />
       )}
     </>
@@ -500,11 +507,13 @@ function ExpandedAsset({
   onClose,
   onToggleFavorite,
   onAssetReuse,
+  onTurnToVideo,
 }: {
   asset: Asset;
   onClose: () => void;
   onToggleFavorite?: (asset: Asset) => void;
   onAssetReuse?: (asset: Asset) => void;
+  onTurnToVideo?: (asset: Asset) => void;
 }) {
   const t = useTranslations("studio");
   const { detail, failed } = useAssetDetail(asset.projectId, asset.id);
@@ -592,6 +601,14 @@ function ExpandedAsset({
               onAssetReuse?.(asset);
               onClose();
             }}
+            onTurnToVideo={
+              onTurnToVideo
+                ? () => {
+                    onTurnToVideo(asset);
+                    onClose();
+                  }
+                : undefined
+            }
           />
         </footer>
       </aside>

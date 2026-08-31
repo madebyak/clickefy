@@ -37,8 +37,15 @@ function downloadAsset(a: Asset) {
 export default function FavoritesPage() {
   const t = useTranslations("studio");
   const router = useRouter();
-  const { favorites, favoritesLoading, setAssetsFavorite, addAttachment, reuseSetup, deleteAssets } =
-    useStudio();
+  const {
+    favorites,
+    favoritesLoading,
+    setAssetsFavorite,
+    addAttachment,
+    reuseSetup,
+    deleteAssets,
+    startImageToVideo,
+  } = useStudio();
 
   const [infoAsset, setInfoAsset] = useState<Asset | null>(null);
   const [reusingAssetId, setReusingAssetId] = useState<string | null>(null);
@@ -151,6 +158,12 @@ export default function FavoritesPage() {
               reusingAssetId={reusingAssetId}
               onToggleFavorite={handleToggleFavorite}
               onAssetDelete={(a) => deleteAssets(a.projectId, [a.id])}
+              onTurnToVideo={(a) => {
+                // The composer lives on the studio pages — hand over the
+                // baton, then go where it will be consumed.
+                startImageToVideo(a.src);
+                router.push("/create-video");
+              }}
               exitingIds={exitingIds}
             />
           </div>
@@ -169,6 +182,11 @@ export default function FavoritesPage() {
             reuseSetup(detail);
             setInfoAsset(null);
             router.push(composerPath(detail.kind));
+          }}
+          onTurnToVideo={(detail) => {
+            startImageToVideo(detail.url);
+            setInfoAsset(null);
+            router.push("/create-video");
           }}
         />
       )}

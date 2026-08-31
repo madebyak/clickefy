@@ -17,7 +17,13 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations, useFormatter } from "next-intl";
-import { DownloadSimple, Copy, ArrowCounterClockwise, Heart } from "@phosphor-icons/react";
+import {
+  DownloadSimple,
+  Copy,
+  ArrowCounterClockwise,
+  Heart,
+  VideoCamera,
+} from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { AssetDetail } from "@clickfy/sdk";
 import { getSDK } from "@/lib/api";
@@ -162,13 +168,14 @@ export function AssetDetailSections({
   );
 }
 
-/** The action row: favorite / download / copy prompt / re-use. */
+/** The action row: favorite / download / copy prompt / re-use / to-video. */
 export function AssetDetailActions({
   detail,
   favorited,
   onToggleFavorite,
   onDownload,
   onReuse,
+  onTurnToVideo,
 }: {
   detail: AssetDetail | null;
   /**
@@ -180,6 +187,13 @@ export function AssetDetailActions({
   onToggleFavorite: () => void;
   onDownload: () => void;
   onReuse: (detail: AssetDetail) => void;
+  /**
+   * "Turn into video" — flips the composer to video mode with this
+   * image as the start frame. Rendered for IMAGE assets only (a video
+   * already is one); needs no prompt behind the asset, so it shows on
+   * template-made and library images too.
+   */
+  onTurnToVideo?: (detail: AssetDetail) => void;
 }) {
   const t = useTranslations("studio");
   const gen = detail?.generation ?? null;
@@ -229,6 +243,17 @@ export function AssetDetailActions({
             <ArrowCounterClockwise className="size-4" /> {t("reuse")}
           </button>
         </>
+      )}
+      {onTurnToVideo && detail?.kind === "image" && (
+        <button
+          type="button"
+          onClick={() => onTurnToVideo(detail)}
+          // brand-purple = the video accent everywhere else in the
+          // composer, so the button reads as "this goes to video land".
+          className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-brand-purple px-3 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+        >
+          <VideoCamera weight="fill" className="size-4" /> {t("turnToVideo")}
+        </button>
       )}
     </div>
   );

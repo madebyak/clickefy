@@ -381,7 +381,8 @@
     "showAllFolders": "Show all ({count} more)",
     "filterFavorites": "Favorites",
     "fromLibraryBadge": "My Assets",
-    "deleteAsset": "Delete"
+    "deleteAsset": "Delete",
+    "turnToVideo": "Turn into video"
   },
   "projects": {
     "heading": "My Projects",
@@ -428,7 +429,8 @@
     "attachImageUnsupported": "{model} doesn't accept image attachments",
     "attachLimitReached": "This model accepts up to {max} attachments",
     "attachVideoLimitReached": "Up to {max} video references for this model",
-    "toastUploadFailed": "Upload failed — try again"
+    "toastUploadFailed": "Upload failed — try again",
+    "turnToVideoReady": "Image attached — describe the motion you want"
   },
   "auth": {
     "panelBadge": "Clickefy Studio",

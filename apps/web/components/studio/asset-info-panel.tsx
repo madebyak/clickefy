@@ -25,6 +25,7 @@ export function AssetInfoPanel({
   onDownload,
   favorited,
   onToggleFavorite,
+  onTurnToVideo,
 }: {
   projectId: string;
   assetId: string;
@@ -39,6 +40,8 @@ export function AssetInfoPanel({
    */
   favorited: boolean;
   onToggleFavorite: () => void;
+  /** "Turn into video" — image assets only; absent hides the button. */
+  onTurnToVideo?: (detail: AssetDetail) => void;
 }) {
   const t = useTranslations("studio");
   const { detail, failed } = useAssetDetail(projectId, assetId);
@@ -102,6 +105,7 @@ export function AssetInfoPanel({
             onToggleFavorite={onToggleFavorite}
             onDownload={onDownload}
             onReuse={onReuse}
+            onTurnToVideo={onTurnToVideo}
           />
         </footer>
       </aside>

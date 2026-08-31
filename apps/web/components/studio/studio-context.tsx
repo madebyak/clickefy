@@ -289,6 +289,8 @@ type StudioValue = {
    * The prompt bar consumes `pendingSetup` and clears it once applied.
    */
   reuseSetup: (detail: AssetDetail) => void;
+  /** Flip the composer to video mode with this image as the start frame. */
+  startImageToVideo: (imageUrl: string) => void;
   pendingSetup: ReuseSetup | null;
   clearPendingSetup: () => void;
   removeAttachment: (attachmentId: string) => void;
@@ -840,6 +842,30 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [pendingSetup, setPendingSetup] = useState<ReuseSetup | null>(null);
   const clearPendingSetup = useCallback(() => setPendingSetup(null), []);
 
+  /**
+   * "Turn into video": flip the composer to video mode with this image
+   * attached. Rides the same three-stage restore baton as re-use — in
+   * video mode the first attached image IS the start frame, which is
+   * exactly the image-to-video gesture. The prompt clears so the user
+   * describes the MOTION, not the image.
+   */
+  const startImageToVideo = useCallback(
+    (imageUrl: string) => {
+      setPendingSetup({
+        kind: "video",
+        prompt: "",
+        modelKey: null,
+        aspectRatio: null,
+        quality: null,
+        duration: null,
+        sound: null,
+        referenceUrls: [imageUrl],
+      });
+      toast.success(t("turnToVideoReady"));
+    },
+    [t],
+  );
+
   const reuseSetup = useCallback(
     (detail: AssetDetail) => {
       const gen = detail.generation;
@@ -1142,6 +1168,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       addAttachment,
       setAttachmentPolicy,
       reuseSetup,
+      startImageToVideo,
       pendingSetup,
       clearPendingSetup,
       removeAttachment,
@@ -1182,6 +1209,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       addAttachment,
       setAttachmentPolicy,
       reuseSetup,
+      startImageToVideo,
       pendingSetup,
       clearPendingSetup,
       removeAttachment,

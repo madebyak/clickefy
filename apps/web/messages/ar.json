@@ -381,7 +381,8 @@
     "showAllFolders": "عرض الكل (+{count})",
     "filterFavorites": "المفضلة",
     "fromLibraryBadge": "أصولي",
-    "deleteAsset": "حذف"
+    "deleteAsset": "حذف",
+    "turnToVideo": "حوّلها إلى فيديو"
   },
   "projects": {
     "heading": "مشاريعي",
@@ -428,7 +429,8 @@
     "attachImageUnsupported": "{model} لا يقبل الصور كمرفقات",
     "attachLimitReached": "هذا النموذج يقبل حتى {max} مرفقات",
     "attachVideoLimitReached": "حتى {max} من مقاطع الفيديو المرجعية لهذا النموذج",
-    "toastUploadFailed": "فشل الرفع — حاول مرة أخرى"
+    "toastUploadFailed": "فشل الرفع — حاول مرة أخرى",
+    "turnToVideoReady": "تم إرفاق الصورة — صف الحركة التي تريدها"
   },
   "auth": {
     "panelBadge": "استوديو كليكفاي",

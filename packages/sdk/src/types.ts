@@ -463,8 +463,26 @@ export interface NotificationList {
 }
 
 /** Input for a prompt-first generation (`POST /v1/jobs/create`). */
+/**
+ * Studio tool request (Camera Angle / Storyboard). Tool jobs carry no
+ * model and no engineered prompt — the server owns both; the client
+ * sends only these structured parameters (plus the script in `prompt`
+ * for storyboard).
+ */
+export type CreateToolInput =
+  | { kind: 'camera_angle'; h: number; v: number }
+  | {
+      kind: 'storyboard';
+      style: 'hand_drawn' | 'sketch' | 'realistic' | 'comic' | '3d';
+      cols: number;
+      rows: number;
+    };
+
 export interface CreateGenerationInput {
-  modelKey: string;
+  /** Omitted on tool jobs — the server resolves the model itself. */
+  modelKey?: string;
+  /** Studio tool request; see `CreateToolInput`. */
+  tool?: CreateToolInput;
   prompt: string;
   aspectRatio?: string;
   /** Video length in seconds (video models only). */

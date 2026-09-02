@@ -92,9 +92,38 @@ export type JobInputValueParsed = z.infer<typeof jobInputValueSchema>;
  * attachments are optional images (start/end frame + references) whose
  * per-model rules are enforced semantically in `validateCreateSubmission`.
  */
+/**
+ * Studio tool request — Camera Angle / Storyboard. A tool job's model,
+ * quality tier and prompt are decided SERVER-side (the engineered
+ * prompt is composed in the worker); the client sends only these
+ * structured parameters plus, for storyboard, the script in `prompt`.
+ */
+export const createToolSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('camera_angle'),
+    // Orbit degrees from the widget: horizontal -180..180, vertical
+    // -80..80 (matching the widget's own clamp).
+    h: z.number().min(-180).max(180),
+    v: z.number().min(-80).max(80),
+  }),
+  z.object({
+    kind: z.literal('storyboard'),
+    style: z.enum(['hand_drawn', 'sketch', 'realistic', 'comic', '3d']),
+    // The offered grids are 2x2 / 3x2 / 3x3 / 4x3 — capped so every
+    // panel stays sharp on one sheet.
+    cols: z.number().int().min(2).max(4),
+    rows: z.number().int().min(2).max(3),
+  }),
+]);
+
 export const createUserJobSchema = z.object({
-  modelKey: z.string().min(1).max(128),
-  prompt: z.string().min(1).max(10_000),
+  // Optional because tool jobs resolve their model server-side; plain
+  // create submissions must still send one (enforced in the handler).
+  modelKey: z.string().min(1).max(128).optional(),
+  // May be empty for Camera Angle (the whole prompt is engineered);
+  // required otherwise — enforced semantically in validation.
+  prompt: z.string().max(10_000),
+  tool: createToolSchema.optional(),
   aspectRatio: z.string().max(16).optional(),
   // Video length in seconds. Bounded generously; the real per-model
   // allow-list is checked in validation against the capability registry.

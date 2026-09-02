@@ -367,9 +367,17 @@ export async function validateCreateSubmission(
   const fail = (error: JobValidationError) => ({ error });
 
   // ── Prompt ─────────────────────────────────────────────────────
+  // Camera Angle is the one submission with no user text at all — its
+  // entire prompt is engineered from the tool parameters in the worker.
   const prompt = body.prompt.trim();
-  if (prompt.length === 0) {
-    return fail({ code: 'prompt_empty', message: 'Enter a prompt to generate.' });
+  if (prompt.length === 0 && body.tool?.kind !== 'camera_angle') {
+    return fail({
+      code: 'prompt_empty',
+      message:
+        body.tool?.kind === 'storyboard'
+          ? 'Paste a script or an idea to storyboard.'
+          : 'Enter a prompt to generate.',
+    });
   }
   const promptCap = model.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
   if (body.prompt.length > promptCap) {
@@ -472,6 +480,39 @@ export async function validateCreateSubmission(
       code: 'audio_reference_needs_visual',
       message: 'This model needs at least one image or video alongside an audio reference.',
     });
+  }
+
+  // ── Studio tools (Camera Angle / Storyboard) ───────────────────
+  if (body.tool) {
+    if (body.task) {
+      return fail({
+        code: 'video_task_not_supported',
+        message: 'A tool request cannot also be an edit or extend task.',
+      });
+    }
+    if (body.startFrame || body.endFrame) {
+      return fail({
+        code: 'frames_and_references_exclusive',
+        message: 'Tool requests do not take start or end frames.',
+      });
+    }
+    if (body.tool.kind === 'camera_angle') {
+      // Exactly the photo being re-shot, nothing else.
+      if (imageAttachments.length !== 1 || body.references.length !== 1) {
+        return fail({
+          code: 'model_requires_image',
+          message: 'Attach the photo you want to re-shoot.',
+        });
+      }
+    } else {
+      // Storyboard is text-to-sheet — the script is the only input.
+      if (attachments.length > 0) {
+        return fail({
+          code: 'model_no_images',
+          message: 'Storyboard works from your script alone — no attachments.',
+        });
+      }
+    }
   }
 
   // ── Edit / Extend sub-tasks (Seedance 2.5) ─────────────────────

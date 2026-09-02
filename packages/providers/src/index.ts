@@ -37,6 +37,17 @@ export {
   type BuiltCreateStage,
 } from './create-stage';
 
+export {
+  composeToolPrompt,
+  composeCameraAnglePrompt,
+  composeStoryboardPrompt,
+  STORYBOARD_STYLES,
+  TOOL_MODEL_KEY,
+  TOOL_QUALITY,
+  type CreateToolRequest,
+  type StoryboardStyle,
+} from './tool-prompts';
+
 export type {
   CompileContext,
   CompileResult,

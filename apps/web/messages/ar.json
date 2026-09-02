@@ -382,7 +382,8 @@
     "filterFavorites": "المفضلة",
     "fromLibraryBadge": "أصولي",
     "deleteAsset": "حذف",
-    "turnToVideo": "حوّلها إلى فيديو"
+    "turnToVideo": "حوّلها إلى فيديو",
+    "changeCameraAngle": "تغيير زاوية الكاميرا"
   },
   "projects": {
     "heading": "مشاريعي",
@@ -558,5 +559,37 @@
     "deleteConfirmAction": "حذف نهائي",
     "cancel": "إلغاء",
     "fileOptions": "خيارات الملف"
+  },
+  "tools": {
+    "cameraAngle": "زاوية الكاميرا",
+    "storyboard": "ستوري بورد",
+    "uploadPhoto": "ارفع صورة",
+    "uploadPhotoHint": "JPEG أو PNG أو WebP · حتى 25 ميغابايت",
+    "replacePhoto": "استبدال الصورة",
+    "dragHint": "اسحب للدوران — تبقى الكاميرا مثبتة على صورتك",
+    "behindHint": "خلف الموضوع — سيتخيّل النموذج الجانب غير المرئي",
+    "reset": "إعادة ضبط",
+    "generate": "إنشاء",
+    "generating": "جارٍ الإنشاء…",
+    "cameraNote": "نفس الصورة بزاوية جديدة · بنفس الأبعاد والجودة",
+    "cameraStarted": "جارٍ إعادة التصوير — تابع شبكة المشروع",
+    "storyboardStarted": "جارٍ رسم الستوري بورد — تابع شبكة المشروع",
+    "scriptLabel": "النص أو الفكرة",
+    "scriptPlaceholder": "الصق النص، أو صف القصة في بضعة أسطر",
+    "styleLabel": "النمط",
+    "styleHandDrawn": "رسم يدوي",
+    "styleSketch": "اسكتش",
+    "styleRealistic": "واقعي",
+    "styleComic": "كوميك",
+    "style3d": "ثلاثي الأبعاد",
+    "shotsLabel": "اللقطات",
+    "shotsCount": "{count} لقطات",
+    "sheetNote": "لوحة واحدة عالية الدقة · إطارات نظيفة بلا نصوص",
+    "photoTooLarge": "يمكن أن يصل حجم الصور حتى {max} ميغابايت",
+    "unsupportedPhoto": "استخدم صورة JPEG أو PNG أو WebP",
+    "uploadFailed": "فشل الرفع — حاول مرة أخرى",
+    "insufficientCredits": "لا توجد أرصدة كافية — اشحن أو قم بالترقية للمتابعة",
+    "rateLimited": "طلبات كثيرة — حاول مجددًا خلال {seconds} ثانية",
+    "submitFailed": "تعذّر بدء الإنشاء — حاول مرة أخرى"
   }
 }

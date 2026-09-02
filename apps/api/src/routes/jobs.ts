@@ -43,6 +43,8 @@ import {
   CREATE_START_FRAME_KEY,
   createReferenceKey,
   findCapabilities,
+  TOOL_MODEL_KEY,
+  TOOL_QUALITY,
 } from '@clickfy/providers';
 
 import type { AppEnv } from '../types';
@@ -399,9 +401,19 @@ jobsRoute.post(
     }
 
     // ── Resolve model + create-eligibility ─────────────────────────
-    const caps = findCapabilities(body.modelKey);
-    const def = getCreateModelDef(body.modelKey);
-    if (!caps || !def || !isCreateEligible(body.modelKey)) {
+    // Tool jobs (Camera Angle / Storyboard) never carry a model: the
+    // choice is the server's, invisible to the user, and swappable
+    // without a client change. Plain submissions must name one.
+    const modelKey = body.tool ? TOOL_MODEL_KEY : body.modelKey;
+    if (!modelKey) {
+      return c.json(
+        { error: { code: 'unknown_model', message: 'That model is not available.' } },
+        404,
+      );
+    }
+    const caps = findCapabilities(modelKey);
+    const def = getCreateModelDef(modelKey);
+    if (!caps || !def || !isCreateEligible(modelKey)) {
       return c.json(
         { error: { code: 'unknown_model', message: 'That model is not available.' } },
         404,
@@ -419,7 +431,7 @@ jobsRoute.post(
       .where(
         and(
           eq(providerModels.provider, caps.provider),
-          eq(providerModels.modelKey, body.modelKey),
+          eq(providerModels.modelKey, modelKey),
         ),
       )
       .limit(1);
@@ -431,7 +443,11 @@ jobsRoute.post(
     // sent for a fixed-quality model is a 422, not a silent ignore —
     // otherwise a user could believe they bought 4K they didn't get.
     let mode: string | undefined;
-    if (caps.modes) {
+    if (body.tool) {
+      // The tool's tier is a product decision (max fidelity), not a
+      // user knob — a client-sent quality on a tool job is ignored.
+      mode = TOOL_QUALITY;
+    } else if (caps.modes) {
       if (body.quality && !caps.modes.values.includes(body.quality)) {
         return c.json(
           {
@@ -491,7 +507,7 @@ jobsRoute.post(
       userId: user.id,
       uploadsBucket: uploads,
       model: {
-        modelKey: body.modelKey,
+        modelKey,
         kind: caps.kind,
         maxImagesTotal: caps.maxImagesTotal,
         maxPromptChars: caps.maxPromptChars,
@@ -579,7 +595,7 @@ jobsRoute.post(
       // (or an earlier prompt) chose is never overwritten. Only the
       // prompt-first flow has a prompt to name it from; template jobs
       // keep the default.
-      if (ownedProject.name === DEFAULT_PROJECT_NAME) {
+      if (ownedProject.name === DEFAULT_PROJECT_NAME && body.prompt.trim()) {
         autoTitle = titleFromPrompt(body.prompt);
       }
     }
@@ -594,10 +610,20 @@ jobsRoute.post(
       inputs[createReferenceKey(i)] = ref;
     });
 
+    // Storyboard sheets get their shape from the grid, not the client:
+    // square grids stay square, wide grids go landscape.
+    const storyboardAspect =
+      body.tool?.kind === 'storyboard'
+        ? body.tool.cols > body.tool.rows
+          ? body.tool.cols - body.tool.rows >= 1 && body.tool.cols === 4
+            ? '4:3'
+            : '3:2'
+          : '1:1'
+        : undefined;
     const options = {
       // Task requests force `adaptive` on the wire — a client-sent ratio
       // would only mislead whoever reads the job row later.
-      aspectRatio: body.task ? undefined : body.aspectRatio,
+      aspectRatio: body.task ? undefined : (storyboardAspect ?? body.aspectRatio),
       duration: body.duration,
       sound: body.sound,
       // Resolved quality tier — persisted so the worker compiles the
@@ -606,6 +632,9 @@ jobsRoute.post(
       // Omni sub-task (edit/extend) — the worker passes it into the
       // synthesized stage.
       task: body.task,
+      // Studio tool request — the worker composes the engineered prompt
+      // from these parameters, keeping it out of `jobs.inputs`.
+      tool: body.tool,
     };
 
     // ── Atomic debit + insert (isolated create CTE) ────────────────
@@ -614,7 +643,7 @@ jobsRoute.post(
       result = await createUserJobAtomically(c.var.db, {
         userId: user.id,
         cost,
-        modelKey: body.modelKey,
+        modelKey,
         inputs,
         options,
         idempotencyKey,

@@ -15,6 +15,7 @@ import {
   ArrowCounterClockwise,
   CircleNotch,
   Trash,
+  VideoCamera,
 } from "@phosphor-icons/react";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ import {
   AssetDetailSections,
   useAssetDetail,
 } from "@/components/studio/asset-detail";
+import { useToolsMaybe } from "@/components/tools/tools-context";
 
 /**
  * Column counts per density step at [base, md, 2xl] viewports.
@@ -161,6 +163,7 @@ export function Masonry({
   onToggleSelect?: (id: string) => void;
 }) {
   const t = useTranslations("studio");
+  const tools = useToolsMaybe();
   // Dense grids drop the button labels. The existing `sm:` breakpoint
   // only knows the VIEWPORT, so on a wide screen at maximum density it
   // would happily render "Add as reference" inside a 150px tile.
@@ -351,6 +354,17 @@ export function Masonry({
                       >
                         <ArrowCounterClockwise className="size-4 text-muted-foreground" />
                         {t("reuse")}
+                      </MenuItem>
+                    )}
+                    {tools && a.type === "image" && (
+                      <MenuItem
+                        onClick={() => {
+                          tools.openCameraAngle({ id: a.id, src: a.src });
+                          close();
+                        }}
+                      >
+                        <VideoCamera className="size-4 text-muted-foreground" />
+                        {t("changeCameraAngle")}
                       </MenuItem>
                     )}
                     {onAssetInfo && (

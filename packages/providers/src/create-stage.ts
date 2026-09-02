@@ -41,6 +41,7 @@ import type {
 } from '@clickfy/types';
 
 import { getCapabilities } from './capabilities';
+import { composeToolPrompt, type CreateToolRequest } from './tool-prompts';
 
 /** Canonical `jobs.inputs` field keys the API writes and the worker reads. */
 export const CREATE_PROMPT_KEY = 'prompt';
@@ -95,6 +96,15 @@ export interface BuildCreateStageInput {
    * `supportsOmniTaskType`.
    */
   task?: 'edit' | 'extend';
+  /**
+   * Studio tool request (Camera Angle / Storyboard). When present, the
+   * stage prompt is COMPOSED here from the tool's parameters plus the
+   * user's own text (`prompt` holds the storyboard script, or '') — see
+   * `tool-prompts.ts`. Composing at stage-build time is what keeps the
+   * engineered prompt out of `jobs.inputs`, so job details and Re-use
+   * only ever see what the user actually typed.
+   */
+  tool?: CreateToolRequest;
 }
 
 export interface BuiltCreateStage {
@@ -220,7 +230,7 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
     order: 0,
     provider,
     model: input.modelKey,
-    prompt: input.prompt,
+    prompt: input.tool ? composeToolPrompt(input.tool, input.prompt) : input.prompt,
     // Admin reference images are template-only. User attachments travel
     // as subjects/slots via `inputs`, never here.
     references: [],

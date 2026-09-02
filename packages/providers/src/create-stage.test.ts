@@ -405,6 +405,43 @@ describe('buildCreateStage — Seedance (video)', () => {
   });
 });
 
+describe('buildCreateStage — studio tools (hidden prompts)', () => {
+  it('camera angle: composes the whole prompt from the two degrees', () => {
+    const built = buildCreateStage({
+      modelKey: 'gpt-image-2',
+      prompt: '', // the user typed nothing — the prompt is entirely ours
+      aspectRatio: '3:4',
+      referenceCount: 1,
+      tool: { kind: 'camera_angle', h: 120, v: -35 },
+    });
+    expect(built.stage.prompt).toContain('120 degrees to the right');
+    expect(built.stage.prompt).toContain('35 degrees below');
+    expect(built.stage.prompt).toContain('Preserve everything');
+  });
+
+  it('storyboard: embeds the script inside the engineered sheet prompt', () => {
+    const script = 'A chef races through rain to open her restaurant.';
+    const built = buildCreateStage({
+      modelKey: 'gpt-image-2',
+      prompt: script,
+      tool: { kind: 'storyboard', style: 'hand_drawn', cols: 3, rows: 3 },
+    });
+    expect(built.stage.prompt).toContain('exactly 9 key shots');
+    expect(built.stage.prompt).toContain('3x3 grid');
+    expect(built.stage.prompt).toContain('hand-drawn');
+    expect(built.stage.prompt).toContain(script);
+    expect(built.stage.prompt).toContain('clean frames only');
+  });
+
+  it('no tool: the user prompt passes through untouched', () => {
+    const built = buildCreateStage({
+      modelKey: 'gpt-image-2',
+      prompt: 'a red bicycle',
+    });
+    expect(built.stage.prompt).toBe('a red bicycle');
+  });
+});
+
 // ─── The billed tier must reach the provider ────────────────────────
 //
 // Regression guard for a live money bug: `mode` (and the sound toggle)

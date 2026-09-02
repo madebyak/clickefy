@@ -613,6 +613,11 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           res = await fetch(`${baseUrl}/v1/jobs/create`, {
             method: 'POST',
             headers,
+            // NOTE this is an explicit field list, not a spread — every
+            // new CreateGenerationInput field must be added HERE or it
+            // silently never leaves the client (that is exactly how the
+            // `task` flag shipped inert, and how the first tool submits
+            // 404ed with neither a tool nor a model on the wire).
             body: JSON.stringify({
               modelKey: input.modelKey,
               prompt: input.prompt,
@@ -620,6 +625,8 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
               duration: input.duration,
               sound: input.sound,
               quality: input.quality,
+              task: input.task,
+              tool: input.tool,
               startFrame: input.startFrame,
               endFrame: input.endFrame,
               references: input.references ?? [],

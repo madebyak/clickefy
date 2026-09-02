@@ -170,6 +170,9 @@ export const generateJob = task({
         mode?: string;
         // Omni sub-task (Seedance 2.5 edit/extend).
         task?: 'edit' | 'extend';
+        // Studio tool request (Camera Angle / Storyboard) — the
+        // engineered prompt is composed in buildCreateStage from this.
+        tool?: import('@clickfy/providers').CreateToolRequest;
       };
       const rawInputs = jobRow.inputs as Record<string, { kind?: string }>;
       const rawInputKeys = Object.keys(rawInputs);
@@ -196,6 +199,7 @@ export const generateJob = task({
           referenceCount: refKeys.length,
           referenceKinds,
           task: opts.task,
+          tool: opts.tool,
         });
         stages = [built.stage];
         stageTemplateInputs = built.templateInputs;

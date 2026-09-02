@@ -382,7 +382,8 @@
     "filterFavorites": "Favorites",
     "fromLibraryBadge": "My Assets",
     "deleteAsset": "Delete",
-    "turnToVideo": "Turn into video"
+    "turnToVideo": "Turn into video",
+    "changeCameraAngle": "Change camera angle"
   },
   "projects": {
     "heading": "My Projects",
@@ -558,5 +559,37 @@
     "deleteConfirmAction": "Delete permanently",
     "cancel": "Cancel",
     "fileOptions": "File options"
+  },
+  "tools": {
+    "cameraAngle": "Camera Angle",
+    "storyboard": "Storyboard",
+    "uploadPhoto": "Upload a photo",
+    "uploadPhotoHint": "JPEG, PNG or WebP · up to 25MB",
+    "replacePhoto": "Replace photo",
+    "dragHint": "Drag to orbit — the camera stays locked on your photo",
+    "behindHint": "Behind the subject — the unseen side will be imagined",
+    "reset": "Reset",
+    "generate": "Generate",
+    "generating": "Generating…",
+    "cameraNote": "Same photo, new angle · keeps ratio & quality",
+    "cameraStarted": "Re-shooting your photo — watch the project grid",
+    "storyboardStarted": "Drawing your storyboard — watch the project grid",
+    "scriptLabel": "Your script or idea",
+    "scriptPlaceholder": "Paste your script, or describe the story in a few lines",
+    "styleLabel": "Style",
+    "styleHandDrawn": "Hand-drawn",
+    "styleSketch": "Sketch",
+    "styleRealistic": "Realistic",
+    "styleComic": "Comic",
+    "style3d": "3D",
+    "shotsLabel": "Shots",
+    "shotsCount": "{count} shots",
+    "sheetNote": "One high-res sheet · clean frames, no captions",
+    "photoTooLarge": "Photos can be up to {max}MB",
+    "unsupportedPhoto": "Use a JPEG, PNG or WebP photo",
+    "uploadFailed": "Upload failed — try again",
+    "insufficientCredits": "Not enough credits — top up or upgrade to continue",
+    "rateLimited": "Too many requests — try again in {seconds}s",
+    "submitFailed": "Couldn't start the generation — try again"
   }
 }

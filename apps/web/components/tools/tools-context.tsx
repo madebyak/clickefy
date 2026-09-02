@@ -11,7 +11,19 @@
  * the project grid with a pending tile.
  */
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  Suspense,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "@/i18n/navigation";
 import { CameraAngleModal } from "@/components/tools/camera-angle-modal";
 import { StoryboardModal } from "@/components/tools/storyboard-modal";
 
@@ -44,6 +56,9 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
 
   return (
     <ToolsContext.Provider value={value}>
+      <Suspense fallback={null}>
+        <ToolDeepLink openCameraAngle={openCameraAngle} openStoryboard={openStoryboard} />
+      </Suspense>
       {children}
       {cameraOpen && (
         <CameraAngleModal
@@ -57,6 +72,37 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
       {storyboardOpen && <StoryboardModal onClose={() => setStoryboardOpen(false)} />}
     </ToolsContext.Provider>
   );
+}
+
+/**
+ * Renders nothing. Opens a tool named by `?tool=camera|storyboard` — the
+ * marketing navbar's entry point into the studio tools — then strips the
+ * parameter so back/refresh doesn't reopen the modal. Isolated behind its
+ * own Suspense boundary because `useSearchParams` suspends during
+ * prerender (same shape as ResumeCheckout in pricing-section.tsx).
+ */
+function ToolDeepLink({
+  openCameraAngle,
+  openStoryboard,
+}: {
+  openCameraAngle: () => void;
+  openStoryboard: () => void;
+}) {
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const fired = useRef(false);
+
+  useEffect(() => {
+    const tool = params.get("tool");
+    if (!tool || fired.current) return;
+    fired.current = true;
+    router.replace(pathname);
+    if (tool === "camera") openCameraAngle();
+    else if (tool === "storyboard") openStoryboard();
+  }, [params, router, pathname, openCameraAngle, openStoryboard]);
+
+  return null;
 }
 
 export function useTools() {

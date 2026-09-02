@@ -11,12 +11,13 @@ import { ProfileMenu } from "./profile-menu";
 import { LanguageSwitcher } from "./language-switcher";
 import { cn } from "@/lib/utils";
 
+// Tool entries deep-link into the studio: ToolDeepLink (tools-context)
+// reads `?tool=` on /create and opens the matching modal.
 const NAV_LINKS = [
   { key: "createImage", href: "/create" },
   { key: "createVideo", href: "/create-video" },
-  { key: "storyboard", href: "#" },
-  { key: "cinemaStudio", href: "#" },
-  { key: "aiUgc", href: "#" },
+  { key: "storyboard", href: "/create?tool=storyboard" },
+  { key: "cameraAngles", href: "/create?tool=camera" },
   { key: "templates", href: "/templates" },
   { key: "pricing", href: "/pricing" },
 ] as const;

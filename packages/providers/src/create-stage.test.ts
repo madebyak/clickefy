@@ -414,14 +414,15 @@ describe('buildCreateStage — studio tools (hidden prompts)', () => {
       referenceCount: 1,
       tool: { kind: 'camera_angle', h: 120, v: -35 },
     });
-    expect(built.stage.prompt).toContain('exactly 120° to the right');
-    expect(built.stage.prompt).toContain('exactly 35° below the original eye line');
+    expect(built.stage.prompt).toContain(
+      'rotating the virtual camera 35 degrees down and 120 degrees right',
+    );
     expect(built.stage.prompt).toContain('frozen in time');
-    expect(built.stage.prompt).toContain('no more and no less');
-    expect(built.stage.prompt).toContain('Everything physical stays exactly as it is');
+    expect(built.stage.prompt).toContain('camera orbit and tilt on a static set');
+    expect(built.stage.prompt).toContain("Do not change the subject's position");
   });
 
-  it('camera angle: an unmoved axis is kept, not rotated by 0°', () => {
+  it('camera angle: an unmoved axis is omitted, not phrased as 0 degrees', () => {
     const built = buildCreateStage({
       modelKey: 'gpt-image-2',
       prompt: '',
@@ -429,8 +430,8 @@ describe('buildCreateStage — studio tools (hidden prompts)', () => {
       referenceCount: 1,
       tool: { kind: 'camera_angle', h: 0, v: 70 },
     });
-    expect(built.stage.prompt).toContain('original horizontal position');
-    expect(built.stage.prompt).toContain('looks down at the subject from exactly 70° above');
+    expect(built.stage.prompt).toContain('rotating the virtual camera 70 degrees up, as if');
+    expect(built.stage.prompt).not.toMatch(/\b0 degrees/);
   });
 
   it('storyboard: embeds the script inside the engineered sheet prompt', () => {

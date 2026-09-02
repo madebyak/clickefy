@@ -49,11 +49,8 @@ export const STORYBOARD_STYLES: readonly StoryboardStyle[] = [
  * decision per tool, invisible to the user and swappable without any
  * client change (the web modals mirror these for price display only).
  *
- * Camera Angle runs on Nano Banana Pro: the Gemini image family is the
- * strongest we carry at viewpoint changes and reposing while holding
- * subject identity. GPT Image pins input fidelity to high, which
- * actively resists re-framing — it kept returning the original
- * composition. Storyboard also runs on Nano Banana Pro, at 4K: a sheet
+ * Camera Angle runs on GPT Image at `high` with the tuned "camera
+ * orbit and tilt" prompt below. Storyboard runs on Nano Banana Pro, at 4K: a sheet
  * is only useful if every panel survives being viewed alone, and GPT
  * Image tops out around 1536px (~500px panels on a 3×3). NB Pro's 4K
  * output keeps panels above 1000px on every grid we offer, and its
@@ -63,7 +60,7 @@ export const TOOL_MODELS: Record<
   CreateToolRequest['kind'],
   { modelKey: string; quality: string }
 > = {
-  camera_angle: { modelKey: 'gemini-3-pro-image', quality: '2K' },
+  camera_angle: { modelKey: 'gpt-image-2', quality: 'high' },
   storyboard: { modelKey: 'gemini-3-pro-image', quality: '4K' },
 };
 
@@ -77,27 +74,17 @@ const STYLE_DESCRIPTIONS: Record<StoryboardStyle, string> = {
 };
 
 /**
- * Describe the orbit as exact axis rotations. Named shot types ("side
- * profile", "bird's-eye view") turned out to be strong attractors — the
- * model snapped to the full named angle no matter the degrees, wildly
- * overshooting small moves. Plain per-axis degree values keep the move
- * proportional; the closing "no more, no less" line anchors it.
+ * The rotation clause for the tuned prompt: "{30} degrees up and {45}
+ * degrees right". An axis at 0 is omitted rather than phrased as a
+ * 0-degree rotation (the widget requires at least one axis to move).
  */
 function describeCameraMove(h: number, v: number): string {
   const ah = Math.abs(Math.round(h));
   const av = Math.abs(Math.round(v));
-
-  const horiz =
-    ah === 0
-      ? 'keep the camera at its original horizontal position'
-      : `orbit the camera exactly ${ah}° ${h > 0 ? 'to the right' : 'to the left'} around the subject (rotation around the vertical Y axis)`;
-  const vert =
-    av === 0
-      ? 'keep it at its original height'
-      : v > 0
-        ? `raise it so it looks down at the subject from exactly ${av}° above the original eye line (rotation around the horizontal X axis)`
-        : `lower it so it looks up at the subject from exactly ${av}° below the original eye line (rotation around the horizontal X axis)`;
-  return `${horiz}, and ${vert}`;
+  const parts: string[] = [];
+  if (av !== 0) parts.push(`${av} degrees ${v > 0 ? 'up' : 'down'}`);
+  if (ah !== 0) parts.push(`${ah} degrees ${h > 0 ? 'right' : 'left'}`);
+  return parts.join(' and ');
 }
 
 /**
@@ -105,23 +92,18 @@ function describeCameraMove(h: number, v: number): string {
  * `h`/`v` come straight from the orbit widget. The user's only inputs
  * are the image and the two angles — the whole prompt is ours.
  *
- * The body is the "frozen set" framing: the scene is a physical set
- * frozen in time and ONLY the camera moves. Two rules learned the hard
- * way: state the constraints in WORLD terms, not image terms (an
- * image-space list like "do not alter the background or shadow
- * patterns" contradicts the orbit — on screen those must shift — and
- * the model resolves the conflict by keeping the old framing), and say
- * explicitly that the composition is REQUIRED to change.
+ * Wording tuned by hand against real runs (2026-09-02): the "frozen
+ * set" framing with a camera orbit-and-tilt, plain degree values (named
+ * shot types overshoot), and an explicit do-not-change list.
  */
 export function composeCameraAnglePrompt(h: number, v: number): string {
   return [
-    `Move the camera and re-shoot this exact scene from a new position: ${describeCameraMove(h, v)}.`,
-    'Apply the rotation by exactly these degrees — no more and no less. A small angle means a subtle change in perspective; do not exaggerate the move into a dramatic new shot.',
-    'Imagine the entire scene is frozen in time like a physical set that cannot be altered in any way. The only thing that changes is where the camera stands and the angle from which it looks at that frozen scene, with the lens staying locked on the same subject at the same distance.',
-    'Because the camera has moved, the framing and composition MUST look different: sides of the subject and parts of the environment that were hidden before become visible, and the on-screen placement of the background, light and shadows shifts naturally with the new viewpoint. Do not simply reproduce the original framing.',
-    "Everything physical stays exactly as it is: the subject's identity, pose, facial expression, clothing, hair, skin tone and every detail; the environment and every object in it; the actual direction of the light source; the time of day, color grading and overall mood.",
-    'Do not reinterpret or reimagine any element of the scene. Treat this purely as a camera move on a static set.',
-    "Reconstruct any parts of the scene that were outside the original frame as needed, staying fully consistent with the existing visual style, and output the result in the original image's aspect ratio.",
+    `Re-frame this exact image by rotating the virtual camera ${describeCameraMove(h, v)}, as if the entire scene is frozen in time like a physical set that cannot be altered in any way.`,
+    "The only thing changing is the camera's position and orientation around that frozen scene.",
+    "Do not change the subject's position, pose, facial expression, body orientation, clothing, hair, skin tone, or any physical detail.",
+    'Do not alter the background, environment, lighting direction, shadow patterns, color grading, depth of field, or overall mood.',
+    'Do not reinterpret or reimagine any element of the scene. Treat this purely as a camera orbit and tilt on a static set.',
+    "Reconstruct any parts of the scene that fall outside the original frame as needed, staying fully consistent with the existing visual style, and output the result in the original image's aspect ratio.",
   ].join(' ');
 }
 

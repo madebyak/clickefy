@@ -80,9 +80,9 @@ export function CameraAngleModal({
   const { models } = useModels("image");
   // The tool's model is a server decision; the roster is read only to
   // show the price the server will charge. Mirrors TOOL_MODELS.camera_angle
-  // in providers/tool-prompts.ts (Nano Banana Pro at 2K).
-  const cameraModel = models.find((m) => m.modelKey === "gemini-3-pro-image");
-  const price = cameraModel?.tiers?.find((x) => x.mode === "2K")?.costCredits;
+  // in providers/tool-prompts.ts (GPT Image 2 at `high`).
+  const cameraModel = models.find((m) => m.modelKey === "gpt-image-2");
+  const price = cameraModel?.tiers?.find((x) => x.mode === "high")?.costCredits;
 
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [h, setH] = useState(0);

@@ -74,45 +74,27 @@ const STYLE_DESCRIPTIONS: Record<StoryboardStyle, string> = {
 };
 
 /**
- * Translate the orbit widget's raw degrees into the cinematography
- * vocabulary image models are actually trained on. "Rotate the camera
- * 120 degrees" is a weak signal — models follow named shot types
- * ("low angle", "side profile", "bird's-eye view") far more reliably,
- * so the named angle leads and the degrees ride along as precision.
+ * Describe the orbit as exact axis rotations. Named shot types ("side
+ * profile", "bird's-eye view") turned out to be strong attractors — the
+ * model snapped to the full named angle no matter the degrees, wildly
+ * overshooting small moves. Plain per-axis degree values keep the move
+ * proportional; the closing "no more, no less" line anchors it.
  */
 function describeCameraMove(h: number, v: number): string {
   const ah = Math.abs(Math.round(h));
   const av = Math.abs(Math.round(v));
-  const side = h > 0 ? 'right' : 'left';
 
-  let horiz: string;
-  if (ah <= 10) horiz = 'keeping the original front-facing position';
-  else if (ah <= 55)
-    horiz = `a three-quarter view, the camera orbited ${ah}° to the ${side} around the subject`;
-  else if (ah <= 125)
-    horiz = `a side profile view from the ${side}, the camera orbited ${ah}° around the subject`;
-  else if (ah <= 170)
-    horiz = `a three-quarter back view, the camera orbited ${ah}° to the ${side} around behind the subject`;
-  else horiz = 'a view from directly behind the subject, the camera orbited 180° around them';
-
-  let vert: string;
-  if (av <= 8) vert = 'at eye level — a neutral, straight-on perspective';
-  else if (v > 0) {
-    if (av <= 25)
-      vert = `at a slight high angle — the camera raised ${av}° above eye level, looking gently down at the subject`;
-    else if (av <= 55)
-      vert = `at a high angle — the camera well above the subject, ${av}° up, looking down on it`;
-    else
-      vert = `at a bird's-eye view — the camera nearly overhead, ${av}° up, looking steeply down at the subject`;
-  } else {
-    if (av <= 25)
-      vert = `at a slight low angle — the camera dropped ${av}° below eye level, looking gently up at the subject`;
-    else if (av <= 55)
-      vert = `at a low angle — the camera well below the subject, ${av}° down, looking up at it (a heroic perspective)`;
-    else
-      vert = `at a worm's-eye view — the camera near the ground, ${av}° down, looking steeply up at the subject`;
-  }
-  return `${horiz}, ${vert}`;
+  const horiz =
+    ah === 0
+      ? 'keep the camera at its original horizontal position'
+      : `orbit the camera exactly ${ah}° ${h > 0 ? 'to the right' : 'to the left'} around the subject (rotation around the vertical Y axis)`;
+  const vert =
+    av === 0
+      ? 'keep it at its original height'
+      : v > 0
+        ? `raise it so it looks down at the subject from exactly ${av}° above the original eye line (rotation around the horizontal X axis)`
+        : `lower it so it looks up at the subject from exactly ${av}° below the original eye line (rotation around the horizontal X axis)`;
+  return `${horiz}, and ${vert}`;
 }
 
 /**
@@ -131,6 +113,7 @@ function describeCameraMove(h: number, v: number): string {
 export function composeCameraAnglePrompt(h: number, v: number): string {
   return [
     `Move the camera and re-shoot this exact scene from a new position: ${describeCameraMove(h, v)}.`,
+    'Apply the rotation by exactly these degrees — no more and no less. A small angle means a subtle change in perspective; do not exaggerate the move into a dramatic new shot.',
     'Imagine the entire scene is frozen in time like a physical set that cannot be altered in any way. The only thing that changes is where the camera stands and the angle from which it looks at that frozen scene, with the lens staying locked on the same subject at the same distance.',
     'Because the camera has moved, the framing and composition MUST look different: sides of the subject and parts of the environment that were hidden before become visible, and the on-screen placement of the background, light and shadows shifts naturally with the new viewpoint. Do not simply reproduce the original framing.',
     "Everything physical stays exactly as it is: the subject's identity, pose, facial expression, clothing, hair, skin tone and every detail; the environment and every object in it; the actual direction of the light source; the time of day, color grading and overall mood.",

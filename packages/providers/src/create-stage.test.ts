@@ -414,15 +414,14 @@ describe('buildCreateStage — studio tools (hidden prompts)', () => {
       referenceCount: 1,
       tool: { kind: 'camera_angle', h: 120, v: -35 },
     });
-    expect(built.stage.prompt).toContain('side profile view from the right');
-    expect(built.stage.prompt).toContain('120°');
-    expect(built.stage.prompt).toContain('at a low angle');
+    expect(built.stage.prompt).toContain('exactly 120° to the right');
+    expect(built.stage.prompt).toContain('exactly 35° below the original eye line');
     expect(built.stage.prompt).toContain('frozen in time');
-    expect(built.stage.prompt).toContain('MUST look different');
+    expect(built.stage.prompt).toContain('no more and no less');
     expect(built.stage.prompt).toContain('Everything physical stays exactly as it is');
   });
 
-  it('camera angle: extreme elevation reads as an overhead shot', () => {
+  it('camera angle: an unmoved axis is kept, not rotated by 0°', () => {
     const built = buildCreateStage({
       modelKey: 'gpt-image-2',
       prompt: '',
@@ -430,8 +429,8 @@ describe('buildCreateStage — studio tools (hidden prompts)', () => {
       referenceCount: 1,
       tool: { kind: 'camera_angle', h: 0, v: 70 },
     });
-    expect(built.stage.prompt).toContain("bird's-eye view");
-    expect(built.stage.prompt).toContain('original front-facing position');
+    expect(built.stage.prompt).toContain('original horizontal position');
+    expect(built.stage.prompt).toContain('looks down at the subject from exactly 70° above');
   });
 
   it('storyboard: embeds the script inside the engineered sheet prompt', () => {

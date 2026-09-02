@@ -414,9 +414,23 @@ describe('buildCreateStage — studio tools (hidden prompts)', () => {
       referenceCount: 1,
       tool: { kind: 'camera_angle', h: 120, v: -35 },
     });
-    expect(built.stage.prompt).toContain('120 degrees to the right');
-    expect(built.stage.prompt).toContain('35 degrees below');
-    expect(built.stage.prompt).toContain('Preserve everything');
+    expect(built.stage.prompt).toContain('side profile view from the right');
+    expect(built.stage.prompt).toContain('120°');
+    expect(built.stage.prompt).toContain('at a low angle');
+    expect(built.stage.prompt).toContain('frozen in time');
+    expect(built.stage.prompt).toContain('Do not change');
+  });
+
+  it('camera angle: extreme elevation reads as an overhead shot', () => {
+    const built = buildCreateStage({
+      modelKey: 'gpt-image-2',
+      prompt: '',
+      aspectRatio: '1:1',
+      referenceCount: 1,
+      tool: { kind: 'camera_angle', h: 0, v: 70 },
+    });
+    expect(built.stage.prompt).toContain("bird's-eye view");
+    expect(built.stage.prompt).toContain('original front-facing position');
   });
 
   it('storyboard: embeds the script inside the engineered sheet prompt', () => {

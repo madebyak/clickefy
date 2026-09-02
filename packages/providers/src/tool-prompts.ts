@@ -58,25 +58,65 @@ const STYLE_DESCRIPTIONS: Record<StoryboardStyle, string> = {
 };
 
 /**
+ * Translate the orbit widget's raw degrees into the cinematography
+ * vocabulary image models are actually trained on. "Rotate the camera
+ * 120 degrees" is a weak signal — models follow named shot types
+ * ("low angle", "side profile", "bird's-eye view") far more reliably,
+ * so the named angle leads and the degrees ride along as precision.
+ */
+function describeCameraMove(h: number, v: number): string {
+  const ah = Math.abs(Math.round(h));
+  const av = Math.abs(Math.round(v));
+  const side = h > 0 ? 'right' : 'left';
+
+  let horiz: string;
+  if (ah <= 10) horiz = 'keeping the original front-facing position';
+  else if (ah <= 55)
+    horiz = `a three-quarter view, the camera orbited ${ah}° to the ${side} around the subject`;
+  else if (ah <= 125)
+    horiz = `a side profile view from the ${side}, the camera orbited ${ah}° around the subject`;
+  else if (ah <= 170)
+    horiz = `a three-quarter back view, the camera orbited ${ah}° to the ${side} around behind the subject`;
+  else horiz = 'a view from directly behind the subject, the camera orbited 180° around them';
+
+  let vert: string;
+  if (av <= 8) vert = 'at eye level — a neutral, straight-on perspective';
+  else if (v > 0) {
+    if (av <= 25)
+      vert = `at a slight high angle — the camera raised ${av}° above eye level, looking gently down at the subject`;
+    else if (av <= 55)
+      vert = `at a high angle — the camera well above the subject, ${av}° up, looking down on it`;
+    else
+      vert = `at a bird's-eye view — the camera nearly overhead, ${av}° up, looking steeply down at the subject`;
+  } else {
+    if (av <= 25)
+      vert = `at a slight low angle — the camera dropped ${av}° below eye level, looking gently up at the subject`;
+    else if (av <= 55)
+      vert = `at a low angle — the camera well below the subject, ${av}° down, looking up at it (a heroic perspective)`;
+    else
+      vert = `at a worm's-eye view — the camera near the ground, ${av}° down, looking steeply up at the subject`;
+  }
+  return `${horiz}, ${vert}`;
+}
+
+/**
  * Camera Angle: re-shoot the attached photo from a new camera position.
  * `h`/`v` come straight from the orbit widget. The user's only inputs
  * are the image and the two angles — the whole prompt is ours.
+ *
+ * The body is the "frozen set" framing: the scene is a physical set
+ * frozen in time and ONLY the camera moves. Editing models drift far
+ * less with a long explicit do-not-change list than with a positive
+ * "preserve everything" instruction.
  */
 export function composeCameraAnglePrompt(h: number, v: number): string {
-  const horiz =
-    h === 0
-      ? 'keep the same horizontal position'
-      : `rotate the camera ${Math.abs(Math.round(h))} degrees ${h > 0 ? 'to the right' : 'to the left'} around the subject`;
-  const vert =
-    v === 0
-      ? 'stay at the same height'
-      : `move it ${Math.abs(Math.round(v))} degrees ${v > 0 ? 'above' : 'below'} the original eye line`;
   return [
-    'You are a professional photographer re-shooting a scene.',
-    'Analyze the attached photo in depth — the subject, materials, colors, lighting, environment and composition.',
-    `Re-render the exact same scene from a new camera position: ${horiz}, and ${vert}, keeping the lens focused on the same subject at the same distance.`,
-    'Preserve everything about the original: the subject’s identity and every detail, the color palette, the lighting mood and the setting.',
-    'The result must look like a real photograph taken from the new angle, matching the original’s quality and aspect ratio.',
+    `Re-frame this exact image with a new camera position: ${describeCameraMove(h, v)}.`,
+    'Imagine the entire scene is frozen in time like a physical set that cannot be altered in any way. The only thing changing is where the camera is placed and the angle from which it observes that frozen scene.',
+    "Do not change the subject's position, pose, facial expression, body orientation, clothing, hair, skin tone, or any physical detail.",
+    'Do not alter the background, environment, lighting direction, shadow patterns, color grading, depth of field, or overall mood.',
+    'Do not reinterpret or reimagine any element of the scene. Treat this purely as a camera move on a static set.',
+    "Reconstruct any parts of the scene that fall outside the original frame as needed, staying fully consistent with the existing visual style, and output the result in the original image's aspect ratio.",
   ].join(' ');
 }
 

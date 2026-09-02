@@ -38,63 +38,20 @@ const GRIDS: ReadonlyArray<{ cols: number; rows: number }> = [
   { cols: 4, rows: 3 },
 ];
 
-/** Tiny CSS-drawn sample per style — pick with the eyes, not by reading. */
+/** One example frame per style (public/tools/storyboard) — pick with the eyes, not by reading. */
+const STYLE_IMAGE: Record<Style, string> = {
+  hand_drawn: "/tools/storyboard/hand-drawn.webp",
+  sketch: "/tools/storyboard/sketch.webp",
+  realistic: "/tools/storyboard/realistic.webp",
+  comic: "/tools/storyboard/comic.webp",
+  "3d": "/tools/storyboard/3d.webp",
+};
+
 function StyleSample({ style }: { style: Style }) {
-  switch (style) {
-    case "hand_drawn":
-      return (
-        <div className="h-16 w-full rounded-lg bg-[#efe6cf]">
-          <svg viewBox="0 0 104 64" fill="none" className="size-full" preserveAspectRatio="none">
-            <path
-              d="M14 46c10-16 22-24 34-22M26 50c14-10 30-14 44-10M18 30c8-8 20-13 30-12"
-              stroke="#4a4238"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <circle cx="76" cy="22" r="9" stroke="#4a4238" strokeWidth="2" />
-          </svg>
-        </div>
-      );
-    case "sketch":
-      return (
-        <div className="h-16 w-full rounded-lg bg-[#f7f7f5]">
-          <svg viewBox="0 0 104 64" fill="none" className="size-full" preserveAspectRatio="none">
-            <path
-              d="M8 48h88M22 48V30l14-10 14 10v18M62 48V26h20v22M67 32h4M76 32h4"
-              stroke="#7c8494"
-              strokeWidth="1.3"
-            />
-          </svg>
-        </div>
-      );
-    case "realistic":
-      return (
-        <div className="relative h-16 w-full overflow-hidden rounded-lg bg-gradient-to-b from-[#f3b26b] via-[#d4685a] to-[#3c2f4d]">
-          <div className="absolute left-1/2 top-1/3 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#ffe9c4] shadow-[0_0_14px_rgba(255,233,196,0.9)]" />
-          <div className="absolute inset-x-0 bottom-0 h-5 bg-[#241c33]" />
-        </div>
-      );
-    case "comic":
-      return (
-        <div className="h-16 w-full rounded-lg bg-[#ffd23e]">
-          <svg viewBox="0 0 104 64" fill="none" className="size-full" preserveAspectRatio="none">
-            <path
-              d="M52 10 60 26l18 2-13 12 3 18-16-9-16 9 3-18-13-12 18-2 8-16Z"
-              fill="#db0078"
-              stroke="#141414"
-              strokeWidth="3"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      );
-    case "3d":
-      return (
-        <div className="relative h-16 w-full overflow-hidden rounded-lg bg-gradient-to-b from-[#23233c] to-[#101020]">
-          <div className="absolute left-1/2 top-1/2 size-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_32%_28%,#cfd6ff_0%,#7f8cf0_38%,#3a3f8f_100%)] shadow-lg shadow-black/50" />
-        </div>
-      );
-  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={STYLE_IMAGE[style]} alt="" className="h-16 w-full rounded-lg object-cover" />
+  );
 }
 
 const STYLE_LABEL_KEY: Record<Style, string> = {

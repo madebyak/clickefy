@@ -418,7 +418,8 @@ describe('buildCreateStage — studio tools (hidden prompts)', () => {
     expect(built.stage.prompt).toContain('120°');
     expect(built.stage.prompt).toContain('at a low angle');
     expect(built.stage.prompt).toContain('frozen in time');
-    expect(built.stage.prompt).toContain('Do not change');
+    expect(built.stage.prompt).toContain('MUST look different');
+    expect(built.stage.prompt).toContain('Everything physical stays exactly as it is');
   });
 
   it('camera angle: extreme elevation reads as an overhead shot', () => {

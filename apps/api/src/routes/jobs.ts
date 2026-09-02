@@ -43,8 +43,7 @@ import {
   CREATE_START_FRAME_KEY,
   createReferenceKey,
   findCapabilities,
-  TOOL_MODEL_KEY,
-  TOOL_QUALITY,
+  TOOL_MODELS,
 } from '@clickfy/providers';
 
 import type { AppEnv } from '../types';
@@ -404,7 +403,7 @@ jobsRoute.post(
     // Tool jobs (Camera Angle / Storyboard) never carry a model: the
     // choice is the server's, invisible to the user, and swappable
     // without a client change. Plain submissions must name one.
-    const modelKey = body.tool ? TOOL_MODEL_KEY : body.modelKey;
+    const modelKey = body.tool ? TOOL_MODELS[body.tool.kind].modelKey : body.modelKey;
     if (!modelKey) {
       return c.json(
         { error: { code: 'unknown_model', message: 'That model is not available.' } },
@@ -446,7 +445,7 @@ jobsRoute.post(
     if (body.tool) {
       // The tool's tier is a product decision (max fidelity), not a
       // user knob — a client-sent quality on a tool job is ignored.
-      mode = TOOL_QUALITY;
+      mode = TOOL_MODELS[body.tool.kind].quality;
     } else if (caps.modes) {
       if (body.quality && !caps.modes.values.includes(body.quality)) {
         return c.json(

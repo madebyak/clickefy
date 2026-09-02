@@ -44,9 +44,25 @@ export const STORYBOARD_STYLES: readonly StoryboardStyle[] = [
   '3d',
 ];
 
-/** The model every tool job runs on, and the billed quality tier. */
-export const TOOL_MODEL_KEY = 'gpt-image-2';
-export const TOOL_QUALITY = 'high';
+/**
+ * The model each tool runs on, and the billed quality tier — a product
+ * decision per tool, invisible to the user and swappable without any
+ * client change (the web modals mirror these for price display only).
+ *
+ * Camera Angle runs on Nano Banana Pro: the Gemini image family is the
+ * strongest we carry at viewpoint changes and reposing while holding
+ * subject identity. GPT Image pins input fidelity to high, which
+ * actively resists re-framing — it kept returning the original
+ * composition. Storyboard stays on GPT Image at `high`, the best model
+ * for laying out a clean multi-panel sheet.
+ */
+export const TOOL_MODELS: Record<
+  CreateToolRequest['kind'],
+  { modelKey: string; quality: string }
+> = {
+  camera_angle: { modelKey: 'gemini-3-pro-image', quality: '2K' },
+  storyboard: { modelKey: 'gpt-image-2', quality: 'high' },
+};
 
 const STYLE_DESCRIPTIONS: Record<StoryboardStyle, string> = {
   hand_drawn:
@@ -105,18 +121,21 @@ function describeCameraMove(h: number, v: number): string {
  * are the image and the two angles — the whole prompt is ours.
  *
  * The body is the "frozen set" framing: the scene is a physical set
- * frozen in time and ONLY the camera moves. Editing models drift far
- * less with a long explicit do-not-change list than with a positive
- * "preserve everything" instruction.
+ * frozen in time and ONLY the camera moves. Two rules learned the hard
+ * way: state the constraints in WORLD terms, not image terms (an
+ * image-space list like "do not alter the background or shadow
+ * patterns" contradicts the orbit — on screen those must shift — and
+ * the model resolves the conflict by keeping the old framing), and say
+ * explicitly that the composition is REQUIRED to change.
  */
 export function composeCameraAnglePrompt(h: number, v: number): string {
   return [
-    `Re-frame this exact image with a new camera position: ${describeCameraMove(h, v)}.`,
-    'Imagine the entire scene is frozen in time like a physical set that cannot be altered in any way. The only thing changing is where the camera is placed and the angle from which it observes that frozen scene.',
-    "Do not change the subject's position, pose, facial expression, body orientation, clothing, hair, skin tone, or any physical detail.",
-    'Do not alter the background, environment, lighting direction, shadow patterns, color grading, depth of field, or overall mood.',
+    `Move the camera and re-shoot this exact scene from a new position: ${describeCameraMove(h, v)}.`,
+    'Imagine the entire scene is frozen in time like a physical set that cannot be altered in any way. The only thing that changes is where the camera stands and the angle from which it looks at that frozen scene, with the lens staying locked on the same subject at the same distance.',
+    'Because the camera has moved, the framing and composition MUST look different: sides of the subject and parts of the environment that were hidden before become visible, and the on-screen placement of the background, light and shadows shifts naturally with the new viewpoint. Do not simply reproduce the original framing.',
+    "Everything physical stays exactly as it is: the subject's identity, pose, facial expression, clothing, hair, skin tone and every detail; the environment and every object in it; the actual direction of the light source; the time of day, color grading and overall mood.",
     'Do not reinterpret or reimagine any element of the scene. Treat this purely as a camera move on a static set.',
-    "Reconstruct any parts of the scene that fall outside the original frame as needed, staying fully consistent with the existing visual style, and output the result in the original image's aspect ratio.",
+    "Reconstruct any parts of the scene that were outside the original frame as needed, staying fully consistent with the existing visual style, and output the result in the original image's aspect ratio.",
   ].join(' ');
 }
 

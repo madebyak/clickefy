@@ -42,8 +42,7 @@ export {
   composeCameraAnglePrompt,
   composeStoryboardPrompt,
   STORYBOARD_STYLES,
-  TOOL_MODEL_KEY,
-  TOOL_QUALITY,
+  TOOL_MODELS,
   type CreateToolRequest,
   type StoryboardStyle,
 } from './tool-prompts';

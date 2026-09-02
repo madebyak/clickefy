@@ -79,10 +79,10 @@ export function CameraAngleModal({
   const studio = useStudioMaybe();
   const { models } = useModels("image");
   // The tool's model is a server decision; the roster is read only to
-  // show the price the server will charge (GPT Image 2 at `high`).
-  const price = models
-    .find((m) => m.modelKey === "gpt-image-2")
-    ?.tiers?.find((x) => x.mode === "high")?.costCredits;
+  // show the price the server will charge. Mirrors TOOL_MODELS.camera_angle
+  // in providers/tool-prompts.ts (Nano Banana Pro at 2K).
+  const cameraModel = models.find((m) => m.modelKey === "gemini-3-pro-image");
+  const price = cameraModel?.tiers?.find((x) => x.mode === "2K")?.costCredits;
 
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [h, setH] = useState(0);
@@ -188,10 +188,10 @@ export function CameraAngleModal({
   const moved = h !== 0 || v !== 0;
   const canGenerate = !!photo && photo.status === "ready" && moved && !submitting && !!studio;
 
-  const aspectRatio = useMemo(() => {
-    const gpt = models.find((m) => m.modelKey === "gpt-image-2");
-    return nearestAspect(gpt?.aspectRatios ?? [], photo?.width, photo?.height);
-  }, [models, photo?.width, photo?.height]);
+  const aspectRatio = useMemo(
+    () => nearestAspect(cameraModel?.aspectRatios ?? [], photo?.width, photo?.height),
+    [cameraModel, photo?.width, photo?.height],
+  );
 
   const onGenerate = async () => {
     if (!canGenerate || !photo?.media) return;

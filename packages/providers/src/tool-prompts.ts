@@ -53,15 +53,18 @@ export const STORYBOARD_STYLES: readonly StoryboardStyle[] = [
  * strongest we carry at viewpoint changes and reposing while holding
  * subject identity. GPT Image pins input fidelity to high, which
  * actively resists re-framing — it kept returning the original
- * composition. Storyboard stays on GPT Image at `high`, the best model
- * for laying out a clean multi-panel sheet.
+ * composition. Storyboard also runs on Nano Banana Pro, at 4K: a sheet
+ * is only useful if every panel survives being viewed alone, and GPT
+ * Image tops out around 1536px (~500px panels on a 3×3). NB Pro's 4K
+ * output keeps panels above 1000px on every grid we offer, and its
+ * layout control is the best we carry.
  */
 export const TOOL_MODELS: Record<
   CreateToolRequest['kind'],
   { modelKey: string; quality: string }
 > = {
   camera_angle: { modelKey: 'gemini-3-pro-image', quality: '2K' },
-  storyboard: { modelKey: 'gpt-image-2', quality: 'high' },
+  storyboard: { modelKey: 'gemini-3-pro-image', quality: '4K' },
 };
 
 const STYLE_DESCRIPTIONS: Record<StoryboardStyle, string> = {

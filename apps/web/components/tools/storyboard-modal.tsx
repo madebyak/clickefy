@@ -66,9 +66,11 @@ export function StoryboardModal({ onClose }: { onClose: () => void }) {
   const t = useTranslations("tools");
   const studio = useStudioMaybe();
   const { models } = useModels("image");
+  // Mirrors TOOL_MODELS.storyboard in providers/tool-prompts.ts
+  // (Nano Banana Pro at 4K) — price display only; the server decides.
   const price = models
-    .find((m) => m.modelKey === "gpt-image-2")
-    ?.tiers?.find((x) => x.mode === "high")?.costCredits;
+    .find((m) => m.modelKey === "gemini-3-pro-image")
+    ?.tiers?.find((x) => x.mode === "4K")?.costCredits;
 
   const [script, setScript] = useState("");
   const [style, setStyle] = useState<Style>("hand_drawn");

@@ -5,7 +5,7 @@ import { XLogo, InstagramLogo, YoutubeLogo, TiktokLogo } from "@phosphor-icons/r
 const COLUMNS = [
   {
     titleKey: "create",
-    links: ["linkCreateImage", "linkCreateVideo", "linkStoryboard", "linkCinemaStudio", "linkAiUgc"],
+    links: ["linkCreateImage", "linkCreateVideo", "linkStoryboard", "linkCameraAngles"],
   },
   { titleKey: "explore", links: ["linkTemplates", "linkModels", "linkPricing"] },
   { titleKey: "company", links: ["linkAbout", "linkBlog", "linkCareers", "linkContact"] },
@@ -29,6 +29,8 @@ const COLUMNS = [
 const HREFS: Record<string, string> = {
   linkCreateImage: "/create",
   linkCreateVideo: "/create-video",
+  linkStoryboard: "/create?tool=storyboard",
+  linkCameraAngles: "/create?tool=camera",
   linkTemplates: "/templates",
   linkPricing: "/pricing",
   linkPrivacy: "/privacy",

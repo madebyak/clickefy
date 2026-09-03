@@ -8,7 +8,8 @@ const COLUMNS = [
     links: ["linkCreateImage", "linkCreateVideo", "linkStoryboard", "linkCameraAngles"],
   },
   { titleKey: "explore", links: ["linkTemplates", "linkModels", "linkPricing"] },
-  { titleKey: "company", links: ["linkAbout", "linkBlog", "linkCareers", "linkContact"] },
+  // Blog and Careers wait until those pages exist — no dead links.
+  { titleKey: "company", links: ["linkAbout", "linkContact"] },
   {
     titleKey: "legal",
     links: [
@@ -22,17 +23,17 @@ const COLUMNS = [
   },
 ] as const;
 
-/**
- * Real destinations per link key. Keys without a built page yet stay on
- * "#" until their feature ships (storyboard, company pages, …).
- */
+/** Real destinations per link key — every listed key has a built page. */
 const HREFS: Record<string, string> = {
   linkCreateImage: "/create",
   linkCreateVideo: "/create-video",
   linkStoryboard: "/create?tool=storyboard",
   linkCameraAngles: "/create?tool=camera",
   linkTemplates: "/templates",
+  linkModels: "/models",
   linkPricing: "/pricing",
+  linkAbout: "/about",
+  linkContact: "/contact",
   linkPrivacy: "/privacy",
   linkTerms: "/terms",
   linkAccountDeletion: "/account-deletion",
@@ -41,11 +42,15 @@ const HREFS: Record<string, string> = {
   linkDmca: "/dmca",
 };
 
-const SOCIALS = [
-  { Icon: XLogo, label: "X" },
-  { Icon: InstagramLogo, label: "Instagram" },
-  { Icon: YoutubeLogo, label: "YouTube" },
-  { Icon: TiktokLogo, label: "TikTok" },
+/**
+ * Social accounts. An entry renders only once its `href` is filled in —
+ * an icon that goes nowhere is worse than no icon.
+ */
+const SOCIALS: Array<{ Icon: typeof XLogo; label: string; href: string }> = [
+  { Icon: XLogo, label: "X", href: "" },
+  { Icon: InstagramLogo, label: "Instagram", href: "" },
+  { Icon: YoutubeLogo, label: "YouTube", href: "" },
+  { Icon: TiktokLogo, label: "TikTok", href: "" },
 ];
 
 export async function Footer() {
@@ -59,18 +64,22 @@ export async function Footer() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-7 w-auto" />
             <p className="mt-4 max-w-xs text-sm text-muted-foreground">{t("tagline")}</p>
-            <div className="mt-5 flex gap-2">
-              {SOCIALS.map(({ Icon, label }) => (
-                <Link
-                  key={label}
-                  href="#"
-                  aria-label={label}
-                  className="grid size-9 place-items-center rounded-lg bg-surface-2 text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
-                >
-                  <Icon className="size-4" weight="fill" />
-                </Link>
-              ))}
-            </div>
+            {SOCIALS.some((s) => s.href) && (
+              <div className="mt-5 flex gap-2">
+                {SOCIALS.filter((s) => s.href).map(({ Icon, label, href }) => (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={label}
+                    className="grid size-9 place-items-center rounded-lg bg-surface-2 text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
+                  >
+                    <Icon className="size-4" weight="fill" />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           {COLUMNS.map((col) => (

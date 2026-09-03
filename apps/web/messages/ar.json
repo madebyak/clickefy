@@ -633,5 +633,16 @@
     "dmcaSub": "أبلغ عن محتوى ينتهك حقوقك.",
     "accountDeletionTitle": "حذف حسابك",
     "accountDeletionSub": "كيفية إزالة حسابك وبياناتك."
+  },
+  "search": {
+    "title": "بحث",
+    "placeholder": "ابحث في الأدوات والمشاريع والإنشاءات…",
+    "tools": "الأدوات",
+    "projects": "المشاريع",
+    "generations": "الإنشاءات",
+    "favorites": "المفضلة",
+    "allProjects": "كل المشاريع",
+    "settings": "الإعدادات",
+    "noResults": "لا توجد نتائج مطابقة — جرّب كلمة أخرى."
   }
 }

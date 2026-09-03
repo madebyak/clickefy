@@ -633,5 +633,16 @@
     "dmcaSub": "Report content that infringes your rights.",
     "accountDeletionTitle": "Delete your account",
     "accountDeletionSub": "How to remove your account and data."
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Search tools, projects, generations…",
+    "tools": "Tools",
+    "projects": "Projects",
+    "generations": "Generations",
+    "favorites": "Favorites",
+    "allProjects": "All projects",
+    "settings": "Settings",
+    "noResults": "Nothing matches — try a different word."
   }
 }

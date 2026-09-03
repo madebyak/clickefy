@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { List, MagnifyingGlass } from "@phosphor-icons/react";
@@ -9,6 +10,7 @@ import { ProfileMenu } from "@/components/site/profile-menu";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { useStudio } from "@/components/studio/studio-context";
 import { useToolsMaybe } from "@/components/tools/tools-context";
+import { CommandPalette } from "@/components/studio/command-palette";
 
 // `tool` entries open a modal instead of navigating — the tools are
 // popups over whatever project is open, not pages of their own.
@@ -25,6 +27,19 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
   const pathname = usePathname();
   const { setActiveProject } = useStudio();
   const tools = useToolsMaybe();
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // ⌘K / Ctrl+K from anywhere in the studio.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   return (
     <header className="relative flex h-14 shrink-0 items-center justify-between gap-3 bg-surface-1 px-3 sm:px-4">
       {/* left */}
@@ -82,15 +97,21 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
       <div className="flex items-center gap-2">
         <button
           type="button"
+          onClick={() => setSearchOpen(true)}
           className="hidden h-9 items-center gap-2 rounded-lg bg-surface-2 px-3 text-sm text-muted-foreground transition-colors hover:bg-surface-3 md:flex"
         >
           <MagnifyingGlass className="size-4" />
           <span className="hidden lg:inline">{t("search")}</span>
+          <kbd className="hidden rounded-md bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium lg:inline">
+            ⌘K
+          </kbd>
         </button>
         <LanguageSwitcher />
         <CreditMenu />
         <ProfileMenu />
       </div>
+
+      {searchOpen && <CommandPalette onClose={() => setSearchOpen(false)} />}
     </header>
   );
 }

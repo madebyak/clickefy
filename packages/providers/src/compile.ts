@@ -261,9 +261,17 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
-  let s = '';
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
-  return btoa(s);
+  // Chunked, like every adapter's copy of this helper. The byte-at-a-time
+  // `s += String.fromCharCode(b)` it replaces built a rope of millions of
+  // one-character strings that `btoa` then flattened — tens of MB of
+  // transient garbage per 4K reference, and the likeliest trigger of the
+  // worker's out-of-memory kills.
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
 }
 
 // ─── Token substitution ─────────────────────────────────────────────
@@ -491,10 +499,6 @@ function isImagen(model: string): boolean {
   return model.toLowerCase().startsWith('imagen');
 }
 
-function isKlingOmni(model: string): boolean {
-  return model.toLowerCase().includes('omni');
-}
-
 /**
  * Compile a single stage into a provider-shaped request. The caller
  * is responsible for actually performing the HTTP call — typically via
@@ -651,7 +655,11 @@ function compileKling(
   warnings: CompileWarning[],
 ): CompileResult {
   const { stage, capabilities } = ctx;
-  const isOmni = isKlingOmni(stage.model);
+  // Endpoint family is a capability fact, not a naming convention: the
+  // old `model.includes('omni')` test sent Kling O1 to
+  // `/image-to-video/kling-o1` (which does not exist) and threw its
+  // reference images away on the way.
+  const isOmni = capabilities.klingEndpoint === 'omni';
 
   // ── Frames ────────────────────────────────────────────────────
   //
@@ -667,11 +675,20 @@ function compileKling(
   // the start frame.
   const explicitFrames = (stage.config as { frameSlots?: FrameSlots }).frameSlots;
   const hasExplicitFrames = Boolean(explicitFrames?.firstFrame || explicitFrames?.lastFrame);
+  // Create flow: user inputs that are REFERENCES (`refer_image`), named
+  // explicitly so they are never mistaken for a positional start/end
+  // frame. Presence of the list, even empty, opts out of the positional
+  // guess entirely — the create stage always states its bindings.
+  const cfgReferenceInputs = (stage.config as { referenceInputs?: unknown }).referenceInputs;
+  const referenceInputs = Array.isArray(cfgReferenceInputs)
+    ? cfgReferenceInputs.filter((k): k is string => typeof k === 'string')
+    : undefined;
+  const positional = !hasExplicitFrames && referenceInputs === undefined;
 
   const subjects: ImagePart[] = [];
   let subjectIndex = 0;
 
-  for (const so of hasExplicitFrames ? [] : ctx.previousOutputs) {
+  for (const so of positional ? ctx.previousOutputs : []) {
     if (so.kind !== 'image') continue;
     if (subjects.length >= capabilities.maxSubjects) break;
     subjectIndex += 1;
@@ -686,7 +703,7 @@ function compileKling(
       url: so.url,
     });
   }
-  for (const field of hasExplicitFrames ? [] : ctx.templateInputs) {
+  for (const field of positional ? ctx.templateInputs : []) {
     const v = ctx.inputValues[field.fieldKey];
     if (!v || v.kind !== 'image') continue;
     if (subjects.length >= capabilities.maxSubjects) {
@@ -796,16 +813,57 @@ function compileKling(
   }
 
   // References. Empty array for v2 (which doesn't accept them) plus a
-  // warning if the admin attached any.
+  // warning if the admin attached any. Two sources: admin references on
+  // the template stage, and the create flow's explicit `referenceInputs`
+  // (user uploads bound by field key).
   const refs: ImagePart[] = [];
-  if (!isOmni && stage.references.length > 0) {
+  const referenceCount = stage.references.length + (referenceInputs?.length ?? 0);
+  if (!isOmni && referenceCount > 0) {
     warnings.push({
       code: 'reference_dropped',
-      message: `Kling ${stage.model} does not accept reference images; ${stage.references.length} dropped. Use Kling Omni for multi-reference flows.`,
+      message: `Kling ${stage.model} does not accept reference images; ${referenceCount} dropped. Use Kling 3 Omni or Kling O1 for multi-reference flows.`,
     });
   }
-  if (isOmni) {
+  if (isOmni && capabilities.endFrameExcludesReferences && subjects.length > 1 && referenceCount > 0) {
+    // O1: "When using both the first and last frames, no additional
+    // reference images can be added." The frames are the stronger
+    // statement of intent, so they win and the references go, loudly.
+    warnings.push({
+      code: 'config_clamped',
+      message: `${stage.model} cannot combine reference images with a first+last frame pair; ${referenceCount} reference(s) dropped. Remove the last frame to use them.`,
+    });
+  } else if (isOmni) {
     let refIndex = subjects.length;
+    for (const fieldKey of referenceInputs ?? []) {
+      if (refs.length >= capabilities.maxReferences) {
+        warnings.push({
+          code: 'config_clamped',
+          message: `${stage.model} accepts at most ${capabilities.maxReferences} references; "${fieldKey}" dropped.`,
+        });
+        break;
+      }
+      const v = ctx.inputValues[fieldKey];
+      if (!v || v.kind !== 'image') {
+        warnings.push({
+          code: 'unknown_variable',
+          message: `Kling reference bound to user input "${fieldKey}" — no image provided.`,
+          token: fieldKey,
+        });
+        continue;
+      }
+      refIndex += 1;
+      const field = ctx.templateInputs.find((f) => f.fieldKey === fieldKey);
+      refs.push({
+        index: refIndex,
+        role: 'reference',
+        roleTag: 'USER_INPUT',
+        displayLabel: field?.label || fieldKey,
+        mimeType: v.mimeType,
+        bytes: v.bytes,
+        r2Key: v.r2Key,
+        url: v.url,
+      });
+    }
     for (const ref of stage.references) {
       if (refs.length >= capabilities.maxReferences) {
         warnings.push({
@@ -844,7 +902,9 @@ function compileKling(
     references: stage.references,
     previousOutputs: ctx.previousOutputs,
     imageParts,
-    style: isOmni ? 'at' : 'ordinal',
+    // The capability is the source of truth — O1 declares `at` and was
+    // getting ordinal prose because this branch tested the name instead.
+    style: capabilities.refAddressing === 'at' ? 'at' : 'ordinal',
     warnings,
   });
 
@@ -894,7 +954,7 @@ function compileKling(
     typeof duration === 'number' &&
     !bare.includes(duration) &&
     subjects.length === 1 &&
-    stage.references.length === 0 &&
+    refs.length === 0 &&
     configuredElements.length === 0
   ) {
     const clamped = [...bare].reverse().find((d) => d <= duration!) ?? bare[0]!;
@@ -978,6 +1038,88 @@ function compileKling(
     endFrame = undefined;
   }
 
+  // ── Multi-shot ─────────────────────────────────────────────────
+  //
+  // `config.shots` is a storyboard: `[{ seconds, text }]`. On models
+  // that support it the prompt becomes Kling's documented grammar —
+  // `shot 1, 5, <text>; shot 2, 5, <text>;` — with the constraints the
+  // docs state (1–6 shots, each ≥1s and ≤512 chars, durations summing to
+  // the clip length) enforced here rather than discovered as a provider
+  // 400 after the debit. Off-model, the shot texts are joined into one
+  // plain prompt with a warning, so a template copied across models
+  // still generates something rather than nothing.
+  const cfgShots = (stage.config as { shots?: unknown }).shots;
+  const shotsIn = Array.isArray(cfgShots)
+    ? cfgShots
+        .map((raw) => {
+          const r = raw as { seconds?: unknown; text?: unknown };
+          return {
+            seconds: typeof r.seconds === 'number' ? Math.max(1, Math.round(r.seconds)) : 0,
+            text: typeof r.text === 'string' ? r.text.trim() : '',
+          };
+        })
+        .filter((s) => s.text.length > 0)
+    : [];
+  let finalPrompt = prompt;
+  let multiShot: boolean | undefined = capabilities.multiShot?.toggleable ? false : undefined;
+  if (shotsIn.length > 1) {
+    const ms = capabilities.multiShot;
+    if (!ms) {
+      warnings.push({
+        code: 'config_clamped',
+        message: `${stage.model} does not support multi-shot prompts; the ${shotsIn.length} shots were joined into one prompt.`,
+      });
+      finalPrompt = [prompt, ...shotsIn.map((s) => s.text)].filter(Boolean).join(' ');
+    } else {
+      let shots = shotsIn;
+      if (shots.length > ms.maxShots) {
+        warnings.push({
+          code: 'config_clamped',
+          message: `${stage.model} supports at most ${ms.maxShots} shots; ${shots.length - ms.maxShots} dropped.`,
+        });
+        shots = shots.slice(0, ms.maxShots);
+      }
+      shots = shots.map((s) => {
+        if (s.text.length > ms.maxCharsPerShot) {
+          warnings.push({
+            code: 'config_clamped',
+            message: `A shot prompt exceeded ${ms.maxCharsPerShot} characters and was truncated.`,
+          });
+        }
+        return {
+          seconds: Math.max(ms.minShotSeconds, s.seconds || ms.minShotSeconds),
+          text: s.text.slice(0, ms.maxCharsPerShot),
+        };
+      });
+      // The shot durations must sum to the clip length. Rebalance rather
+      // than reject: keep the user's proportions, fix the total.
+      if (typeof duration === 'number') {
+        const total = shots.reduce((acc, s) => acc + s.seconds, 0);
+        if (total !== duration) {
+          const scaled = shots.map((s) => Math.max(ms.minShotSeconds, Math.floor((s.seconds / total) * duration)));
+          let remainder = duration - scaled.reduce((a, b) => a + b, 0);
+          for (let i = 0; remainder !== 0 && i < scaled.length * 4; i++) {
+            const idx = i % scaled.length;
+            if (remainder > 0) {
+              scaled[idx]! += 1;
+              remainder -= 1;
+            } else if (scaled[idx]! > ms.minShotSeconds) {
+              scaled[idx]! -= 1;
+              remainder += 1;
+            }
+          }
+          warnings.push({
+            code: 'config_clamped',
+            message: `Shot durations summed to ${total}s but the clip is ${duration}s; rebalanced to ${scaled.join('/')}s.`,
+          });
+          shots = shots.map((s, i) => ({ ...s, seconds: scaled[i]! }));
+        }
+      }
+      finalPrompt = shots.map((s, i) => `shot ${i + 1}, ${s.seconds}, ${s.text}`).join('; ') + ';';
+      if (ms.toggleable) multiShot = true;
+    }
+  }
+
   const variant: KlingCompiledRequest['variant'] = isOmni
     ? 'omni'
     : !subjects[0] && supportsTextToVideo
@@ -1002,13 +1144,14 @@ function compileKling(
     api2: capabilities.klingApi2,
     soundOnValue: capabilities.soundOnValue,
     model: apiModelFor(stage, capabilities),
-    prompt,
+    prompt: finalPrompt,
     negativePrompt,
     aspectRatio: aspectFromConfig,
     duration,
     mode,
     cfgScale,
     soundEnabled: audioEnabled,
+    multiShot,
     ...(elements.length > 0 ? { elements } : {}),
     startImage: subjects[0],
     endImage: endFrame,
@@ -1676,6 +1819,11 @@ function compileSeedance(
       audio: 0,
     };
 
+    // Numbered PER KIND, the way BytePlus itself addresses assets
+    // (`@Image 1`, `@Video 1`, `@Audio 1` — "the number is the sorting
+    // order of the asset among assets of the same type"). One running
+    // counter across kinds mis-numbered every mixed request: with one
+    // video and two images, "the second image" pointed at the video.
     let idx = 0;
     for (const slot of slots) {
       if (counts[slot.assetKind] >= limits[slot.assetKind]) {
@@ -1686,7 +1834,13 @@ function compileSeedance(
         continue;
       }
       idx += 1;
-      const part = resolveFrameSlot(slot.source, ctx, idx, slot.assetKind, warnings);
+      const part = resolveFrameSlot(
+        slot.source,
+        ctx,
+        counts[slot.assetKind] + 1,
+        slot.assetKind,
+        warnings,
+      );
       if (!part) continue; // resolver already pushed a warning
       // Stamp the assetKind onto the mimeType when missing/wrong so the
       // adapter routes correctly. admin_asset bindings carry only an
@@ -1877,6 +2031,32 @@ function compileSeedance(
         ? cfgTask
         : ('reference' as const)
       : undefined;
+
+  // The sub-tasks carry hard constraints BytePlus checks at submit:
+  // `edit` and `extend` both require `ratio: adaptive` (the output keeps
+  // the source clip's shape), and `edit` additionally requires
+  // `duration: -1` (the output keeps the source clip's length). The
+  // create route pins these before it gets here, but a template stage or
+  // the admin playground can reach the compiler with a concrete ratio —
+  // which is a 400 on a job that has already been debited. Enforce here,
+  // once, for every caller; the frame-triggered adaptive clamp above
+  // only fires when a start frame exists, which reference mode never has.
+  if (omniReferenceTaskType === 'edit' || omniReferenceTaskType === 'extend') {
+    if (ratio && ratio !== 'adaptive') {
+      warnings.push({
+        code: 'config_clamped',
+        message: `${stage.model} "${omniReferenceTaskType}" tasks keep the source clip's aspect ratio; "${ratio}" cannot be applied, sending "adaptive".`,
+      });
+    }
+    ratio = 'adaptive';
+    if (omniReferenceTaskType === 'edit' && duration !== undefined && duration !== -1) {
+      warnings.push({
+        code: 'config_clamped',
+        message: `${stage.model} "edit" tasks keep the source clip's length; duration ${duration}s cannot be applied, sending -1.`,
+      });
+      duration = -1;
+    }
+  }
 
   const request: SeedanceCompiledRequest = {
     provider: 'seedance',

@@ -278,6 +278,21 @@ export interface CreateModelDTO {
    * the composer offers its Edit/Extend modes only when this is true.
    */
   supportsVideoTasks?: boolean;
+  /**
+   * The model accepts reference images (`maxReferences > 0`) alongside
+   * or instead of start/end frames — Kling 3 Omni and Kling O1. The web
+   * composer offers a Frames ⇄ References switch when this is true;
+   * `attachments` stays `frames` so older clients keep working unchanged.
+   */
+  supportsReferenceMode?: boolean;
+  /** Reference-image budget (`refer_image`); 0 = frames only. */
+  maxReferences: number;
+  /** Kling 3.0 family multi-shot storyboard limits; absent = unsupported. */
+  multiShot?: { maxShots: number; maxCharsPerShot: number; minShotSeconds: number; toggleable: boolean };
+  /** Image formats the provider accepts, when narrower than our uploads (Kling: jpeg/png). */
+  acceptedImageMimes?: string[];
+  /** Provider pixel constraints on input images (Kling: ≥300px, aspect 1:2.5–2.5:1). */
+  imageConstraints?: { minEdge: number; minAspect: number; maxAspect: number };
 }
 
 /**
@@ -357,5 +372,11 @@ export function buildCreateModelDTO(
       caps.supportsOmniTaskType === true && caps.referenceVideo !== undefined
         ? true
         : undefined,
+    supportsReferenceMode:
+      def.attachments === 'frames' && caps.maxReferences > 0 ? true : undefined,
+    maxReferences: caps.maxReferences,
+    multiShot: caps.multiShot ? { ...caps.multiShot } : undefined,
+    acceptedImageMimes: caps.acceptedImageMimes ? [...caps.acceptedImageMimes] : undefined,
+    imageConstraints: caps.imageConstraints ? { ...caps.imageConstraints } : undefined,
   };
 }

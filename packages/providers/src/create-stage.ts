@@ -23,12 +23,13 @@
  *     binds start/end to `frameSlots`; `reference` mode binds N images to
  *     `referenceSlots`. BytePlus forbids mixing, so it's one or the other.
  *
- * NOT covered in v1: Kling Omni's dedicated multi-reference grid
- * (`stage.references` / `@image_N`). Those references are NOT
- * hydrated by `resolveJobInputs()` (they carry only an `r2Key`), so
- * wiring them needs a separate reference-hydration step. Kling Omni here
- * supports text-to-video plus start/end frame; multi-reference is a
- * documented fast-follow.
+ *   - Kling Omni / O1 references: bound EXPLICITLY. The stage names its
+ *     frame inputs in `frameSlots` and its reference inputs in
+ *     `referenceInputs` (both by field key), so the compiler never has to
+ *     guess which image is a frame and which is a `refer_image` — with
+ *     positional inference, two references would have become a start and
+ *     an end frame. Everything is hydrated through `inputs`, the one path
+ *     the worker already feeds.
  */
 
 import type {
@@ -96,6 +97,13 @@ export interface BuildCreateStageInput {
    * `supportsOmniTaskType`.
    */
   task?: 'edit' | 'extend';
+  /**
+   * Kling 3.0 family multi-shot storyboard. Each shot is a duration in
+   * seconds plus its own prompt; the compiler emits Kling's grammar and
+   * flips `settings.multi_shot` where the endpoint has it. Ignored (with
+   * a compile warning) on models without `multiShot`.
+   */
+  shots?: ReadonlyArray<{ seconds: number; text: string }>;
   /**
    * Studio tool request (Camera Angle / Storyboard). When present, the
    * stage prompt is COMPOSED here from the tool's parameters plus the
@@ -223,6 +231,27 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
     // Native audio — the compiler drops it (with a warning) on models
     // without `supportsSound`, so setting it here is always safe.
     if (input.sound) config.sound = true;
+    // Explicit bindings, so the compiler skips its positional guess:
+    // frames by field key, references by field key. The reference list is
+    // set whenever the create flow attached any — an empty list is never
+    // written, so template stages (which rely on positional inference)
+    // are untouched.
+    if (input.hasStartFrame || input.hasEndFrame) {
+      const frameSlots: SeedanceFrameSlots = {};
+      if (input.hasStartFrame) {
+        frameSlots.firstFrame = { kind: 'user_input', fieldKey: CREATE_START_FRAME_KEY };
+      }
+      if (input.hasEndFrame) {
+        frameSlots.lastFrame = { kind: 'user_input', fieldKey: CREATE_END_FRAME_KEY };
+      }
+      config.frameSlots = frameSlots;
+    }
+    if (refCount > 0) {
+      config.referenceInputs = Array.from({ length: refCount }, (_, i) => createReferenceKey(i));
+    }
+    if (input.shots && input.shots.length > 1) {
+      config.shots = input.shots.map((s) => ({ seconds: s.seconds, text: s.text }));
+    }
   }
 
   const stage: GenerationStage = {

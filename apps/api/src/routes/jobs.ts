@@ -521,6 +521,9 @@ jobsRoute.post(
         supportsVideoTasks:
           caps.supportsOmniTaskType === true && caps.referenceVideo !== undefined,
         framesAndReferencesExclusive: caps.provider === 'seedance' && caps.kind === 'video',
+        maxReferences: caps.maxReferences,
+        acceptedImageMimes: caps.acceptedImageMimes,
+        multiShot: caps.multiShot,
       },
     });
     if ('error' in validation) {
@@ -631,6 +634,8 @@ jobsRoute.post(
       // Omni sub-task (edit/extend) — the worker passes it into the
       // synthesized stage.
       task: body.task,
+      // Kling multi-shot storyboard — the compiler emits Kling's grammar.
+      shots: body.shots,
       // Studio tool request — the worker composes the engineered prompt
       // from these parameters, keeping it out of `jobs.inputs`.
       tool: body.tool,

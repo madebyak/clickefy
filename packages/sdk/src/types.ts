@@ -439,6 +439,19 @@ export interface GenModel {
    * the composer offers its Edit/Extend modes only when this is true.
    */
   supportsVideoTasks?: boolean;
+  /**
+   * Kling 3 Omni / O1: reference images are accepted alongside or instead
+   * of frames — the composer offers a Frames ⇄ References switch.
+   */
+  supportsReferenceMode?: boolean;
+  /** Reference-image budget; 0 = frames only. */
+  maxReferences: number;
+  /** Kling 3.0 family multi-shot storyboard limits; absent = unsupported. */
+  multiShot?: { maxShots: number; maxCharsPerShot: number; minShotSeconds: number; toggleable: boolean };
+  /** Image formats the provider accepts, when narrower than our uploads. */
+  acceptedImageMimes?: string[];
+  /** Provider pixel constraints on input images. */
+  imageConstraints?: { minEdge: number; minAspect: number; maxAspect: number };
 }
 
 // ─── Notifications (in-app inbox) ────────────────────────────────────
@@ -512,6 +525,11 @@ export interface CreateGenerationInput {
    * that declare `referenceVideo` / `referenceAudio` budgets (Seedance).
    */
   references?: Array<Extract<JobInputValue, { kind: 'image' | 'video' | 'audio' }>>;
+  /**
+   * Kling 3.0 family multi-shot storyboard: 2–6 shots, each with its own
+   * prompt (≤512 chars) and a duration; durations must sum to `duration`.
+   */
+  shots?: Array<{ seconds: number; text: string }>;
   idempotencyKey?: string;
   /** Web-studio project to file the outputs into (omitted on mobile). */
   projectId?: string;

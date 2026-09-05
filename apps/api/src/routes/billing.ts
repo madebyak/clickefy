@@ -139,10 +139,20 @@ billingRoute.get(
     ]);
 
     const productsByPlan = new Map<string, Record<string, string>>();
+    // List prices per storefront, from the same rows. The web pricing
+    // page used to hardcode these in a constant — the one number a
+    // customer will hold us to, kept in a file nobody re-reads when the
+    // Stripe price changes. Now it reads what `sync-stripe-prices` wrote.
+    const pricesByPlan = new Map<string, Record<string, number>>();
     for (const p of products) {
       const entry = productsByPlan.get(p.planId) ?? {};
       entry[p.platform] = p.storeProductId;
       productsByPlan.set(p.planId, entry);
+      if (p.priceUsd != null) {
+        const prices = pricesByPlan.get(p.planId) ?? {};
+        prices[p.platform] = Number(p.priceUsd);
+        pricesByPlan.set(p.planId, prices);
+      }
     }
 
     const catalogue = rows.map((p) => ({
@@ -156,6 +166,8 @@ billingRoute.get(
       // products have not been created yet — the pricing page must not
       // offer a buy button for something no storefront knows about.
       products: productsByPlan.get(p.id) ?? {},
+      /** USD list price per storefront. Absent = no price recorded yet. */
+      prices: pricesByPlan.get(p.id) ?? {},
     }));
 
     const isSubscribed = !!user && user.entitlement !== 'free' && user.entitlement !== 'admin';

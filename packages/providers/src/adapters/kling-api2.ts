@@ -212,9 +212,15 @@ function buildSettings(request: KlingCompiledRequest): Record<string, unknown> {
 
   // `aspect_ratio` is only meaningful when the frame size is not already
   // implied by a first frame. Kling documents it as REQUIRED on the omni
-  // endpoints when there is neither a first frame nor a reference video.
-  if (request.aspectRatio && !request.startImage) {
-    settings.aspect_ratio = request.aspectRatio;
+  // endpoints when there is neither a first frame nor a reference video —
+  // so an omni request with no ratio picked falls back to the documented
+  // default (16:9) rather than omitting a required field.
+  if (!request.startImage) {
+    if (request.aspectRatio) {
+      settings.aspect_ratio = request.aspectRatio;
+    } else if (request.variant === 'omni') {
+      settings.aspect_ratio = '16:9';
+    }
   }
 
   // Tri-state upstream (`native` / `original` / `off`). Which "on" value
@@ -227,9 +233,13 @@ function buildSettings(request: KlingCompiledRequest): Record<string, unknown> {
 
   // Upstream defaults `multi_shot` to TRUE on the 3.0 family, so a
   // prompt that merely happens to contain semicolons can be parsed as a
-  // multi-shot storyboard and come back as several cuts. Templates ask
-  // for one continuous shot, so state it rather than inherit it.
-  settings.multi_shot = false;
+  // multi-shot storyboard and come back as several cuts. The compiler
+  // decides: `true` when it assembled the prompt from shots, `false` for
+  // a plain prompt, `undefined` on endpoints that have no such field
+  // (sending it there is an unknown key on a strictly validated body).
+  if (typeof request.multiShot === 'boolean') {
+    settings.multi_shot = request.multiShot;
+  }
 
   return settings;
 }

@@ -148,6 +148,20 @@ export const createUserJobSchema = z.object({
   // largest combined budget (Seedance 2.5 = 30 images + 10 videos + 10
   // audio); per-model, per-kind caps are enforced in validation.
   references: z.array(createReferenceSchema).max(50).optional().default([]),
+  // Kling 3.0 family multi-shot storyboard: per-shot duration + prompt.
+  // Kling caps it at 6 shots of ≤512 characters; per-model support and
+  // the "durations sum to the clip length" rule are checked in
+  // validation against the capability registry.
+  shots: z
+    .array(
+      z.object({
+        seconds: z.number().int().min(1).max(60),
+        text: z.string().min(1).max(512),
+      }),
+    )
+    .min(2)
+    .max(6)
+    .optional(),
   // Web-studio project to file the outputs into. Ownership is verified
   // in the handler; omitted (mobile) keeps the flat-history behavior.
   projectId: z.string().uuid().optional(),

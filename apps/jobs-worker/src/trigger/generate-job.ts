@@ -28,7 +28,7 @@
  * error and leave refunds as a TODO in the orchestrator.
  */
 
-import { logger, task } from '@trigger.dev/sdk';
+import { logger, task, wait } from '@trigger.dev/sdk';
 import { and, eq } from 'drizzle-orm';
 
 import {
@@ -78,6 +78,20 @@ interface GenerateJobPayload {
 
 export const generateJob = task({
   id: 'generate-job',
+  // Every crash in the run history is `TASK_PROCESS_OOM_KILLED` on the
+  // platform default (small-1x, 0.5 GB). A video stage holds the provider
+  // download, its R2 copy and any earlier stage's bytes at once, and a 4K
+  // image goes through base64 on the way to Gemini — none of which fits
+  // in half a gigabyte. medium-1x (1 vCPU / 2 GB) is 2.5x the price of
+  // small-1x on a run that costs a fraction of a cent; presets are not
+  // gated by plan. The crons stay on the default — they touch rows, not
+  // media.
+  machine: 'medium-1x',
+  // An OOM is a crash, not a failure: the config-level `retries` never
+  // fire for it (every crashed run in history shows attemptNumber 1).
+  // This is the dedicated hook — the retry re-runs on a bigger machine,
+  // and costs nothing unless a run actually hits the ceiling.
+  retry: { outOfMemory: { machine: 'large-1x' } },
   // Per-run cap. Sized for the worst-case Seedance stage (15 min
   // wait — see `waitForAsync()`) plus headroom for intake, R2 upload,
   // and an earlier image stage chained in front of it (e.g. Gemini →
@@ -170,6 +184,8 @@ export const generateJob = task({
         mode?: string;
         // Omni sub-task (Seedance 2.5 edit/extend).
         task?: 'edit' | 'extend';
+        // Kling multi-shot storyboard.
+        shots?: Array<{ seconds: number; text: string }>;
         // Studio tool request (Camera Angle / Storyboard) — the
         // engineered prompt is composed in buildCreateStage from this.
         tool?: import('@clickfy/providers').CreateToolRequest;
@@ -199,6 +215,7 @@ export const generateJob = task({
           referenceCount: refKeys.length,
           referenceKinds,
           task: opts.task,
+          shots: opts.shots,
           tool: opts.tool,
         });
         stages = [built.stage];
@@ -686,8 +703,17 @@ async function waitForAsync(
       message: `Animating (${elapsed}s elapsed)`,
     });
 
-    const delayMs = elapsed < 30 ? 2_000 : 5_000;
-    await new Promise((r) => setTimeout(r, delayMs));
+    // Short polls in the first half-minute keep fast jobs snappy. Past
+    // that, use the platform's `wait.for` instead of a timer: waits over
+    // five seconds are not billed and the run is checkpointed while it
+    // sleeps, so a ten-minute Seedance render stops costing ten minutes
+    // of compute for a handful of HTTP polls. Local state survives the
+    // checkpoint — the loop resumes exactly here.
+    if (elapsed < 30) {
+      await new Promise((r) => setTimeout(r, 2_000));
+    } else {
+      await wait.for({ seconds: 6 });
+    }
 
     const result = await pollAsyncTask(taskId, provider, variant, providerEnv, api2);
     if (result.status === 'completed') {
@@ -713,7 +739,10 @@ async function waitForAsync(
  */
 async function outputBytes(out: ExecuteOutput): Promise<Uint8Array> {
   if (out.base64) {
-    return Uint8Array.from(Buffer.from(out.base64, 'base64'));
+    // A Buffer IS a Uint8Array view; the previous `Uint8Array.from(...)`
+    // walked it element by element into a second full copy, so a 4K PNG
+    // sat in memory three times (base64 string, Buffer, copy).
+    return Buffer.from(out.base64, 'base64');
   }
   if (out.url) {
     const res = await fetch(out.url);

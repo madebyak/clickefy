@@ -61,7 +61,13 @@ export type JobValidationErrorCode =
   | 'audio_references_too_long'
   | 'audio_reference_needs_visual'
   | 'video_task_not_supported'
-  | 'video_task_needs_video';
+  | 'video_task_needs_video'
+  // ── Kling create-flow codes ──
+  | 'references_not_supported'
+  | 'too_many_references'
+  | 'image_format_not_supported'
+  | 'shots_not_supported'
+  | 'shots_invalid';
 
 export interface JobValidationError {
   code: JobValidationErrorCode;
@@ -337,6 +343,20 @@ export interface CreateValidationContext {
      * frame-drop in `buildCreateStage`.
      */
     framesAndReferencesExclusive?: boolean;
+    /**
+     * Reference-image budget (`refer_image` on Kling Omni / O1, the
+     * reference grid on image models). 0 = the model takes frames only,
+     * so a `references[]` entry must be refused rather than silently
+     * promoted to a start frame by the compiler.
+     */
+    maxReferences: number;
+    /**
+     * Image formats the provider accepts, when narrower than the upload
+     * allow-list (Kling: jpeg/png only). Absent = anything uploaded.
+     */
+    acceptedImageMimes?: readonly string[];
+    /** Kling 3.0 family multi-shot limits; absent = not supported. */
+    multiShot?: { maxShots: number; maxCharsPerShot: number; minShotSeconds: number };
   };
 }
 
@@ -424,6 +444,73 @@ export async function validateCreateSubmission(
       message: `This model accepts at most ${model.maxImagesTotal} image(s).`,
       details: { max: model.maxImagesTotal, actual: imageAttachments.length },
     });
+  }
+  // Reference images on a frames-only model (Kling 3, 2.6, 2.5 Turbo,
+  // 3 Turbo). Refuse here: the compiler would otherwise have nothing to
+  // bind them to, and the old positional path turned "two references"
+  // into "a start and an end frame".
+  const imageRefs = body.references.filter((r) => r.kind === 'image');
+  if (imageRefs.length > 0 && model.maxReferences === 0) {
+    return fail({
+      code: 'references_not_supported',
+      message: 'This model takes a start frame (and optional end frame), not reference images.',
+    });
+  }
+  if (imageRefs.length > model.maxReferences) {
+    return fail({
+      code: 'too_many_references',
+      message: `This model accepts at most ${model.maxReferences} reference image(s).`,
+      details: { max: model.maxReferences, actual: imageRefs.length },
+    });
+  }
+  // Provider image formats (Kling: jpeg/png only). A WebP start frame is
+  // accepted by our uploads and rejected by Kling — after the debit.
+  if (model.acceptedImageMimes) {
+    const bad = imageAttachments.find(
+      (a) => !model.acceptedImageMimes!.includes(a.val.mimeType.toLowerCase()),
+    );
+    if (bad) {
+      return fail({
+        code: 'image_format_not_supported',
+        message: `This model accepts ${model.acceptedImageMimes
+          .map((m) => m.replace('image/', '').toUpperCase())
+          .join(' and ')} images only.`,
+        fieldKey: bad.fieldKey,
+        details: { allowed: [...model.acceptedImageMimes], actual: bad.val.mimeType },
+      });
+    }
+  }
+  // Multi-shot (Kling 3.0 family). Structure is checked by Zod; here the
+  // model must support it and the shots must fill the clip exactly.
+  if (body.shots && body.shots.length > 1) {
+    if (!model.multiShot) {
+      return fail({
+        code: 'shots_not_supported',
+        message: 'This model does not support multi-shot prompts.',
+      });
+    }
+    if (body.shots.length > model.multiShot.maxShots) {
+      return fail({
+        code: 'shots_invalid',
+        message: `This model supports up to ${model.multiShot.maxShots} shots.`,
+        details: { max: model.multiShot.maxShots, actual: body.shots.length },
+      });
+    }
+    const tooLong = body.shots.find((sh) => sh.text.length > model.multiShot!.maxCharsPerShot);
+    if (tooLong) {
+      return fail({
+        code: 'shots_invalid',
+        message: `Each shot prompt can be up to ${model.multiShot.maxCharsPerShot} characters.`,
+      });
+    }
+    const total = body.shots.reduce((acc, sh) => acc + sh.seconds, 0);
+    if (body.duration !== undefined && total !== body.duration) {
+      return fail({
+        code: 'shots_invalid',
+        message: `Shot durations add up to ${total}s but the clip is ${body.duration}s — they must match.`,
+        details: { total, duration: body.duration },
+      });
+    }
   }
 
   // Seedance: frames and omni references cannot share a request. A 422

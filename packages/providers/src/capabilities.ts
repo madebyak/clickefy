@@ -189,6 +189,63 @@ export interface ModelCapabilities {
   soundOnValue?: 'native' | 'original';
 
   /**
+   * Kling only: which endpoint family serves the model.
+   *
+   *   - `omni`     → `POST /omni-video/<id>` (3.0 Omni, O1): typed
+   *                  `contents[]` with frames, `refer_image`, videos and
+   *                  elements.
+   *   - `standard` → `/text-to-video/<id>` and `/image-to-video/<id>`.
+   *
+   * Explicit because the compiler used to infer it from the model NAME
+   * containing "omni", which routed Kling O1 to `/image-to-video/kling-o1`
+   * — an endpoint that does not exist — and dropped its reference images
+   * on the way. Defaults to `standard`.
+   */
+  klingEndpoint?: 'omni' | 'standard';
+
+  /**
+   * Kling 3.0 family: multi-shot prompts.
+   *
+   * Kling documents a prompt grammar — `shot 1, 5, <text>; shot 2, 5,
+   * <text>;` — with 1–6 shots, each ≥1s and ≤512 characters, whose
+   * durations must sum to the clip length, plus a `settings.multi_shot`
+   * switch (default TRUE upstream) on the endpoints that expose it. It is
+   * not billed separately: a six-shot 15s clip costs what a one-shot 15s
+   * clip costs. `toggleable` is whether the endpoint has the settings
+   * field at all — 3.0 and 3.0 Omni do, 3.0 Turbo documents the grammar
+   * but not the switch. Absent = the model does not support multi-shot.
+   */
+  multiShot?: {
+    maxShots: number;
+    maxCharsPerShot: number;
+    minShotSeconds: number;
+    toggleable: boolean;
+  };
+
+  /**
+   * Image formats the provider accepts as frames / references, when
+   * narrower than what our uploads take. Kling documents `.jpg/.jpeg/.png`
+   * only; a WebP or HEIC start frame is debited and then rejected
+   * upstream. Absent = every image type the upload route allows.
+   */
+  acceptedImageMimes?: readonly string[];
+
+  /**
+   * Pixel constraints on input images, where the provider documents
+   * them. Kling: each side ≥300px and an aspect between 1:2.5 and 2.5:1.
+   * Checked client-side at attach time so the refusal is instant.
+   */
+  imageConstraints?: { minEdge: number; minAspect: number; maxAspect: number };
+
+  /**
+   * Kling O1: "When using both the first and last frames, no additional
+   * reference images can be added." The compiler drops the references
+   * (with a warning) rather than the end frame, mirroring
+   * `elementsExcludeEndFrame`.
+   */
+  endFrameExcludesReferences?: boolean;
+
+  /**
    * Kling only: route this model through the API 2.0 client
    * (`adapters/kling-api2.ts`) instead of the legacy one.
    *
@@ -404,6 +461,14 @@ const OPENAI_ASPECT_RATIOS = [
 ] as const;
 
 const KLING_ASPECT_RATIOS = ['16:9', '9:16', '1:1'] as const;
+/** Every Kling endpoint page: "Image format support: .jpg, .jpeg, .png." */
+const KLING_IMAGE_MIMES = ['image/jpeg', 'image/png'] as const;
+/** Every Kling endpoint page: ≥300px each side, aspect within 1:2.5–2.5:1. */
+const KLING_IMAGE_CONSTRAINTS = { minEdge: 300, minAspect: 1 / 2.5, maxAspect: 2.5 } as const;
+/** Kling 3.0 / 3.0 Omni: grammar + `settings.multi_shot`. */
+const KLING_MULTI_SHOT = { maxShots: 6, maxCharsPerShot: 512, minShotSeconds: 1, toggleable: true } as const;
+/** Kling 3.0 Turbo: documents the grammar but exposes no switch. */
+const KLING_MULTI_SHOT_NO_TOGGLE = { ...KLING_MULTI_SHOT, toggleable: false } as const;
 /**
  * Per Kling's own docs, `aspect_ratio` is NOT honored by v2-master
  * and v2.5-turbo — it was added in v2.6 and v3 Omni. For models that
@@ -724,6 +789,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     supportsSound: true,
     nativeAudioRequiresTier: 'pro',
     endFrameRequiresTier: 'pro',
+    acceptedImageMimes: KLING_IMAGE_MIMES,
+    imageConstraints: KLING_IMAGE_CONSTRAINTS,
     // Kling API hard-caps the prompt at 2 500 characters.
     maxPromptChars: 2500,
     notes:
@@ -738,9 +805,11 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     displayName: 'Kling V2.5 Turbo',
     status: 'active',
     kind: 'video',
-    // Locked to the input's aspect — surfaced as a single-value list so
-    // the admin form can render a read-only chip instead of a dropdown.
-    sizing: { mode: 'aspect', values: KLING_FIXED_ASPECT },
+    // `/text-to-video/kling-2.5-turbo` documents `aspect_ratio` 16:9 |
+    // 9:16 | 1:1 (default 16:9). With a first frame the field is omitted
+    // and the output follows the frame — the adapter already does that —
+    // so the previous single-value lock only ever blocked vertical T2V.
+    sizing: { mode: 'aspect', values: KLING_ASPECT_RATIOS },
     outputs: { min: 1, max: 1, default: 1 },
     duration: { values: KLING_DURATIONS, default: 5 },
     // See the kling-v2-6 note — API 2.0 has no negative_prompt field.
@@ -759,8 +828,11 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     },
     // No `settings.audio` on this endpoint — 2.6 is the first with it.
     endFrameRequiresTier: 'pro',
+    acceptedImageMimes: KLING_IMAGE_MIMES,
+    imageConstraints: KLING_IMAGE_CONSTRAINTS,
+    maxPromptChars: 2500,
     notes:
-      'Does NOT support aspect_ratio — output mirrors input image aspect. No native audio. First+last frame forces 1080p.',
+      'aspect_ratio applies to text-to-video only (16:9, 9:16, 1:1); with a first frame the output mirrors the image. No native audio. First+last frame forces 1080p.',
   },
   'kling-v2-master': {
     provider: 'kling',
@@ -791,6 +863,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // API 2.0 puts the model in the URL path, not the body.
     apiModelId: 'kling-3.0-omni',
     klingApi2: true,
+    klingEndpoint: 'omni',
     displayName: 'Kling 3 Omni',
     status: 'preview',
     kind: 'video',
@@ -813,6 +886,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     elementsExcludeEndFrame: true,
     // Native audio via the `sound: on|off` request field.
     supportsSound: true,
+    multiShot: KLING_MULTI_SHOT,
+    acceptedImageMimes: KLING_IMAGE_MIMES,
+    imageConstraints: KLING_IMAGE_CONSTRAINTS,
     // Quality tiers — default `pro` matches what the adapter has always
     // sent, so pre-tier clients keep exactly their old behavior + price.
     modes: {
@@ -820,8 +896,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       default: 'pro',
       labels: { std: '720p', pro: '1080p', '4k': '4K' },
     },
-    // Kling API hard-caps the prompt at 2 500 characters.
-    maxPromptChars: 2500,
+    // 3.0 family: "should not exceed 3072 characters" (2500 recommended).
+    maxPromptChars: 3072,
     notes:
       'Unified text-to-video + image-to-video + multi-reference with optional native audio. Modes std (720p) / pro (1080p) / 4k. Prompt addresses references as @image_1, @image_2, …',
   },
@@ -866,14 +942,17 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // pages. Previously unwired: the field name conflicted across
     // third-party mirrors and was left out pending a first-party source.
     supportsSound: true,
+    multiShot: KLING_MULTI_SHOT,
+    acceptedImageMimes: KLING_IMAGE_MIMES,
+    imageConstraints: KLING_IMAGE_CONSTRAINTS,
     // Quality tiers — default `pro` (1080p) anchors the sell price.
     modes: {
       values: ['std', 'pro', '4k'],
       default: 'pro',
       labels: { std: '720p', pro: '1080p', '4k': '4K' },
     },
-    // Kling API hard-caps the prompt at 2 500 characters.
-    maxPromptChars: 2500,
+    // 3.0 family: "should not exceed 3072 characters" (2500 recommended).
+    maxPromptChars: 3072,
     notes:
       'Kling 3.0. first_frame + optional last_frame; up to 3 library Elements (not yet wired). Native audio via settings.audio. Modes std (720p) / pro (1080p) / 4k. Text-to-video works with no input image.',
   },
@@ -903,11 +982,16 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 1,
     // Explicitly false: `last_frame` is not in this endpoint's enum.
     acceptsStartEndImage: false,
+    multiShot: KLING_MULTI_SHOT_NO_TOGGLE,
+    acceptedImageMimes: KLING_IMAGE_MIMES,
+    imageConstraints: KLING_IMAGE_CONSTRAINTS,
     modes: {
       values: ['std', 'pro'],
       default: 'std',
       labels: { std: '720p', pro: '1080p' },
     },
+    // I2V page caps the prompt at 2500; the T2V page allows 3072. The
+    // stricter bound wins because one field serves both variants.
     maxPromptChars: 2500,
     notes:
       'Kling 3.0 Turbo. First frame only — no end frame, no elements, no native audio, no 4k. Durations 3-15s.',
@@ -923,6 +1007,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     modelKey: 'kling-o1',
     apiModelId: 'kling-o1',
     klingApi2: true,
+    klingEndpoint: 'omni',
     displayName: 'Kling O1',
     status: 'preview',
     kind: 'video',
@@ -944,6 +1029,11 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     maxElements: 7,
     elementsExcludeEndFrame: true,
+    // "When using both the first and last frames, no additional
+    // reference images can be added."
+    endFrameExcludesReferences: true,
+    acceptedImageMimes: KLING_IMAGE_MIMES,
+    imageConstraints: KLING_IMAGE_CONSTRAINTS,
     supportsSound: true,
     // O1 rejects `native`; its enum is `original | off`.
     soundOnValue: 'original',
@@ -1058,8 +1148,6 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   // range"). We default the picker to 5s instead: -1 makes the cost of a
   // generation unknowable before it runs, and we debit up front. -1 stays
   // legal for templates that want it.
-  //
-  // Ceiling here is 720p, NOT 1080p — see the resolution constant.
   'dreamina-seedance-2-5-260628': {
     provider: 'seedance',
     modelKey: 'dreamina-seedance-2-5-260628',

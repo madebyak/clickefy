@@ -1193,7 +1193,18 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           await throwIfRateLimited(finalizeRes, 'upload.finalize');
           if (!finalizeRes.ok) {
             const text = await finalizeRes.text().catch(() => '');
-            throw new Error(`upload.finalize ${finalizeRes.status}: ${text.slice(0, 200)}`);
+            // Same unwrapping as the presign refusal above: the server
+            // writes these for humans ("File contents (audio/mpeg) don't
+            // match…"), and the raw envelope was being swallowed into a
+            // generic "Upload failed" on every client.
+            let message = `upload.finalize ${finalizeRes.status}: ${text.slice(0, 200)}`;
+            try {
+              const parsed = JSON.parse(text) as { error?: { message?: string } };
+              if (parsed.error?.message) message = parsed.error.message;
+            } catch {
+              // Not JSON — keep the diagnostic string.
+            }
+            throw new Error(message);
           }
           const finalized = (await finalizeRes.json()) as { data: UploadedAssetRef };
           return finalized.data;

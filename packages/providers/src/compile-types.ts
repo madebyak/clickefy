@@ -189,8 +189,16 @@ export interface KlingCompiledRequest {
   startImage?: ImagePart;
   /** Optional last frame. */
   endImage?: ImagePart;
-  /** Admin-uploaded references (Omni only). */
+  /** Reference images (`refer_image`, omni endpoints only). */
   referenceImages?: ImagePart[];
+  /**
+   * `settings.multi_shot`, on endpoints that expose it (3.0, 3.0 Omni).
+   * `true` when the prompt was assembled from shots; `false` pins a
+   * single continuous shot so a prompt that merely contains semicolons
+   * is not read as a storyboard. `undefined` = the endpoint has no such
+   * field and the adapter must not send it (2.5 Turbo, 2.6, 3.0 Turbo, O1).
+   */
+  multiShot?: boolean;
 }
 
 /**

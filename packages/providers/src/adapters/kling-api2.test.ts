@@ -144,12 +144,25 @@ describe('executeKlingApi2 — request shape', () => {
     expect(contents).toContainEqual({ type: 'element', element_id: '901', id: 'Zhang' });
   });
 
-  it('always pins multi_shot off', async () => {
-    // Upstream defaults it to TRUE on the 3.0 family, so a prompt that
-    // merely contains semicolons can come back as several cuts.
+  it('sends multi_shot exactly as the compiler decided, and omits it when undecided', async () => {
+    // `false` pins a single shot (upstream defaults to TRUE); `true` is a
+    // storyboard prompt; `undefined` means the endpoint has no such field
+    // and sending it would be an unknown key on a strictly validated body.
     const { calls } = stubFetch(OK_CREATE);
+    await executeKlingApi2(req({ multiShot: false }), ENV);
+    await executeKlingApi2(req({ multiShot: true }), ENV);
     await executeKlingApi2(req({}), ENV);
     expect((calls[0]!.body.settings as Record<string, unknown>).multi_shot).toBe(false);
+    expect((calls[1]!.body.settings as Record<string, unknown>).multi_shot).toBe(true);
+    expect((calls[2]!.body.settings as Record<string, unknown>)).not.toHaveProperty('multi_shot');
+  });
+
+  it('falls back to a 16:9 aspect on omni requests with no first frame', async () => {
+    // Documented as REQUIRED there when neither a first frame nor a
+    // reference video pins the shape.
+    const { calls } = stubFetch(OK_CREATE);
+    await executeKlingApi2(req({ variant: 'omni', model: 'kling-3.0-omni', aspectRatio: undefined }), ENV);
+    expect((calls[0]!.body.settings as Record<string, unknown>).aspect_ratio).toBe('16:9');
   });
 
   it('maps frames and references onto typed content parts', async () => {

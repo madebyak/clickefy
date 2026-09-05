@@ -89,12 +89,41 @@ function bytesToBase64(bytes: Uint8Array): string {
  */
 function imageForSeedance(part: ImagePart): string {
   if (part.url && !UNREACHABLE_HOST_RE.test(part.url)) return part.url;
+  // ModelArk takes `video_url` as a URL or asset id ONLY — base64 is not
+  // an input method for video, and a clip near the 200 MB cap could never
+  // fit the 64 MB request-body limit anyway. Failing here is a clear
+  // configuration error; inlining would be a provider 400 after the debit.
+  if (part.mimeType.startsWith('video/')) {
+    throw new Error(
+      `Seedance adapter needs a reachable URL for video parts (role=${part.role}, index=${part.index}); base64 is not accepted for video. Set WORKER_API_URL to a public host.`,
+    );
+  }
   if (part.bytes) {
-    return `data:${part.mimeType};base64,${bytesToBase64(part.bytes)}`;
+    return `data:${dataUriFormat(part.mimeType)};base64,${bytesToBase64(part.bytes)}`;
   }
   throw new Error(
     `Seedance adapter received an image part with no URL and no bytes (role=${part.role}, index=${part.index}). Hydrate the part before compile time.`,
   );
+}
+
+/**
+ * The data-URI prefix BytePlus documents is `data:<kind>/<format>` with
+ * the FORMAT token (`audio/mp3`, `audio/wav`, `image/jpeg`), not the IANA
+ * media type — `audio/mpeg` is rejected. Images already match; audio needs
+ * the mapping.
+ */
+function dataUriFormat(mimeType: string): string {
+  switch (mimeType.toLowerCase()) {
+    case 'audio/mpeg':
+    case 'audio/mp3':
+      return 'audio/mp3';
+    case 'audio/wav':
+    case 'audio/x-wav':
+    case 'audio/wave':
+      return 'audio/wav';
+    default:
+      return mimeType;
+  }
 }
 
 /**
@@ -193,7 +222,10 @@ function buildBody(request: SeedanceCompiledRequest): Record<string, unknown> {
     body.camera_fixed = request.cameraFixed;
   }
   if (typeof request.seed === 'number') body.seed = request.seed;
-  if (request.negativePrompt) body.negative_prompt = request.negativePrompt;
+  // No `negative_prompt` on this API (ModelArk validates the body
+  // strictly, so an unknown field is a hard 400 after the debit). The
+  // compiler still carries the value for providers that take one; here
+  // it is deliberately not sent.
   return body;
 }
 
@@ -303,6 +335,13 @@ export async function pollSeedance(
     const code = json.error?.code ?? 'unknown';
     const message = json.error?.message ?? 'Seedance task failed with no error detail.';
     throw new Error(`Seedance task failed (${code}): ${message}`);
+  }
+  // Terminal too, per the task-status enum: a cancelled task (console or
+  // API) and an expired one (`execution_expires_after` elapsed while
+  // queued) will never become `succeeded`. Returning `pending` here kept
+  // the worker polling until its own budget ran out.
+  if (status === 'cancelled' || status === 'expired') {
+    throw new Error(`Seedance task ${status} before producing a video (task ${taskId}).`);
   }
   // queued | running | unknown — keep polling.
   return { status: 'pending', taskId, provider: 'seedance' };

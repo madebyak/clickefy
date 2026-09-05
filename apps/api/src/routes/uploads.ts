@@ -286,9 +286,17 @@ function detectMimeFromBytes(bytes: Uint8Array): string | null {
  */
 function mimesAgree(a: string, b: string): boolean {
   if (a === b) return true;
-  const heicSet = new Set(['image/heic', 'image/heif']);
-  if (heicSet.has(a) && heicSet.has(b)) return true;
-  return false;
+  // Each set is one format under several registered/legacy names. The
+  // sniffer returns the canonical member; the client may have declared
+  // any of them (browsers report `audio/mp3` on Chrome, `audio/x-wav`
+  // on Safari, and so on). Rejecting those as a "mismatch" is what made
+  // every web audio upload die at finalize with a red icon.
+  const aliasSets: ReadonlyArray<ReadonlySet<string>> = [
+    new Set(['image/heic', 'image/heif']),
+    new Set(['audio/mpeg', 'audio/mp3']),
+    new Set(['audio/wav', 'audio/x-wav', 'audio/wave']),
+  ];
+  return aliasSets.some((set) => set.has(a) && set.has(b));
 }
 
 /**
@@ -962,13 +970,15 @@ uploadsUserRoute.post(
     // On failure we delete the object — leaving rejected uploads in
     // the bucket would be a slow disk-fill vector.
     const storedMime = head.httpMetadata?.contentType?.toLowerCase() ?? null;
-    const isAllowedImage = storedMime ? USER_ALLOWED_IMAGE_MIME.has(storedMime) : false;
-    const isAllowedVideo = storedMime ? USER_ALLOWED_VIDEO_MIME.has(storedMime) : false;
-    if (!isAllowedImage && !isAllowedVideo) {
+    // One classifier for all three upload paths (see `userUploadClass`).
+    // This check used to spell out image + video only and forgot audio —
+    // presign accepted the clip, the PUT landed, and finalize deleted it
+    // with `invalid_mime`.
+    if (!storedMime || !userUploadClass(storedMime)) {
       await bucket.delete(key).catch((err) => {
         console.warn('[uploads.finalize] cleanup of rejected key failed', { key, err });
       });
-      const allowed = [...USER_ALLOWED_IMAGE_MIME, ...USER_ALLOWED_VIDEO_MIME].join(', ');
+      const allowed = userUploadAllowedList();
       return c.json(
         {
           error: {
@@ -1014,7 +1024,7 @@ uploadsUserRoute.post(
             code: 'mime_mismatch',
             message: detectedMime
               ? `File contents (${detectedMime}) don't match the declared type (${storedMime}). Pick a different file.`
-              : `File contents are not a recognised image or video. Pick a different file.`,
+              : `File contents are not a recognised image, video or audio file. Pick a different file.`,
           },
         },
         400,

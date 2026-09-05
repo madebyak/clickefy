@@ -10,9 +10,10 @@
  * to `href="#"`. A marketing page quoting credit amounts that disagree
  * with what a customer receives is worse than one that quotes none.
  *
- * Prices live here because Stripe is the source of truth for what is
- * charged and we cannot read it without a session; the CREDITS — the part
- * that can silently diverge from the product — come from the database.
+ * Prices come from the same endpoint (`plan_products.price_usd`, written
+ * by `sync-stripe-prices`), so the number on the card is the number Stripe
+ * will charge. A constant in this file was the previous source and it is
+ * exactly the kind of thing that drifts.
  *
  * Cross-platform: someone subscribed through Apple or Google sees their
  * plan marked current and is pointed back to the app, because Stripe
@@ -37,18 +38,6 @@ import {
   type PlanInterval,
   type PlanTier,
 } from "@/lib/use-plans";
-
-/**
- * Display price per tier. Stripe is authoritative for what is actually
- * charged — these drive the marketing page only, and the checkout session
- * always prices from Stripe itself.
- */
-const PRICE_USD: Record<PlanTier, { month: number; year: number }> = {
-  basic: { month: 19, year: 190 },
-  creator: { month: 39, year: 390 },
-  pro: { month: 75, year: 750 },
-  ultimate: { month: 99, year: 990 },
-};
 
 const TIER_ORDER: PlanTier[] = ["basic", "creator", "pro", "ultimate"];
 const HIGHLIGHT: PlanTier = "creator";
@@ -235,7 +224,16 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
 
         {TIER_ORDER.map((tier) => {
           const plan = byTier.get(tier);
-          const price = PRICE_USD[tier][interval === "month" ? "month" : "year"];
+          // Web checkout is Stripe, so the Stripe list price is the one to
+          // show. Whole dollars read as a price tag; cents only when they
+          // exist ($19 not $19.00, but $19.50 stays $19.50).
+          const priceUsd = plan?.prices.stripe;
+          const price =
+            priceUsd == null
+              ? null
+              : Number.isInteger(priceUsd)
+                ? String(priceUsd)
+                : priceUsd.toFixed(2);
           const isCurrent = data?.current?.tier === tier;
           const highlighted = tier === HIGHLIGHT && !isCurrent;
           // A tier with no storefront product cannot be bought yet. Better
@@ -269,7 +267,17 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
               <p className="mt-1 text-sm text-muted-foreground">{t(`${tier}Desc`)}</p>
 
               <p className="mt-5 flex items-baseline gap-1">
-                <span className="text-3xl font-semibold tracking-tight">${price}</span>
+                {price == null ? (
+                  // Catalogue not loaded (or no Stripe price yet): hold the
+                  // line height with a quiet placeholder rather than a
+                  // fake number.
+                  <span
+                    aria-hidden
+                    className="inline-block h-8 w-16 animate-pulse rounded-md bg-surface-3 align-middle"
+                  />
+                ) : (
+                  <span className="text-3xl font-semibold tracking-tight">${price}</span>
+                )}
                 <span className="text-sm text-muted-foreground">
                   {t(interval === "month" ? "perMonth" : "perYear")}
                 </span>

@@ -68,7 +68,15 @@ export type Asset = {
   projectId: string;
   type: AssetType;
   src: string;
+  /** Video-only: still frame the grid shows before the clip decodes. */
   poster?: string;
+  /**
+   * Native pixel size, when the API knows it. The grid uses the ratio to
+   * lay tiles out in justified rows before a single byte has loaded, so
+   * the page never reflows as media arrives.
+   */
+  width?: number;
+  height?: number;
   favorited: boolean;
   /**
    * Placed from "My Assets" rather than generated — so there is no prompt
@@ -89,7 +97,7 @@ export type Asset = {
  * re-use restore, which has references but no asset rows) don't have to
  * invent favorite state they know nothing about.
  */
-export type AttachableAsset = Pick<Asset, "id" | "type" | "src">;
+export type AttachableAsset = Pick<Asset, "id" | "src"> & { type: AssetType | "audio" };
 
 /**
  * DataTransfer MIME type for a canvas tile dragged toward the composer.
@@ -204,7 +212,12 @@ const toAsset = (a: StudioAsset): Asset => ({
   projectId: a.projectId,
   type: a.kind,
   src: rebaseAssetUrl(a.url),
-  poster: a.posterUrl && a.kind === "video" ? undefined : (a.posterUrl ?? undefined),
+  // Only videos have a poster; the previous expression had the branches
+  // the wrong way round, so every video lost its poster and every image
+  // grew one it never uses.
+  poster: a.kind === "video" && a.posterUrl ? rebaseAssetUrl(a.posterUrl) : undefined,
+  width: a.width ?? undefined,
+  height: a.height ?? undefined,
   favorited: a.isFavorited,
   fromLibrary: a.fromLibrary ?? false,
 });
@@ -926,6 +939,25 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         toast.error(t("attachImageUnsupported", { model: policy.modelName ?? "" }));
         return;
       }
+      // Audio from the library — the policy declares `acceptsAudio` /
+      // `maxAudio` and nothing read them, so an audio pick sailed past the
+      // per-kind budget straight into an upload the server would refuse.
+      if (asset.type === "audio" && policy && !policy.acceptsAudio) {
+        toast.error(
+          policy.modelName
+            ? t("attachAudioUnsupported", { model: policy.modelName })
+            : t("attachAudioUnsupportedGeneric"),
+        );
+        return;
+      }
+      if (
+        policy &&
+        asset.type === "audio" &&
+        attachments.filter((a) => a.kind === "audio").length >= policy.maxAudio
+      ) {
+        toast.error(t("attachAudioLimitReached", { max: policy.maxAudio }));
+        return;
+      }
       // Same ceilings the composer enforces on file picks — an asset
       // attached from a tile must not slip past them.
       if (policy && attachments.length >= policy.ceiling) {
@@ -977,11 +1009,15 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           const name = asset.src.split("/").pop() ?? "reference.jpg";
           uploadAttachment(id, blob, name);
         })
-        .catch(() =>
+        .catch(() => {
           setAttachments((prev) =>
             prev.map((a) => (a.id === id ? { ...a, status: "error" } : a)),
-          ),
-        );
+          );
+          // Same rule as the file path: the icon says THAT it failed, the
+          // toast says WHY. This branch used to be silent — a red warning
+          // on the chip with no explanation anywhere.
+          toast.error(t("toastAttachFetchFailed"));
+        });
     },
     [uploadAttachment, attachments, t],
   );

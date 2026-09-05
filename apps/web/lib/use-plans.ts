@@ -31,6 +31,8 @@ export interface CataloguePlan {
   displayOrder: number;
   /** Which storefronts can sell this today. Empty = not purchasable yet. */
   products: Partial<Record<BillingPlatform, string>>;
+  /** USD list price per storefront, from `plan_products.price_usd`. */
+  prices: Partial<Record<BillingPlatform, number>>;
 }
 
 export interface CurrentSubscription {

@@ -8,8 +8,9 @@ const COLUMNS = [
     links: ["linkCreateImage", "linkCreateVideo", "linkStoryboard", "linkCameraAngles"],
   },
   { titleKey: "explore", links: ["linkTemplates", "linkModels", "linkPricing"] },
-  // Blog and Careers wait until those pages exist — no dead links.
-  { titleKey: "company", links: ["linkAbout", "linkContact"] },
+  // No Careers entry: there is no careers page, and a footer link that
+  // goes nowhere is worse than none.
+  { titleKey: "company", links: ["linkAbout", "linkBlog", "linkContact"] },
   {
     titleKey: "legal",
     links: [
@@ -33,6 +34,7 @@ const HREFS: Record<string, string> = {
   linkModels: "/models",
   linkPricing: "/pricing",
   linkAbout: "/about",
+  linkBlog: "/blog",
   linkContact: "/contact",
   linkPrivacy: "/privacy",
   linkTerms: "/terms",

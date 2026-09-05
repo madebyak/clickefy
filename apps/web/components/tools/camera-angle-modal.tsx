@@ -246,8 +246,16 @@ export function CameraAngleModal({
         }}
       />
 
-      {/* orbit stage */}
+      {/* orbit stage.
+          Pinned to LTR on purpose: this is a 3D viewport, not text. Under
+          the page's RTL direction, absolutely positioned children with no
+          `left` take their static position from the RIGHT edge of the
+          containing block, so every ring and the photo (which are centred
+          with translate(-50%)) slid a full diameter off to the side and
+          the stage looked broken. The camera orbit, the axes and the drag
+          direction are physical and must read the same in every locale. */}
       <div
+        dir="ltr"
         className={cn(
           "relative h-[400px] touch-none select-none overflow-hidden bg-surface-1",
           photo && "cursor-grab active:cursor-grabbing",
@@ -284,7 +292,7 @@ export function CameraAngleModal({
                   <div
                     key={`lon-${deg}`}
                     className={cn(
-                      "absolute rounded-full border",
+                      "absolute left-0 top-0 rounded-full border",
                       deg === 0
                         ? "border-accent-turquoise/40"
                         : "border-dashed border-accent-turquoise/15",
@@ -307,7 +315,7 @@ export function CameraAngleModal({
                   return (
                     <div
                       key={`lat-${lat}`}
-                      className={cn("absolute rounded-full border", cls)}
+                      className={cn("absolute left-0 top-0 rounded-full border", cls)}
                       style={{
                         width: r * 2,
                         height: r * 2,
@@ -321,7 +329,7 @@ export function CameraAngleModal({
                     rotates with the world, so what you see IS the shot
                     from the camera's new position */}
                 <div
-                  className="absolute"
+                  className="absolute left-0 top-0"
                   style={{ transform: "translate(-50%, -50%)" }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}

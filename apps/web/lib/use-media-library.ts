@@ -40,8 +40,16 @@ const IMAGE_MIME = new Set([
 ]);
 const VIDEO_MIME = new Set(["video/mp4", "video/quicktime"]);
 
-/** Matches the server's `USER_MAX_BYTES`. Rejected here to save the trip. */
-export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+/**
+ * Per-kind ceilings, mirroring the server's `userUploadClass` (uploads.ts):
+ * images 25MB, videos 200MB — BytePlus takes reference clips up to 200MB
+ * and a normal 30s 1080p clip alone is over the old flat 25MB. Rejected
+ * here to save the round trip; the server enforces the same numbers.
+ */
+export const MAX_FILE_BYTES: Record<"image" | "video", number> = {
+  image: 25 * 1024 * 1024,
+  video: 200 * 1024 * 1024,
+};
 
 export interface UploadingFile {
   id: string;
@@ -170,12 +178,15 @@ export function useMediaLibrary() {
       let projected = usage.usedBytes;
 
       for (const file of files) {
-        if (!kindOf(file.type)) {
+        const kind = kindOf(file.type);
+        if (!kind) {
           toast.error(t("unsupportedType", { name: file.name }));
           continue;
         }
-        if (file.size > MAX_FILE_BYTES) {
-          toast.error(t("fileTooLarge", { name: file.name, max: formatBytes(MAX_FILE_BYTES) }));
+        if (file.size > MAX_FILE_BYTES[kind]) {
+          toast.error(
+            t("fileTooLarge", { name: file.name, max: formatBytes(MAX_FILE_BYTES[kind]) }),
+          );
           continue;
         }
         // Counts the batch cumulatively, so ten files that individually fit

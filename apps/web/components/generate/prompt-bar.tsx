@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "@/i18n/navigation";
@@ -24,6 +24,7 @@ import {
   ImagesSquare,
   PencilSimpleLine,
   FastForward,
+  FilmSlate,
 } from "@phosphor-icons/react";
 import { resolveCreditCost } from "@clickfy/types";
 import type { GenModel } from "@clickfy/sdk";
@@ -57,11 +58,94 @@ const MAX_UPLOAD_MB: Record<"image" | "video" | "audio", number> = {
   audio: 15,
 };
 
+/**
+ * Homepage → studio prompt handoff.
+ *
+ * The hero renders this same composer without a StudioProvider, so
+ * "Generate" there can only navigate. The prompt the visitor already
+ * typed rides along in sessionStorage (one tab, survives the Clerk
+ * sign-in round trip) and the studio composer picks it up on mount —
+ * nobody should have to type their idea twice.
+ */
+const PENDING_PROMPT_KEY = "clickefy:pendingPrompt";
+type PendingPrompt = { prompt: string; kind: "image" | "video" };
+function stashPendingPrompt(p: PendingPrompt) {
+  try {
+    window.sessionStorage.setItem(PENDING_PROMPT_KEY, JSON.stringify(p));
+  } catch {
+    // Private mode / quota — the visitor simply lands on an empty box.
+  }
+}
+function takePendingPrompt(): PendingPrompt | null {
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_PROMPT_KEY);
+    if (!raw) return null;
+    window.sessionStorage.removeItem(PENDING_PROMPT_KEY);
+    const p = JSON.parse(raw) as Partial<PendingPrompt>;
+    return typeof p.prompt === "string" && p.prompt.trim()
+      ? { prompt: p.prompt, kind: p.kind === "video" ? "video" : "image" }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function uploadKindOf(file: File): "image" | "video" | "audio" {
   if (file.type.startsWith("video/")) return "video";
   if (file.type.startsWith("audio/")) return "audio";
   return "image";
 }
+/**
+ * Provider pixel rules, checked at attach time from the decoded image so
+ * a too-small or too-narrow frame is refused instantly instead of after
+ * the upload — and after the debit, which is where the provider would
+ * have refused it. Returns an i18n key, or null when the image passes.
+ */
+function checkImageConstraints(
+  file: File,
+  c: { minEdge: number; minAspect: number; maxAspect: number },
+): Promise<"imageTooSmall" | "imageAspectOutOfRange" | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      if (!w || !h) return resolve(null); // undecodable here — let the server decide
+      if (w < c.minEdge || h < c.minEdge) return resolve("imageTooSmall");
+      const ratio = w / h;
+      if (ratio < c.minAspect || ratio > c.maxAspect) return resolve("imageAspectOutOfRange");
+      resolve(null);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * Multi-shot storyboard (Kling 3.0 family): one prompt and a duration per
+ * shot. The sum of the durations must equal the clip length, so the
+ * composer keeps them balanced on every change rather than asking the
+ * user to do the arithmetic.
+ */
+type Shot = { id: string; text: string; seconds: number };
+
+/** Split `total` seconds across `count` shots as evenly as whole seconds allow. */
+function balancedSeconds(count: number, total: number, min: number): number[] {
+  const base = Math.max(min, Math.floor(total / count));
+  const out = Array.from({ length: count }, () => base);
+  let remainder = total - base * count;
+  for (let i = 0; remainder > 0 && i < count; i++) {
+    out[i]! += 1;
+    remainder -= 1;
+  }
+  return out;
+}
+
 /** Seedance reference-clip formats (models with the matching budget). */
 const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/quicktime"];
 const ACCEPTED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave"];
@@ -520,7 +604,8 @@ export function PromptBar({
   // so these reliably beat the base utilities they conflict with.
   const pillCls = compact ? "h-8 gap-1.5 px-2.5 text-xs" : undefined;
   const router = useRouter();
-  const localeDir = useLocale() === "ar" ? "rtl" : "ltr";
+  const locale = useLocale();
+  const localeDir = locale === "ar" ? "rtl" : "ltr";
   const { isLoaded, isSignedIn } = useAuth();
   const [mode, setMode] = useState<"image" | "video">(kind);
   const isVideo = mode === "video";
@@ -573,6 +658,11 @@ export function PromptBar({
   const [attachMode, setAttachMode] = useState<
     "frames" | "references" | "edit" | "extend"
   >("references");
+  // Multi-shot storyboard. Empty = a single shot (the plain textarea);
+  // two or more = one row per shot in the same slot. `prompt` stays the
+  // single-shot source of truth so nothing else in the file changes.
+  const [shots, setShots] = useState<Shot[]>([]);
+  const shotSeq = useRef(1);
 
   const MAX_OUTPUTS = 4;
   // Video providers (Kling) REQUIRE an explicit aspect ratio for
@@ -620,16 +710,39 @@ export function PromptBar({
           : model.durations[0],
     );
     setTier(model.tiers?.length ? (model.defaultTier ?? model.tiers[0].mode) : null);
-    setSound(false);
-    // Snap to the mode this model actually supports. "seedance" means it
-    // offers both, in which case frames is the safer default: it is what
-    // the previous build always sent, so behaviour is unchanged until the
-    // user deliberately switches.
-    setAttachMode(model.attachments === "references" ? "references" : "frames");
+    // Sound is ON by default wherever the model can produce it. A silent
+    // clip from a model that speaks is the surprise, not the audio — and
+    // the price on the button already reflects the audio rate. Tiers that
+    // cannot carry audio (`soundGated`) keep the toggle inert until the
+    // user picks one that can, at which point it lights up on its own.
+    setSound(!!model.supportsSound);
+    // Snap to the mode this model actually supports. Models offering both
+    // ("seedance") open in References: it is the richer, more common
+    // input — images, clips and audio that steer the result — while
+    // start/end frames are the special case a user switches to on purpose.
+    // Models with a genuine reference input — Seedance's omni references,
+    // Kling 3 Omni / O1's `refer_image` — open in References. Frames-only
+    // models have nothing to choose.
+    setAttachMode(
+      model.attachments === "frames" && !model.supportsReferenceMode ? "frames" : "references",
+    );
+    // A storyboard belongs to the model it was written for; a model
+    // without multi-shot would fold it into one prompt.
+    setShots((prev) => (model.multiShot ? prev : []));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the model identity, not the object
   }, [activeModelKey]);
 
   const [prompt, setPrompt] = useState("");
+
+  // Inside the studio, pick up a prompt the visitor typed on the homepage
+  // (see `stashPendingPrompt`). Runs once per mount; the route already
+  // matches the mode the hero was in, so only the text needs restoring.
+  const hasStudio = !!studio;
+  useEffect(() => {
+    if (!hasStudio) return;
+    const pendingPrompt = takePendingPrompt();
+    if (pendingPrompt) setPrompt(pendingPrompt.prompt);
+  }, [hasStudio]);
 
   // ── Re-use: restore a past generation's setup ────────────────────
   //
@@ -722,7 +835,11 @@ export function PromptBar({
 
   // A model offering "seedance" accepts either kind, so the user picks;
   // the others are fixed and the dropdown is hidden.
-  const modeIsChoosable = model?.attachments === "seedance";
+  const modeIsChoosable =
+    model?.attachments === "seedance" || model?.supportsReferenceMode === true;
+  // Image formats: the provider's own list when it is narrower than ours
+  // (Kling: jpeg/png), otherwise everything the upload route takes.
+  const acceptedImageTypes = model?.acceptedImageMimes ?? ACCEPTED_IMAGE_TYPES;
   const isTask = modeIsChoosable && (attachMode === "edit" || attachMode === "extend");
   const isFrames = model ? (modeIsChoosable ? attachMode === "frames" : model.attachments !== "references") : false;
   // Edit works on exactly one source clip; extend chains up to the
@@ -732,9 +849,15 @@ export function PromptBar({
   // Task modes need their source clip before anything can run.
   const needsTaskVideo =
     isTask && !readyAttachments.some((a) => a.kind === "video");
+  const storyboardActive = shots.length > 1;
+  const effectivePrompt = storyboardActive
+    ? shots.map((sh) => sh.text.trim()).filter(Boolean).join(" ")
+    : prompt;
+  const shotsComplete = !storyboardActive || shots.every((sh) => sh.text.trim().length > 0);
   const canGenerate =
     !!model &&
-    prompt.trim().length > 0 &&
+    effectivePrompt.trim().length > 0 &&
+    shotsComplete &&
     !submitting &&
     !uploadsInFlight &&
     !needsStartFrame &&
@@ -793,12 +916,15 @@ export function PromptBar({
     // canvas-drag path. Refuse only when frames are already attached.
     let framesNow = isFrames;
     let ceilingNow = attachCeiling;
-    if (
-      framesNow &&
-      modeIsChoosable &&
-      maxVideoRefs > 0 &&
-      incoming.some((f) => ACCEPTED_VIDEO_TYPES.includes(f.type))
-    ) {
+    // Audio gets the same courtesy as video: a clip dropped while the
+    // composer sits in Frames mode is a request for References, not a
+    // mistake to refuse with image-only copy.
+    const wantsClip = incoming.some(
+      (f) =>
+        (maxVideoRefs > 0 && ACCEPTED_VIDEO_TYPES.includes(f.type)) ||
+        (maxAudioRefs > 0 && ACCEPTED_AUDIO_TYPES.includes(f.type)),
+    );
+    if (framesNow && modeIsChoosable && wantsClip) {
       if (attachments.length > 0) {
         toast.error(t("framesRefsMixVideo"));
       } else {
@@ -812,11 +938,13 @@ export function PromptBar({
     const audioOk = !framesNow && !isTask && maxAudioRefs > 0;
     const typeOk = incoming.filter(
       (f) =>
-        ACCEPTED_IMAGE_TYPES.includes(f.type) ||
+        acceptedImageTypes.includes(f.type) ||
         (videoOk && ACCEPTED_VIDEO_TYPES.includes(f.type)) ||
         (audioOk && ACCEPTED_AUDIO_TYPES.includes(f.type)),
     );
-    if (typeOk.length < incoming.length) toast.error(t("unsupportedFileType"));
+    if (typeOk.length < incoming.length) {
+      toast.error(t("unsupportedFileType", { kinds: acceptedKindsLabel }));
+    }
     // Size pre-check per kind — the server enforces the same ceilings,
     // but a refusal before the upload starts beats one after it.
     const usable = typeOk.filter((f) => {
@@ -841,28 +969,43 @@ export function PromptBar({
       maxAudioRefs - attachments.filter((a) => a.kind === "audio").length,
     );
     let dropped = false;
-    for (const f of usable) {
-      if (room <= 0) {
-        dropped = true;
-        break;
-      }
-      if (ACCEPTED_VIDEO_TYPES.includes(f.type)) {
-        if (videoRoom <= 0) {
-          toast.error(t("maxVideoRefs", { max: effMaxVideos }));
-          continue;
+    const constraints = model.imageConstraints;
+    // Sequential so the room counters stay exact; the per-image decode
+    // for the pixel check is the only await and it is milliseconds.
+    void (async () => {
+      for (const f of usable) {
+        if (room <= 0) {
+          dropped = true;
+          break;
         }
-        videoRoom -= 1;
-      } else if (ACCEPTED_AUDIO_TYPES.includes(f.type)) {
-        if (audioRoom <= 0) {
-          toast.error(t("maxAudioRefs", { max: maxAudioRefs }));
-          continue;
+        if (ACCEPTED_VIDEO_TYPES.includes(f.type)) {
+          if (videoRoom <= 0) {
+            toast.error(t("maxVideoRefs", { max: effMaxVideos }));
+            continue;
+          }
+          videoRoom -= 1;
+        } else if (ACCEPTED_AUDIO_TYPES.includes(f.type)) {
+          if (audioRoom <= 0) {
+            toast.error(t("maxAudioRefs", { max: maxAudioRefs }));
+            continue;
+          }
+          audioRoom -= 1;
+        } else if (constraints) {
+          const problem = await checkImageConstraints(f, constraints);
+          if (problem) {
+            toast.error(t(problem, { min: constraints.minEdge, name: f.name }));
+            continue;
+          }
         }
-        audioRoom -= 1;
+        room -= 1;
+        studio.attachFile(f);
       }
-      room -= 1;
-      studio.attachFile(f);
-    }
-    if (dropped) toast.error(t("maxAttachments", { max: ceilingNow }));
+      if (dropped) {
+        toast.error(
+          t(acceptsMixedFiles ? "maxAttachmentsFiles" : "maxAttachments", { max: ceilingNow }),
+        );
+      }
+    })();
   };
 
   const onPickFiles = (files: FileList | null) => {
@@ -903,6 +1046,73 @@ export function PromptBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- snap once per collapse-state change
   }, [bareFrameCollapse, duration]);
 
+  // ── Multi-shot helpers ────────────────────────────────────────────
+  const multiShotCaps = model?.multiShot;
+  // Each shot is at least `minShotSeconds`, so the clip length caps the
+  // count: a 5s clip cannot hold six 1s shots plus anything meaningful.
+  const maxShotsNow = multiShotCaps
+    ? Math.max(
+        1,
+        Math.min(
+          multiShotCaps.maxShots,
+          duration != null ? Math.floor(duration / multiShotCaps.minShotSeconds) : multiShotCaps.maxShots,
+        ),
+      )
+    : 1;
+  const setShotCount = (n: number) => {
+    if (!multiShotCaps) return;
+    if (n <= 1) {
+      // Leaving storyboard mode: fold the shot texts back into the prompt
+      // so nothing typed is lost.
+      if (shots.length > 1) {
+        setPrompt(shots.map((sh) => sh.text.trim()).filter(Boolean).join(" "));
+      }
+      setShots([]);
+      return;
+    }
+    const total = duration ?? n * multiShotCaps.minShotSeconds;
+    const seconds = balancedSeconds(n, total, multiShotCaps.minShotSeconds);
+    setShots((prev) => {
+      // Entering from a single prompt: the text seeds shot 1.
+      const base = prev.length > 1 ? prev : [{ id: `shot-${shotSeq.current++}`, text: prompt, seconds: 0 }];
+      const next = Array.from({ length: n }, (_, i) =>
+        base[i] ?? { id: `shot-${shotSeq.current++}`, text: "", seconds: 0 },
+      );
+      return next.map((sh, i) => ({ ...sh, seconds: seconds[i]! }));
+    });
+  };
+  const updateShotText = (id: string, text: string) =>
+    setShots((prev) => prev.map((sh) => (sh.id === id ? { ...sh, text } : sh)));
+  // Nudging one shot's length takes the difference from the last OTHER
+  // shot, so the total always equals the clip length.
+  const setShotSeconds = (id: string, next: number) => {
+    if (!multiShotCaps) return;
+    setShots((prev) => {
+      const min = multiShotCaps.minShotSeconds;
+      const idx = prev.findIndex((sh) => sh.id === id);
+      if (idx < 0) return prev;
+      const donorIdx = idx === prev.length - 1 ? idx - 1 : prev.length - 1;
+      if (donorIdx < 0) return prev;
+      const delta = next - prev[idx]!.seconds;
+      const donor = prev[donorIdx]!.seconds - delta;
+      if (next < min || donor < min) return prev;
+      return prev.map((sh, i) =>
+        i === idx ? { ...sh, seconds: next } : i === donorIdx ? { ...sh, seconds: donor } : sh,
+      );
+    });
+  };
+  // The clip length changed under a storyboard: rebalance so the shots
+  // still fill it exactly (and drop shots the new length cannot hold).
+  useEffect(() => {
+    if (shots.length <= 1 || !multiShotCaps || duration == null) return;
+    const count = Math.min(shots.length, maxShotsNow);
+    const total = shots.reduce((acc, sh) => acc + sh.seconds, 0);
+    if (count === shots.length && total === duration) return;
+    const seconds = balancedSeconds(count, duration, multiShotCaps.minShotSeconds);
+    setShots((prev) => prev.slice(0, count).map((sh, i) => ({ ...sh, seconds: seconds[i]! })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rebalance on length/duration changes only
+  }, [duration, maxShotsNow]);
+
   // Register the selected model's attachment rules with the studio, so
   // every attach entry point the composer does not own (tile buttons,
   // canvas drag-and-drop) validates against the SAME policy and refuses
@@ -941,6 +1151,21 @@ export function PromptBar({
     return () => setAttachmentPolicy(null);
   }, [setAttachmentPolicy, modelName, hasModel, attachCeiling, isFrames, isTask, effMaxVideos, maxVideoRefs, maxAudioRefs, modeIsChoosable, attachments, t]);
   const canAttach = !!model && !!studio && attachments.length < attachCeiling;
+  // What the current model + mode will take, for the button label, the
+  // drop hint and the refusal copy — "Upload image" on a model that also
+  // takes clips and audio teaches people the feature does not exist.
+  const acceptsVideoFiles = !isFrames && effMaxVideos > 0;
+  const acceptsAudioFiles = !isFrames && !isTask && maxAudioRefs > 0;
+  const acceptsMixedFiles = acceptsVideoFiles || acceptsAudioFiles;
+  const acceptedKindsLabel = [
+    t("acceptedImagesList", {
+      formats: acceptedImageTypes
+        .map((m) => m.replace("image/", "").replace("jpeg", "JPEG").toUpperCase())
+        .join(t("listSeparator")),
+    }),
+    ...(acceptsVideoFiles ? [t("acceptedVideos")] : []),
+    ...(acceptsAudioFiles ? [t("acceptedAudio")] : []),
+  ].join(t("listSeparator"));
   // Only react to actual file drags — ignore text/link drags.
   const isFileDrag = (e: React.DragEvent) => e.dataTransfer?.types?.includes("Files");
   // Canvas tiles dragged from the masonry carry their asset as a typed
@@ -992,13 +1217,23 @@ export function PromptBar({
 
   const onGenerate = async () => {
     if (!isLoaded) return;
+    const studioPath = isVideo ? "/create-video" : "/create";
     if (!isSignedIn) {
-      router.push("/sign-in");
+      // Keep the typed prompt for after sign-in, and send Clerk back to
+      // the studio surface for THIS mode (its fallback is the image
+      // composer, which would drop a video prompt into the wrong box).
+      // `redirect_url` needs the locale prefix — Clerk redirects by raw
+      // path, it knows nothing about next-intl.
+      if (prompt.trim()) stashPendingPrompt({ prompt, kind: mode });
+      const prefix = locale === "en" ? "" : `/${locale}`;
+      router.push(`/sign-in?redirect_url=${encodeURIComponent(`${prefix}${studioPath}`)}`);
       return;
     }
     if (!studio) {
-      // Marketing hero: hand off to the studio surface for this mode.
-      router.push(isVideo ? "/create-video" : "/create");
+      // Marketing hero: hand off to the studio surface for this mode,
+      // prompt included.
+      if (prompt.trim()) stashPendingPrompt({ prompt, kind: mode });
+      router.push(studioPath);
       return;
     }
     if (!model || !canGenerate) return;
@@ -1017,7 +1252,10 @@ export function PromptBar({
         count,
         input: {
           modelKey: model.modelKey,
-          prompt: prompt.trim().slice(0, model.maxPromptChars),
+          prompt: effectivePrompt.trim().slice(0, model.maxPromptChars),
+          shots: storyboardActive
+            ? shots.map((sh) => ({ seconds: sh.seconds, text: sh.text.trim() }))
+            : undefined,
           // Task requests pin the ratio to the source clip (adaptive on
           // the wire); edit output length follows the clip too.
           aspectRatio: isTask || aspect === "Auto" ? undefined : aspect,
@@ -1067,7 +1305,7 @@ export function PromptBar({
         <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-2xl border-2 border-dashed border-primary bg-background/80 backdrop-blur-[1px]">
           <p className="flex items-center gap-2 text-sm font-medium text-primary">
             <ImageSquare weight="fill" className="size-4" />
-            {t("dropToAttach")}
+            {t(acceptsMixedFiles ? "dropFilesToAttach" : "dropToAttach")}
           </p>
         </div>
       )}
@@ -1167,7 +1405,7 @@ export function PromptBar({
               ref={fileInput}
               type="file"
               accept={[
-                ...ACCEPTED_IMAGE_TYPES,
+                ...acceptedImageTypes,
                 ...(!isFrames && maxVideoRefs > 0 ? ACCEPTED_VIDEO_TYPES : []),
                 ...(!isFrames && maxAudioRefs > 0 ? ACCEPTED_AUDIO_TYPES : []),
               ].join(",")}
@@ -1214,7 +1452,13 @@ export function PromptBar({
                       }}
                       className="block w-full px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2"
                     >
-                      {t("uploadImage")}
+                      {t(
+                        acceptsAudioFiles
+                          ? "uploadFiles"
+                          : acceptsVideoFiles
+                            ? "uploadImageOrVideo"
+                            : "uploadImage",
+                      )}
                     </button>
                     <button
                       type="button"
@@ -1261,7 +1505,11 @@ export function PromptBar({
                 // the kind of thing people only notice after generating.
                 const room = Math.max(0, attachCeiling - attachments.length);
                 if (room === 0) {
-                  toast.error(t("maxAttachments", { max: attachCeiling }));
+                  toast.error(
+                    t(acceptsMixedFiles ? "maxAttachmentsFiles" : "maxAttachments", {
+                      max: attachCeiling,
+                    }),
+                  );
                   return;
                 }
                 usable.slice(0, room).forEach((a) =>
@@ -1273,9 +1521,70 @@ export function PromptBar({
                 setAssetsOpen(false);
               }}
             />
+            {storyboardActive && multiShotCaps ? (
+              /* Storyboard: one row per shot, in the textarea's slot. Same
+                 container and rhythm — it reads as the composer growing,
+                 not as a new surface. Rows stack at every width. */
+              <div className={cn("flex min-w-0 flex-1 flex-col gap-1.5", compact ? "mt-1" : "mt-1.5")}>
+                {shots.map((sh, i) => (
+                  <div key={sh.id} className="flex items-start gap-2">
+                    <span className="mt-1 grid size-5 shrink-0 place-items-center rounded bg-surface-2 text-[11px] tabular-nums text-muted-foreground">
+                      {i + 1}
+                    </span>
+                    <textarea
+                      value={sh.text}
+                      onChange={(e) => updateShotText(sh.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+                        e.preventDefault();
+                        void onGenerate();
+                      }}
+                      onFocus={() => setFocused(true)}
+                      onBlur={() => setFocused(false)}
+                      maxLength={multiShotCaps.maxCharsPerShot}
+                      placeholder={t("shotPlaceholder", { n: i + 1 })}
+                      dir={sh.text.length > 0 ? "auto" : localeDir}
+                      rows={1}
+                      className="max-h-24 min-w-0 flex-1 resize-none bg-transparent text-start text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
+                    />
+                    {/* Seconds stepper — takes the difference from the last
+                        other shot, so the total always fills the clip. */}
+                    <div className="inline-flex h-7 shrink-0 items-center rounded-md bg-surface-3 px-0.5 text-xs tabular-nums">
+                      <button
+                        type="button"
+                        aria-label={t("shotShorter")}
+                        onClick={() => setShotSeconds(sh.id, sh.seconds - 1)}
+                        disabled={sh.seconds <= multiShotCaps.minShotSeconds}
+                        className="grid size-6 place-items-center rounded text-foreground transition-colors hover:bg-white/5 disabled:opacity-30"
+                      >
+                        <Minus className="size-3" />
+                      </button>
+                      <span className="min-w-7 text-center text-muted-foreground">{sh.seconds}s</span>
+                      <button
+                        type="button"
+                        aria-label={t("shotLonger")}
+                        onClick={() => setShotSeconds(sh.id, sh.seconds + 1)}
+                        className="grid size-6 place-items-center rounded text-foreground transition-colors hover:bg-white/5 disabled:opacity-30"
+                      >
+                        <Plus className="size-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              // Enter generates, Shift+Enter breaks the line — the chat
+              // convention every prompt box has taught people. IME users
+              // press Enter to commit a composition, so that one is left
+              // alone.
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                void onGenerate();
+              }}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               maxLength={model?.maxPromptChars}
@@ -1287,6 +1596,7 @@ export function PromptBar({
               rows={1}
               className={cn("w-full resize-none bg-transparent text-start text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground", compact ? "mt-1 max-h-28" : "mt-1.5 max-h-40")}
             />
+            )}
           </div>
 
           {/* controls row */}
@@ -1392,21 +1702,28 @@ export function PromptBar({
               {({ close }) => (
                 <>
                   <MenuLabel>{t("model")}</MenuLabel>
-                  {models.map((m) => (
-                    <MenuItem
-                      key={m.modelKey}
-                      selected={m.modelKey === model?.modelKey}
-                      onClick={() => {
-                        setModelKey(m.modelKey);
-                        close();
-                      }}
-                    >
-                      <ProviderBadge provider={m.provider} modelKey={m.modelKey} />
-                      <span className="min-w-0 flex-1 truncate text-start">{m.name}</span>
-                      <span className="ms-2 text-xs tabular-nums text-muted-foreground">
-                        {m.costCredits}
-                      </span>
-                    </MenuItem>
+                  {models.map((m, i) => (
+                    <Fragment key={m.modelKey}>
+                      {/* The roster is grouped by company; a hairline
+                          between groups is all the structure it needs —
+                          the logos already say who is who. */}
+                      {i > 0 && models[i - 1]!.provider !== m.provider && (
+                        <div role="separator" className="mx-2 my-1 h-px bg-border" />
+                      )}
+                      <MenuItem
+                        selected={m.modelKey === model?.modelKey}
+                        onClick={() => {
+                          setModelKey(m.modelKey);
+                          close();
+                        }}
+                      >
+                        <ProviderBadge provider={m.provider} modelKey={m.modelKey} />
+                        <span className="min-w-0 flex-1 truncate text-start">{m.name}</span>
+                        <span className="ms-2 text-xs tabular-nums text-muted-foreground">
+                          {m.costCredits}
+                        </span>
+                      </MenuItem>
+                    </Fragment>
                   ))}
                   {models.length === 0 && (
                     <p className="px-2 py-2 text-sm text-muted-foreground">
@@ -1524,6 +1841,47 @@ export function PromptBar({
                         {d}s
                       </MenuItem>
                     ))}
+                  </>
+                )}
+              </Dropdown>
+            )}
+
+            {/* multi-shot (Kling 3.0 family). Duration-coupled, so it sits
+                next to the duration picker. Not billed separately — a
+                six-shot clip costs what a one-shot clip of the same
+                length costs, which the menu says out loud. */}
+            {isVideo && multiShotCaps && !isTask && (
+              <Dropdown
+                panelClassName="min-w-52"
+                trigger={({ toggle }) => (
+                  <Pill onClick={toggle} active={storyboardActive} className={pillCls}>
+                    <FilmSlate
+                      weight={storyboardActive ? "fill" : "regular"}
+                      className={cn("size-4", storyboardActive ? "text-accent-turquoise" : "text-muted-foreground")}
+                    />
+                    {storyboardActive ? t("shotsN", { n: shots.length }) : t("singleShot")}
+                    <CaretDown className="size-3.5 text-muted-foreground" />
+                  </Pill>
+                )}
+              >
+                {({ close }) => (
+                  <>
+                    <MenuLabel>{t("shots")}</MenuLabel>
+                    {Array.from({ length: maxShotsNow }, (_, i) => i + 1).map((n) => (
+                      <MenuItem
+                        key={n}
+                        selected={n === Math.max(1, shots.length)}
+                        onClick={() => {
+                          setShotCount(n);
+                          close();
+                        }}
+                      >
+                        {n === 1 ? t("singleShot") : t("shotsN", { n })}
+                      </MenuItem>
+                    ))}
+                    <p className="px-2 pb-1 pt-1.5 text-[11px] text-muted-foreground">
+                      {t("shotsSameCost")}
+                    </p>
                   </>
                 )}
               </Dropdown>

@@ -1,10 +1,11 @@
 import type { MetadataRoute } from "next";
 import { config } from "@/lib/config";
 import { routing } from "@/i18n/routing";
+import { BLOG_POSTS } from "@/lib/blog/posts";
 
 /**
- * Sitemap for the PUBLIC surface only — marketing home and the template
- * gallery. Studio routes (create, projects, settings) are auth-gated and
+ * Sitemap for the PUBLIC surface only — marketing pages, the template
+ * gallery and the blog. Studio routes (create, projects, settings) are auth-gated and
  * disallowed in robots.ts, so they're intentionally omitted. Each path is
  * emitted per-locale with hreflang alternates (English unprefixed,
  * Arabic under /ar, matching `localePrefix: "as-needed"`).
@@ -12,6 +13,12 @@ import { routing } from "@/i18n/routing";
 const PUBLIC_PATHS = [
   "",
   "/templates",
+  "/pricing",
+  "/models",
+  "/about",
+  "/contact",
+  "/blog",
+  ...BLOG_POSTS.map((p) => `/blog/${p.slug}` as const),
   "/privacy",
   "/terms",
   "/account-deletion",

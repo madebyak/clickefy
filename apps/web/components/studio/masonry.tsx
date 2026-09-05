@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Info,
@@ -30,52 +30,126 @@ import {
 import { useToolsMaybe } from "@/components/tools/tools-context";
 
 /**
- * Column counts per density step at [base, md, 2xl] viewports.
+ * Justified rows — the layout every serious media library converges on
+ * (Google Photos, Flickr, Higgsfield): tiles in a row share ONE height
+ * and are sized by their own aspect ratio so every row fills the width
+ * edge to edge. Order reads left-to-right, row by row, exactly as the
+ * newest-first list is sorted; nothing jumps columns as media loads
+ * because the ratio comes from the asset record, not from the decoded
+ * pixels.
  *
- * The grid used to be CSS `columns-*`, which reads TOP-TO-BOTTOM down
- * each column and rebalances as media loads — so a newest-first asset
- * list rendered in what looked like random order, and tiles visibly
- * jumped between columns mid-load. Items are now distributed in code,
- * round-robin by index, so recency reads LEFT-TO-RIGHT row by row and
- * an item never changes column once placed.
+ * The previous grid was flex columns filled round-robin, which kept the
+ * order but left ragged bottoms, uneven gutters and a lot of dead space
+ * between tiles of different shapes.
  *
- * Below `md` every step is two columns: a phone has no room for a third,
- * and the toolbar hides the slider there for the same reason. The step
- * scales with the viewport because the control sets relative density,
- * not an absolute tile size.
+ * Density steps map to a TARGET row height expressed as a fraction of the
+ * container width — so "how many tiles fit across" scales with the
+ * viewport instead of being a fixed pixel size. Rows land within a few
+ * percent of the target; the last row is never stretched.
  */
-const COLUMN_COUNTS: Record<GridSize, readonly [number, number, number]> = {
-  0: [2, 2, 3],
-  1: [2, 3, 4],
-  2: [2, 4, 6],
-  3: [3, 6, 8],
+const ROW_HEIGHT_FRACTION: Record<GridSize, number> = {
+  0: 0.42,
+  1: 0.3,
+  2: 0.22,
+  3: 0.16,
 };
 
-/** 0=base, 1=md (768px), 2=2xl (1536px) — mirrors the old breakpoints. */
-function useBreakpointStep(): 0 | 1 | 2 {
-  const [step, setStep] = useState<0 | 1 | 2>(0);
-  useEffect(() => {
-    const md = window.matchMedia("(min-width: 768px)");
-    const xxl = window.matchMedia("(min-width: 1536px)");
-    const update = () => setStep(xxl.matches ? 2 : md.matches ? 1 : 0);
-    update();
-    md.addEventListener("change", update);
-    xxl.addEventListener("change", update);
-    return () => {
-      md.removeEventListener("change", update);
-      xxl.removeEventListener("change", update);
-    };
-  }, []);
-  return step;
+/** Gutter in px per density — tight, the way a photo wall reads. */
+const GAP_PX: Record<GridSize, number> = {
+  0: 6,
+  1: 5,
+  2: 4,
+  3: 3,
+};
+
+/**
+ * Phones get taller rows than the fraction alone would give: a 0.16
+ * fraction on a 380px screen is a 60px strip. Floor the row height so a
+ * tile is always something you can see and hit.
+ */
+const MIN_ROW_HEIGHT_PX = 120;
+
+/**
+ * Keep pathological ratios from hijacking a row: a 21:9 banner next to a
+ * 9:16 story still shares the row, but an extreme panorama would
+ * otherwise squeeze its neighbours to slivers.
+ */
+const MIN_ASPECT = 0.45;
+const MAX_ASPECT = 2.4;
+
+function aspectOf(a: Asset): number {
+  const ratio =
+    a.width && a.height && a.height > 0
+      ? a.width / a.height
+      : a.type === "video"
+        ? 16 / 9
+        : 1;
+  return Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, ratio));
 }
 
-/** Gutters tighten as tiles shrink, so dense grids don't read as gappy. */
-const GRID_GAP: Record<GridSize, string> = {
-  0: "gap-4",
-  1: "gap-3",
-  2: "gap-2.5",
-  3: "gap-2",
-};
+type LaidOutTile = { asset: Asset; width: number; height: number };
+type LaidOutRow = { key: string; tiles: LaidOutTile[]; height: number };
+
+/**
+ * Greedy row filler: add tiles until the row, scaled to fill the width,
+ * would be no taller than the target, then close it. The classic
+ * approach — no look-ahead, so very cheap, and the one-row-at-a-time
+ * error is bounded by a single tile's aspect.
+ */
+function layoutRows(
+  assets: Asset[],
+  containerWidth: number,
+  targetHeight: number,
+  gap: number,
+): LaidOutRow[] {
+  const rows: LaidOutRow[] = [];
+  let current: Asset[] = [];
+  let aspectSum = 0;
+
+  const close = (items: Asset[], height: number) => {
+    rows.push({
+      key: items.map((a) => a.id).join("|"),
+      height,
+      tiles: items.map((a) => ({ asset: a, width: aspectOf(a) * height, height })),
+    });
+  };
+
+  for (const asset of assets) {
+    current.push(asset);
+    aspectSum += aspectOf(asset);
+    const rowWidth = containerWidth - gap * (current.length - 1);
+    const fitted = rowWidth / aspectSum;
+    if (fitted <= targetHeight) {
+      close(current, fitted);
+      current = [];
+      aspectSum = 0;
+    }
+  }
+  if (current.length > 0) {
+    // Last row: size at the target height and leave the remainder empty
+    // rather than blowing two tiles up to fill the width.
+    const rowWidth = containerWidth - gap * (current.length - 1);
+    close(current, Math.min(targetHeight, rowWidth / aspectSum));
+  }
+  return rows;
+}
+
+/** Live width of the grid's container, so rows fit the actual viewport. */
+function useContainerWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry) setWidth(Math.round(entry.contentRect.width));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
+}
 
 function OverlayButton({
   label,
@@ -179,19 +253,18 @@ export function Masonry({
     if (lightbox && !liveLightbox) setLightbox(null);
   }, [lightbox, liveLightbox]);
 
-  const breakpointStep = useBreakpointStep();
-  const columnCount = COLUMN_COUNTS[gridSize][breakpointStep];
-  // Round-robin, NOT shortest-column: strict index order is the point —
-  // the caller sorts newest-first and the grid must read that way.
-  const columns = useMemo(() => {
-    const cols: Asset[][] = Array.from({ length: columnCount }, () => []);
-    assets.forEach((a, i) => cols[i % columnCount]!.push(a));
-    return cols;
-  }, [assets, columnCount]);
+  const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>();
+  const gap = GAP_PX[gridSize];
+  const rows = useMemo(() => {
+    if (containerWidth <= 0) return [];
+    const target = Math.max(MIN_ROW_HEIGHT_PX, containerWidth * ROW_HEIGHT_FRACTION[gridSize]);
+    return layoutRows(assets, containerWidth, target, gap);
+  }, [assets, containerWidth, gridSize, gap]);
 
-  const renderTile = (a: Asset) => (
+  const renderTile = ({ asset: a, width, height }: LaidOutTile) => (
           <div
             key={a.id}
+            style={{ width, height }}
             draggable
             onDragStart={(e) => {
               // Toward the composer — see ASSET_DRAG_TYPE. The composer
@@ -204,7 +277,7 @@ export function Masonry({
               e.dataTransfer.effectAllowed = "copy";
             }}
             className={cn(
-              "group relative overflow-hidden rounded-xl bg-surface-2 transition-all duration-200",
+              "group relative shrink-0 overflow-hidden rounded-lg bg-surface-2 transition-all duration-200",
               selectedIds?.includes(a.id) && "ring-2 ring-primary ring-offset-2 ring-offset-background",
               exitingIds?.includes(a.id) && "pointer-events-none scale-95 opacity-0",
             )}
@@ -212,12 +285,12 @@ export function Masonry({
             <button
               type="button"
               onClick={() => openLightbox(a)}
-              className="block w-full cursor-pointer outline-none"
+              className="block size-full cursor-pointer outline-none"
               aria-label={t("expand")}
             >
               {a.type === "video" ? (
                 <video
-                  className="w-full"
+                  className="size-full object-cover"
                   autoPlay
                   loop
                   muted
@@ -229,7 +302,7 @@ export function Masonry({
                 </video>
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={a.src} alt="" loading="lazy" className="w-full" />
+                <img src={a.src} alt="" loading="lazy" className="size-full object-cover" />
               )}
             </button>
 
@@ -485,13 +558,13 @@ export function Masonry({
 
   return (
     <>
-      {/* Explicit flex columns (not CSS `columns-*`): order-preserving —
-          see COLUMN_COUNTS. items-start keeps short columns from
-          stretching their last tile. */}
-      <div className={cn("flex items-start", GRID_GAP[gridSize])}>
-        {columns.map((col, i) => (
-          <div key={i} className={cn("flex min-w-0 flex-1 flex-col", GRID_GAP[gridSize])}>
-            {col.map(renderTile)}
+      {/* Justified rows — see ROW_HEIGHT_FRACTION. Each row is a flex
+          line of explicitly sized tiles; the container's live width is
+          what the rows were solved against, so they fit exactly. */}
+      <div ref={containerRef} className="flex w-full flex-col" style={{ gap }}>
+        {rows.map((row) => (
+          <div key={row.key} className="flex" style={{ gap, height: row.height }}>
+            {row.tiles.map(renderTile)}
           </div>
         ))}
       </div>

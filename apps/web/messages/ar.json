@@ -288,7 +288,9 @@
     "shotPlaceholder": "اللقطة {n} — ماذا يحدث، وكيف تُصوَّر",
     "shotShorter": "لقطة أقصر",
     "shotLonger": "لقطة أطول",
-    "shotsSameCost": "تعدد اللقطات يكلّف نفس تكلفة لقطة واحدة بالمدة نفسها."
+    "shotsSameCost": "تعدد اللقطات يكلّف نفس تكلفة لقطة واحدة بالمدة نفسها.",
+    "modeReferencesAll": "المراجع",
+    "modeReferencesAllHint": "صور ومقاطع فيديو وصوت توجّه النتيجة"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",

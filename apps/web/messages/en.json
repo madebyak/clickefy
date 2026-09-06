@@ -288,7 +288,9 @@
     "shotPlaceholder": "Shot {n} — what happens, and how it's framed",
     "shotShorter": "Shorter shot",
     "shotLonger": "Longer shot",
-    "shotsSameCost": "Multi-shot costs the same as a single shot of the same length."
+    "shotsSameCost": "Multi-shot costs the same as a single shot of the same length.",
+    "modeReferencesAll": "References",
+    "modeReferencesAllHint": "Images, video clips and audio that guide the result"
   },
   "account": {
     "availableCredits": "Available credits",

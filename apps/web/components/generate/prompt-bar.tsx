@@ -837,6 +837,12 @@ export function PromptBar({
   // the others are fixed and the dropdown is hidden.
   const modeIsChoosable =
     model?.attachments === "seedance" || model?.supportsReferenceMode === true;
+  // "Reference images" is a lie on a model that also takes clips and
+  // audio (Seedance) — the mode is "References" there, and the hint
+  // names every kind it takes.
+  const refsTakeClips = (model?.referenceVideo?.max ?? 0) > 0 || (model?.referenceAudio?.max ?? 0) > 0;
+  const modeReferencesLabel = refsTakeClips ? "modeReferencesAll" : "modeReferences";
+  const modeReferencesHint = refsTakeClips ? "modeReferencesAllHint" : "modeReferencesHint";
   // Image formats: the provider's own list when it is narrower than ours
   // (Kling: jpeg/png), otherwise everything the upload route takes.
   const acceptedImageTypes = model?.acceptedImageMimes ?? ACCEPTED_IMAGE_TYPES;
@@ -1626,7 +1632,7 @@ export function PromptBar({
                             ? "modeEdit"
                             : attachMode === "extend"
                               ? "modeExtend"
-                              : "modeReferences",
+                              : modeReferencesLabel,
                       )}
                       <CaretDown className="size-3.5 text-muted-foreground" />
                     </Pill>
@@ -1639,7 +1645,7 @@ export function PromptBar({
                     {(
                       [
                         ["frames", "modeFrames", "modeFramesHint", FilmStrip],
-                        ["references", "modeReferences", "modeReferencesHint", ImagesSquare],
+                        ["references", modeReferencesLabel, modeReferencesHint, ImagesSquare],
                         // Edit/Extend are Seedance 2.5 sub-tasks — only
                         // models declaring the capability show them.
                         ...(model?.supportsVideoTasks

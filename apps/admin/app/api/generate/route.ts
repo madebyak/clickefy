@@ -32,7 +32,13 @@ import {
   type StageOutputRef,
 } from '@clickfy/providers';
 import type { GenerationStage, TemplateInputField } from '@clickfy/types';
-export const maxDuration = 60;
+// 10 minutes. GPT Image at high quality routinely runs 60–120s+ and the
+// old 60s cap killed the function mid-generation (FUNCTION_INVOCATION_TIMEOUT).
+// Vercel Pro allows up to 800s; 600 leaves slack under that ceiling while
+// comfortably covering the slowest sync provider call. Async providers
+// (Kling/Seedance) return in seconds and poll via /api/generate/status,
+// so they never lean on this.
+export const maxDuration = 600;
 
 interface GenerateRequestBody {
   stage: GenerationStage;

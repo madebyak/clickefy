@@ -93,6 +93,95 @@ function hydrateStageOutputs(raw: unknown): StageOutputRef[] {
   return out;
 }
 
+/**
+ * Fetch bytes for previous-stage outputs that arrived as URL-only refs.
+ *
+ * Multi-stage chains no longer round-trip stage outputs through the
+ * browser as base64 — Vercel rejects any request body over 4.5MB
+ * (FUNCTION_PAYLOAD_TOO_LARGE), which is exactly what a full-size
+ * gpt-image output re-uploaded for stage 2 does. The client now sends
+ * only the output's URL; the compiler and the image adapters need real
+ * bytes ("hydrate before compile time"), so we fetch them back here,
+ * server-side, where no payload cap applies. Video refs stay URL-only:
+ * the video providers take URLs natively.
+ */
+async function fetchUrlOnlyOutputs(refs: StageOutputRef[]): Promise<StageOutputRef[]> {
+  return Promise.all(
+    refs.map(async (ref) => {
+      if (ref.bytes || ref.kind !== 'image' || !ref.url) return ref;
+      const res = await fetch(ref.url);
+      if (!res.ok) {
+        throw new Error(
+          `Failed to fetch stage-${ref.stageIndex} output ${ref.url}: ${res.status} ${res.statusText}`,
+        );
+      }
+      return {
+        ...ref,
+        bytes: new Uint8Array(await res.arrayBuffer()),
+        mimeType: res.headers.get('content-type') ?? ref.mimeType,
+      };
+    }),
+  );
+}
+
+function extensionForMime(mime: string): string {
+  switch (mime) {
+    case 'image/png':
+      return 'png';
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/webp':
+      return 'webp';
+    case 'video/mp4':
+      return 'mp4';
+    default:
+      return 'bin';
+  }
+}
+
+/**
+ * Persist inline (base64) outputs to R2 and hand the client URLs
+ * instead — the other half of the payload-cap fix: a 4K-class output
+ * inlined in the response JSON can breach Vercel's response cap too,
+ * and inlined outputs are what forced the client to re-upload them for
+ * the next stage. Writes go through the Worker's secret-gated
+ * `PUT /v1/outputs/internal/<key>` (same channel the Trigger.dev
+ * runner uses); reads are the public immutable `GET /v1/outputs/<key>`.
+ *
+ * Without `INTERNAL_API_SECRET` configured (or on a failed write) the
+ * output stays inline — degraded but working, exactly today's behavior.
+ */
+async function persistOutputs(
+  outputs: Array<{ type: string; base64?: string; mimeType?: string; url?: string }>,
+): Promise<typeof outputs> {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
+  const secret = process.env.INTERNAL_API_SECRET;
+  if (!apiBase || !secret) {
+    if (!secret) console.warn('INTERNAL_API_SECRET unset — playground outputs stay inline.');
+    return outputs;
+  }
+  const runId = crypto.randomUUID();
+  return Promise.all(
+    outputs.map(async (out, i) => {
+      if (!out.base64 || out.url) return out;
+      const mime = out.mimeType ?? 'image/png';
+      const key = `admin-playground/${runId}/out-${i}.${extensionForMime(mime)}`;
+      try {
+        const res = await fetch(`${apiBase}/v1/outputs/internal/${key}`, {
+          method: 'PUT',
+          headers: { 'content-type': mime, 'x-internal-secret': secret },
+          body: base64ToBytes(out.base64) as unknown as ArrayBuffer,
+        });
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return { ...out, base64: undefined, url: `${apiBase}/v1/outputs/${key}` };
+      } catch (err) {
+        console.warn(`Playground output persist failed (${key}), keeping inline:`, err);
+        return out;
+      }
+    }),
+  );
+}
+
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -195,11 +284,23 @@ export async function POST(req: Request) {
     );
   }
 
+  let previousOutputs: StageOutputRef[];
+  try {
+    previousOutputs = await fetchUrlOnlyOutputs(hydrateStageOutputs(body.previousOutputs));
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Failed to fetch previous stage outputs.';
+    return NextResponse.json(
+      { error: { code: 'stage_output_hydration_failed', message } },
+      { status: 502 },
+    );
+  }
+
   const ctx: CompileContext = {
     stage: hydratedStage,
     templateInputs: body.templateInputs ?? [],
     inputValues: hydrateInputs(body.inputValues as Record<string, unknown> ?? {}),
-    previousOutputs: hydrateStageOutputs(body.previousOutputs),
+    previousOutputs,
     capabilities,
   };
 
@@ -228,6 +329,13 @@ export async function POST(req: Request) {
         : undefined,
     });
 
+    if (result.status === 'completed') {
+      return NextResponse.json({
+        ...result,
+        outputs: await persistOutputs(result.outputs),
+        warnings,
+      });
+    }
     return NextResponse.json({ ...result, warnings });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Generation failed.';

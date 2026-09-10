@@ -73,6 +73,48 @@ const fieldIcons: Record<string, typeof ImageIcon> = {
 const MAX_IMAGE_DIMENSION = 2048;
 const JPEG_QUALITY = 0.85;
 
+const MIME_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+};
+
+/**
+ * Save an output to disk. Stage outputs are hosted on the API origin
+ * (see /api/generate) and an anchor's `download` attribute is ignored
+ * on cross-origin URLs — the browser navigates to the file instead of
+ * saving it. Fetching into a blob puts the bytes on our own origin, so
+ * the save is instant and the file gets a real name. If the fetch is
+ * blocked (e.g. a provider CDN without CORS on video URLs), fall back
+ * to opening in a new tab rather than doing nothing.
+ */
+async function downloadOutput(output: StageOutput, index: number): Promise<void> {
+  const src = output.dataUrl || output.url;
+  if (!src) return;
+  try {
+    const res = await fetch(src);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const blob = await res.blob();
+    const ext =
+      MIME_EXT[blob.type] ??
+      MIME_EXT[output.mimeType ?? ''] ??
+      (output.type === 'video' ? 'mp4' : 'png');
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = `playground-output-${index + 1}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke after the save has started; immediate revocation races it.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+  } catch {
+    window.open(src, '_blank', 'noopener');
+  }
+}
+
 /**
  * Resize an image file to fit within MAX_IMAGE_DIMENSION and compress as JPEG.
  * Returns { base64, mimeType } with the compressed result.
@@ -645,11 +687,13 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
                             <Maximize2 className="h-4 w-4" />
                           </Button>
                           {(output.dataUrl || output.url) && (
-                            <a href={output.dataUrl || output.url} download={`result-${i + 1}.png`}>
-                              <Button size="icon-sm" variant="secondary">
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </a>
+                            <Button
+                              size="icon-sm"
+                              variant="secondary"
+                              onClick={() => downloadOutput(output, i)}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -664,10 +708,19 @@ export function PlaygroundTab({ template }: PlaygroundTabProps) {
                         )}
                       </div>
                     )}
-                    <CardContent className="p-3">
+                    <CardContent className="flex items-center justify-between p-3">
                       <p className="text-xs text-muted-foreground">
                         Output {i + 1} — {output.type === 'image' ? 'Image' : 'Video'}
                       </p>
+                      {output.type === 'video' && output.url && (
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => downloadOutput(output, i)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 ))}

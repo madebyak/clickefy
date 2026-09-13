@@ -50,6 +50,30 @@ import * as MenuKit from "@/components/ui/menu";
 import type { CatalogTemplate } from "@clickfy/sdk";
 import { TemplateCardMedia } from "@/components/templates/template-card-media";
 import { TemplatePreview } from "@/components/templates/template-preview";
+import { CameraAngleModal } from "@/components/tools/camera-angle-modal";
+
+/**
+ * Camera Angle outside the studio: both modes (orbit stage and preset
+ * grid) at any viewport, over a bundled sample photo. There is no studio
+ * here, so Generate stays disabled; the upload needs the API, so without
+ * it the photo shows in its dimmed not-ready state.
+ */
+function CameraAngleDemo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)} data-demo="camera-angle">
+        Open Camera Angle
+      </Button>
+      {open && (
+        <CameraAngleModal
+          initialPhoto={{ id: "demo", src: "/camera-angles/front-view-medium.webp" }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
 
 /**
  * Image-set templates, over a live published set's real media. The template
@@ -974,6 +998,15 @@ export default function DesignSystemPage() {
             <p className="mt-2 text-xs text-muted-foreground">
               Card: hover cycles through the set, one segment per image. Template page: the whole
               set as a carousel — swipe, arrows, dots or arrow keys.
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">Camera Angle</h3>
+            <CameraAngleDemo />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Camera mode orbits freely; Presets picks a named shot. Both send only the
+              choice — the prompt is composed in the worker.
             </p>
           </div>
 

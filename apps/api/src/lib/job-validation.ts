@@ -387,10 +387,12 @@ export async function validateCreateSubmission(
   const fail = (error: JobValidationError) => ({ error });
 
   // ── Prompt ─────────────────────────────────────────────────────
-  // Camera Angle is the one submission with no user text at all — its
-  // entire prompt is engineered from the tool parameters in the worker.
+  // Camera Angle (orbit or preset) is the one submission with no user
+  // text at all — its entire prompt is engineered from the tool
+  // parameters in the worker.
   const prompt = body.prompt.trim();
-  if (prompt.length === 0 && body.tool?.kind !== 'camera_angle') {
+  const isCameraTool = body.tool?.kind === 'camera_angle' || body.tool?.kind === 'camera_preset';
+  if (prompt.length === 0 && !isCameraTool) {
     return fail({
       code: 'prompt_empty',
       message:
@@ -583,7 +585,7 @@ export async function validateCreateSubmission(
         message: 'Tool requests do not take start or end frames.',
       });
     }
-    if (body.tool.kind === 'camera_angle') {
+    if (isCameraTool) {
       // Exactly the photo being re-shot, nothing else.
       if (imageAttachments.length !== 1 || body.references.length !== 1) {
         return fail({

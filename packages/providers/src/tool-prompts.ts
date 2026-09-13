@@ -27,12 +27,22 @@ export type CreateToolRequest =
       v: number;
     }
   | {
+      /** Camera Angle's preset mode: a named shot instead of free degrees. */
+      kind: 'camera_preset';
+      preset: CameraPreset;
+    }
+  | {
       kind: 'storyboard';
       style: StoryboardStyle;
       /** Panels per row / rows on the sheet (validated 2-4 x 2-3). */
       cols: number;
       rows: number;
     };
+
+/** Named shots, in the order the preset grid shows them. */
+export type CameraPreset = 'wide' | 'medium' | 'close_up' | 'low_angle';
+
+export const CAMERA_PRESETS: readonly CameraPreset[] = ['wide', 'medium', 'close_up', 'low_angle'];
 
 export type StoryboardStyle = 'hand_drawn' | 'sketch' | 'realistic' | 'comic' | '3d';
 
@@ -61,6 +71,10 @@ export const TOOL_MODELS: Record<
   { modelKey: string; quality: string }
 > = {
   camera_angle: { modelKey: 'gpt-image-2', quality: 'high' },
+  // Same model and tier as the orbit mode: a preset is the same re-shoot,
+  // only described as a named shot. Its own entry so it can move to a
+  // different model if one frames shot sizes better.
+  camera_preset: { modelKey: 'gpt-image-2', quality: 'high' },
   storyboard: { modelKey: 'gemini-3-pro-image', quality: '4K' },
 };
 
@@ -108,6 +122,46 @@ export function composeCameraAnglePrompt(h: number, v: number): string {
 }
 
 /**
+ * The camera setup per preset. Subject-agnostic on purpose: the same
+ * preset runs on a portrait, a product shot and a landscape, so every
+ * framing names what it means for a person AND for an object.
+ *
+ * The orbit prompt avoids named shot types because on their own they
+ * overshoot; here the name is only a heading — each preset spells out
+ * the physical move (dolly back / in, camera height, tilt degrees, lens)
+ * the way the reference frames in public/camera-angles/prompts.md were
+ * produced.
+ */
+const CAMERA_PRESET_SETUPS: Record<CameraPreset, string> = {
+  wide:
+    'WIDE SHOT. Move the camera straight back along its current axis, keeping the same height and orientation. Show the main subject in full — a person from head to feet, an object whole — with substantially more of the surrounding environment on every side; the subject fills roughly half of the frame height. Natural 28-35mm lens perspective, no fisheye distortion.',
+  medium:
+    "MEDIUM SHOT. Keep the camera at the subject's own height and on its current axis, changing only its distance. Frame a person from the waist to just above the head; frame an object with a modest margin of its surroundings. Natural 50mm lens perspective.",
+  close_up:
+    "CLOSE-UP. Move the camera straight in along its current axis, at the same height. The subject's face — or, for an object, its most defining detail — fills most of the frame and is sharply focused, with the background falling into a soft natural blur. Portrait-lens perspective around 85mm. Keep every feature exactly as it is: no beautification, no change of identity.",
+  low_angle:
+    "LOW-ANGLE SHOT. Lower the camera to about a person's knee height — near the base of an object — on the same axis, and tilt it upward roughly 25 degrees, so the subject is clearly photographed from below, with more of the ceiling or sky behind it. Keep the horizon level with no Dutch tilt, and do not deliver an eye-level view.",
+};
+
+/**
+ * Camera Angle, preset mode: re-shoot the attached photo as a named
+ * shot. Shares the orbit prompt's frozen-set framing and do-not-change
+ * list; only the camera setup differs. Depth of field is deliberately
+ * NOT on the locked list — a close-up has to change it.
+ */
+export function composeCameraPresetPrompt(preset: CameraPreset): string {
+  return [
+    'Re-shoot this exact image from a new camera setup, as if the entire scene is frozen in time like a physical set that cannot be altered in any way.',
+    `Camera setup: ${CAMERA_PRESET_SETUPS[preset]}`,
+    "Only the camera's distance, height, angle and lens change.",
+    "Do not change the subject's identity, position, pose, facial expression, body orientation, clothing, hair, skin tone, or any physical detail.",
+    'Do not alter the background, environment, lighting direction, shadow patterns, color grading, or overall mood.',
+    'Do not add, remove or reimagine any element of the scene.',
+    "Reconstruct any parts of the scene that fall outside the original frame, staying fully consistent with the existing visual style, and output one full-bleed photo in the original image's aspect ratio — no borders, text, split screens or collage.",
+  ].join(' ');
+}
+
+/**
  * Storyboard: one clean-frames sheet from the user's script. The script
  * is the only user text; everything around it is ours.
  */
@@ -134,5 +188,6 @@ export function composeStoryboardPrompt(
 /** Compose the final prompt for a tool job from its stored parameters. */
 export function composeToolPrompt(tool: CreateToolRequest, userText: string): string {
   if (tool.kind === 'camera_angle') return composeCameraAnglePrompt(tool.h, tool.v);
+  if (tool.kind === 'camera_preset') return composeCameraPresetPrompt(tool.preset);
   return composeStoryboardPrompt(tool.style, tool.cols, tool.rows, userText);
 }

@@ -18,6 +18,7 @@ import type {
 } from './compile-types';
 import { getCapabilities } from './capabilities';
 import { compile } from './compile';
+import { CAMERA_PRESETS } from './tool-prompts';
 import {
   buildCreateStage,
   CREATE_END_FRAME_KEY,
@@ -432,6 +433,30 @@ describe('buildCreateStage — studio tools (hidden prompts)', () => {
     });
     expect(built.stage.prompt).toContain('rotating the virtual camera 70 degrees up, as if');
     expect(built.stage.prompt).not.toMatch(/\b0 degrees/);
+  });
+
+  it('camera preset: each named shot gets its own setup on the shared locked scene', () => {
+    const prompts = CAMERA_PRESETS.map(
+      (preset) =>
+        buildCreateStage({
+          modelKey: 'gpt-image-2',
+          prompt: '',
+          aspectRatio: '16:9',
+          referenceCount: 1,
+          tool: { kind: 'camera_preset', preset },
+        }).stage.prompt,
+    );
+    for (const prompt of prompts) {
+      expect(prompt).toContain('frozen in time');
+      expect(prompt).toContain("Do not change the subject's identity");
+      expect(prompt).toContain("original image's aspect ratio");
+      expect(prompt).not.toContain('degrees right');
+    }
+    expect(prompts[0]).toContain('WIDE SHOT');
+    expect(prompts[1]).toContain('MEDIUM SHOT');
+    expect(prompts[2]).toContain('CLOSE-UP');
+    expect(prompts[3]).toContain('LOW-ANGLE SHOT');
+    expect(new Set(prompts).size).toBe(CAMERA_PRESETS.length);
   });
 
   it('storyboard: embeds the script inside the engineered sheet prompt', () => {

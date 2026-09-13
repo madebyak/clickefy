@@ -484,6 +484,8 @@ export interface NotificationList {
  */
 export type CreateToolInput =
   | { kind: 'camera_angle'; h: number; v: number }
+  /** Camera Angle's preset mode — a named shot instead of free degrees. */
+  | { kind: 'camera_preset'; preset: 'wide' | 'medium' | 'close_up' | 'low_angle' }
   | {
       kind: 'storyboard';
       style: 'hand_drawn' | 'sketch' | 'realistic' | 'comic' | '3d';

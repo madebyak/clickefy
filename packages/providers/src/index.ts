@@ -40,9 +40,12 @@ export {
 export {
   composeToolPrompt,
   composeCameraAnglePrompt,
+  composeCameraPresetPrompt,
   composeStoryboardPrompt,
+  CAMERA_PRESETS,
   STORYBOARD_STYLES,
   TOOL_MODELS,
+  type CameraPreset,
   type CreateToolRequest,
   type StoryboardStyle,
 } from './tool-prompts';

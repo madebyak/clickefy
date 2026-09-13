@@ -107,6 +107,11 @@ export const createToolSchema = z.discriminatedUnion('kind', [
     v: z.number().min(-80).max(80),
   }),
   z.object({
+    // Camera Angle's preset mode — a named shot (CAMERA_PRESETS).
+    kind: z.literal('camera_preset'),
+    preset: z.enum(['wide', 'medium', 'close_up', 'low_angle']),
+  }),
+  z.object({
     kind: z.literal('storyboard'),
     style: z.enum(['hand_drawn', 'sketch', 'realistic', 'comic', '3d']),
     // The offered grids are 2x2 / 3x2 / 3x3 / 4x3 — capped so every

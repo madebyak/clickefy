@@ -563,12 +563,12 @@ export default function DesignSystemPage() {
         <Section
           id="logo"
           title="Logo"
-          description="Primary wordmark and symbol. Drop the real assets into public/brand/ and they render here automatically."
+          description="Wordmark and symbol, in public/brand/. In code, use <BrandLogo /> (components/site/brand-logo.tsx) rather than the files directly."
         >
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <AssetTile src="/brand/logo.svg" label="Full logo" hint="Wordmark + symbol · SVG" boxClassName="h-40" />
-            <AssetTile src="/brand/logo-mark.svg" label="Symbol / mark" hint="Square icon · SVG" boxClassName="h-40" />
-            <AssetTile src="/brand/logo-white.svg" label="Monochrome" hint="White version for dark surfaces" boxClassName="h-40" />
+            <AssetTile src="/brand/logo-white.svg" label="logo-white.svg" hint="Wordmark · for dark surfaces (the site)" boxClassName="h-40" />
+            <AssetTile src="/brand/logo-black.svg" label="logo-black.svg" hint="Wordmark · for light surfaces" boxClassName="h-40 bg-white" />
+            <AssetTile src="/brand/logo-mark.svg" label="logo-mark.svg" hint="Symbol alone · transparent" boxClassName="h-40" />
           </div>
         </Section>
 

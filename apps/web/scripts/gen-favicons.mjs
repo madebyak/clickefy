@@ -20,7 +20,9 @@ import pngToIco from "png-to-ico";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = resolve(root, "public/icons/favicon.svg");
 const svg = readFileSync(SRC);
-const BG = "#000000";
+// The icon's own background square, so the padded maskable and the
+// opaque apple-icon have no seam where the SVG's square meets the canvas.
+const BG = "#020202";
 
 // Rasterize the SVG at a given size (transparent background).
 const png = (size) =>

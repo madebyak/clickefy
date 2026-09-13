@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
+import { BrandLogo } from "@/components/site/brand-logo";
 import { List, MagnifyingGlass } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { CreditMenu } from "@/components/site/credit-menu";
@@ -53,8 +54,7 @@ export function StudioTopbar({ onMenu }: { onMenu: () => void }) {
           <List className="size-5" />
         </button>
         <Link href="/" aria-label={t("home")} className="shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-6 w-auto" />
+          <BrandLogo height={24} eager />
         </Link>
       </div>
 

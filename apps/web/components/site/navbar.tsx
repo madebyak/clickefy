@@ -10,6 +10,7 @@ import { CreditMenu } from "./credit-menu";
 import { ProfileMenu } from "./profile-menu";
 import { LanguageSwitcher } from "./language-switcher";
 import { cn } from "@/lib/utils";
+import { BrandLogo } from "./brand-logo";
 
 // Tool entries deep-link into the studio: ToolDeepLink (tools-context)
 // reads `?tool=` on /create and opens the matching modal.
@@ -34,8 +35,7 @@ export function Navbar() {
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-site items-center gap-4 site-px">
         <Link href="/" className="shrink-0" aria-label={t("home")}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-7 w-auto" />
+          <BrandLogo eager />
         </Link>
 
         <nav className="ms-2 hidden items-center xl:flex">

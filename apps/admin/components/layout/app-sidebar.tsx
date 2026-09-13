@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Sparkles } from 'lucide-react';
+import Image from 'next/image';
 
 import {
   Sidebar,
@@ -66,9 +66,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4">
         <Link href="/admin" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <Sparkles className="h-4 w-4 text-primary-foreground" />
-          </div>
+          <Image src="/brand/logo-mark.svg" alt="" width={28} height={32} />
           <span className="text-lg font-bold tracking-tight">Clickefy</span>
         </Link>
       </SidebarHeader>

@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
+import { BrandLogo } from "./brand-logo";
 import { XLogo, InstagramLogo, YoutubeLogo, TiktokLogo } from "@phosphor-icons/react/dist/ssr";
 
 const COLUMNS = [
@@ -63,8 +64,7 @@ export async function Footer() {
       <div className="mx-auto w-full max-w-site py-14 site-px">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-6">
           <div className="lg:col-span-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-7 w-auto" />
+            <BrandLogo />
             <p className="mt-4 max-w-xs text-sm text-muted-foreground">{t("tagline")}</p>
             {SOCIALS.some((s) => s.href) && (
               <div className="mt-5 flex gap-2">

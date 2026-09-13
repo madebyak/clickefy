@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
+import { BrandLogo } from "@/components/site/brand-logo";
 
 const PANEL_VIDEO = "/assets/Kling-Images-2.mp4";
 
@@ -27,8 +28,7 @@ export async function AuthShell({ children }: { children: React.ReactNode }) {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/20" />
         <div className="relative flex h-full flex-col justify-between p-10">
           <Link href="/" aria-label="Clickefy">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-7 w-auto" />
+            <BrandLogo eager />
           </Link>
           <div className="max-w-md">
             <p className="text-sm font-medium uppercase tracking-widest text-primary">
@@ -43,8 +43,7 @@ export async function AuthShell({ children }: { children: React.ReactNode }) {
       {/* form side */}
       <div className="flex min-h-dvh flex-1 flex-col items-center justify-center gap-8 p-6">
         <Link href="/" aria-label="Clickefy" className="lg:hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo-withsymbol.svg" alt="Clickefy" className="h-7 w-auto" />
+          <BrandLogo eager />
         </Link>
         {children}
       </div>

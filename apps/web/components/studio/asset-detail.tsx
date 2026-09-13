@@ -96,11 +96,21 @@ export function AssetDetailSections({
     );
   }
 
+  /**
+   * The viewer's own zone, from the browser. next-intl formats in whatever
+   * zone its provider was handed, and with none configured the server hands
+   * down its RUNTIME zone — not the visitor's — so a deployed server on UTC
+   * showed every generation time in UTC. Safe to read here only because
+   * this panel formats after a client-side fetch: nothing below is
+   * server-rendered, so there is no server markup to disagree with.
+   */
+  const viewerTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   return (
     <>
-      {/* A file placed from My Assets has no prompt and no settings
-          behind it — sections simply don't render. A template's prompt
-          is ours, not the user's, so it is never shown. */}
+      {/* A file placed from My Assets has no prompt behind it — the
+          provenance blocks simply don't render. A template's prompt is
+          ours, not the user's, so it is never shown. */}
       {detail.generation && (
         <>
           {gen?.prompt ? (
@@ -140,30 +150,36 @@ export function AssetDetailSections({
             </section>
           )}
 
-          <section className="mt-4 divide-y divide-white/[0.06] rounded-lg bg-surface-2 px-3 py-1">
-            {gen?.modelName && <Row label={t("model")} value={gen.modelName} />}
-            {gen?.aspectRatio && <Row label={t("aspectRatio")} value={gen.aspectRatio} />}
-            {gen?.quality && <Row label={t("quality")} value={gen.quality} />}
-            {detail.width && detail.height && (
-              <Row label={t("dimensions")} value={`${detail.width} × ${detail.height}`} />
-            )}
-            {detail.durationSec != null && (
-              <Row label={t("duration")} value={`${Math.round(detail.durationSec)}s`} />
-            )}
-            {gen?.sound != null && (
-              <Row label={t("sound")} value={gen.sound ? t("soundOn") : t("soundOff")} />
-            )}
-            {detail.format && <Row label={t("format")} value={detail.format.toUpperCase()} />}
-            <Row
-              label={t("created")}
-              value={format.dateTime(new Date(detail.createdAt), {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            />
-          </section>
         </>
       )}
+
+      {/* File facts belong to every asset. An upload placed from My Assets,
+          or a generation whose job has since been purged, still has a size,
+          a format and a date — they used to vanish along with the prompt
+          because they sat inside the generation block above. */}
+      <section className="mt-4 divide-y divide-white/[0.06] rounded-lg bg-surface-2 px-3 py-1">
+        {gen?.modelName && <Row label={t("model")} value={gen.modelName} />}
+        {gen?.aspectRatio && <Row label={t("aspectRatio")} value={gen.aspectRatio} />}
+        {gen?.quality && <Row label={t("quality")} value={gen.quality} />}
+        {detail.width && detail.height && (
+          <Row label={t("dimensions")} value={`${detail.width} × ${detail.height}`} />
+        )}
+        {detail.durationSec != null && (
+          <Row label={t("duration")} value={`${Math.round(detail.durationSec)}s`} />
+        )}
+        {gen?.sound != null && (
+          <Row label={t("sound")} value={gen.sound ? t("soundOn") : t("soundOff")} />
+        )}
+        {detail.format && <Row label={t("format")} value={detail.format.toUpperCase()} />}
+        <Row
+          label={t("created")}
+          value={format.dateTime(new Date(detail.createdAt), {
+            dateStyle: "medium",
+            timeStyle: "short",
+            timeZone: viewerTimeZone,
+          })}
+        />
+      </section>
     </>
   );
 }

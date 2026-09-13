@@ -13,7 +13,7 @@ export async function generateMetadata({
   const { locale } = await params;
   const doc = LEGAL_DOCS[SLUG];
   return {
-    title: `${doc.title} — Clickefy`,
+    title: doc.title,
     description: doc.summary,
     ...localizedPageMetadata(locale, "/privacy"),
   };

@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "gen:favicons": "node scripts/gen-favicons.mjs",
+    "gen:og": "tsx scripts/gen-og-images.ts",
     "clean": "rm -rf .next .turbo"
   },
   "dependencies": {

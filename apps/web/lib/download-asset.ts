@@ -4,7 +4,7 @@
  * WHY THIS IS NOT JUST `<a download>`
  *   The `download` attribute is IGNORED when the href is cross-origin —
  *   that is the spec, not a browser quirk. Our media is served from
- *   api.clickefy.ai while the app runs on app.clickefy.ai, so every
+ *   api.clickefy.ai while the app runs on clickefy.ai, so every
  *   download button in the studio degraded into a plain navigation and
  *   opened the image instead of saving it. Three copies of the same
  *   four-line helper each did it the same wrong way.

@@ -1,6 +1,18 @@
+import type { Metadata } from "next";
 import { SignIn } from "@clerk/nextjs";
-import { setRequestLocale } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import { AuthShell } from "@/components/auth/auth-shell";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "nav" });
+  // A sign-in form is never a useful search result.
+  return { title: t("login"), robots: { index: false, follow: true } };
+}
 
 /**
  * Catch-all sign-in route for Clerk's prebuilt component (handles

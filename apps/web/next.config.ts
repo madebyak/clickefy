@@ -19,6 +19,15 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         ],
       },
+      {
+        // Every *.vercel.app address serves the same pages as clickefy.ai.
+        // robots.txt already closes those hosts to crawlers; this also keeps
+        // any page there that is reached by a link out of the index, so only
+        // the real domain ever shows up in search.
+        source: "/(.*)",
+        has: [{ type: "host", value: ".*\\.vercel\\.app" }],
+        headers: [{ key: "X-Robots-Tag", value: "noindex" }],
+      },
     ];
   },
   images: {

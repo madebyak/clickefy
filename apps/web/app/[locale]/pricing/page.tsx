@@ -20,6 +20,7 @@ import { PricingSection } from "@/components/site/pricing-section";
 import { ModelAllowanceTable } from "@/components/site/model-allowance-table";
 import { TopupCard } from "@/components/site/topup-card";
 import { routing } from "@/i18n/routing";
+import { localizedPageMetadata } from "@/lib/page-metadata";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -35,6 +36,7 @@ export async function generateMetadata({
   return {
     title: t("metaTitle"),
     description: t("metaDescription"),
+    ...localizedPageMetadata(locale, "/pricing"),
   };
 }
 

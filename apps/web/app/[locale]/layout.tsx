@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { Geist, Geist_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
@@ -8,6 +8,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Toaster } from "sonner";
 import { routing } from "@/i18n/routing";
 import { config } from "@/lib/config";
+import { SHARE_IMAGE, sharedOpenGraph } from "@/lib/page-metadata";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { Providers } from "@/components/providers";
 import "../globals.css";
@@ -36,6 +37,16 @@ const ibmArabic = IBM_Plex_Sans_Arabic({
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
 }
+
+/**
+ * Browser chrome colour (mobile address bar, installed-app title bar) and
+ * native form controls, matched to the site: always dark, on the same
+ * black as `--background` and the manifest's theme_color.
+ */
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  colorScheme: "dark",
+};
 
 /**
  * Production Clerk keys encode the frontend-API host (base64 between
@@ -78,19 +89,26 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "meta" });
   return {
     metadataBase: new URL(config.siteUrl),
-    title: t("title"),
+    // Pages give their short name ("Pricing") and the brand is added once,
+    // here. The home page shares this segment, so the template does not
+    // apply to it and it takes `default` — the full product title.
+    title: { default: t("title"), template: "%s — Clickefy" },
     description: t("description"),
+    applicationName: "Clickefy",
+    // The name under the icon when the site is added to an iPhone home screen.
+    appleWebApp: { title: "Clickefy" },
     openGraph: {
       title: t("title"),
       description: t("description"),
-      siteName: "Clickefy",
-      locale: locale === "ar" ? "ar_AR" : "en_US",
-      type: "website",
+      ...sharedOpenGraph(locale),
     },
+    // No title or description here on purpose: pages inherit this object
+    // whole, so setting them would stamp the homepage's title on every
+    // page's card. Without them, X's card processor falls back to each
+    // page's own og:title and og:description.
     twitter: {
       card: "summary_large_image",
-      title: t("title"),
-      description: t("description"),
+      images: [SHARE_IMAGE.url],
     },
   };
 }

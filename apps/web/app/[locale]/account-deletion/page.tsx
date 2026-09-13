@@ -24,7 +24,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   return {
-    title: "Delete your Clickefy account and data — Clickefy",
+    title: "Delete your Clickefy account and data",
     description:
       "How to delete your Clickefy account and the personal data associated with it, and what happens to your data when you do.",
     ...localizedPageMetadata(locale, "/account-deletion"),
@@ -87,7 +87,7 @@ export default async function AccountDeletionPage({
               <Step n={1}>
                 Sign in at{" "}
                 <Link href="/settings" className="text-primary underline-offset-4 hover:underline">
-                  app.clickefy.ai/settings
+                  clickefy.ai/settings
                 </Link>
                 .
               </Step>

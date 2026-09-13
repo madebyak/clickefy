@@ -148,7 +148,7 @@
     "successPendingBody": "This usually takes a couple of seconds.",
     "pageHeading": "Pick a plan. Start creating.",
     "pageSub": "Every plan unlocks every model. The only thing that changes is how much you make.",
-    "metaTitle": "Pricing — Clickefy",
+    "metaTitle": "Pricing",
     "metaDescription": "Plans from $19/month. Every model included on every plan. See exactly how many images and videos your credits buy.",
     "tableHeading": "How far your credits go",
     "tableSub": "Real numbers, straight from the same prices we charge. No model is locked to a higher plan.",
@@ -491,6 +491,7 @@
   "errors": {
     "notFoundTitle": "Page not found",
     "notFoundBody": "The page you're looking for doesn't exist or has moved.",
+    "notFoundSuggestions": "Or head somewhere useful",
     "errorTitle": "Something went wrong",
     "errorBody": "An unexpected error occurred. Please try again.",
     "retry": "Try again",
@@ -613,7 +614,7 @@
     "submitFailed": "Couldn't start the generation — try again"
   },
   "modelsPage": {
-    "metaTitle": "AI Models — Clickefy",
+    "metaTitle": "AI Models",
     "metaDescription": "Every image and video model in the Clickefy studio, with real per-generation credit prices.",
     "pageHeading": "The models",
     "pageSub": "Every model in the studio, priced in credits at its default settings — one balance for all of them, no separate subscriptions.",
@@ -628,7 +629,7 @@
     "footnote": "Prices shown at each model's default quality and length. Higher settings cost more — the exact price always shows before you generate."
   },
   "about": {
-    "metaTitle": "About — Clickefy",
+    "metaTitle": "About",
     "metaDescription": "Clickefy is one studio for AI images and video: Gemini, GPT Image, Kling, Seedance and Seedream in one workspace, priced in one honest credit balance.",
     "kicker": "About Clickefy",
     "pageHeading": "One studio. Every model that matters.",
@@ -678,7 +679,7 @@
     "ctaSub": "Start free — your first generations are on us, and every model is unlocked from day one."
   },
   "contact": {
-    "metaTitle": "Contact — Clickefy",
+    "metaTitle": "Contact",
     "metaDescription": "Reach the Clickefy team for support, billing, bug reports, partnerships, press and trust & safety. One inbox, read by humans.",
     "kicker": "Contact",
     "pageHeading": "Talk to a person, not a bot.",
@@ -730,7 +731,7 @@
     "noResults": "Nothing matches — try a different word."
   },
   "blog": {
-    "metaTitle": "Blog — Clickefy",
+    "metaTitle": "Blog",
     "metaDescription": "Product notes and guides from the Clickefy team: how credits work, choosing between video models, and getting the most out of the studio tools.",
     "kicker": "Blog",
     "pageHeading": "Notes from the studio",

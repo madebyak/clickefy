@@ -1,50 +1,58 @@
 # public/ — static assets
 
-Files here are served from the site root (`/`). Drop real brand assets at the
-**exact paths below** — the `/design-system` page renders them automatically
-(and shows a "Drop file at …" placeholder until they exist).
+Files here are served from the site root (`/`). The `/design-system` page
+(development only) renders the brand files so they can be checked at a glance.
 
 ```
 public/
 ├── brand/
-│   ├── logo.svg          # full wordmark + symbol
-│   ├── logo-mark.svg     # square symbol / app mark
-│   └── logo-white.svg    # monochrome white (for dark surfaces)
-├── models/               # AI model / provider logos (gemini, kling, seedance, seedream, gpt-image …)
+│   ├── logo-white.svg    # wordmark for dark surfaces — what the site uses
+│   ├── logo-black.svg    # wordmark for light surfaces
+│   └── logo-mark.svg     # the symbol alone, transparent, cropped to the glyph
 ├── icons/
-│   ├── icon-192.png      # 192×192 (PWA)
-│   ├── icon-512.png      # 512×512 (PWA)
-│   └── apple-icon.png    # 180×180 (iOS)
-└── og/                   # Open Graph / social share image (1200×630)
+│   ├── favicon.svg       # SOURCE for every favicon / app icon (see below)
+│   ├── icon-192.png      # PWA (manifest) — generated
+│   ├── icon-512.png      # PWA (manifest) — generated
+│   └── maskable-512.png  # Android adaptive — generated
+├── og/
+│   ├── default.png       # site-wide share card, 1200×630 — generated
+│   └── blog/             # one card per post and locale — generated
+├── models/               # AI model / provider logos
+└── assets/               # homepage media
 ```
 
-Favicon: `app/favicon.ico` (Next metadata convention) — a placeholder is in place;
-replace with the real brand favicon. You can also add `app/icon.png` and
-`app/apple-icon.png` and Next will wire them automatically.
+In code, render the wordmark with `<BrandLogo />`
+(`components/site/brand-logo.tsx`), not by path — the next brand change is then
+one edit. The mark's green is the UI's `--brand-green`.
+
+## Favicons and app icons
+
+Generated from `icons/favicon.svg`:
+
+```
+pnpm --filter @clickfy/web gen:favicons
+```
+
+writes the Next.js metadata files `app/icon.svg`, `app/favicon.ico`,
+`app/apple-icon.png`, plus the PWA icons above. Next links them automatically.
+
+## Social share cards
+
+```
+pnpm --filter @clickfy/web gen:og
+```
+
+runs `scripts/gen-og-images.ts`, which writes `og/default.png` (the wordmark
+card every page uses) and `og/blog/<slug>-<locale>.png` (topic, date and title
+for each post). Text is set in the site's own fonts (`scripts/fonts/`) and
+colours come from the tokens in `app/globals.css`.
+
+Pages point at these files through `lib/page-metadata.ts` — deliberately not
+the `opengraph-image` file convention, which Next's shallow metadata merge
+dropped from every page that sets its own og:url.
 
 ## Notes
-- Prefer **SVG** for logos; keep raster OG/PWA icons optimized.
-- Provider/model logos: the mobile app already has branded provider SVGs under
-  `apps/mobile/components/create/` — ask if you want those extracted to web `.svg`s.
-
-## Homepage media (bento hero)
-
-Auto-loop videos (muted, `.mp4`) — drop into `public/media/`. Until they exist,
-each card shows a tinted gradient placeholder.
-
-```
-public/media/
-├── hero-image.mp4       # left "Image Studio" hero
-├── create-video.mp4     # "Create video" card
-└── product-visuals.mp4  # "Product visuals" card
-```
-
-Model logos — `public/models/<id>.svg` (falls back to a monogram tile):
-`gpt-image.svg`, `nano-banana-pro.svg`, `nano-banana-2.svg`, `seedream.svg`, `imagen.svg`.
-
-## Checklist
-- [ ] `brand/logo.svg`, `brand/logo-mark.svg`, `brand/logo-white.svg`
-- [ ] `icons/icon-192.png`, `icons/icon-512.png`, `icons/apple-icon.png`
-- [ ] real `app/favicon.ico`
-- [ ] provider/model logos in `models/`
-- [ ] `og/` share image
+- Prefer **SVG** for logos; keep raster share and PWA images optimized.
+- After changing a source SVG, a brand colour or a post title, re-run the
+  generators — the PNG/ICO outputs are committed files and do not update
+  themselves.

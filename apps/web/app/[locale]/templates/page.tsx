@@ -21,7 +21,7 @@ export async function generateMetadata({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "templates" });
   return {
-    title: `${t("galleryHeading")} — Clickefy`,
+    title: t("galleryHeading"),
     description: t("gallerySub"),
     ...localizedPageMetadata(locale, "/templates"),
   };

@@ -18,7 +18,6 @@ const PUBLIC_PATHS = [
   "/about",
   "/contact",
   "/blog",
-  ...BLOG_POSTS.map((p) => `/blog/${p.slug}` as const),
   "/privacy",
   "/terms",
   "/account-deletion",
@@ -32,22 +31,29 @@ function localizedUrl(path: string, locale: string): string {
   return `${config.siteUrl}${prefix}${path}`;
 }
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  // Build/regeneration time — the marketing pages change with deploys,
-  // and lastModified is the one freshness signal crawlers actually use.
-  const lastModified = new Date();
-  return PUBLIC_PATHS.map((path) => ({
+function entry(path: string, lastModified: Date, priority: number): MetadataRoute.Sitemap[number] {
+  return {
     url: localizedUrl(path, routing.defaultLocale),
     lastModified,
     changeFrequency: "weekly",
-    priority: path === "" ? 1 : 0.8,
+    priority,
     alternates: {
       languages: {
-        ...Object.fromEntries(
-          routing.locales.map((locale) => [locale, localizedUrl(path, locale)]),
-        ),
+        ...Object.fromEntries(routing.locales.map((locale) => [locale, localizedUrl(path, locale)])),
         "x-default": localizedUrl(path, routing.defaultLocale),
       },
     },
-  }));
+  };
+}
+
+export default function sitemap(): MetadataRoute.Sitemap {
+  // Pages change with deploys, so they carry the build time. A post carries
+  // its own date: lastModified is the freshness signal crawlers actually
+  // use, and stamping every article "changed today" on each deploy teaches
+  // them to ignore it.
+  const built = new Date();
+  return [
+    ...PUBLIC_PATHS.map((path) => entry(path, built, path === "" ? 1 : 0.8)),
+    ...BLOG_POSTS.map((post) => entry(`/blog/${post.slug}`, new Date(`${post.date}T00:00:00Z`), 0.7)),
+  ];
 }

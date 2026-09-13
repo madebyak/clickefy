@@ -1,9 +1,18 @@
+import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { StudioShell } from "@/components/studio/studio-shell";
 import { makeQueryClient } from "@/lib/query-client";
 import { fetchMe } from "@/lib/server/me";
 import { ME_QUERY_KEY } from "@/lib/use-session";
+
+/**
+ * Every studio page is signed-in only, so none is a search result. The
+ * robots.txt rules cover crawling; this covers a URL found some other way.
+ */
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 /**
  * Studio shell — auth-gated, and the app's data entry point.

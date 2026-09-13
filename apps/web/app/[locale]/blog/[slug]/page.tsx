@@ -15,6 +15,7 @@ import { Footer } from "@/components/site/footer";
 import { Link } from "@/i18n/navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { localizedPageMetadata } from "@/lib/page-metadata";
+import { config } from "@/lib/config";
 import { routing, type Locale } from "@/i18n/routing";
 import { BLOG_POSTS, getPost, listPosts, type BlogBlock } from "@/lib/blog/posts";
 import { ACCENT_WASH, formatPostDate } from "../page";
@@ -36,10 +37,26 @@ export async function generateMetadata({
   if (!post) return {};
   const loc = (routing.locales.includes(locale as Locale) ? locale : routing.defaultLocale) as Locale;
   const content = post.content[loc];
+  const t = await getTranslations({ locale: loc, namespace: "blog" });
+  // Each post shares with its own card (title, topic, date) instead of the
+  // site-wide one, so a link pasted into a chat says what the article is.
+  // Generated per post and locale by `pnpm gen:og`.
+  const image = { url: `/og/blog/${post.slug}-${loc}.png`, width: 1200, height: 630, alt: content.title };
+  const page = localizedPageMetadata(locale, `/blog/${slug}`);
   return {
-    title: `${content.title} — Clickefy`,
+    title: content.title,
     description: content.excerpt,
-    ...localizedPageMetadata(locale, `/blog/${slug}`),
+    ...page,
+    openGraph: {
+      ...page.openGraph,
+      type: "article",
+      publishedTime: post.date,
+      section: t(`tag_${post.tag}`),
+      images: [image],
+    },
+    // A page-level `twitter` replaces the layout's whole object, so the
+    // card type is restated alongside the post's own image.
+    twitter: { card: "summary_large_image", images: [image.url] },
   };
 }
 
@@ -84,8 +101,34 @@ export default async function BlogPostPage({
   const content = post.content[loc];
   const more = listPosts().filter((p) => p.slug !== post.slug).slice(0, 2);
 
+  // The article as structured data, so search engines read its headline,
+  // date and image the same way the share card shows them.
+  const url = `${config.siteUrl}${loc === routing.defaultLocale ? "" : `/${loc}`}/blog/${post.slug}`;
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: content.title,
+    description: content.excerpt,
+    datePublished: post.date,
+    inLanguage: loc,
+    url,
+    mainEntityOfPage: url,
+    image: `${config.siteUrl}/og/blog/${post.slug}-${loc}.png`,
+    author: { "@type": "Organization", name: "Clickefy", url: config.siteUrl },
+    publisher: {
+      "@type": "Organization",
+      name: "Clickefy",
+      logo: { "@type": "ImageObject", url: `${config.siteUrl}/icons/icon-512.png` },
+    },
+  };
+
   return (
     <div className="min-h-dvh bg-background text-foreground">
+      <script
+        type="application/ld+json"
+        // `<` escaped so no string in the payload can close the tag.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+      />
       <Navbar />
 
       <main className="pb-24">

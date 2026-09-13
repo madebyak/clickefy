@@ -17,6 +17,7 @@ import type { JobInputValue } from "@clickfy/types";
 import { useTemplate } from "@/lib/use-templates";
 import { useStudio } from "@/components/studio/studio-context";
 import { InputField, type FieldState } from "@/components/templates/input-field";
+import { TemplatePreview } from "@/components/templates/template-preview";
 
 const SUPPORTED = new Set(["text", "textarea", "select", "image", "video"]);
 
@@ -115,23 +116,8 @@ export default function TemplateRunPage() {
         </Link>
 
         <div className="mt-4 grid gap-8 lg:grid-cols-2">
-          {/* preview */}
-          <div className="overflow-hidden rounded-2xl bg-surface-2">
-            {template.previewVideo ? (
-              <video
-                src={template.previewVideo}
-                poster={template.coverImage}
-                autoPlay
-                muted
-                loop
-                playsInline
-                className="w-full object-cover"
-              />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={template.coverImage} alt={template.title} className="w-full object-cover" />
-            )}
-          </div>
+          {/* preview — an image set shows the whole set, not just its cover */}
+          <TemplatePreview template={template} />
 
           {/* form */}
           <div>

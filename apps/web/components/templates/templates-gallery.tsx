@@ -26,6 +26,7 @@ import { useTemplateCategories, useInfiniteTemplates } from "@/lib/use-templates
 import { useBanners } from "@/lib/use-banners";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
+import { TemplateCardMedia } from "@/components/templates/template-card-media";
 
 type KindFilter = "image" | "image_set" | "video" | "video_image";
 
@@ -36,12 +37,23 @@ const KIND_FILTERS: Array<{ value: KindFilter; labelKey: string; Icon: typeof Im
   { value: "video_image", labelKey: "typeImageVideo", Icon: FilmSlate },
 ];
 
-function KindBadge({ kind }: { kind: CatalogTemplate["kind"] }) {
+/**
+ * Kind at a glance. A set also shows how many images it holds: hovering
+ * reveals them on a pointer device, but a phone never hovers.
+ */
+function KindBadge({ kind, count }: { kind: CatalogTemplate["kind"]; count?: number }) {
   const Icon =
     kind === "video" || kind === "video_image" ? VideoCamera : kind === "set" ? Stack : ImageSquare;
+  const setCount = kind === "set" && count && count > 1 ? count : null;
   return (
-    <span className="absolute start-2 top-2 grid size-7 place-items-center rounded-lg bg-black/55 text-white backdrop-blur">
+    <span
+      className={cn(
+        "absolute start-2 top-2 inline-flex h-7 items-center justify-center gap-1 rounded-lg bg-black/55 text-white backdrop-blur",
+        setCount ? "px-2" : "w-7",
+      )}
+    >
       <Icon weight="fill" className="size-3.5" />
+      {setCount && <span className="text-xs font-medium tabular-nums">{setCount}</span>}
     </span>
   );
 }
@@ -56,24 +68,8 @@ function TemplateCard({ template }: { template: CatalogTemplate }) {
       onMouseLeave={() => setHover(false)}
     >
       <div className="relative aspect-[3/4] overflow-hidden bg-surface-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={template.coverImage}
-          alt={template.title}
-          loading="lazy"
-          className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-        />
-        {template.previewVideo && hover && (
-          <video
-            src={template.previewVideo}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="absolute inset-0 size-full object-cover"
-          />
-        )}
-        <KindBadge kind={template.kind} />
+        <TemplateCardMedia template={template} hover={hover} />
+        <KindBadge kind={template.kind} count={template.gallery?.length} />
         <span className="absolute end-2 top-2 inline-flex items-center gap-1 rounded-lg bg-black/55 px-2 py-1 text-xs font-medium text-white backdrop-blur">
           <Lightning weight="fill" className="size-3 text-primary" />
           {template.credits}

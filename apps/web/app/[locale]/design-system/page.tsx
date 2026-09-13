@@ -47,6 +47,48 @@ import type { Asset } from "@/components/studio/studio-context";
 import { CreditMenu } from "@/components/site/credit-menu";
 import { ProfileMenu } from "@/components/site/profile-menu";
 import * as MenuKit from "@/components/ui/menu";
+import type { CatalogTemplate } from "@clickfy/sdk";
+import { TemplateCardMedia } from "@/components/templates/template-card-media";
+import { TemplatePreview } from "@/components/templates/template-preview";
+
+/**
+ * Image-set templates, over a live published set's real media. The template
+ * page is signed-in only and the catalog needs the API, so this is where the
+ * card's hover cycle and the page's carousel can be checked without either.
+ */
+const DEMO_SET = {
+  id: "demo-set",
+  title: "Retro Menswear Lounge Set",
+  kind: "set",
+  coverImage: "https://api.clickefy.ai/v1/uploads/templates/e26ebe50-be80-4b74-a058-32ee1cd4b0d6.jpg",
+  gallery: [
+    "https://api.clickefy.ai/v1/uploads/templates/6d5a49bd-dd8a-4730-9ece-f51ea44dc823.png",
+    "https://api.clickefy.ai/v1/uploads/templates/62b68363-5c94-4ced-abba-52b3c00de388.jpg",
+    "https://api.clickefy.ai/v1/uploads/templates/6d396f29-db19-495d-a92a-202a35e8f5ed.jpg",
+  ],
+} as unknown as CatalogTemplate;
+
+function TemplateSetDemo() {
+  const [hover, setHover] = useState(false);
+  return (
+    <div className="grid items-start gap-6 sm:grid-cols-[12rem_minmax(0,24rem)]">
+      <div
+        data-demo="set-card"
+        className="group overflow-hidden rounded-xl bg-surface-2"
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+      >
+        <div className="relative aspect-[3/4] overflow-hidden bg-surface-3">
+          <TemplateCardMedia template={DEMO_SET} hover={hover} />
+        </div>
+        <p className="truncate p-3 text-sm font-medium">{DEMO_SET.title}</p>
+      </div>
+      <div data-demo="set-preview">
+        <TemplatePreview template={DEMO_SET} />
+      </div>
+    </div>
+  );
+}
 
 /**
  * Long dropdown lists, over fixture data — the case that used to run off the
@@ -923,6 +965,15 @@ export default function DesignSystemPage() {
             <p className="mt-2 text-xs text-muted-foreground">
               Capped to the room on the side they open, scrolled with the wheel without moving
               the page, flipped when that side is cramped, and opened at the current choice.
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">Image-set templates</h3>
+            <TemplateSetDemo />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Card: hover cycles through the set, one segment per image. Template page: the whole
+              set as a carousel — swipe, arrows, dots or arrow keys.
             </p>
           </div>
 

@@ -84,7 +84,11 @@
     "runFailed": "Couldn't start the generation — try again",
     "insufficientCredits": "Not enough credits — top up or upgrade to continue",
     "rateLimited": "Too many requests — try again in {seconds}s",
-    "unsupportedRequired": "This template needs an input the web app can't provide yet — run it in the mobile app."
+    "unsupportedRequired": "This template needs an input the web app can't provide yet — run it in the mobile app.",
+    "prevImage": "Previous image",
+    "nextImage": "Next image",
+    "showImage": "Show image {n}",
+    "setCount": "{count, plural, one {# image} other {# images}}"
   },
   "pricing": {
     "heading": "Simple, credit-based pricing",
@@ -599,7 +603,7 @@
     "scriptPlaceholder": "Paste your script, or describe the story in a few lines",
     "styleLabel": "Style",
     "styleHandDrawn": "Hand-drawn",
-    "styleSketch": "Sketch",
+    "styleSketch": "Black and white",
     "styleRealistic": "Realistic",
     "styleComic": "Comic",
     "style3d": "3D",

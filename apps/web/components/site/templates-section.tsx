@@ -21,6 +21,7 @@ import {
 import type { CatalogTemplate } from "@clickfy/sdk";
 import { useTemplateCategories, useTemplates } from "@/lib/use-templates";
 import { cn } from "@/lib/utils";
+import { TemplateCardMedia } from "@/components/templates/template-card-media";
 
 /** How many cards the rail shows (3 rows of 5 on xl). */
 const RAIL_SIZE = 15;
@@ -50,28 +51,14 @@ function TemplateCard({
       onMouseLeave={() => setHover(false)}
     >
       <div className="relative aspect-[3/4] overflow-hidden bg-surface-3">
-        {/* Covers come from the API origin; the studio gallery uses a plain
-            <img> for the same reason (rebased URLs in dev). */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={template.coverImage}
-          alt={template.title}
-          loading="lazy"
-          className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-        />
-        {template.previewVideo && hover && (
-          <video
-            src={template.previewVideo}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="absolute inset-0 size-full object-cover"
-          />
-        )}
+        <TemplateCardMedia template={template} hover={hover} />
         <span className="absolute start-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-1 text-[11px] font-medium text-white backdrop-blur">
           <meta.Icon weight="fill" className="size-3.5" />
           {t(meta.labelKey)}
+          {/* A set shows how many images it holds — a phone never hovers to find out. */}
+          {template.kind === "set" && (template.gallery?.length ?? 0) > 1 && (
+            <span className="tabular-nums text-white/70">· {template.gallery!.length}</span>
+          )}
         </span>
       </div>
       <div className="p-3">

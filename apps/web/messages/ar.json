@@ -84,7 +84,11 @@
     "runFailed": "تعذّر بدء الإنشاء — حاول مرة أخرى",
     "insufficientCredits": "رصيدك غير كافٍ — اشحن رصيدك أو قم بالترقية للمتابعة",
     "rateLimited": "طلبات كثيرة — حاول مجددًا بعد {seconds} ثانية",
-    "unsupportedRequired": "يحتاج هذا القالب إلى مدخل لا يدعمه تطبيق الويب بعد — شغّله من تطبيق الجوال."
+    "unsupportedRequired": "يحتاج هذا القالب إلى مدخل لا يدعمه تطبيق الويب بعد — شغّله من تطبيق الجوال.",
+    "prevImage": "الصورة السابقة",
+    "nextImage": "الصورة التالية",
+    "showImage": "عرض الصورة {n}",
+    "setCount": "{count, plural, zero {لا صور} one {صورة واحدة} two {صورتان} few {# صور} many {# صورة} other {# صورة}}"
   },
   "pricing": {
     "heading": "أسعار بسيطة قائمة على الأرصدة",
@@ -599,7 +603,7 @@
     "scriptPlaceholder": "الصق النص، أو صف القصة في بضعة أسطر",
     "styleLabel": "النمط",
     "styleHandDrawn": "رسم يدوي",
-    "styleSketch": "اسكتش",
+    "styleSketch": "أبيض وأسود",
     "styleRealistic": "واقعي",
     "styleComic": "كوميك",
     "style3d": "ثلاثي الأبعاد",

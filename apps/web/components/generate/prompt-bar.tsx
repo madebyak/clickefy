@@ -37,6 +37,7 @@ import {
   type AttachableAsset,
   type PromptAttachment,
 } from "@/components/studio/studio-context";
+import { Menu } from "@/components/ui/menu";
 import { MyAssetsModal } from "@/components/media/my-assets-modal";
 import { DrawModal } from "@/components/generate/draw-modal";
 import { modelLogo } from "@/lib/model-logos";
@@ -231,6 +232,12 @@ function Pill({
 
 /* --------------------------------------------------------------- dropdown */
 
+/**
+ * The composer's pickers open upward from the bar, aligned to their pill.
+ * Built on the shared `Menu` rather than a copy of it, so a long list — the
+ * full model roster, every Seedance duration — is capped to the room above
+ * the bar and scrolls, instead of running off the top of a small screen.
+ */
 function Dropdown({
   trigger,
   panelClassName,
@@ -240,37 +247,10 @@ function Dropdown({
   panelClassName?: string;
   children: (h: { close: () => void }) => ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   return (
-    <div ref={ref} className="relative">
-      {trigger({ open, toggle: () => setOpen((o) => !o) })}
-      {open && (
-        <div
-          className={cn(
-            "absolute bottom-full start-0 z-50 mb-2 rounded-xl border border-border bg-surface-3 p-1.5 shadow-2xl shadow-black/50",
-            panelClassName,
-          )}
-        >
-          {children({ close: () => setOpen(false) })}
-        </div>
-      )}
-    </div>
+    <Menu side="top" align="start" trigger={trigger} panelClassName={panelClassName}>
+      {children}
+    </Menu>
   );
 }
 
@@ -291,6 +271,8 @@ function MenuItem({
     <button
       type="button"
       onClick={onClick}
+      // The panel opens scrolled to this row when the list is long.
+      data-selected={selected ? "true" : undefined}
       className={cn(
         "flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm outline-none transition-colors hover:bg-white/5 focus-visible:bg-white/5",
         selected ? "text-foreground" : "text-muted-foreground",
@@ -1221,6 +1203,46 @@ export function PromptBar({
     },
   };
 
+  /**
+   * Paste an image straight into the attachments — "Copy image" from any
+   * site, a screenshot, a frame from another app. Routed through `addFiles`
+   * so a pasted file meets exactly the same type, size, pixel and ceiling
+   * rules as a picked or dropped one, with the same explanations.
+   *
+   * Bound to the composer root, so it works from the prompt and from every
+   * storyboard shot row alike. Deliberately not a document-wide listener:
+   * a paste into an unrelated field elsewhere on the page stays that
+   * field's, and two mounted composers never both take the same image.
+   */
+  const onPaste = (e: React.ClipboardEvent) => {
+    const data = e.clipboardData;
+    if (!data) return;
+    let files = Array.from(data.files);
+    // Some browsers surface clipboard images only as items, not files.
+    if (files.length === 0) {
+      files = Array.from(data.items)
+        .filter((item) => item.kind === "file")
+        .map((item) => item.getAsFile())
+        .filter((f): f is File => f !== null);
+    }
+    if (files.length === 0) return; // plain text — the textarea's business
+    // A copy that also carries text (a doc with an inline picture) keeps
+    // its text; an image-only paste has nothing for the textarea to insert.
+    if (!data.getData("text/plain")) e.preventDefault();
+    const stamp = Date.now();
+    addFiles(
+      files.map((f, i) => {
+        // Clipboard images arrive with a generic name ("image.png"), which
+        // would fill My Assets with identical entries. Real file names —
+        // a file copied from Finder or Explorer — are kept.
+        if (!/^image\.(png|jpe?g|webp|gif)$/i.test(f.name)) return f;
+        const ext = f.type === "image/jpeg" ? "jpg" : (f.type.split("/")[1] ?? "png");
+        const suffix = files.length > 1 ? `-${i + 1}` : "";
+        return new File([f], `pasted-${stamp}${suffix}.${ext}`, { type: f.type });
+      }),
+    );
+  };
+
   const onGenerate = async () => {
     if (!isLoaded) return;
     const studioPath = isVideo ? "/create-video" : "/create";
@@ -1299,6 +1321,7 @@ export function PromptBar({
   return (
     <div
       {...dragHandlers}
+      onPaste={onPaste}
       className={cn(
         "relative rounded-2xl bg-surface-1 transition-colors",
         compact ? "p-2.5" : "p-3",
@@ -1752,7 +1775,7 @@ export function PromptBar({
               </Pill>
             ) : (
             <Dropdown
-              panelClassName="max-h-80 min-w-44 overflow-y-auto"
+              panelClassName="min-w-44"
               trigger={({ toggle }) => (
                 <Pill onClick={toggle} className={pillCls}>
                   <RatioGlyph ratio={aspect} className="text-muted-foreground" />

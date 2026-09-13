@@ -46,6 +46,83 @@ import { Masonry } from "@/components/studio/masonry";
 import type { Asset } from "@/components/studio/studio-context";
 import { CreditMenu } from "@/components/site/credit-menu";
 import { ProfileMenu } from "@/components/site/profile-menu";
+import * as MenuKit from "@/components/ui/menu";
+
+/**
+ * Long dropdown lists, over fixture data — the case that used to run off the
+ * screen (Seedance offers a dozen durations; the model roster is longer
+ * still). The real ones sit behind sign-in, so this is where the height cap,
+ * the contained wheel scroll, the flip and open-at-selection can be checked.
+ */
+const DEMO_DURATIONS = Array.from({ length: 13 }, (_, i) => i + 3); // 3s … 15s
+const DEMO_FOLDERS = Array.from({ length: 18 }, (_, i) => `Campaign folder ${i + 1}`);
+
+function LongMenuDemo() {
+  const [duration, setDuration] = useState(15);
+  const [folder, setFolder] = useState<string | null>(null);
+  const pill =
+    "inline-flex h-9 items-center gap-1.5 rounded-lg bg-surface-2 px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-3";
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface-1 p-3">
+      <MenuKit.Menu
+        side="top"
+        align="start"
+        panelClassName="min-w-40"
+        trigger={({ toggle }) => (
+          <button type="button" onClick={toggle} className={pill} data-demo="long-up">
+            Duration · {duration}s
+          </button>
+        )}
+      >
+        {({ close }) => (
+          <>
+            <MenuKit.MenuLabel>Duration — opens up</MenuKit.MenuLabel>
+            {DEMO_DURATIONS.map((d) => (
+              <MenuKit.MenuItem
+                key={d}
+                selected={d === duration}
+                onClick={() => {
+                  setDuration(d);
+                  close();
+                }}
+              >
+                {d}s
+              </MenuKit.MenuItem>
+            ))}
+          </>
+        )}
+      </MenuKit.Menu>
+      <MenuKit.Menu
+        side="bottom"
+        align="start"
+        panelClassName="w-60"
+        trigger={({ toggle }) => (
+          <button type="button" onClick={toggle} className={pill} data-demo="long-down">
+            {folder ?? "Move to folder"}
+          </button>
+        )}
+      >
+        {({ close }) => (
+          <>
+            <MenuKit.MenuLabel>Move to folder — opens down</MenuKit.MenuLabel>
+            {DEMO_FOLDERS.map((f) => (
+              <MenuKit.MenuItem
+                key={f}
+                selected={f === folder}
+                onClick={() => {
+                  setFolder(f);
+                  close();
+                }}
+              >
+                {f}
+              </MenuKit.MenuItem>
+            ))}
+          </>
+        )}
+      </MenuKit.Menu>
+    </div>
+  );
+}
 
 /* ----------------------------------------------------------------- helpers */
 
@@ -836,6 +913,17 @@ export default function DesignSystemPage() {
             </h3>
             <CanvasToolbarDemo />
             <FolderTreeDemo />
+          </div>
+
+          <div className="mt-10">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">
+              Long dropdown lists
+            </h3>
+            <LongMenuDemo />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Capped to the room on the side they open, scrolled with the wheel without moving
+              the page, flipped when that side is cramped, and opened at the current choice.
+            </p>
           </div>
 
           <div className="mt-10">

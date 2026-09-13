@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { useTimeLabel } from "@/lib/time-label";
 import { foldersInTreeOrder } from "@/lib/folder-order";
 import type { StudioProject, StudioFolder } from "@/components/studio/studio-context";
+import { MenuPanel } from "@/components/ui/menu";
 
 type Asset = { id: string; kind: "image" | "video"; url: string };
 
@@ -228,7 +229,9 @@ export function ProjectRow({
       </div>
 
       {menuOpen && (
-        <div className="absolute end-2 top-full z-50 mt-1 w-56 rounded-xl border border-border bg-surface-3 p-1.5 shadow-2xl shadow-black/50">
+        // Sized to the room left in the sidebar's scroll area, so a long
+        // folder list scrolls inside the menu instead of past the rail.
+        <MenuPanel anchorRef={wrapRef} side="bottom" align="end" className="end-2 mt-1 w-56">
           {view === "root" && (
             <>
               <Item
@@ -283,7 +286,7 @@ export function ProjectRow({
                 </p>
               ) : (
                 <>
-                  <div className="grid max-h-52 grid-cols-4 gap-1.5 overflow-y-auto p-1.5">
+                  <div className="menu-scroll grid max-h-52 grid-cols-4 gap-1.5 overflow-y-auto overscroll-contain p-1.5">
                     {assets.map((a) => (
                       <button
                         key={a.id}
@@ -315,41 +318,42 @@ export function ProjectRow({
 
           {view === "folder" && (
             <>
+              {/* The panel itself scrolls a long folder list (one scrollbar,
+                  capped to the sidebar's room), so the way back is pinned
+                  instead of scrolling away with the list. */}
               <button
                 type="button"
                 onClick={() => setView("root")}
-                className="flex w-full items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground outline-none hover:text-foreground"
+                className="sticky top-0 z-10 flex w-full items-center gap-1.5 bg-surface-3 px-2 py-1.5 text-xs text-muted-foreground outline-none hover:text-foreground"
               >
                 <CaretLeft className="size-3" />
                 {t("moveToFolder")}
               </button>
-              <div className="max-h-52 overflow-y-auto">
-                <Item
-                  icon={<FolderSimple className="size-4 opacity-40" />}
-                  onClick={() => {
-                    onMoveToFolder(null);
-                    setMenuOpen(false);
-                  }}
-                >
-                  {t("noFolder")}
-                </Item>
-                {/* Tree order, indented by depth. The API returns folders
-                    newest-first with no regard for parentage, so indenting
-                    the raw order would draw children above their parents. */}
-                {foldersInTreeOrder(folders).map((f) => (
-                  <div key={f.id} style={{ paddingInlineStart: f.depth * 12 }}>
-                    <Item
-                      icon={<FolderSimple className="size-4" />}
-                      onClick={() => {
-                        onMoveToFolder(f.id);
-                        setMenuOpen(false);
-                      }}
-                    >
-                      {f.name}
-                    </Item>
-                  </div>
-                ))}
-              </div>
+              <Item
+                icon={<FolderSimple className="size-4 opacity-40" />}
+                onClick={() => {
+                  onMoveToFolder(null);
+                  setMenuOpen(false);
+                }}
+              >
+                {t("noFolder")}
+              </Item>
+              {/* Tree order, indented by depth. The API returns folders
+                  newest-first with no regard for parentage, so indenting
+                  the raw order would draw children above their parents. */}
+              {foldersInTreeOrder(folders).map((f) => (
+                <div key={f.id} style={{ paddingInlineStart: f.depth * 12 }}>
+                  <Item
+                    icon={<FolderSimple className="size-4" />}
+                    onClick={() => {
+                      onMoveToFolder(f.id);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    {f.name}
+                  </Item>
+                </div>
+              ))}
             </>
           )}
 
@@ -377,7 +381,7 @@ export function ProjectRow({
               </Item>
             </>
           )}
-        </div>
+        </MenuPanel>
       )}
     </div>
   );

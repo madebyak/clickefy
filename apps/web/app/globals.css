@@ -270,6 +270,40 @@ body {
 }
 
 /*
+ * `.menu-scroll` — the scrollbar for dropdown panels (components/ui/menu.tsx).
+ * Panels sit on --surface-3, where `.nice-scroll`'s thumb (--border, and
+ * --surface-3 itself on hover) all but disappears, so this one is translucent
+ * white that reads on any surface. It stays quiet until the pointer is in the
+ * menu, then brightens — the cue that the wheel will scroll the list. The
+ * standard properties style it where supported; the WebKit rules cover the
+ * rest, with the track inset so the thumb clears the panel's rounded corners.
+ */
+.menu-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.14) transparent;
+}
+.menu-scroll:hover {
+  scrollbar-color: rgb(255 255 255 / 0.3) transparent;
+}
+.menu-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.menu-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 8px;
+}
+.menu-scroll::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.14);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.menu-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.3);
+  background-clip: content-box;
+}
+
+/*
  * Clerk component overrides. Most theming flows through the appearance
  * variables (lib/clerk-appearance.ts); these rules cover the few
  * internal elements whose CSS-in-JS wins over appearance/Tailwind —

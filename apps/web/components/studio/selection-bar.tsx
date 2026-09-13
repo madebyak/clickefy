@@ -32,7 +32,7 @@ function ProjectPicker({
     <Menu
       align="end"
       side="top"
-      panelClassName="max-h-72 w-60 overflow-y-auto"
+      panelClassName="w-60"
       trigger={({ toggle }) => (
         <button
           type="button"

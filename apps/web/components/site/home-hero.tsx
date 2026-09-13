@@ -171,82 +171,26 @@ function ToolCard({
 }
 
 /**
- * Six panels of a shot sheet, framed wide → medium → close and back.
- *
- * Drawn rather than photographed on purpose: the storyboard tool emits ONE
- * image of consistently-styled panels, so a strip of six unrelated stills
- * would describe a product we do not sell. The sample frames in
- * `public/tools/storyboard` are the same cottage in five styles — a style
- * picker, not a sequence — so they would read as a bug here.
+ * A real storyboard sheet: four panels of one sequence in one consistent
+ * sketch style — exactly what the storyboard tool produces, ONE image of
+ * panels rather than a strip of unrelated stills. Framed like a print on the
+ * card, so the white paper reads as a sheet and not as a hole in the card.
  */
-const PANEL_W = 48;
-const PANEL_H = 34;
-
-/**
- * Head radius and body box per panel, so the figure reads as a person
- * framed at a distance rather than a bar of a chart. Wide → medium →
- * close and back out again.
- */
-const SHOTS = [
-  { head: 1.5, bw: 4, bh: 5 },
-  { head: 2.8, bw: 7.5, bh: 10 },
-  { head: 5, bw: 13, bh: 17 },
-  { head: 5, bw: 13, bh: 17 },
-  { head: 2.8, bw: 7.5, bh: 10 },
-  { head: 1.5, bw: 4, bh: 5 },
-];
+const STORYBOARD_SHEET = "/assets/new/storyboard-sheet.png";
 
 function StoryboardSheet() {
   return (
-    <svg
-      viewBox="0 0 156 76"
-      className="w-full max-w-[11rem]"
-      role="img"
-      aria-hidden="true"
-      fill="none"
-    >
-      {SHOTS.map((s, i) => {
-        const x = (i % 3) * 54;
-        const y = Math.floor(i / 3) * 42;
-        const cx = x + PANEL_W / 2;
-        const ground = y + PANEL_H - 7;
-        // One green panel rather than six: the sheet stays calm, and the
-        // card still carries the brand accent the others have. It sits on
-        // the close-up because the accent is wasted on a figure six pixels
-        // tall.
-        const figure = i === 2 ? "fill-brand-green opacity-80" : "fill-foreground opacity-28";
-        return (
-          <g key={i}>
-            <rect
-              x={x}
-              y={y}
-              width={PANEL_W}
-              height={PANEL_H}
-              rx={3}
-              className="fill-surface-1 stroke-border"
-              strokeWidth={1}
-            />
-            <line
-              x1={x + 4}
-              x2={x + PANEL_W - 4}
-              y1={ground}
-              y2={ground}
-              className="stroke-border"
-              strokeWidth={1}
-            />
-            <circle cx={cx} cy={ground - s.bh - s.head} r={s.head} className={figure} />
-            <rect
-              x={cx - s.bw / 2}
-              y={ground - s.bh}
-              width={s.bw}
-              height={s.bh}
-              rx={s.bw / 2.6}
-              className={figure}
-            />
-          </g>
-        );
-      })}
-    </svg>
+    <div className="relative aspect-[1672/941] w-full overflow-hidden rounded-lg ring-1 ring-border">
+      <Image
+        src={STORYBOARD_SHEET}
+        alt=""
+        fill
+        // Half of the 5/12 right column on desktop, half the width on
+        // tablets, the full width on phones.
+        sizes="(min-width: 1024px) 20vw, (min-width: 640px) 45vw, 90vw"
+        className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+      />
+    </div>
   );
 }
 

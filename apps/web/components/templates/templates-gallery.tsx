@@ -7,7 +7,8 @@
  * marketing shell (Navbar/Footer stay server-rendered).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/navigation";
 import {
@@ -36,6 +37,26 @@ const KIND_FILTERS: Array<{ value: KindFilter; labelKey: string; Icon: typeof Im
   { value: "video", labelKey: "typeVideo", Icon: VideoCamera },
   { value: "video_image", labelKey: "typeImageVideo", Icon: FilmSlate },
 ];
+
+/** `/templates?type=video` opens the gallery on that kind (homepage deep links). */
+const KIND_PARAM = "type";
+
+const parseKind = (value: string | null): KindFilter | undefined =>
+  KIND_FILTERS.find((f) => f.value === value)?.value;
+
+/**
+ * Renders nothing. Mirrors `?type=` into the gallery's kind filter, on
+ * arrival and whenever the filter chips rewrite the URL. Isolated behind
+ * its own Suspense boundary because `useSearchParams` suspends during
+ * prerender (same shape as ToolDeepLink in tools-context.tsx).
+ */
+function KindFromUrl({ onKind }: { onKind: (kind: KindFilter | undefined) => void }) {
+  const type = useSearchParams().get(KIND_PARAM);
+  useEffect(() => {
+    onKind(parseKind(type));
+  }, [type, onKind]);
+  return null;
+}
 
 /**
  * Kind at a glance. A set also shows how many images it holds: hovering
@@ -158,11 +179,35 @@ export function TemplatesGallery() {
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [kind, setKind] = useState<KindFilter | undefined>(undefined);
+  // The page is prerendered, so `?type=` is only known after hydration.
+  // Hold the catalog request until then, or a deep link to video
+  // templates would first fetch (and flash) the unfiltered catalog.
+  const [kindReady, setKindReady] = useState(false);
+  const applyUrlKind = useCallback((next: KindFilter | undefined) => {
+    setKind(next);
+    setKindReady(true);
+  }, []);
+
+  // The URL is the filter's source of truth, so a chosen kind survives
+  // refresh and can be shared. replaceState syncs with useSearchParams,
+  // which feeds the choice back through KindFromUrl.
+  const selectKind = useCallback((next: KindFilter | undefined) => {
+    setKind(next);
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.set(KIND_PARAM, next);
+    else url.searchParams.delete(KIND_PARAM);
+    window.history.replaceState(null, "", url);
+  }, []);
 
   // Debounce so each keystroke doesn't spawn a request / query key.
   const debouncedSearch = useDebouncedValue(search, 300);
   const categoriesQuery = useTemplateCategories();
-  const templatesQuery = useInfiniteTemplates({ categoryId, search: debouncedSearch, kind });
+  const templatesQuery = useInfiniteTemplates({
+    categoryId,
+    search: debouncedSearch,
+    kind,
+    enabled: kindReady,
+  });
 
   const roots = useMemo(
     () => (categoriesQuery.data ?? []).filter((c) => !c.parentId),
@@ -197,6 +242,9 @@ export function TemplatesGallery() {
 
   return (
     <main className="mx-auto w-full max-w-site py-8 site-px">
+      <Suspense fallback={null}>
+        <KindFromUrl onKind={applyUrlKind} />
+      </Suspense>
       <PromoBanner onSelectCategory={(id) => setCategoryId(id)} />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -221,7 +269,7 @@ export function TemplatesGallery() {
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setKind(undefined)}
+            onClick={() => selectKind(undefined)}
             className={cn(
               "rounded-full border px-3.5 py-1.5 text-sm transition-colors",
               !kind
@@ -235,7 +283,7 @@ export function TemplatesGallery() {
             <button
               key={value}
               type="button"
-              onClick={() => setKind(kind === value ? undefined : value)}
+              onClick={() => selectKind(kind === value ? undefined : value)}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm transition-colors",
                 kind === value
@@ -281,7 +329,7 @@ export function TemplatesGallery() {
         </div>
 
         {/* grid */}
-        {templatesQuery.isLoading ? (
+        {!kindReady || templatesQuery.isLoading ? (
           <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {Array.from({ length: 10 }, (_, i) => (
               <div key={i} className="aspect-[3/4] animate-pulse rounded-xl bg-surface-2" />

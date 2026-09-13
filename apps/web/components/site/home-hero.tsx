@@ -305,7 +305,7 @@ export function HomeHero() {
               <p className="mt-1 text-white/70">{t("createVideoSub")}</p>
               <div className="flex-1" />
               <Link
-                href="/create-video"
+                href="/templates?type=video"
                 className="inline-flex w-fit items-center gap-2 rounded-lg bg-surface-2/80 px-4 py-2 text-sm font-medium backdrop-blur transition-colors hover:bg-surface-3"
               >
                 {t("exploreVideoTemplates")} <ArrowRight className="size-4 rtl:-scale-x-100" />

@@ -91,9 +91,10 @@ export function useTemplates(opts: TemplateFilters & { limit?: number }) {
  * which left 221 of 271 published templates unreachable from the web at
  * any sort order.
  */
-export function useInfiniteTemplates(opts: TemplateFilters) {
+export function useInfiniteTemplates(opts: TemplateFilters & { enabled?: boolean }) {
   const locale = useLocale();
   return useInfiniteQuery({
+    enabled: opts.enabled ?? true,
     queryKey: [...templatesKey(locale, opts), "infinite"],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam }) => {

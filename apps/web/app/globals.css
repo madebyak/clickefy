@@ -362,4 +362,7 @@ body {
 /* Essential asset actions must be discoverable without hovering. */
 @media (hover: none), (pointer: coarse), (width < 64rem) {
   .touch-visible { opacity: 1; }
+  /* These shortcuts live in the asset menu on touch/narrow screens.
+     Remove their hit targets as well as their visual appearance. */
+  .asset-hover-actions { display: none; }
 }

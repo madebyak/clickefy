@@ -390,6 +390,15 @@ export function Masonry({
               >
                 {({ close }) => (
                   <>
+                    <MenuItem
+                      onClick={() => {
+                        downloadAsset(a);
+                        close();
+                      }}
+                    >
+                      <DownloadSimple className="size-4 text-muted-foreground" />
+                      {t("download")}
+                    </MenuItem>
                     {onToggleFavorite && (
                       <>
                         <MenuItem
@@ -474,9 +483,8 @@ export function Masonry({
                 )}
               </Menu>
             </div>
-            {/* Download — one click for the single most common action on
-                a finished render. Hover-only: it carries no idle state. */}
-            <div className="absolute end-12 top-2 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            {/* Desktop shortcuts. Touch and narrow layouts use the ⋯ menu. */}
+            <div className="asset-hover-actions absolute end-12 top-2 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
               <OverlayButton
                 label={t("download")}
                 onClick={(e) => {
@@ -490,7 +498,7 @@ export function Masonry({
             {/* Heart control, innermost of the row (its idle state shows
                 as the corner badge above). */}
             {onToggleFavorite && (
-              <div className="absolute end-[5.5rem] top-2 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+              <div className="asset-hover-actions absolute end-[5.5rem] top-2 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                 <OverlayButton
                   label={a.favorited ? t("unfavorite") : t("favorite")}
                   onClick={(e) => {
@@ -506,15 +514,14 @@ export function Masonry({
               </div>
             )}
 
-            {/* Bottom action bar. Both live in ONE row rather than at
-                opposite corners: the masonry is columns-2 on mobile, so
-                at ~170px of tile width two corner-anchored pills would
-                overlap. Labels drop away on narrow tiles, leaving icons. */}
+            {/* Desktop bottom shortcuts share a row to avoid overlapping
+                on narrow tiles. Mobile actions live in the ⋯ menu. */}
             {(onAssetClick || onAssetReuse) && (
-              <div className="absolute inset-x-2 bottom-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="asset-hover-actions absolute inset-x-2 bottom-2 flex items-center gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                 {onAssetClick && (
                   <button
                     type="button"
+                    aria-label={t("addAsReference")}
                     onClick={(e) => {
                       e.stopPropagation();
                       onAssetClick(a);
@@ -533,6 +540,7 @@ export function Masonry({
                 {onAssetReuse && (
                   <button
                     type="button"
+                    aria-label={t("reuse")}
                     disabled={reusingAssetId === a.id}
                     onClick={(e) => {
                       e.stopPropagation();

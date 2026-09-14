@@ -309,6 +309,11 @@ type StudioValue = {
   pendingSetup: ReuseSetup | null;
   clearPendingSetup: () => void;
   removeAttachment: (attachmentId: string) => void;
+  /**
+   * Move an attachment to `toIndex` in the tray. Order is meaningful: it
+   * is the order references are sent in, and so what `@Image2` means.
+   */
+  moveAttachment: (attachmentId: string, toIndex: number) => void;
   clearAttachments: () => void;
 
   // generation
@@ -1033,6 +1038,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       }),
     [],
   );
+  const moveAttachment = useCallback(
+    (attachmentId: string, toIndex: number) =>
+      setAttachments((prev) => {
+        const from = prev.findIndex((a) => a.id === attachmentId);
+        if (from < 0) return prev;
+        const next = prev.slice();
+        const [item] = next.splice(from, 1);
+        next.splice(Math.max(0, Math.min(toIndex, next.length)), 0, item!);
+        return next;
+      }),
+    [],
+  );
   const clearAttachments = useCallback(
     () =>
       setAttachments((prev) => {
@@ -1212,6 +1229,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       pendingSetup,
       clearPendingSetup,
       removeAttachment,
+      moveAttachment,
       clearAttachments,
       pending,
       startGeneration,
@@ -1253,6 +1271,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       pendingSetup,
       clearPendingSetup,
       removeAttachment,
+      moveAttachment,
       clearAttachments,
       pending,
       startGeneration,

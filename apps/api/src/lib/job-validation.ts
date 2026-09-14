@@ -26,6 +26,7 @@
 import type { TemplateInputField } from '@clickfy/db';
 import type { CreateJobBody, CreateUserJobBody, JobInputValueParsed } from './job-schemas';
 import { probeAudioDurationSeconds, probeVideoDurationSeconds } from './media-duration';
+import { danglingReferenceTokens, referenceCounts } from '@clickfy/types';
 
 export type JobValidationErrorCode =
   | 'template_not_published'
@@ -67,7 +68,9 @@ export type JobValidationErrorCode =
   | 'too_many_references'
   | 'image_format_not_supported'
   | 'shots_not_supported'
-  | 'shots_invalid';
+  | 'shots_invalid'
+  // ── Prompt reference tokens (@Image1 …) ──
+  | 'reference_token_missing';
 
 export interface JobValidationError {
   code: JobValidationErrorCode;
@@ -408,6 +411,30 @@ export async function validateCreateSubmission(
       message: `Prompt exceeds the ${promptCap.toLocaleString()}-character limit for this model.`,
       details: { maxLength: promptCap, actual: body.prompt.length },
     });
+  }
+
+  // ── Reference tokens (@Image1 …) ───────────────────────────────
+  // `@Image2` names the second attached image — per kind, in the order
+  // the references were sent. The worker translates tokens into each
+  // model's own addressing, so a token with nothing behind it reaches the
+  // model as a stray word at best. Refuse it before charging. Tool jobs
+  // carry engineered prompts, not user mentions.
+  if (!body.tool) {
+    const refCounts = referenceCounts(body.references.map((r) => r.kind));
+    for (const text of [body.prompt, ...(body.shots ?? []).map((s) => s.text)]) {
+      const missing = danglingReferenceTokens(text, refCounts)[0];
+      if (missing) {
+        const have = refCounts[missing.kind];
+        return fail({
+          code: 'reference_token_missing',
+          message:
+            have === 0
+              ? `Your prompt mentions ${missing.text}, but no ${missing.kind} is attached as a reference.`
+              : `Your prompt mentions ${missing.text}, but only ${have} ${missing.kind}${have === 1 ? ' is' : 's are'} attached.`,
+          details: { token: missing.text, attached: have },
+        });
+      }
+    }
   }
 
   // ── Assemble attachments (canonical field keys for error copy) ──

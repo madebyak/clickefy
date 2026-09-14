@@ -43,6 +43,24 @@ import type {
 
 import { getCapabilities } from './capabilities';
 import { composeToolPrompt, type CreateToolRequest } from './tool-prompts';
+import {
+  referenceCounts,
+  translateReferenceTokens,
+  type ReferenceKind,
+  type ReferenceSyntax,
+} from '@clickfy/types';
+
+/**
+ * How this model wants attachments named in the prompt. Seedance video
+ * numbers its content per kind (`@Image1`, `@Video1`); Kling API 2.0
+ * matches `@image_N` to each reference part's id; every other model we
+ * carry addresses its inputs by position in prose.
+ */
+function referenceSyntaxFor(caps: { provider: string; kind: string; refAddressing: string }): ReferenceSyntax {
+  if (caps.provider === 'seedance' && caps.kind === 'video') return 'seedance';
+  if (caps.refAddressing === 'at') return 'kling';
+  return 'prose';
+}
 
 /** Canonical `jobs.inputs` field keys the API writes and the worker reads. */
 export const CREATE_PROMPT_KEY = 'prompt';
@@ -132,6 +150,20 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
   const provider = caps.provider;
   const isImage = caps.kind === 'image';
   const refCount = Math.max(0, input.referenceCount ?? 0);
+
+  // The composer's `@Image1` / `@Video2` tokens name attachments by kind
+  // and per-kind position — the order they were sent in. Translate them
+  // into this model's own addressing here, at stage-build time, so
+  // `jobs.inputs` keeps the neutral tokens (Re-use and the job record
+  // show what the user wrote, whatever model runs it).
+  const refKinds: ReferenceKind[] = Array.from(
+    { length: refCount },
+    (_, i) => input.referenceKinds?.[i] ?? 'image',
+  );
+  const addressRefs = (text: string): string =>
+    refCount > 0
+      ? translateReferenceTokens(text, referenceSyntaxFor(caps), referenceCounts(refKinds))
+      : text;
 
   // ── Synthetic image input fields ───────────────────────────────────
   // Order matters for subject-based providers (Gemini/Kling): the
@@ -250,7 +282,7 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
       config.referenceInputs = Array.from({ length: refCount }, (_, i) => createReferenceKey(i));
     }
     if (input.shots && input.shots.length > 1) {
-      config.shots = input.shots.map((s) => ({ seconds: s.seconds, text: s.text }));
+      config.shots = input.shots.map((s) => ({ seconds: s.seconds, text: addressRefs(s.text) }));
     }
   }
 
@@ -259,7 +291,7 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
     order: 0,
     provider,
     model: input.modelKey,
-    prompt: input.tool ? composeToolPrompt(input.tool, input.prompt) : input.prompt,
+    prompt: input.tool ? composeToolPrompt(input.tool, input.prompt) : addressRefs(input.prompt),
     // Admin reference images are template-only. User attachments travel
     // as subjects/slots via `inputs`, never here.
     references: [],

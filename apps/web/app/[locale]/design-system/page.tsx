@@ -51,6 +51,60 @@ import type { CatalogTemplate } from "@clickfy/sdk";
 import { TemplateCardMedia } from "@/components/templates/template-card-media";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import { CameraAngleModal } from "@/components/tools/camera-angle-modal";
+import {
+  ReferencePromptInput,
+  type PromptReference,
+  type ReferencePromptInputHandle,
+} from "@/components/generate/reference-prompt-input";
+
+/**
+ * The composer's reference-aware prompt over fixture attachments: chips
+ * behind the text (red for a token with no attachment), the @ menu, and
+ * insert-at-caret. The real composer needs a signed-in studio.
+ */
+const DEMO_REFS: PromptReference[] = [
+  { id: "r1", kind: "image", token: "@Image1", previewUrl: "/tools/camera/wide.webp", name: "wide.webp" },
+  { id: "r2", kind: "image", token: "@Image2", previewUrl: "/tools/camera/close-up.webp", name: "close-up.webp" },
+  { id: "r3", kind: "audio", token: "@Audio1", previewUrl: "", name: "theme.mp3" },
+];
+
+function ReferencePromptDemo() {
+  const [value, setValue] = useState(
+    "Put the jacket from @Image2 on the man in @Image1, music from @Audio1, lighting from @Image3",
+  );
+  const input = useRef<ReferencePromptInputHandle>(null);
+  return (
+    <div data-demo="ref-prompt" className="max-w-xl rounded-2xl bg-surface-1 p-3">
+      <div className="mb-2 flex flex-wrap gap-2">
+        {DEMO_REFS.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            onClick={() => input.current?.insertToken(r.token)}
+            className="rounded-md bg-surface-3 px-2 py-1 text-xs"
+          >
+            {r.token}
+          </button>
+        ))}
+      </div>
+      <ReferencePromptInput
+        ref={input}
+        value={value}
+        onValueChange={setValue}
+        onSubmit={() => toast("Submit")}
+        references={DEMO_REFS}
+        counts={{ image: 2, video: 0, audio: 1 }}
+        kindLabels={{ image: "Image", video: "Video", audio: "Audio" }}
+        menuLabel="Mention an attachment"
+        placeholder="Describe the shot…"
+        dir="auto"
+        rows={1}
+        textClassName="text-base sm:text-sm"
+        className="block max-h-40 w-full resize-none [field-sizing:content] placeholder:text-muted-foreground"
+      />
+    </div>
+  );
+}
 
 /**
  * Camera Angle outside the studio: both modes (orbit stage and preset
@@ -998,6 +1052,15 @@ export default function DesignSystemPage() {
             <p className="mt-2 text-xs text-muted-foreground">
               Card: hover cycles through the set, one segment per image. Template page: the whole
               set as a carousel — swipe, arrows, dots or arrow keys.
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">Prompt references</h3>
+            <ReferencePromptDemo />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Tokens name attachments per kind (@Image1, @Video1, @Audio1). Green chips resolve, red
+              ones name nothing attached. Type @ for suggestions; the buttons insert at the caret.
             </p>
           </div>
 

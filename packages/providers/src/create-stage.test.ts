@@ -406,6 +406,46 @@ describe('buildCreateStage — Seedance (video)', () => {
   });
 });
 
+describe('buildCreateStage — prompt reference tokens', () => {
+  it('Seedance keeps per-kind @Image / @Audio tokens, normalised', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'Put the jacket from @image2 on the man in @Image1, music from @audio_1',
+      referenceCount: 3,
+      referenceKinds: ['image', 'image', 'audio'],
+    });
+    expect(built.stage.prompt).toBe(
+      'Put the jacket from @Image2 on the man in @Image1, music from @Audio1',
+    );
+  });
+
+  it('Kling Omni gets @image_N, matching its reference part ids', () => {
+    const built = buildCreateStage({
+      modelKey: 'kling-v3-omni',
+      prompt: 'The jacket from @Image2 on the man in @Image1',
+      referenceCount: 2,
+    });
+    expect(built.stage.prompt).toBe('The jacket from @image_2 on the man in @image_1');
+  });
+
+  it('image models get plain "image N"', () => {
+    const built = buildCreateStage({
+      modelKey: 'gemini-3-pro-image',
+      prompt: 'The jacket from @Image2 on the man in @Image1',
+      referenceCount: 2,
+    });
+    expect(built.stage.prompt).toBe('The jacket from image 2 on the man in image 1');
+  });
+
+  it('leaves prompts untouched when nothing is attached', () => {
+    const built = buildCreateStage({
+      modelKey: 'gemini-3-pro-image',
+      prompt: 'A poster mentioning @Image1 literally',
+    });
+    expect(built.stage.prompt).toBe('A poster mentioning @Image1 literally');
+  });
+});
+
 describe('buildCreateStage — studio tools (hidden prompts)', () => {
   it('camera angle: composes the whole prompt from the two degrees', () => {
     const built = buildCreateStage({

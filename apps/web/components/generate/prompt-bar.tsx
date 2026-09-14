@@ -26,7 +26,23 @@ import {
   FastForward,
   FilmSlate,
 } from "@phosphor-icons/react";
-import { detectVideoTaskIntent, resolveCreditCost, type VideoTaskIntent } from "@clickfy/types";
+import {
+  danglingReferenceTokens,
+  detectVideoTaskIntent,
+  findReferenceTokens,
+  mapReferenceTokens,
+  referenceCounts,
+  referenceNumbers,
+  referenceToken,
+  resolveCreditCost,
+  type ReferenceKind,
+  type VideoTaskIntent,
+} from "@clickfy/types";
+import {
+  ReferencePromptInput,
+  type PromptReference,
+  type ReferencePromptInputHandle,
+} from "@/components/generate/reference-prompt-input";
 import type { GenModel } from "@clickfy/sdk";
 import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
 import { cn } from "@/lib/utils";
@@ -47,6 +63,9 @@ import { modelLogo } from "@/lib/model-logos";
 /** Mirrors the file input's `accept`; also enforced on drop. */
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const EMPTY_ATTACHMENTS: PromptAttachment[] = [];
+/** Drag payload for reordering an attachment within the tray. */
+const ATTACHMENT_REORDER_TYPE = "application/x-clickfy-attachment";
+const REF_KINDS: readonly ReferenceKind[] = ["image", "video", "audio"];
 
 /**
  * Per-kind upload ceilings, mirroring the server's (`uploads.ts`
@@ -449,16 +468,57 @@ function FrameSlot({
   );
 }
 
+/**
+ * The attachment's number within its kind — the `N` in `@ImageN`. A
+ * button: tapping inserts the token at the prompt's caret, and
+ * Alt+Arrow moves the attachment within its group.
+ */
+function RefNumberBadge({
+  n,
+  label,
+  onInsert,
+  onMove,
+}: {
+  n: number;
+  label: string;
+  onInsert: () => void;
+  onMove?: (delta: -1 | 1) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onInsert}
+      aria-label={label}
+      title={label}
+      aria-keyshortcuts={onMove ? "Alt+ArrowLeft Alt+ArrowRight" : undefined}
+      onKeyDown={(e) => {
+        if (!onMove || !e.altKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+        e.preventDefault();
+        // Arrow keys are physical; "earlier" is leftward only in LTR.
+        const rtl = getComputedStyle(e.currentTarget).direction === "rtl";
+        const towardsLeft = e.key === "ArrowLeft";
+        onMove(towardsLeft !== rtl ? -1 : 1);
+      }}
+      className="grid h-4 min-w-4 shrink-0 place-items-center rounded bg-black/75 px-1 text-[10px] font-semibold tabular-nums text-white outline-none transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      {n}
+    </button>
+  );
+}
+
 function AttachmentThumb({
   attachment,
   onRemove,
   removeLabel,
   compact,
+  refBadge,
 }: {
   attachment: PromptAttachment;
   onRemove: () => void;
   removeLabel: string;
   compact?: boolean;
+  /** Number badge, when attachments are references the prompt can name. */
+  refBadge?: React.ReactNode;
 }) {
   // Audio has no frame to show — a labelled chip beats a broken <img>.
   if (attachment.kind === "audio") {
@@ -470,6 +530,7 @@ function AttachmentThumb({
           attachment.status !== "ready" && "opacity-60",
         )}
       >
+        {refBadge}
         <SpeakerHigh weight="fill" className="size-4 shrink-0 text-accent-turquoise" />
         <span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
           {attachment.name ?? "audio"}
@@ -506,6 +567,7 @@ function AttachmentThumb({
           muted
           playsInline
           preload="metadata"
+          draggable={false}
           className={cn(
             "size-full object-cover transition-opacity",
             attachment.status !== "ready" && "opacity-40",
@@ -516,12 +578,14 @@ function AttachmentThumb({
         <img
           src={attachment.previewUrl}
           alt=""
+          draggable={false}
           className={cn(
             "size-full object-cover transition-opacity",
             attachment.status !== "ready" && "opacity-40",
           )}
         />
       )}
+      {refBadge && <div className="absolute start-0.5 top-0.5">{refBadge}</div>}
       {attachment.kind === "video" && attachment.durationSec != null && (
         <span className="pointer-events-none absolute bottom-0.5 start-0.5 rounded bg-black/70 px-1 text-[9px] tabular-nums text-white">
           {Math.round(attachment.durationSec)}s
@@ -875,6 +939,94 @@ export function PromptBar({
     }
     setAttachMode(task);
   };
+
+  // ── Prompt references (@Image1, @Video2, @Audio1) ──────────────────
+  // Only where attachments ARE references; frames are positional slots.
+  const refNumbers = useMemo(() => referenceNumbers(attachments.map((a) => a.kind)), [attachments]);
+  const promptRefs = useMemo<PromptReference[]>(
+    () =>
+      isFrames
+        ? []
+        : attachments.map((a, i) => ({
+            id: a.id,
+            kind: a.kind,
+            token: referenceToken(a.kind, refNumbers[i]!),
+            previewUrl: a.previewUrl,
+            name: a.name,
+          })),
+    [attachments, refNumbers, isFrames],
+  );
+  const refCounts = useMemo(
+    () =>
+      isFrames ? { image: 0, video: 0, audio: 0 } : referenceCounts(attachments.map((a) => a.kind)),
+    [attachments, isFrames],
+  );
+  const refKindLabels = useMemo(
+    () => ({ image: t("refKindImage"), video: t("refKindVideo"), audio: t("refKindAudio") }),
+    [t],
+  );
+  const danglingRefs = useMemo(
+    () => danglingReferenceTokens(effectivePrompt, refCounts),
+    [effectivePrompt, refCounts],
+  );
+  const failedUpload = attachments.some((a) => a.status === "error");
+  // Only the studio submits; the marketing hero just hands the text over.
+  const refBlocksGenerate = !!studio && (danglingRefs.length > 0 || failedUpload);
+
+  // The input a number badge inserts into: whichever prompt field had
+  // focus last (the main prompt, or a storyboard shot).
+  const promptInputRef = useRef<ReferencePromptInputHandle>(null);
+  const activeRefInput = useRef<ReferencePromptInputHandle | null>(null);
+  const insertRef = (token: string) =>
+    (activeRefInput.current ?? promptInputRef.current)?.insertToken(token);
+
+  // Keep every mention pointing at the same FILE when the tray changes.
+  // Each token's old (kind, number) resolves to an attachment id from the
+  // previous order, then to that id's number in the new order; a token
+  // whose file was removed is deleted (and said so). Appending leaves
+  // existing numbers untouched, so plain adds never rewrite anything.
+  const latestText = useRef({ prompt, shots });
+  useEffect(() => {
+    latestText.current = { prompt, shots };
+  });
+  const prevRefIds = useRef<Record<ReferenceKind, string[]>>({ image: [], video: [], audio: [] });
+  useEffect(() => {
+    const next: Record<ReferenceKind, string[]> = { image: [], video: [], audio: [] };
+    for (const a of attachments) next[a.kind].push(a.id);
+    const prev = prevRefIds.current;
+    prevRefIds.current = next;
+    const shifted = REF_KINDS.some((k) => prev[k].some((id, i) => next[k][i] !== id));
+    if (!shifted) return;
+
+    const removed = new Set<string>();
+    const rewrite = (text: string) =>
+      mapReferenceTokens(text, (tok) => {
+        const id = prev[tok.kind][tok.n - 1];
+        if (!id) return undefined;
+        const at = next[tok.kind].indexOf(id);
+        if (at < 0) {
+          removed.add(tok.text);
+          return null;
+        }
+        return at + 1 === tok.n ? undefined : referenceToken(tok.kind, at + 1);
+      });
+    const { prompt: p, shots: s } = latestText.current;
+    const nextPrompt = rewrite(p);
+    if (nextPrompt !== p) setPrompt(nextPrompt);
+    const nextShots = s.map((sh) => ({ ...sh, text: rewrite(sh.text) }));
+    if (nextShots.some((sh, i) => sh.text !== s[i]!.text)) setShots(nextShots);
+    if (removed.size > 0) {
+      toast.info(t("refRemovedFromPrompt", { tokens: [...removed].join(", ") }));
+    }
+  }, [attachments, t]);
+
+  /** Move within its kind's group by one step (keyboard reorder). */
+  const moveRef = (att: PromptAttachment, delta: -1 | 1) => {
+    const group = attachments.filter((a) => a.kind === att.kind);
+    const neighbour = group[group.indexOf(att) + delta];
+    if (!neighbour) return;
+    studio?.moveAttachment(att.id, attachments.indexOf(neighbour));
+  };
   const canGenerate =
     !!model &&
     effectivePrompt.trim().length > 0 &&
@@ -882,7 +1034,8 @@ export function PromptBar({
     !submitting &&
     !uploadsInFlight &&
     !needsStartFrame &&
-    !needsTaskVideo;
+    !needsTaskVideo &&
+    !refBlocksGenerate;
 
   // Video references are billed by their length (Seedance). The
   // client-probed durations preview the charge; the server derives the
@@ -1434,16 +1587,81 @@ export function PromptBar({
         </div>
       ) : (
         attachments.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {attachments.map((a) => (
-              <AttachmentThumb
-                compact={compact}
-                key={a.id}
-                attachment={a}
-                onRemove={() => studio?.removeAttachment(a.id)}
-                removeLabel={t("removeAttachment")}
-              />
-            ))}
+          <div className="mb-3 flex flex-col gap-2">
+            {/* One group per kind — numbering is per kind (@Image1, @Video1),
+                so a mixed row would make "which one is Image 2" guesswork.
+                Items reorder within their group; mentions follow. */}
+            {REF_KINDS.map((kind) => {
+              const group = attachments
+                .map((a, index) => ({ a, index }))
+                .filter(({ a }) => a.kind === kind);
+              if (group.length === 0) return null;
+              const label = t(
+                kind === "image" ? "refGroupImage" : kind === "video" ? "refGroupVideo" : "refGroupAudio",
+              );
+              const max = kind === "image" ? maxImages : kind === "video" ? effMaxVideos : maxAudioRefs;
+              return (
+                <div key={kind} role="group" aria-label={label} className="flex flex-wrap items-center gap-2">
+                  {refsTakeClips && (
+                    <span className="w-full text-[11px] font-medium text-muted-foreground">
+                      {label}{" "}
+                      {max > 0 && (
+                        <span className="tabular-nums">
+                          {t("refGroupCount", { count: group.length, max })}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {group.map(({ a, index }) => {
+                    const token = referenceToken(a.kind, refNumbers[index]!);
+                    return (
+                      <div
+                        key={a.id}
+                        draggable={group.length > 1}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData(ATTACHMENT_REORDER_TYPE, a.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragOver={(e) => {
+                          if (!e.dataTransfer.types.includes(ATTACHMENT_REORDER_TYPE)) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(e) => {
+                          const draggedId = e.dataTransfer.getData(ATTACHMENT_REORDER_TYPE);
+                          if (!draggedId) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const dragged = attachments.find((x) => x.id === draggedId);
+                          if (!dragged || dragged.kind !== kind || draggedId === a.id) return;
+                          studio?.moveAttachment(draggedId, index);
+                        }}
+                        className={cn(group.length > 1 && "cursor-grab active:cursor-grabbing")}
+                      >
+                        <AttachmentThumb
+                          compact={compact}
+                          attachment={a}
+                          onRemove={() => studio?.removeAttachment(a.id)}
+                          removeLabel={t("removeAttachment")}
+                          refBadge={
+                            <RefNumberBadge
+                              n={refNumbers[index]!}
+                              label={t("insertRef", { token })}
+                              onInsert={() => insertRef(token)}
+                              onMove={group.length > 1 ? (delta) => moveRef(a, delta) : undefined}
+                            />
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            {findReferenceTokens(effectivePrompt).length === 0 && (
+              <p className="text-[11px] text-muted-foreground">{t("refTrayHint")}</p>
+            )}
           </div>
         )
       )}
@@ -1456,6 +1674,15 @@ export function PromptBar({
       {needsTaskVideo && (
         <p className="mb-2 text-xs text-muted-foreground">
           {t(attachMode === "edit" ? "editNeedsVideo" : "extendNeedsVideo")}
+        </p>
+      )}
+      {/* Generate is held back until these are resolved — say why. */}
+      {studio && failedUpload && (
+        <p className="mb-2 text-xs text-status-red">{t("refUploadFailed")}</p>
+      )}
+      {studio && danglingRefs[0] && (
+        <p className="mb-2 text-xs text-status-red">
+          {t("refMissing", { token: danglingRefs[0].text })}
         </p>
       )}
       {/* References prompt that reads like an edit / extend of the clip */}
@@ -1625,13 +1852,16 @@ export function PromptBar({
                     <span className="mt-1 grid size-5 shrink-0 place-items-center rounded bg-surface-2 text-[11px] tabular-nums text-muted-foreground">
                       {i + 1}
                     </span>
-                    <textarea
+                    <ReferencePromptInput
                       value={sh.text}
-                      onChange={(e) => updateShotText(sh.id, e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
-                        e.preventDefault();
-                        void onGenerate();
+                      onValueChange={(v) => updateShotText(sh.id, v)}
+                      onSubmit={() => void onGenerate()}
+                      references={promptRefs}
+                      counts={refCounts}
+                      kindLabels={refKindLabels}
+                      menuLabel={t("refMenuLabel")}
+                      onActivate={(h) => {
+                        activeRefInput.current = h;
                       }}
                       onFocus={() => setFocused(true)}
                       onBlur={() => setFocused(false)}
@@ -1639,7 +1869,9 @@ export function PromptBar({
                       placeholder={t("shotPlaceholder", { n: i + 1 })}
                       dir={sh.text.length > 0 ? "auto" : localeDir}
                       rows={1}
-                      className="max-h-24 min-w-0 flex-1 resize-none bg-transparent text-start text-base sm:text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
+                      wrapperClassName="flex-1"
+                      textClassName="text-base sm:text-sm"
+                      className="block max-h-24 w-full resize-none [field-sizing:content] placeholder:text-muted-foreground"
                     />
                     {/* Seconds stepper — takes the difference from the last
                         other shot, so the total always fills the clip. */}
@@ -1667,17 +1899,21 @@ export function PromptBar({
                 ))}
               </div>
             ) : (
-            <textarea
+            <ReferencePromptInput
+              ref={promptInputRef}
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onValueChange={setPrompt}
               // Enter generates, Shift+Enter breaks the line — the chat
               // convention every prompt box has taught people. IME users
               // press Enter to commit a composition, so that one is left
-              // alone.
-              onKeyDown={(e) => {
-                if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
-                e.preventDefault();
-                void onGenerate();
+              // alone (handled inside, along with the @ menu's own keys).
+              onSubmit={() => void onGenerate()}
+              references={promptRefs}
+              counts={refCounts}
+              kindLabels={refKindLabels}
+              menuLabel={t("refMenuLabel")}
+              onActivate={(h) => {
+                activeRefInput.current = h;
               }}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
@@ -1688,7 +1924,12 @@ export function PromptBar({
               // in the site language, so follow the locale direction.
               dir={prompt.length > 0 ? "auto" : localeDir}
               rows={1}
-              className={cn("w-full resize-none bg-transparent text-start text-base sm:text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground", compact ? "mt-1 max-h-28" : "mt-1.5 max-h-40")}
+              wrapperClassName={compact ? "mt-1" : "mt-1.5"}
+              textClassName="text-base sm:text-sm"
+              className={cn(
+                "block w-full resize-none [field-sizing:content] placeholder:text-muted-foreground",
+                compact ? "max-h-28" : "max-h-40",
+              )}
             />
             )}
           </div>

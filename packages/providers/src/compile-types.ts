@@ -315,7 +315,8 @@ export interface SeedreamCompiledRequest {
   /**
    * Multi-image generation. Seedream has no `n`: with `'auto'` the model
    * decides how many images the prompt implies, capped by `maxImages`.
-   * Unsupported on 5.0 pro.
+   * Present only for models with `supportsSequentialGeneration` — 5.0 pro
+   * rejects the field itself, even set to `'disabled'`.
    */
   sequentialImageGeneration?: 'auto' | 'disabled';
   /** 1–15, and inputs + outputs must together stay ≤ 15. */

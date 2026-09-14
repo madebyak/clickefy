@@ -1335,7 +1335,7 @@ describe('compile() — Seedream', () => {
     expect(w * h).toBeGreaterThanOrEqual(3_686_400);
   });
 
-  it('always disables sequential generation so the output count is predictable', () => {
+  it('disables sequential generation on models that accept the field, so the output count is predictable', () => {
     const { request, warnings } = compile(
       makeCtx({ stage: seedreamStage('seedream-4-0-250828', { numberOfOutputs: 3 }) }),
     );
@@ -1357,6 +1357,62 @@ describe('compile() — Seedream', () => {
   it('never sends watermark:true — the API default stamps the output', () => {
     const { request } = compile(makeCtx({ stage: seedreamStage('seedream-4-0-250828') }));
     expect((request as { watermark: boolean }).watermark).toBe(false);
+  });
+
+  // ── 5.0 Pro ──────────────────────────────────────────────────────
+  // Every production Pro job failed with "the parameter
+  // 'sequential_image_generation' is not supported by the current model".
+  const PRO = 'dola-seedream-5-0-pro-260628';
+
+  it('5.0 Pro: never sends sequential_image_generation, with or without a ratio', () => {
+    for (const aspectRatio of ['16:9', undefined]) {
+      const { request } = compile(makeCtx({ stage: seedreamStage(PRO, { aspectRatio }) }));
+      expect(request).not.toHaveProperty('sequentialImageGeneration');
+      expect(request).not.toHaveProperty('maxImages');
+    }
+  });
+
+  it('5.0 lite still sends sequential_image_generation: disabled', () => {
+    const { request } = compile(makeCtx({ stage: seedreamStage('seedream-5-0-260128') }));
+    expect((request as { sequentialImageGeneration?: string }).sequentialImageGeneration).toBe(
+      'disabled',
+    );
+  });
+
+  it('5.0 Pro: every offered ratio solves inside its pixel window at the right shape', () => {
+    for (const aspectRatio of ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']) {
+      const { request, warnings } = compile(
+        makeCtx({ stage: seedreamStage(PRO, { aspectRatio }) }),
+      );
+      const size = (request as { size?: string }).size!;
+      const [w, h] = size.split('x').map(Number) as [number, number];
+      const [aw, ah] = aspectRatio.split(':').map(Number) as [number, number];
+      expect(w / h).toBeCloseTo(aw / ah, 1);
+      expect(w * h).toBeGreaterThanOrEqual(921_600);
+      expect(w * h).toBeLessThanOrEqual(4_624_220);
+      expect(warnings.some((x) => x.code === 'config_clamped')).toBe(false);
+    }
+  });
+
+  it('5.0 Pro: sends output_format (5.x accepts it)', () => {
+    const { request } = compile(makeCtx({ stage: seedreamStage(PRO) }));
+    expect((request as { outputFormat?: string }).outputFormat).toBe('jpeg');
+  });
+
+  it('"Auto" (no ratio) uses each model’s 2K default, not its smallest keyword', () => {
+    for (const model of [PRO, 'seedream-4-0-250828', 'seedream-5-0-260128']) {
+      const { request } = compile(
+        makeCtx({ stage: seedreamStage(model, { aspectRatio: undefined }) }),
+      );
+      expect((request as { size?: string }).size).toBe('2K');
+    }
+  });
+
+  it('an explicitly requested supported keyword still wins over the default', () => {
+    const { request } = compile(
+      makeCtx({ stage: seedreamStage(PRO, { aspectRatio: undefined, imageSize: '1.5K' }) }),
+    );
+    expect((request as { size?: string }).size).toBe('1.5K');
   });
 });
 

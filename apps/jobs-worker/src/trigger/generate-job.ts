@@ -92,15 +92,16 @@ export const generateJob = task({
   // This is the dedicated hook — the retry re-runs on a bigger machine,
   // and costs nothing unless a run actually hits the ceiling.
   retry: { outOfMemory: { machine: 'large-1x' } },
-  // Per-run cap. Sized for the worst-case Seedance stage (15 min
-  // wait — see `waitForAsync()`) plus headroom for intake, R2 upload,
-  // and an earlier image stage chained in front of it (e.g. Gemini →
-  // Seedance template). Gemini-only image jobs still complete in
-  // seconds; this only changes what we tolerate before declaring a
-  // task truly stuck.
+  // Per-run cap. Sized for the worst-case async video stage (15 min
+  // wait for Kling or Seedance — see `ASYNC_POLL_BUDGET_MS`) plus
+  // headroom for intake, R2 upload, and an earlier image stage chained
+  // in front of it (e.g. Gemini → Seedance template). Gemini-only image
+  // jobs still complete in seconds; this only changes what we tolerate
+  // before declaring a task truly stuck. Trigger.dev measures this in
+  // CPU time, and the poll loop's `wait.for` sleeps are excluded.
   //
   // Breakdown of the 20 min budget:
-  //   - 15 min — Seedance async wait (1080p/10s, 2K, queue contention)
+  //   - 15 min — async video wait (Kling or Seedance)
   //   -  2 min — earlier image stage (Gemini / Imagen)
   //   -  2 min — outputs fetch + R2 upload + notification fan-out
   //   -  1 min — slack
@@ -668,17 +669,33 @@ function buildProviderEnv(): ProviderEnv {
 }
 
 /**
+ * How long to wait on an async video task before declaring it timed out.
+ *
+ *   - kling    → 15 min. It was 5, sized for Kling 2.x's 60–120s renders.
+ *                The 3.0 family is slower: in production a 4s/1080p clip
+ *                took up to 218s, a 3s Omni clip 403s — and we sell 15s
+ *                and 4K. EVERY failed Kling job in production was this
+ *                timeout firing at 301–306s. The user was refunded, yet
+ *                Kling still rendered (and very likely billed) the video.
+ *   - seedance → 15 min (1080p/10s commonly takes 6–10 min; 2K can push
+ *                past 10; account-level queueing adds more on busy days).
+ *
+ * Waiting longer is nearly free: past the first 30s the loop sleeps in
+ * `wait.for`, which is checkpointed and does NOT count toward the task's
+ * `maxDuration` (that measures CPU time) or its compute bill.
+ */
+const ASYNC_POLL_BUDGET_MS: Record<'kling' | 'seedance', number> = {
+  kling: 15 * 60 * 1000,
+  seedance: 15 * 60 * 1000,
+};
+
+/**
  * Block on a Kling / Seedance async task until it completes or we hit
- * the per-stage poll budget. The provider's own task TTL is in the
- * hours range, so the upper bound here is purely a safety net.
+ * the per-stage poll budget (`ASYNC_POLL_BUDGET_MS`). The provider's own
+ * task TTL is in the hours range, so the upper bound here is purely a
+ * safety net.
  *
- * Per-provider budgets:
- *   - kling    →  5 min  (most Kling v2.x videos finish in 60–120s)
- *   - seedance → 15 min  (1080p/10s commonly takes 6–10 min;
- *                          2K can push past 10 min; account-level
- *                          queueing adds more on busy days)
- *
- * Backoff: 2s for the first 30s, then 5s. Keeps the dashboard
+ * Backoff: 2s for the first 30s, then 6s. Keeps the dashboard
  * responsive and avoids burning rate-limit budget on long videos.
  */
 async function waitForAsync(
@@ -691,7 +708,7 @@ async function waitForAsync(
   ctx: { jobId: string; stageNumber: number; totalStages: number },
 ): Promise<ExecuteResult> {
   const start = Date.now();
-  const maxMs = provider === 'seedance' ? 15 * 60 * 1000 : 5 * 60 * 1000;
+  const maxMs = ASYNC_POLL_BUDGET_MS[provider];
   let attempt = 0;
 
   while (Date.now() - start < maxMs) {

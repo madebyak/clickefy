@@ -1480,13 +1480,22 @@ function compileSeedream(
   const requested = typeof cfg.imageSize === 'string' ? cfg.imageSize : undefined;
   const ratio = typeof cfg.aspectRatio === 'string' ? cfg.aspectRatio : undefined;
 
+  // The keyword used when nothing else pins the size: the model's declared
+  // default, else its first listed resolution. "First listed" alone is the
+  // SMALLEST keyword (1K on 4.0 and 5.0 Pro), which is what "Auto" used to
+  // serve — for the full per-image price.
+  const declaredDefault =
+    capabilities.sizing.mode === 'aspect' ? capabilities.sizing.defaultResolution : undefined;
+  const defaultResolution =
+    declaredDefault && resolutions?.includes(declaredDefault) ? declaredDefault : resolutions?.[0];
+
   let size = requested;
   if (size && resolutions && !resolutions.includes(size)) {
     warnings.push({
       code: 'config_clamped',
-      message: `Model "${stage.model}" does not support resolution "${size}"; using "${resolutions[0]}".`,
+      message: `Model "${stage.model}" does not support resolution "${size}"; using "${defaultResolution}".`,
     });
-    size = resolutions[0];
+    size = defaultResolution;
   }
 
   // A concrete ratio beats a keyword: the keyword leaves shape to chance,
@@ -1509,7 +1518,8 @@ function compileSeedream(
     }
   }
 
-  if (!size && resolutions?.length) size = resolutions[0];
+  // No tier and no ratio — the create flow's "Auto".
+  if (!size) size = defaultResolution;
 
   // Keyword path only: with no pixel dimensions to pin the shape, the
   // prompt is the sole remaining lever, so keep folding the ratio in.
@@ -1548,7 +1558,12 @@ function compileSeedream(
       : {}),
     // API defaults this to true and burns a visible mark into the output.
     watermark: false,
-    sequentialImageGeneration: 'disabled',
+    // Explicitly one image per call where the model knows the field. Pro
+    // rejects the field's mere presence (even `disabled`), so it is left
+    // out entirely there — sending it failed every Pro job.
+    ...(capabilities.supportsSequentialGeneration
+      ? { sequentialImageGeneration: 'disabled' as const }
+      : {}),
     ...(images.length > 0 ? { images } : {}),
   };
 

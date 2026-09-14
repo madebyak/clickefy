@@ -26,7 +26,18 @@ export type ModelKind = 'image' | 'video';
 /** How the model addresses dimensions in its API call. */
 export type SizingMode =
   /** `aspectRatio` string + optional `imageSize` enum (Gemini / Imagen / Kling). */
-  | { mode: 'aspect'; values: readonly string[]; resolutions?: readonly string[] }
+  | {
+      mode: 'aspect';
+      values: readonly string[];
+      resolutions?: readonly string[];
+      /**
+       * The keyword to use when nothing pins the size — no ratio chosen
+       * ("Auto") and no tier requested. Must be one of `resolutions`.
+       * Without it the first listed resolution is used, which is the
+       * SMALLEST on every model that lists them ascending.
+       */
+      defaultResolution?: string;
+    }
   /** Pixel-based `WIDTHxHEIGHT` + optional preset list (GPT Image 2). */
   | {
       mode: 'pixels';
@@ -270,6 +281,18 @@ export interface ModelCapabilities {
    * 2026-08-15.
    */
   supportsOutputFormat?: boolean;
+
+  /**
+   * Seedream: does the model accept the `sequential_image_generation`
+   * parameter at all?
+   *
+   * Same trap as `supportsOutputFormat`: 5.0 Pro rejects the FIELD itself
+   * — `InvalidParameter: the parameter 'sequential_image_generation' is not
+   * supported by the current model` — even when set to `disabled`. Every
+   * 5.0 Pro job in production failed on exactly this (16 of 16, Sept
+   * 2026). BytePlus documents the field for 5.0 lite, 4.5 and 4.0 only.
+   */
+  supportsSequentialGeneration?: boolean;
 
   /**
    * Can the model generate native audio (sfx / ambient / dialogue) via
@@ -1234,7 +1257,15 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     kind: 'image',
     // The only Seedream that accepts ~1 MP; 4.5 and 5.0-lite floor at
     // ~3.69 MP. Flat price across every tier.
-    sizing: { mode: 'aspect', values: SEEDREAM_ASPECT_RATIOS, resolutions: ['1K', '2K', '4K'] },
+    // 2K when no ratio pins the size: the price is flat per image, and 2K
+    // matches the ~2048² `targetPixels` every chosen ratio is solved to —
+    // "Auto" used to fall back to 1K, the smallest.
+    sizing: {
+      mode: 'aspect',
+      values: SEEDREAM_ASPECT_RATIOS,
+      resolutions: ['1K', '2K', '4K'],
+      defaultResolution: '2K',
+    },
     // `size` doubles as an exact WIDTHxHEIGHT field — the only lever that
     // actually pins the aspect ratio (there is no `aspect_ratio` param and
     // a ratio written into the prompt is routinely ignored). Price is flat
@@ -1256,6 +1287,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxPromptChars: 2500,
     // 4.x rejects the `output_format` field outright — see the flag's doc.
     supportsOutputFormat: false,
+    supportsSequentialGeneration: true,
     notes: 'Cheapest Seedream. Only one accepting 1K. jpeg output only.',
   },
   'dola-seedream-5-0-pro-260628': {
@@ -1267,7 +1299,15 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // 1K / 1.5K / 2K only — the one Seedream with NO 4K. Its pixel
     // ceiling (4,624,220) sits just above 2048², so the 2K default is
     // reachable and anything larger is not.
-    sizing: { mode: 'aspect', values: SEEDREAM_ASPECT_RATIOS, resolutions: ['1K', '1.5K', '2K'] },
+    // 2K is BytePlus's documented default for this model, and the tier its
+    // credit price is set at; the old "first listed" fallback served 1K
+    // for the full 2K price whenever the ratio was left on Auto.
+    sizing: {
+      mode: 'aspect',
+      values: SEEDREAM_ASPECT_RATIOS,
+      resolutions: ['1K', '1.5K', '2K'],
+      defaultResolution: '2K',
+    },
     pixelSizing: {
       minPixels: 921_600,
       maxPixels: 4_624_220,
@@ -1279,7 +1319,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       divisibleBy: 16,
     },
     // `sequential_image_generation` is NOT available on 5.0 pro — one
-    // image per call, unlike the rest of the family.
+    // image per call, unlike the rest of the family. The field must not
+    // even be SENT (no `supportsSequentialGeneration` here), see its doc.
     outputs: { min: 1, max: 1, default: 1 },
     refAddressing: 'ordinal',
     // Documented max is 10 (the rest of the family takes 14). Also the
@@ -1299,7 +1340,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     displayName: 'Seedream 5.0 Lite',
     status: 'active',
     kind: 'image',
-    sizing: { mode: 'aspect', values: SEEDREAM_ASPECT_RATIOS, resolutions: ['2K', '3K', '4K'] },
+    sizing: {
+      mode: 'aspect',
+      values: SEEDREAM_ASPECT_RATIOS,
+      resolutions: ['2K', '3K', '4K'],
+      defaultResolution: '2K',
+    },
     // Same story as 4.0, but this model FLOORS at ~3.69 MP — a 1024x1024
     // that looks perfectly reasonable is a hard error here, which is why
     // the bounds live in the registry rather than in the compiler.
@@ -1318,6 +1364,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 14,
     maxPromptChars: 2500,
     supportsOutputFormat: true,
+    supportsSequentialGeneration: true,
     notes: 'Best all-round Seedream: png output, up to 4K, multi-image.',
   },
 

@@ -15,11 +15,11 @@
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, desc, eq, ilike, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { homeBanners, savedTemplates, templates, users } from '@clickfy/db';
-import type { MediaRef, UserLocale } from '@clickfy/types';
+import { searchTokens, type MediaRef, type UserLocale } from '@clickfy/types';
 import type { MobileHomeBanner } from '@clickfy/types';
 
 import {
@@ -38,6 +38,7 @@ import {
   templateInCategoryTree,
 } from '../lib/template-categories';
 import { buildHomeSections } from '../lib/section-builder';
+import { catalogSearchFilter, catalogSearchRank } from '../lib/catalog-search';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { withEdgeCache } from '../middleware/with-edge-cache';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
@@ -82,7 +83,8 @@ function resolveLocale(raw: string | undefined): UserLocale {
  * GET /v1/catalog/templates
  *
  * Filters (all optional):
- *   - search      — substring match on title (case-insensitive)
+ *   - search      — every word must appear in the title, description or
+ *                   category names, English or Arabic (lib/catalog-search.ts)
  *   - kind        — image | video | image_set
  *   - categoryId
  *   - featured    — restrict to featured templates only
@@ -154,7 +156,9 @@ catalog.get(
   // the count reflects the *whole* result set, not just the rows past
   // the current page's cursor.
   const filterParts: SQL[] = [eq(templates.status, 'published')];
-  if (q.search) filterParts.push(ilike(templates.title, `%${q.search}%`));
+  // Word-based, bilingual, Arabic-normalised — see lib/catalog-search.ts.
+  const tokens = searchTokens(q.search ?? '');
+  if (tokens.length > 0) filterParts.push(catalogSearchFilter(tokens));
   if (q.kind) filterParts.push(eq(templates.kind, q.kind));
   // Many-to-many membership check; matches the primary OR any extra
   // on the chosen category OR any direct sub-category of it. Tapping
@@ -186,18 +190,15 @@ catalog.get(
   const pubExpr = sql`COALESCE(${templates.publishedAt}, ${templates.createdAt})`;
   const runsExpr = sql`COALESCE((${templates.stats}->>'runs')::int, 0)`;
 
-  // When a search term is set we fold a small relevance score into the
-  // default ordering: exact title match first (rank 0), then prefix
-  // match (rank 1), then everything else (rank 2). Only on the default
-  // sort — `recent` is explicitly recency-ordered and people expect
-  // that even when a query is set.
-  const searchTerm = q.search?.trim() ?? '';
-  const useSearchRank = !useRecent && !usePopular && searchTerm.length > 0;
-  const rankExpr = sql<number>`CASE
-        WHEN LOWER(${templates.title}) = LOWER(${searchTerm}) THEN 0
-        WHEN LOWER(${templates.title}) LIKE LOWER(${searchTerm + '%'}) THEN 1
-        ELSE 2
-      END`;
+  // When a search term is set we fold a relevance score into the default
+  // ordering: exact title (0), title prefix (1), every word in a title
+  // (2), matched only via description/category (3) — titles in either
+  // language. Only on the default sort — `recent` is explicitly
+  // recency-ordered and people expect that even when a query is set.
+  const useSearchRank = !useRecent && !usePopular && tokens.length > 0;
+  const rankExpr = useSearchRank
+    ? catalogSearchRank(tokens.join(' '), tokens)
+    : sql<number>`0`;
 
   const K = {
     rank: {

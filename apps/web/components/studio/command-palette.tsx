@@ -40,6 +40,7 @@ import {
   Sparkle,
 } from "@phosphor-icons/react";
 
+import { matchesSearch, searchTokens } from "@clickfy/types";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import { getSDK } from "@/lib/api";
@@ -58,11 +59,9 @@ type Row = {
   run: () => void;
 };
 
-/** Every query token must appear somewhere in the row's text. */
+/** Every query word must appear somewhere in the row's text (Arabic-normalised). */
 function matches(row: Row, tokens: string[]): boolean {
-  if (tokens.length === 0) return true;
-  const hay = `${row.label} ${row.sub ?? ""} ${row.keywords ?? ""}`.toLowerCase();
-  return tokens.every((tok) => hay.includes(tok));
+  return matchesSearch(`${row.label} ${row.sub ?? ""} ${row.keywords ?? ""}`, tokens);
 }
 
 const SECTION_ORDER = ["tools", "projects", "generations"] as const;
@@ -231,7 +230,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     return [...toolRows, ...projectRows, ...generationRows];
   }, [t, tNav, router, studio, tools, jobsQuery.data]);
 
-  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const tokens = searchTokens(query);
   const filtered = useMemo(() => {
     const hit = rows.filter((r) => matches(r, tokens));
     if (tokens.length > 0) return hit;

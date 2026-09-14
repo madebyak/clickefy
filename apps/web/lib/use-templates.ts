@@ -6,7 +6,7 @@
  * so Arabic users get translated titles server-side.
  */
 
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type { CatalogTemplate } from "@clickfy/sdk";
 import { getSDK } from "@/lib/api";
 import { rebaseAssetUrl } from "@/lib/rebase-url";
@@ -34,19 +34,23 @@ type TemplateFilters = {
   kind?: "image" | "video" | "image_set" | "video_image";
 };
 
+type Sort = NonNullable<
+  Parameters<ReturnType<typeof getSDK>["catalog"]["listTemplates"]>[0]
+>["sort"];
+
 /**
- * Newest first, everywhere on the web.
+ * Newest first, everywhere on the web — except while searching.
  *
- * The API's `default` sort is `featured DESC, sort_order ASC, id ASC`,
- * but every published row carries `sort_order = 0`, so the only
- * effective tiebreaker is `id` — a random UUID. The catalog came back
- * in random order and a template published today could land anywhere
- * in 271 rows, routinely past the first page. `published_at` is
- * populated on every row, so `recent` is both correct and free.
+ * Browsing: `recent`. The API's `default` chain is featured, sort_order,
+ * published, id, and every published row carries `sort_order = 0`, so a
+ * template published today could otherwise land anywhere in the catalog.
+ *
+ * Searching: `default`, because only that sort puts the relevance rank in
+ * front (exact title, then title prefix, then every word in a title, then
+ * description/category matches). Under `recent` a search for "retro" would
+ * list whatever mentions it most recently, not the template called Retro.
  */
-const SORT: NonNullable<Parameters<
-  ReturnType<typeof getSDK>["catalog"]["listTemplates"]
->[0]>["sort"] = "recent";
+const sortFor = (search?: string): Sort => (search?.trim() ? "default" : "recent");
 
 /** The API caps `limit` at 50. */
 const PAGE_SIZE = 50;
@@ -74,7 +78,7 @@ export function useTemplates(opts: TemplateFilters & { limit?: number }) {
         categoryId: opts.categoryId,
         search: opts.search || undefined,
         kind: opts.kind,
-        sort: SORT,
+        sort: sortFor(opts.search),
         limit,
       });
       return { ...page, items: page.data.map(rebaseTemplate) };
@@ -102,14 +106,21 @@ export function useInfiniteTemplates(opts: TemplateFilters & { enabled?: boolean
         categoryId: opts.categoryId,
         search: opts.search || undefined,
         kind: opts.kind,
-        sort: SORT,
+        sort: sortFor(opts.search),
         limit: PAGE_SIZE,
         cursor: pageParam,
+        // "12 templates" under the search box. Only while searching — the
+        // count is a second query the plain browse view doesn't need.
+        withCount: !!opts.search?.trim(),
       });
       return { ...page, items: page.data.map(rebaseTemplate) };
     },
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     staleTime: 60_000,
+    // Keep the current results on screen while the next query loads, so
+    // typing refines the grid instead of blanking it to skeletons on
+    // every pause.
+    placeholderData: keepPreviousData,
   });
 }
 

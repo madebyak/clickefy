@@ -19,13 +19,14 @@ import {
   FilmSlate,
   Lightning,
   ArrowRight,
+  CircleNotch,
+  X,
 } from "@phosphor-icons/react";
 import type { CatalogTemplate } from "@clickfy/sdk";
 import type { MobileHomeBanner } from "@clickfy/types";
 import { Input } from "@/components/ui/input";
 import { useTemplateCategories, useInfiniteTemplates } from "@/lib/use-templates";
 import { useBanners } from "@/lib/use-banners";
-import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
 import { TemplateCardMedia } from "@/components/templates/template-card-media";
 
@@ -40,18 +41,37 @@ const KIND_FILTERS: Array<{ value: KindFilter; labelKey: string; Icon: typeof Im
 
 /** `/templates?type=video` opens the gallery on that kind (homepage deep links). */
 const KIND_PARAM = "type";
+/** `/templates?q=retro` opens the gallery on that search — refreshable and shareable. */
+const SEARCH_PARAM = "q";
+/** Pause after the last keystroke before searching. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 const parseKind = (value: string | null): KindFilter | undefined =>
   KIND_FILTERS.find((f) => f.value === value)?.value;
 
 /**
- * Renders nothing. Mirrors `?type=` into the gallery's kind filter, on
- * arrival and whenever the filter chips rewrite the URL. Isolated behind
- * its own Suspense boundary because `useSearchParams` suspends during
- * prerender (same shape as ToolDeepLink in tools-context.tsx).
+ * Renders nothing. Mirrors the URL into the gallery's filters. Isolated
+ * behind its own Suspense boundary because `useSearchParams` suspends
+ * during prerender (same shape as ToolDeepLink in tools-context.tsx).
+ *
+ * `?type=` is followed on arrival AND whenever the chips rewrite it.
+ * `?q=` is read once, on arrival: afterwards the input owns the search
+ * and writes the URL itself, so feeding the URL back would overwrite
+ * letters typed while the debounced write was still pending.
  */
-function KindFromUrl({ onKind }: { onKind: (kind: KindFilter | undefined) => void }) {
-  const type = useSearchParams().get(KIND_PARAM);
+function FiltersFromUrl({
+  onKind,
+  onInitialSearch,
+}: {
+  onKind: (kind: KindFilter | undefined) => void;
+  onInitialSearch: (query: string) => void;
+}) {
+  const params = useSearchParams();
+  const type = params.get(KIND_PARAM);
+  const initialSearch = useRef(params.get(SEARCH_PARAM) ?? "");
+  useEffect(() => {
+    if (initialSearch.current) onInitialSearch(initialSearch.current);
+  }, [onInitialSearch]);
   useEffect(() => {
     onKind(parseKind(type));
   }, [type, onKind]);
@@ -199,15 +219,51 @@ export function TemplatesGallery() {
     window.history.replaceState(null, "", url);
   }, []);
 
-  // Debounce so each keystroke doesn't spawn a request / query key.
-  const debouncedSearch = useDebouncedValue(search, 300);
+  // `search` is the input; `query` is what we fetch with. Debounced so each
+  // keystroke doesn't spawn a request — except a search arriving from the
+  // URL, which applies at once so a shared link never flashes the full
+  // catalog first.
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (search === query) return;
+    const id = window.setTimeout(() => setQuery(search), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(id);
+  }, [search, query]);
+  const applyUrlSearch = useCallback((q: string) => {
+    setSearch(q);
+    setQuery(q);
+  }, []);
+  // On the wrapper: the shared Input doesn't forward refs.
+  const searchBox = useRef<HTMLDivElement>(null);
+  const clearSearch = useCallback(() => {
+    setSearch("");
+    setQuery("");
+    searchBox.current?.querySelector("input")?.focus();
+  }, []);
+
+  // Write the settled search into the URL (replace, not push: a history
+  // entry per word would make Back unusable).
+  useEffect(() => {
+    if (!kindReady) return;
+    const url = new URL(window.location.href);
+    const next = query.trim();
+    if ((url.searchParams.get(SEARCH_PARAM) ?? "") === next) return;
+    if (next) url.searchParams.set(SEARCH_PARAM, next);
+    else url.searchParams.delete(SEARCH_PARAM);
+    window.history.replaceState(null, "", url);
+  }, [query, kindReady]);
+
   const categoriesQuery = useTemplateCategories();
   const templatesQuery = useInfiniteTemplates({
     categoryId,
-    search: debouncedSearch,
+    search: query,
     kind,
     enabled: kindReady,
   });
+  const searching = query.trim().length > 0;
+  const total = templatesQuery.data?.pages[0]?.total;
+  // A refetch for a new query or filter, not a "load more".
+  const refreshing = templatesQuery.isFetching && !templatesQuery.isFetchingNextPage;
 
   const roots = useMemo(
     () => (categoriesQuery.data ?? []).filter((c) => !c.parentId),
@@ -243,7 +299,7 @@ export function TemplatesGallery() {
   return (
     <main className="mx-auto w-full max-w-site py-8 site-px">
       <Suspense fallback={null}>
-        <KindFromUrl onKind={applyUrlKind} />
+        <FiltersFromUrl onKind={applyUrlKind} onInitialSearch={applyUrlSearch} />
       </Suspense>
       <PromoBanner onSelectCategory={(id) => setCategoryId(id)} />
 
@@ -254,14 +310,38 @@ export function TemplatesGallery() {
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">{t("gallerySub")}</p>
           </div>
-          <div className="relative w-full sm:w-72">
-            <MagnifyingGlass className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <div ref={searchBox} role="search" className="relative w-full sm:w-72">
+            <MagnifyingGlass className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && search) {
+                  e.preventDefault();
+                  clearSearch();
+                }
+              }}
               placeholder={t("searchPlaceholder")}
-              className="ps-9"
+              aria-label={t("searchPlaceholder")}
+              enterKeyHint="search"
+              autoComplete="off"
+              spellCheck={false}
+              className="ps-9 pe-10"
             />
+            <div className="absolute end-1.5 top-1/2 flex -translate-y-1/2 items-center">
+              {searching && refreshing ? (
+                <CircleNotch aria-hidden className="m-1.5 size-4 animate-spin text-muted-foreground" />
+              ) : search ? (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  aria-label={t("clearSearch")}
+                  className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+                >
+                  <X className="size-3.5" weight="bold" />
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -328,17 +408,40 @@ export function TemplatesGallery() {
           ))}
         </div>
 
+        {/* result count — announced politely so screen readers hear it settle */}
+        <p aria-live="polite" className="mt-6 min-h-5 text-sm text-muted-foreground tabular-nums">
+          {searching && total !== undefined && !templatesQuery.isPlaceholderData
+            ? t("searchResults", { count: total })
+            : ""}
+        </p>
+
         {/* grid */}
         {!kindReady || templatesQuery.isLoading ? (
-          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {Array.from({ length: 10 }, (_, i) => (
               <div key={i} className="aspect-[3/4] animate-pulse rounded-xl bg-surface-2" />
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="mt-16 text-center text-sm text-muted-foreground">{t("noResults")}</div>
+          <div className="mt-14 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
+            <p>{searching ? t("noResultsFor", { query: query.trim() }) : t("noResults")}</p>
+            {searching && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="inline-flex h-9 items-center rounded-full border border-border bg-surface-1 px-4 font-medium text-foreground transition-colors hover:bg-surface-2"
+              >
+                {t("clearSearch")}
+              </button>
+            )}
+          </div>
         ) : (
-          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div
+            className={cn(
+              "mt-2 grid grid-cols-2 gap-4 transition-opacity sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5",
+              templatesQuery.isPlaceholderData && "opacity-60",
+            )}
+          >
             {items.map((tpl) => (
               <TemplateCard key={tpl.id} template={tpl} />
             ))}

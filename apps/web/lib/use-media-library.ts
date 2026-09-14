@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
 import type { MediaAsset, MediaFolder } from "@clickfy/sdk";
-import { describeUsage, fitsInQuota, formatBytes } from "@clickfy/types";
+import { describeUsage, fitsInQuota, formatBytes, matchesSearch, searchTokens } from "@clickfy/types";
 import { getSDK } from "@/lib/api";
 import { rebaseAssetUrl } from "@/lib/rebase-url";
 
@@ -276,12 +276,14 @@ export function useMediaBrowse(
   search: string,
 ) {
   return useMemo(() => {
-    const term = search.trim().toLowerCase();
+    // Every word, any order, Arabic-normalised — the same matching the
+    // template catalog uses (`@clickfy/types` search-text).
+    const tokens = searchTokens(search);
 
-    if (term) {
+    if (tokens.length > 0) {
       return {
-        folders: folders.filter((f) => f.name.toLowerCase().includes(term)),
-        assets: assets.filter((a) => a.name.toLowerCase().includes(term)),
+        folders: folders.filter((f) => matchesSearch(f.name, tokens)),
+        assets: assets.filter((a) => matchesSearch(a.name, tokens)),
         searching: true,
       };
     }

@@ -445,6 +445,13 @@ export interface JobError {
   message: string;
   stage: number;
   retryCount: number;
+  /**
+   * A cause the user can act on (`JobErrorReason` in job-errors.ts), when
+   * the worker recognised one. Apps translate it; `message` carries the
+   * English sentence for clients that don't. Absent on older rows and on
+   * failures without a known cause.
+   */
+  reason?: string;
 }
 
 // `ProviderCapabilities` used to live here. The richer per-model

@@ -32,8 +32,15 @@ import { AssetInfoPanel } from "@/components/studio/asset-info-panel";
 import { SelectionBar } from "@/components/studio/selection-bar";
 import { PromptBar } from "@/components/generate/prompt-bar";
 import { useTimeLabel } from "@/lib/time-label";
+import { isJobErrorReason, type JobErrorReason } from "@clickfy/types";
 
 const GRID_SIZE_STORAGE_KEY = "clickefy:studio:gridSize";
+
+/** `studio` message key per recognised job-failure cause. */
+const JOB_ERROR_KEYS: Record<JobErrorReason, string> = {
+  video_task_mismatch: "jobErrorVideoTaskMismatch",
+  input_real_person: "jobErrorInputRealPerson",
+};
 
 /**
  * Grid density, remembered across sessions.
@@ -101,9 +108,18 @@ function PendingStrip({
             <>
               <Warning weight="fill" className="size-6 text-status-red" />
               <p className="text-xs font-medium text-foreground">{t("generationFailed")}</p>
-              {p.error && (
-                <p className="line-clamp-2 text-[11px] text-muted-foreground">{p.error}</p>
-              )}
+              {(() => {
+                // A recognised cause reads in the viewer's language; anything
+                // else is still the provider's own text, as before.
+                const text = isJobErrorReason(p.errorReason)
+                  ? t(JOB_ERROR_KEYS[p.errorReason])
+                  : p.error;
+                return text ? (
+                  <p title={text} className="line-clamp-4 text-[11px] text-muted-foreground">
+                    {text}
+                  </p>
+                ) : null;
+              })()}
               <button
                 type="button"
                 aria-label={t("dismiss")}

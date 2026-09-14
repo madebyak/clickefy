@@ -205,6 +205,8 @@ export type PendingGeneration = {
   /** 0–1 within the current stage. */
   stageProgress?: number;
   error?: string;
+  /** Recognised cause (`JobErrorReason`); the tile shows it translated. */
+  errorReason?: string;
 };
 
 const toAsset = (a: StudioAsset): Asset => ({
@@ -1067,7 +1069,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           unsubs.current.delete(jobId);
           setPending((prev) =>
             prev.map((p) =>
-              p.jobId === jobId ? { ...p, status: "failed", error: update.error } : p,
+              p.jobId === jobId
+                ? { ...p, status: "failed", error: update.error, errorReason: update.errorReason }
+                : p,
             ),
           );
           invalidateBalances(); // infra failures refund

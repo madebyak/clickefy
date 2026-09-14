@@ -50,6 +50,7 @@
 
 import type { ExecuteResult } from '../execute';
 import type { ImagePart, KlingCompiledRequest } from '../compile-types';
+import { ProviderTaskFailedError } from '../provider-errors';
 
 export interface KlingApi2Env {
   /** Console-issued API key. NOT the legacy access/secret pair. */
@@ -304,8 +305,10 @@ export async function pollKlingApi2(
     return { status: 'pending', taskId, provider: 'kling', variant: 'omni', api2: true };
   }
 
+  // Terminal outcomes throw `ProviderTaskFailedError` so the worker fails
+  // the job rather than letting the run retry and resubmit.
   if (row.status === 'failed') {
-    throw new Error(
+    throw new ProviderTaskFailedError(
       `Kling task ${taskId} failed: ${row.message ?? 'no reason supplied'}`,
     );
   }
@@ -315,7 +318,7 @@ export async function pollKlingApi2(
 
   const videos = (row.outputs ?? []).filter((o) => o.type === 'video' && o.url);
   if (videos.length === 0) {
-    throw new Error(`Kling task ${taskId} succeeded but returned no video output.`);
+    throw new ProviderTaskFailedError(`Kling task ${taskId} succeeded but returned no video output.`);
   }
 
   return {

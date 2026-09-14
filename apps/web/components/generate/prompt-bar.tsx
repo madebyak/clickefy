@@ -26,7 +26,7 @@ import {
   FastForward,
   FilmSlate,
 } from "@phosphor-icons/react";
-import { resolveCreditCost } from "@clickfy/types";
+import { detectVideoTaskIntent, resolveCreditCost, type VideoTaskIntent } from "@clickfy/types";
 import type { GenModel } from "@clickfy/sdk";
 import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
 import { cn } from "@/lib/utils";
@@ -637,6 +637,9 @@ export function PromptBar({
    * Seedance 2.5's omni sub-tasks: a source video plus an instruction
    * prompt, riding the same reference plumbing.
    */
+  // The edit/extend hint the user dismissed, so it doesn't keep reappearing
+  // while they finish typing the same prompt.
+  const [dismissedTaskIntent, setDismissedTaskIntent] = useState<VideoTaskIntent | null>(null);
   const [attachMode, setAttachMode] = useState<
     "frames" | "references" | "edit" | "extend"
   >("references");
@@ -841,6 +844,37 @@ export function PromptBar({
     ? shots.map((sh) => sh.text.trim()).filter(Boolean).join(" ")
     : prompt;
   const shotsComplete = !storyboardActive || shots.every((sh) => sh.text.trim().length > 0);
+
+  // Seedance still reads the prompt when we declare a References task, and
+  // a prompt that edits or continues the attached clip then fails AFTER the
+  // job is queued (refunded, but the user never learns why). When the words
+  // say edit / continue and a clip is attached, point at the mode that can
+  // do it — a hint, never a block.
+  const taskIntent = useMemo(() => detectVideoTaskIntent(effectivePrompt), [effectivePrompt]);
+  const taskIntentHint: VideoTaskIntent | null =
+    !!model?.supportsVideoTasks &&
+    modeIsChoosable &&
+    attachMode === "references" &&
+    readyAttachments.some((a) => a.kind === "video") &&
+    taskIntent !== null &&
+    taskIntent !== dismissedTaskIntent
+      ? taskIntent
+      : null;
+  // Unlike the mode menu (which clears the tray), keep the clip the task
+  // is about: drop only what the task mode cannot take — audio always,
+  // and any clip beyond the first for Edit, which works on exactly one.
+  const switchToVideoTask = (task: VideoTaskIntent) => {
+    let keptVideo = false;
+    for (const a of attachments) {
+      if (a.kind === "audio") {
+        studio?.removeAttachment(a.id);
+      } else if (a.kind === "video" && task === "edit") {
+        if (keptVideo) studio?.removeAttachment(a.id);
+        else keptVideo = true;
+      }
+    }
+    setAttachMode(task);
+  };
   const canGenerate =
     !!model &&
     effectivePrompt.trim().length > 0 &&
@@ -1423,6 +1457,37 @@ export function PromptBar({
         <p className="mb-2 text-xs text-muted-foreground">
           {t(attachMode === "edit" ? "editNeedsVideo" : "extendNeedsVideo")}
         </p>
+      )}
+      {/* References prompt that reads like an edit / extend of the clip */}
+      {taskIntentHint && (
+        <div
+          role="status"
+          className="mb-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-lg bg-surface-2 px-3 py-2 text-xs"
+        >
+          {taskIntentHint === "edit" ? (
+            <PencilSimpleLine className="size-4 shrink-0 text-primary" />
+          ) : (
+            <FastForward className="size-4 shrink-0 text-primary" />
+          )}
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            {t(taskIntentHint === "edit" ? "taskIntentEdit" : "taskIntentExtend")}
+          </span>
+          <button
+            type="button"
+            onClick={() => switchToVideoTask(taskIntentHint)}
+            className="shrink-0 rounded-md bg-primary/15 px-2 py-1 font-medium text-primary transition-colors hover:bg-primary/25"
+          >
+            {t(taskIntentHint === "edit" ? "switchToEdit" : "switchToExtend")}
+          </button>
+          <button
+            type="button"
+            aria-label={t("dismissHint")}
+            onClick={() => setDismissedTaskIntent(taskIntentHint)}
+            className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
       )}
 
       <div className={cn("flex flex-col sm:flex-row", compact ? "gap-2" : "gap-3")}>

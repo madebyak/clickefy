@@ -599,6 +599,12 @@ export interface GenerationProgress {
   outputs?: JobOutput[];
   /** Error message when failed */
   error?: string;
+  /**
+   * Stable, user-actionable cause when the worker recognised one
+   * (`JobErrorReason` in @clickfy/types) — translate it rather than showing
+   * `error` verbatim. Undefined for other failures.
+   */
+  errorReason?: string;
 }
 
 // ─── Generic API result envelope ─────────────────────────────────────

@@ -64,6 +64,8 @@ interface JobProgressWire {
 interface JobErrorWire {
   code: string;
   message: string;
+  /** Recognised, user-actionable cause (see `JobErrorReason`). */
+  reason?: string;
 }
 interface JobStatusWire {
   jobId: string;
@@ -179,6 +181,7 @@ function mapJobStatusToProgress(data: JobStatusWire): GenerationProgress {
     stageLabel: data.progress?.message ?? statusFallbackLabel(data.status),
     outputs: data.outputs,
     error: data.error?.message,
+    errorReason: data.error?.reason,
   };
 }
 

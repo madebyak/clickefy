@@ -49,6 +49,7 @@
 
 import type { ExecuteResult } from '../execute';
 import type { ImagePart, SeedanceCompiledRequest } from '../compile-types';
+import { ProviderTaskFailedError } from '../provider-errors';
 
 export interface SeedanceEnv {
   /** Bearer token minted in the BytePlus console under "API Key Management". */
@@ -312,11 +313,13 @@ export async function pollSeedance(
     env,
   );
 
+  // Terminal outcomes throw `ProviderTaskFailedError`: polling again can't
+  // change them, so the worker fails the job instead of retrying the run.
   const status = json.status;
   if (status === 'succeeded') {
     const url = json.content?.video_url;
     if (!url) {
-      throw new Error('Seedance task succeeded but content.video_url is missing.');
+      throw new ProviderTaskFailedError('Seedance task succeeded but content.video_url is missing.');
     }
     const dur = json.content?.duration;
     return {
@@ -334,14 +337,16 @@ export async function pollSeedance(
   if (status === 'failed') {
     const code = json.error?.code ?? 'unknown';
     const message = json.error?.message ?? 'Seedance task failed with no error detail.';
-    throw new Error(`Seedance task failed (${code}): ${message}`);
+    throw new ProviderTaskFailedError(`Seedance task failed (${code}): ${message}`);
   }
   // Terminal too, per the task-status enum: a cancelled task (console or
   // API) and an expired one (`execution_expires_after` elapsed while
   // queued) will never become `succeeded`. Returning `pending` here kept
   // the worker polling until its own budget ran out.
   if (status === 'cancelled' || status === 'expired') {
-    throw new Error(`Seedance task ${status} before producing a video (task ${taskId}).`);
+    throw new ProviderTaskFailedError(
+      `Seedance task ${status} before producing a video (task ${taskId}).`,
+    );
   }
   // queued | running | unknown — keep polling.
   return { status: 'pending', taskId, provider: 'seedance' };

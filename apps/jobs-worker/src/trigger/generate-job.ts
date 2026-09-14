@@ -51,6 +51,7 @@ import {
   CREATE_START_FRAME_KEY,
   executeStage,
   findCapabilities,
+  isProviderTaskFailedError,
   pollAsyncTask,
   type CompileContext,
   type ExecuteOutput,
@@ -60,7 +61,13 @@ import {
   type RuntimeInputValue,
   type StageOutputRef,
 } from '@clickfy/providers';
-import type { GenerationStage, Provider, TemplateInputField } from '@clickfy/types';
+import {
+  JOB_ERROR_MESSAGES,
+  jobErrorReasonFor,
+  type GenerationStage,
+  type Provider,
+  type TemplateInputField,
+} from '@clickfy/types';
 
 import { env } from '../env';
 import { getDb } from '../lib/db';
@@ -373,12 +380,7 @@ export const generateJob = task({
           stage: stageNumber,
           err: String(err),
         });
-        return failJob(jobId, {
-          code: 'provider_error',
-          message: errorToMessage(err),
-          stage: stageNumber,
-          retryCount: 0,
-        });
+        return failJob(jobId, providerJobError(err, stageNumber));
       }
 
       if (result.status === 'pending') {
@@ -389,11 +391,24 @@ export const generateJob = task({
         const pendingProvider = result.provider;
         const variant = pendingProvider === 'kling' ? result.variant : 'image2video';
         const api2 = pendingProvider === 'kling' ? result.api2 === true : false;
-        result = await waitForAsync(result.taskId, pendingProvider, variant, providerEnv, api2, {
-          jobId,
-          stageNumber,
-          totalStages,
-        });
+        try {
+          result = await waitForAsync(result.taskId, pendingProvider, variant, providerEnv, api2, {
+            jobId,
+            stageNumber,
+            totalStages,
+          });
+        } catch (err) {
+          // The provider said the task failed (e.g. Seedance classifying a
+          // References prompt as an edit), or polling kept erroring. Fail
+          // the job HERE — letting the throw escape the run makes Trigger.dev
+          // re-run the whole job, which submits the generation again.
+          logger.error('generate-job:async-failed', {
+            jobId,
+            stage: stageNumber,
+            err: String(err),
+          });
+          return failJob(jobId, providerJobError(err, stageNumber));
+        }
         if (result.status !== 'completed') {
           return failJob(jobId, {
             code: 'provider_timeout',
@@ -689,6 +704,9 @@ const ASYNC_POLL_BUDGET_MS: Record<'kling' | 'seedance', number> = {
   seedance: 15 * 60 * 1000,
 };
 
+/** Polling errors in a row (≈30s at the 6s cadence) before the job is failed. */
+const MAX_CONSECUTIVE_POLL_ERRORS = 5;
+
 /**
  * Block on a Kling / Seedance async task until it completes or we hit
  * the per-stage poll budget (`ASYNC_POLL_BUDGET_MS`). The provider's own
@@ -710,6 +728,7 @@ async function waitForAsync(
   const start = Date.now();
   const maxMs = ASYNC_POLL_BUDGET_MS[provider];
   let attempt = 0;
+  let consecutivePollErrors = 0;
 
   while (Date.now() - start < maxMs) {
     attempt += 1;
@@ -732,7 +751,26 @@ async function waitForAsync(
       await wait.for({ seconds: 6 });
     }
 
-    const result = await pollAsyncTask(taskId, provider, variant, providerEnv, api2);
+    let result: ExecuteResult;
+    try {
+      result = await pollAsyncTask(taskId, provider, variant, providerEnv, api2);
+      consecutivePollErrors = 0;
+    } catch (err) {
+      // A task the provider reports as failed is final — hand it to the
+      // caller to fail the job with its reason. Anything else (a network
+      // blip, a 5xx from the status endpoint) says nothing about the task,
+      // so poll again on the next tick; only a run of them gives up.
+      if (isProviderTaskFailedError(err)) throw err;
+      consecutivePollErrors += 1;
+      logger.warn('generate-job:poll-error', {
+        taskId,
+        provider,
+        consecutive: consecutivePollErrors,
+        err: String(err),
+      });
+      if (consecutivePollErrors >= MAX_CONSECUTIVE_POLL_ERRORS) throw err;
+      continue;
+    }
     if (result.status === 'completed') {
       logger.info('generate-job:async-completed', { taskId, provider, attempts: attempt });
       return result;
@@ -778,6 +816,23 @@ function defaultMimeFor(kind: 'image' | 'video'): string {
 function errorToMessage(err: unknown): string {
   if (err instanceof Error) return err.message.slice(0, 280);
   return String(err).slice(0, 280);
+}
+
+/**
+ * The `JobError` for a provider failure. A cause the user can act on (see
+ * `jobErrorReasonFor`) gets a plain-language message plus a stable
+ * `reason` the apps translate; anything else keeps the provider's own
+ * text, as before. Always `provider_error`, so refunds are unchanged.
+ */
+function providerJobError(err: unknown, stage: number): JobError {
+  const reason = jobErrorReasonFor(err instanceof Error ? err.message : String(err));
+  return {
+    code: 'provider_error',
+    message: reason ? JOB_ERROR_MESSAGES[reason] : errorToMessage(err),
+    stage,
+    retryCount: 0,
+    ...(reason ? { reason } : {}),
+  };
 }
 
 async function failJob(jobId: string, error: JobError): Promise<{ status: 'failed'; error: JobError }> {

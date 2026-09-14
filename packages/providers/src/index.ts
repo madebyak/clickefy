@@ -85,6 +85,7 @@ export {
   type KlingEnv,
   type KlingPollVariant,
 } from './adapters/kling';
+export { ProviderTaskFailedError, isProviderTaskFailedError } from './provider-errors';
 export {
   executeSeedance,
   pollSeedance,

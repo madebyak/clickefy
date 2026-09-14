@@ -41,6 +41,7 @@ import type { MediaAsset, MediaFolder } from "@clickfy/sdk";
 import { formatBytes } from "@clickfy/types";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { Menu } from "@/components/ui/menu";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   MEDIA_ACCEPT,
@@ -643,7 +644,6 @@ function FolderTile({
   onDelete: () => void;
 }) {
   const t = useTranslations("media");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState(folder.name);
 
   /**
@@ -752,25 +752,31 @@ function FolderTile({
       </div>
 
       <div className="absolute end-2 top-2">
-        <button
-          type="button"
-          onClick={() => setMenuOpen((v) => !v)}
-          aria-label={t("folderOptions")}
-          className={cn(
-            "grid size-7 place-items-center rounded-md bg-black/50 text-white backdrop-blur transition-opacity",
-            menuOpen ? "opacity-100" : "touch-visible opacity-0 group-hover:opacity-100 focus:opacity-100",
+        <Menu
+          portal
+          align="end"
+          panelClassName="w-48"
+          trigger={({ open, toggle }) => (
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label={t("folderOptions")}
+              aria-expanded={open}
+              className={cn(
+                "grid size-7 place-items-center rounded-md bg-black/50 text-white backdrop-blur transition-opacity",
+                open ? "opacity-100" : "touch-visible opacity-0 group-hover:opacity-100 focus:opacity-100",
+              )}
+            >
+              <DotsThree className="size-4" weight="bold" />
+            </button>
           )}
         >
-          <DotsThree className="size-4" weight="bold" />
-        </button>
-        {menuOpen && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
-            <div className="absolute end-0 top-8 z-50 w-36 overflow-hidden rounded-lg bg-surface-3 py-1 shadow-lg ring-1 ring-white/10">
+          {({ close }) => (
+            <>
               <button
                 type="button"
                 onClick={() => {
-                  setMenuOpen(false);
+                  close();
                   setDraft(folder.name);
                   onStartRename();
                 }}
@@ -781,16 +787,16 @@ function FolderTile({
               <button
                 type="button"
                 onClick={() => {
-                  setMenuOpen(false);
+                  close();
                   onDelete();
                 }}
                 className="block w-full px-3 py-1.5 text-start text-sm text-status-red transition-colors hover:bg-surface-2"
               >
                 {t("deleteFolder")}
               </button>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </Menu>
       </div>
     </div>
   );
@@ -816,7 +822,6 @@ function AssetTile({
   onMove: (folderId: string | null) => void;
 }) {
   const t = useTranslations("media");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [movingOpen, setMovingOpen] = useState(false);
   const [draft, setDraft] = useState(asset.name);
 
@@ -902,37 +907,39 @@ function AssetTile({
           <p className="mt-0.5 text-xs text-muted-foreground">{formatBytes(asset.sizeBytes)}</p>
         </div>
 
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label={t("fileOptions")}
-            className={cn(
-              "grid size-7 place-items-center rounded-md text-muted-foreground transition-opacity hover:bg-surface-3 hover:text-foreground",
-              menuOpen ? "opacity-100" : "touch-visible opacity-0 group-hover:opacity-100 focus:opacity-100",
+        <div className="shrink-0">
+          <Menu
+            portal
+            side="top"
+            align="end"
+            panelClassName="w-48"
+            trigger={({ open, toggle }) => (
+              <button
+                type="button"
+                onClick={() => {
+                  setMovingOpen(false);
+                  toggle();
+                }}
+                aria-label={t("fileOptions")}
+                aria-expanded={open}
+                className={cn(
+                  "grid size-7 place-items-center rounded-md text-muted-foreground transition-opacity hover:bg-surface-3 hover:text-foreground",
+                  open ? "opacity-100" : "touch-visible opacity-0 group-hover:opacity-100 focus:opacity-100",
+                )}
+              >
+                <DotsThree className="size-4" weight="bold" />
+              </button>
             )}
           >
-            <DotsThree className="size-4" weight="bold" />
-          </button>
-
-          {menuOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setMovingOpen(false);
-                }}
-                aria-hidden
-              />
-              <div className="absolute end-0 bottom-9 z-50 max-h-64 w-48 overflow-y-auto rounded-lg bg-surface-3 py-1 shadow-lg ring-1 ring-white/10">
+            {({ close }) => (
+              <>
                 {movingOpen ? (
                   <>
                     <button
                       type="button"
                       onClick={() => {
                         onMove(null);
-                        setMenuOpen(false);
+                        close();
                         setMovingOpen(false);
                       }}
                       className="block w-full truncate px-3 py-1.5 text-start text-sm transition-colors hover:bg-surface-2"
@@ -945,7 +952,7 @@ function AssetTile({
                         type="button"
                         onClick={() => {
                           onMove(f.id);
-                          setMenuOpen(false);
+                          close();
                           setMovingOpen(false);
                         }}
                         className="block w-full truncate px-3 py-1.5 text-start text-sm transition-colors hover:bg-surface-2"
@@ -962,7 +969,7 @@ function AssetTile({
                     <button
                       type="button"
                       onClick={() => {
-                        setMenuOpen(false);
+                        close();
                         setDraft(asset.name);
                         onStartRename();
                       }}
@@ -979,9 +986,9 @@ function AssetTile({
                     </button>
                   </>
                 )}
-              </div>
-            </>
-          )}
+              </>
+            )}
+          </Menu>
         </div>
       </div>
     </div>

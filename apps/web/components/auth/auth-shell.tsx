@@ -41,7 +41,7 @@ export async function AuthShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* form side */}
-      <div className="flex min-h-dvh flex-1 flex-col items-center justify-center gap-8 p-6">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col items-center justify-center gap-8 p-6">
         <Link href="/" aria-label="Clickefy" className="lg:hidden">
           <BrandLogo eager />
         </Link>

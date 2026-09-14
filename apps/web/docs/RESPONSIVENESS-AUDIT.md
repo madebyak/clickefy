@@ -207,3 +207,38 @@ Verification performed in the local browser:
 | Web TypeScript and ESLint | Passed |
 
 Remaining validation: populated projects/favorites/library tiles, loaded model menus and generation flows need authenticated account data. Library column capping and touch-action visibility have been inspected in code, but a populated-library/device run is still required. Physical iOS/Android keyboards, safe-area behavior and touch gestures have not been certified by desktop viewport emulation. No production build or deployment was performed. The original audit above records the pre-fix state and its original line references.
+
+## Production follow-up — clickefy.ai, 2026-09-14
+
+The public site redirects to `https://www.clickefy.ai`. Checked the populated homepage, templates gallery, pricing page and sign-in form at 320, 390, 768, 1024 and 1280px. Also checked Arabic homepage, templates and pricing at 320, 390 and 768px, including the mobile navigation and video-template filter.
+
+- Homepage, gallery and pricing: no document-level horizontal overflow at the checked widths. Arabic navigation and gallery filtering worked. The language dropdown stayed within the phone viewport.
+- Sign-in: **19px horizontal overflow** at 320px and 390px. At a 390px viewport with a 379px document area, the form column measured 398px: Clerk's 350px card plus 48px shell padding. The form column's automatic flex minimum prevented it from shrinking.
+- Prepared a minimal fix in `components/auth/auth-shell.tsx`: add `min-w-0` to the form column. This shared shell covers both sign-in and sign-up. No Clerk internals, authentication settings, or page clipping rules are changed.
+- TypeScript and targeted ESLint checks passed during this fix. Local visual validation was limited: the existing localhost session redirects away from sign-in, and the isolated loopback-origin preview did not render the Clerk form. The fix therefore needs a production/preview recheck of both authentication forms after deployment; it has **not** been deployed by this task.
+- Studio and individual template pages redirect to sign-in in the production browser session. Projects, media-library actions, tool dialogs and generation controls remain unverified on production pending user sign-in. No account content was changed and no generation was submitted.
+
+These are desktop-browser viewport checks, not physical-device keyboard/touch certification.
+
+## Signed-in production follow-up — 2026-09-14
+
+After user sign-in, checked the loaded studio and real account data without submitting generations or changing stored assets/projects.
+
+Passed observations:
+
+- Image studio header/account controls at 320, 390, 768, 1024, 1280 and 1440px: no header overlap or horizontal overflow.
+- Arabic video studio at the same widths: no page/main horizontal overflow.
+- Loaded image-model picker fits at 320px. The video duration picker stays within the viewport, caps at 320px high and scrolls its longer list.
+- A populated 12-asset project displays; selecting two assets exposes a wrapping action bar. Copy-to picker fits the viewport. Selection was cleared afterward.
+- Storyboard and camera preset layouts fit at 320px; tool dialogs open from the mobile drawer and close normally. No upload or generation was submitted.
+- Search displays real projects/generation results, filters a query and restores focus to the search opener on close.
+- Existing library files render at responsive density and their options controls are visible without hover.
+
+Confirmed remaining library bugs and prepared fix:
+
+- At 390px, a 192px file menu starts at x=-20.5 inside a 147.9px tile with `overflow:hidden`. Its labels are visibly cut off.
+- Escape while that custom file menu is open closes the entire library. Its menu state can remain open when the library is reopened.
+- Replaced the library's custom file/folder menu wrappers with the existing shared `Menu` using a portal. The shared menu stays in the native dialog's top layer, bounds itself to the viewport, and handles Escape before the library. File move-submenu state resets when reopening the trigger. Rename/move/delete callbacks are preserved.
+- TypeScript, targeted ESLint, and whitespace checks pass. The local preview lacks this production account's populated library, so the updated tile menus require a production/preview visual recheck after deployment. This task did not deploy the fix.
+
+Returned production to the original English image-creation screen with no selection or test prompt. Physical phone keyboards/gestures, actual uploads, generation execution and destructive/billing actions remain outside this verification pass.

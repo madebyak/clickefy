@@ -30,6 +30,7 @@ function ProjectPicker({
 
   return (
     <Menu
+      portal
       align="end"
       side="top"
       panelClassName="w-60"
@@ -37,6 +38,7 @@ function ProjectPicker({
         <button
           type="button"
           onClick={toggle}
+          aria-label={label}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-surface-2 px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-1"
         >
           {icon}
@@ -111,7 +113,7 @@ export function SelectionBar() {
     downloadAssets(activeAssets.filter((a) => selectedAssetIds.includes(a.id)));
 
   return (
-    <div className="mb-3 flex items-center gap-2 rounded-2xl bg-surface-3 p-2 shadow-2xl shadow-black/40">
+    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-surface-3 p-2 shadow-2xl shadow-black/40">
       <button
         type="button"
         aria-label={t("clearSelection")}
@@ -124,7 +126,7 @@ export function SelectionBar() {
         {t("selected", { count: selectedAssetIds.length })}
       </span>
 
-      <div className="ms-auto flex items-center gap-2">
+      <div className="ms-auto flex flex-wrap items-center gap-2">
         <ProjectPicker
           label={t("copyTo")}
           icon={<CopySimple className="size-4" />}

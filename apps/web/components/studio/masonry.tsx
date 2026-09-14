@@ -318,7 +318,7 @@ export function Masonry({
                   "absolute start-2 top-2 z-10 grid size-6 place-items-center rounded-md border-2 transition-all",
                   selectedIds?.includes(a.id)
                     ? "border-primary bg-primary text-black opacity-100"
-                    : "border-white/80 bg-black/25 text-transparent opacity-0 group-hover:opacity-100",
+                    : "border-white/80 bg-black/25 text-transparent touch-visible opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
                 )}
               >
                 <Check weight="bold" className="size-3.5" />
@@ -368,7 +368,10 @@ export function Masonry({
                 it gets the most reachable slot; download and heart follow
                 inward. The menu portals out because the tile is
                 `overflow-hidden` and would otherwise clip it. */}
-            <div className="absolute end-2 top-2 z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <div className={cn(
+              "absolute end-2 z-10 touch-visible opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+              width < 88 ? "top-1/2 -translate-y-1/2" : "top-2",
+            )}>
               <Menu
                 portal
                 align="end"

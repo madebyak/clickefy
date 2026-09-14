@@ -78,6 +78,15 @@ export function MyAssetsModal({
   const t = useTranslations("media");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = useState(0);
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const observer = new ResizeObserver(([entry]) => setGridWidth(entry.contentRect.width));
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, []);
 
   const {
     folders,
@@ -196,12 +205,14 @@ export function MyAssetsModal({
       .catch(() => undefined);
   };
 
-  const columns = TILE_COLUMNS[tile];
+  // Keep the saved density, but never shrink a tile below a usable touch size.
+  const columns = Math.min(TILE_COLUMNS[tile], Math.max(1, Math.floor((gridWidth + 12) / 132)));
   const canNest = currentDepth <= MAX_DEPTH;
 
   return (
     <dialog
       ref={dialogRef}
+      aria-label={mode === "pick" ? t("pickTitle") : t("title")}
       onClose={onClose}
       onCancel={(e) => {
         // Escape backs out of a search before it closes the library.
@@ -215,7 +226,7 @@ export function MyAssetsModal({
         "backdrop:bg-black/70 backdrop:backdrop-blur-sm",
       )}
     >
-      <div className="flex h-[min(86vh,820px)] flex-col">
+      <div className="flex h-[min(86dvh,820px)] flex-col">
         {/* ── header ─────────────────────────────────────────────── */}
         <header className="flex items-center gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0 flex-1">
@@ -375,6 +386,7 @@ export function MyAssetsModal({
 
         {/* ── grid ───────────────────────────────────────────────── */}
         <div
+          ref={gridRef}
           className="min-h-0 flex-1 overflow-y-auto px-5 pb-5"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
@@ -746,7 +758,7 @@ function FolderTile({
           aria-label={t("folderOptions")}
           className={cn(
             "grid size-7 place-items-center rounded-md bg-black/50 text-white backdrop-blur transition-opacity",
-            menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+            menuOpen ? "opacity-100" : "touch-visible opacity-0 group-hover:opacity-100 focus:opacity-100",
           )}
         >
           <DotsThree className="size-4" weight="bold" />
@@ -858,7 +870,7 @@ function AssetTile({
               "absolute end-2 top-2 grid size-6 place-items-center rounded-full border transition-all",
               selected
                 ? "border-primary bg-primary text-black"
-                : "border-white/60 bg-black/40 text-transparent opacity-0 group-hover:opacity-100",
+                : "border-white/60 bg-black/40 text-transparent touch-visible opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
             )}
           >
             <Check className="size-3.5" weight="bold" />
@@ -897,7 +909,7 @@ function AssetTile({
             aria-label={t("fileOptions")}
             className={cn(
               "grid size-7 place-items-center rounded-md text-muted-foreground transition-opacity hover:bg-surface-3 hover:text-foreground",
-              menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+              menuOpen ? "opacity-100" : "touch-visible opacity-0 group-hover:opacity-100 focus:opacity-100",
             )}
           >
             <DotsThree className="size-4" weight="bold" />

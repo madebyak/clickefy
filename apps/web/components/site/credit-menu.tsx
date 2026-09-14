@@ -28,6 +28,8 @@ export function CreditMenu() {
         <button
           type="button"
           onClick={toggle}
+          aria-label={t("availableCredits")}
+          aria-expanded={open}
           className={cn(
             "inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             open && "bg-surface-3",

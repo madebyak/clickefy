@@ -133,14 +133,14 @@ export function StoryboardModal({ onClose }: { onClose: () => void }) {
             rows={5}
             dir="auto"
             placeholder={t("scriptPlaceholder")}
-            className="nice-scroll max-h-48 min-h-28 w-full resize-y rounded-lg border border-border bg-surface-2 p-3 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
+            className="nice-scroll max-h-48 min-h-28 w-full resize-y rounded-lg border border-border bg-surface-2 p-3 text-base leading-relaxed sm:text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
           />
         </div>
 
         {/* style */}
         <div className="flex flex-col gap-2">
           <span className="text-xs text-muted-foreground">{t("styleLabel")}</span>
-          <div className="grid grid-cols-5 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5 min-[400px]:grid-cols-3 sm:grid-cols-5">
             {STYLES.map((s) => (
               <button key={s} type="button" onClick={() => setStyle(s)} className="group flex flex-col gap-1.5 outline-none">
                 <span
@@ -169,7 +169,7 @@ export function StoryboardModal({ onClose }: { onClose: () => void }) {
         {/* grid */}
         <div className="flex flex-col gap-2">
           <span className="text-xs text-muted-foreground">{t("shotsLabel")}</span>
-          <div className="grid grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             {GRIDS.map((g) => {
               const selected = grid.cols === g.cols && grid.rows === g.rows;
               return (
@@ -214,13 +214,13 @@ export function StoryboardModal({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* footer */}
-      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-5 py-3.5">
+      <div className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-t sm:flex-row sm:items-center border-border px-5 py-3.5">
         <span className="text-xs text-muted-foreground">{t("sheetNote")}</span>
         <button
           type="button"
           onClick={onGenerate}
           disabled={!canGenerate}
-          className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-6 font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-6 font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {submitting ? t("generating") : t("generate")}
           <Sparkle weight="fill" className="size-4" />

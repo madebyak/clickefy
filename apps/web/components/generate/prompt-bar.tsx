@@ -248,7 +248,7 @@ function Dropdown({
   children: (h: { close: () => void }) => ReactNode;
 }) {
   return (
-    <Menu side="top" align="start" trigger={trigger} panelClassName={panelClassName}>
+    <Menu portal side="top" align="start" trigger={trigger} panelClassName={panelClassName}>
       {children}
     </Menu>
   );
@@ -427,7 +427,7 @@ function FrameSlot({
             type="button"
             aria-label={removeLabel}
             onClick={onRemove}
-            className="absolute end-1 top-1 grid size-5 place-items-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover/att:opacity-100 focus-visible:opacity-100"
+            className="absolute end-1 top-1 grid size-5 place-items-center rounded-full bg-black/70 text-white touch-visible opacity-0 transition-opacity group-hover/att:opacity-100 focus-visible:opacity-100"
           >
             <X className="size-3" />
           </button>
@@ -786,7 +786,6 @@ export function PromptBar({
   }, [pendingSetup, setupStage]);
 
   const [focused, setFocused] = useState(false);
-  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [assetsOpen, setAssetsOpen] = useState(false);
   const basePlaceholder = t(isVideo ? "placeholderVideo" : "placeholderImage");
   const examples = useMemo(
@@ -1450,33 +1449,34 @@ export function PromptBar({
                 uploaded are equally common, and burying the second behind
                 its own control makes the library something people forget
                 they have. */}
-            <div className="relative shrink-0" hidden={isFrames}>
-              <button
-                type="button"
-                aria-label={t("addReference")}
-                aria-expanded={attachMenuOpen}
-                disabled={!model || attachments.length >= attachCeiling}
-                onClick={() => setAttachMenuOpen((v) => !v)}
-                className={cn(
-                  "grid shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-30",
-                  compact ? "size-8" : "size-9",
+            <div className="shrink-0" hidden={isFrames}>
+              <Menu
+                portal
+                side="top"
+                align="start"
+                panelClassName="w-56"
+                trigger={({ open, toggle }) => (
+                  <button
+                    type="button"
+                    aria-label={t("addReference")}
+                    aria-expanded={open}
+                    disabled={!model || attachments.length >= attachCeiling}
+                    onClick={toggle}
+                    className={cn(
+                      "grid shrink-0 place-items-center rounded-lg bg-surface-3 text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 disabled:opacity-30",
+                      compact ? "size-8" : "size-9",
+                    )}
+                  >
+                    <Plus className={compact ? "size-4" : "size-5"} />
+                  </button>
                 )}
               >
-                <Plus className={compact ? "size-4" : "size-5"} />
-              </button>
-
-              {attachMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setAttachMenuOpen(false)}
-                    aria-hidden
-                  />
-                  <div className="absolute bottom-full start-0 z-50 mb-2 w-56 overflow-hidden rounded-xl bg-surface-3 py-1 shadow-lg ring-1 ring-white/10">
+                {({ close }) => (
+                  <>
                     <button
                       type="button"
                       onClick={() => {
-                        setAttachMenuOpen(false);
+                        close();
                         fileInput.current?.click();
                       }}
                       className="block w-full px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2"
@@ -1492,16 +1492,16 @@ export function PromptBar({
                     <button
                       type="button"
                       onClick={() => {
-                        setAttachMenuOpen(false);
+                        close();
                         setAssetsOpen(true);
                       }}
                       className="block w-full px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2"
                     >
                       {t("importFromAssets")}
                     </button>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
+              </Menu>
             </div>
 
             {/* The library, in pick mode. Mounted here so it sits in the
@@ -1574,7 +1574,7 @@ export function PromptBar({
                       placeholder={t("shotPlaceholder", { n: i + 1 })}
                       dir={sh.text.length > 0 ? "auto" : localeDir}
                       rows={1}
-                      className="max-h-24 min-w-0 flex-1 resize-none bg-transparent text-start text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
+                      className="max-h-24 min-w-0 flex-1 resize-none bg-transparent text-start text-base sm:text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground"
                     />
                     {/* Seconds stepper — takes the difference from the last
                         other shot, so the total always fills the clip. */}
@@ -1623,7 +1623,7 @@ export function PromptBar({
               // in the site language, so follow the locale direction.
               dir={prompt.length > 0 ? "auto" : localeDir}
               rows={1}
-              className={cn("w-full resize-none bg-transparent text-start text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground", compact ? "mt-1 max-h-28" : "mt-1.5 max-h-40")}
+              className={cn("w-full resize-none bg-transparent text-start text-base sm:text-sm text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground", compact ? "mt-1 max-h-28" : "mt-1.5 max-h-40")}
             />
             )}
           </div>

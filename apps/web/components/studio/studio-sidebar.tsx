@@ -1,18 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
-import { Plus, Heart, CaretUpDown, Images } from "@phosphor-icons/react";
+import { Plus, Heart, CaretUpDown, Images, X } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { ProjectRow } from "@/components/studio/project-row";
 import { FolderTree } from "@/components/studio/folder-tree";
 import { MyAssetsModal } from "@/components/media/my-assets-modal";
 import { useSession } from "@/lib/use-session";
+import { Modal } from "@/components/ui/modal";
+import { StudioNavigation } from "@/components/studio/studio-navigation";
+import { LanguageSwitcher } from "@/components/site/language-switcher";
 import { cn } from "@/lib/utils";
+
+const desktopQuery = "(min-width: 1024px)";
+const subscribeDesktop = (notify: () => void) => {
+  const query = window.matchMedia(desktopQuery);
+  query.addEventListener("change", notify);
+  return () => query.removeEventListener("change", notify);
+};
 
 export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useTranslations("studio");
+  const tn = useTranslations("nav");
+  const desktop = useSyncExternalStore(subscribeDesktop, () => window.matchMedia(desktopQuery).matches, () => true);
+  useEffect(() => { if (desktop && open) onClose(); }, [desktop, open, onClose]);
   const tm = useTranslations("media");
   const [assetsOpen, setAssetsOpen] = useState(false);
   const ta = useTranslations("account");
@@ -59,20 +72,14 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
     await createProject(null).catch(() => undefined);
   };
 
-  return (
+  const content = (
     <>
-      {open && (
-        <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={onClose} aria-hidden />
-      )}
-      <aside
-        className={cn(
-          // On lg+ the sidebar is static (in flow); below lg it's a fixed drawer
-          // that slides off the start edge — left in LTR, right in RTL. The hide
-          // transform is scoped to max-lg so it never leaks onto the desktop layout.
-          "fixed inset-y-0 start-0 z-40 flex w-[264px] flex-col bg-surface-1 p-3 transition-transform lg:static lg:z-auto",
-          open ? "translate-x-0" : "max-lg:-translate-x-full max-lg:rtl:translate-x-full",
-        )}
-      >
+      <div className="mb-2 flex shrink-0 items-center justify-between lg:hidden">
+        <LanguageSwitcher />
+        <button type="button" onClick={onClose} aria-label={t("close")} className="grid size-10 place-items-center rounded-lg hover:bg-surface-2"><X className="size-5" /></button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <StudioNavigation className="mb-3 flex flex-col gap-1 xl:hidden" onNavigate={onClose} />
         <button
           type="button"
           onClick={newProject}
@@ -126,7 +133,7 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
         <p className="px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t("recentProjects")}
         </p>
-        <div className="mt-2 flex-1 space-y-1 overflow-y-auto">
+        <div className="mt-2 space-y-1">
           {projectsLoading &&
             Array.from({ length: 3 }, (_, i) => (
               <div key={i} className="flex items-center gap-3 rounded-lg p-2">
@@ -148,6 +155,8 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
             />
           ))}
         </div>
+
+      </div>
 
         {/* My Assets sits at the FOOT of the sidebar, above the profile:
             it is a place you visit occasionally to organise, not a
@@ -192,8 +201,18 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
           </span>
           <CaretUpDown className="size-4 shrink-0 text-muted-foreground" />
         </button>
-      </aside>
+    </>
+  );
 
+  return (
+    <>
+      {desktop ? (
+        <aside className="hidden w-[264px] shrink-0 flex-col bg-surface-1 p-3 lg:flex">{content}</aside>
+      ) : open ? (
+        <Modal label={tn("openMenu")} onClose={onClose} className="fixed inset-y-0 start-0 end-auto m-0 h-dvh max-h-dvh w-[min(320px,calc(100%-2rem))] rounded-none border-y-0 border-s-0">
+          <div className="flex h-full flex-col p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">{content}</div>
+        </Modal>
+      ) : null}
       <MyAssetsModal open={assetsOpen} onClose={() => setAssetsOpen(false)} />
     </>
   );

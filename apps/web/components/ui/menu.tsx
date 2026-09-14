@@ -37,10 +37,15 @@ interface PanelLayout {
   /** Fixed-viewport coordinates — portalled panels only. */
   top?: number;
   left?: number;
+  shiftX?: number;
+  maxWidth: number;
+  minWidth: number;
 }
 
 const sameLayout = (a: PanelLayout | null, b: PanelLayout) =>
-  !!a && a.side === b.side && a.maxHeight === b.maxHeight && a.top === b.top && a.left === b.left;
+  !!a && a.side === b.side && a.maxHeight === b.maxHeight &&
+  a.top === b.top && a.left === b.left && a.shiftX === b.shiftX &&
+  a.maxWidth === b.maxWidth && a.minWidth === b.minWidth;
 
 /**
  * The vertical band a panel can actually be seen in: the viewport, narrowed
@@ -77,10 +82,14 @@ function usePanelLayout(
   side: Side,
   align: Align,
   portal: boolean,
+  portalHost: HTMLElement | null,
 ) {
   const [layout, setLayout] = useState<PanelLayout | null>(null);
 
   useLayoutEffect(() => {
+    const initialPanel = panelRef.current;
+    if (!initialPanel) return;
+    const naturalMinWidth = parseFloat(getComputedStyle(initialPanel).minWidth) || 0;
     const place = () => {
       const anchor = anchorRef.current;
       const panel = panelRef.current;
@@ -96,7 +105,26 @@ function usePanelLayout(
       const resolved = room[side] < MIN_USABLE_HEIGHT && room[other] > room[side] ? other : side;
       const maxHeight = Math.max(0, Math.min(MAX_PANEL_HEIGHT, Math.floor(room[resolved])));
 
-      let next: PanelLayout = { side: resolved, maxHeight };
+      let leftEdge = GAP;
+      let rightEdge = window.innerWidth - GAP;
+      if (!portal) {
+        for (let el = anchor.parentElement; el && el !== document.body; el = el.parentElement) {
+          const style = getComputedStyle(el);
+          if (style.overflowX !== "visible") {
+            const rect = el.getBoundingClientRect();
+            leftEdge = Math.max(leftEdge, rect.left + GAP);
+            rightEdge = Math.min(rightEdge, rect.right - GAP);
+          }
+          if (style.position === "fixed") break;
+        }
+      }
+      const maxWidth = Math.max(0, rightEdge - leftEdge);
+      let next: PanelLayout = {
+        side: resolved,
+        maxHeight,
+        maxWidth,
+        minWidth: Math.min(naturalMinWidth, maxWidth),
+      };
       if (portal) {
         // scrollHeight ignores max-height, so this is the natural height even
         // while an earlier cap is applied; the difference adds the borders.
@@ -106,12 +134,20 @@ function usePanelLayout(
         top = Math.max(GAP, Math.min(top, window.innerHeight - height - GAP));
         // `end` means the right edge in LTR and the left edge in RTL, which
         // is free with logical CSS but has to be resolved by hand here.
-        const rtl = getComputedStyle(document.documentElement).direction === "rtl";
+        const rtl = getComputedStyle(anchor).direction === "rtl";
         const anchorRight = (align === "end") !== rtl;
         const width = panel.offsetWidth;
         let left = anchorRight ? t.right - width : t.left;
         left = Math.max(GAP, Math.min(left, window.innerWidth - width - GAP));
         next = { ...next, top, left };
+      } else {
+        // Remove our previous correction before measuring; otherwise repeated
+        // scroll/resize events would accumulate the translation.
+        const rect = panel.getBoundingClientRect();
+        const previousShift = parseFloat(getComputedStyle(panel).translate) || 0;
+        const naturalLeft = rect.left - previousShift;
+        const clamped = Math.max(leftEdge, Math.min(naturalLeft, rightEdge - Math.min(rect.width, maxWidth)));
+        next.shiftX = clamped - naturalLeft;
       }
       setLayout((prev) => (sameLayout(prev, next) ? prev : next));
     };
@@ -135,7 +171,7 @@ function usePanelLayout(
       window.removeEventListener("resize", place);
       observer.disconnect();
     };
-  }, [anchorRef, panelRef, side, align, portal]);
+  }, [anchorRef, panelRef, side, align, portal, portalHost]);
 
   return layout;
 }
@@ -192,7 +228,11 @@ export function MenuPanel({
 }) {
   const localRef = useRef<HTMLDivElement>(null);
   const panelRef = externalRef ?? localRef;
-  const layout = usePanelLayout(anchorRef, panelRef, side, align, portal);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (portal) setPortalHost(anchorRef.current?.closest("dialog") ?? document.body);
+  }, [anchorRef, portal]);
+  const layout = usePanelLayout(anchorRef, panelRef, side, align, portal, portalHost);
   useRevealSelected(layout, panelRef);
 
   const resolvedSide = layout?.side ?? side;
@@ -214,6 +254,9 @@ export function MenuPanel({
       )}
       style={{
         maxHeight: layout?.maxHeight ?? MAX_PANEL_HEIGHT,
+        maxWidth: layout?.maxWidth,
+        minWidth: layout?.minWidth,
+        translate: !portal && layout ? `${layout.shiftX ?? 0}px 0` : undefined,
         ...(portal ? { top: layout?.top ?? 0, left: layout?.left ?? 0 } : null),
       }}
     >
@@ -221,7 +264,8 @@ export function MenuPanel({
     </div>
   );
 
-  return portal ? createPortal(panel, document.body) : panel;
+  // Keep portals in the active top layer when a picker lives inside a dialog.
+  return portal && portalHost ? createPortal(panel, portalHost) : panel;
 }
 
 /** Lightweight dropdown: click-outside + Escape to close, RTL-aware (start/end). */
@@ -261,12 +305,18 @@ export function Menu({
       if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
       setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+      ref.current?.querySelector<HTMLElement>("button")?.focus();
+    };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 

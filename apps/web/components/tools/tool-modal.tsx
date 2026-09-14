@@ -7,9 +7,10 @@
  * surface/border/radius scale) so the tools read as part of the app.
  */
 
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { X } from "@phosphor-icons/react";
+import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 
 export function ToolModal({
@@ -28,23 +29,9 @@ export function ToolModal({
 }) {
   const t = useTranslations("studio");
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} aria-hidden />
-      <div
-        role="dialog"
-        aria-label={title}
-        className={cn(
-          "relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface-1 shadow-2xl shadow-black/50",
-          panelClassName,
-        )}
-      >
+    <Modal label={title} onClose={onClose} className={cn("overflow-hidden", panelClassName)}>
+      <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
         <header className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             {icon}
@@ -54,13 +41,13 @@ export function ToolModal({
             type="button"
             aria-label={t("close")}
             onClick={onClose}
-            className="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+            className="grid size-10 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
           >
             <X className="size-4" />
           </button>
         </header>
         {children}
       </div>
-    </div>
+    </Modal>
   );
 }

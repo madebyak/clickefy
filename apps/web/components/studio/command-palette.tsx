@@ -28,6 +28,7 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "@/i18n/navigation";
 import {
+  X,
   MagnifyingGlass,
   ImageSquare,
   FilmSlate,
@@ -39,6 +40,7 @@ import {
   Sparkle,
 } from "@phosphor-icons/react";
 
+import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import { getSDK } from "@/lib/api";
 import { useStudio } from "@/components/studio/studio-context";
@@ -73,6 +75,7 @@ const IDLE_LIMIT: Record<Row["section"], number> = {
 };
 
 export function CommandPalette({ onClose }: { onClose: () => void }) {
+  const ts = useTranslations("studio");
   const t = useTranslations("search");
   const tNav = useTranslations("nav");
   const router = useRouter();
@@ -81,10 +84,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => inputRef.current?.focus(), []);
 
   // Past generations, lazily: ready jobs filed into a studio project.
   const jobsQuery = useQuery({
@@ -270,17 +270,13 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   let lastSection: Row["section"] | null = null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-center p-4 pt-[12vh]">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} aria-hidden />
-      <div
-        role="dialog"
-        aria-label={t("title")}
-        className="relative flex h-fit max-h-[70vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface-1 shadow-2xl shadow-black/50"
-      >
+    <Modal label={t("title")} onClose={onClose} className="max-w-lg overflow-hidden">
+      <div className="flex max-h-[min(70dvh,calc(100dvh-2rem))] flex-col">
         <div className="flex shrink-0 items-center gap-2.5 border-b border-border px-4">
           <MagnifyingGlass className="size-4 shrink-0 text-muted-foreground" />
           <input
-            ref={inputRef}
+            autoFocus
+            aria-label={t("placeholder")}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -288,11 +284,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             }}
             onKeyDown={onKeyDown}
             placeholder={t("placeholder")}
-            className="h-12 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            className="h-12 min-w-0 w-full bg-transparent text-base sm:text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
-          <kbd className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-            esc
-          </kbd>
+          <button type="button" onClick={onClose} aria-label={ts("close")} className="grid size-10 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-surface-2"><X className="size-4" /></button>
         </div>
 
         <div ref={listRef} className="nice-scroll overflow-y-auto p-2">
@@ -347,6 +341,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

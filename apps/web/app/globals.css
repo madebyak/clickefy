@@ -358,3 +358,8 @@ body {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
+
+/* Essential asset actions must be discoverable without hovering. */
+@media (hover: none), (pointer: coarse), (width < 64rem) {
+  .touch-visible { opacity: 1; }
+}

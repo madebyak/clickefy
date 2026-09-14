@@ -318,12 +318,9 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
   const downloadAll = () => downloadAssets(activeAssets);
 
   return (
-    <main className="relative flex min-w-0 flex-1 flex-col">
-      {/* Content header. Three tracks rather than `justify-between`: the
-          toolbar has to sit in the OPTICAL centre of the row, which a
-          flex distribution can't guarantee once the project name on the
-          start side changes length. */}
-      <div className="flex shrink-0 items-center gap-3 px-4 py-3 sm:px-6">
+    <main className="relative flex min-w-0 flex-1 flex-col overflow-y-auto">
+      {/* Wrap filters below the project actions on narrow screens. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
           {folderName && (
             <>
@@ -336,7 +333,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
           </span>
         </div>
         {activeProject && (
-          <div className="flex shrink-0 items-center justify-center">
+          <div className="order-last flex w-full shrink-0 items-center justify-center sm:order-none sm:w-auto">
             <CanvasToolbar
               filter={filter}
               onFilterChange={setFilter}
@@ -352,6 +349,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
             <button
               type="button"
               onClick={downloadAll}
+              aria-label={t("downloadAll")}
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-surface-3 px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
             >
               <DownloadSimple className="size-4" />
@@ -360,6 +358,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
           )}
           <button
             type="button"
+            aria-label={t("share")}
             className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-purple px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             <ShareNetwork className="size-4" />
@@ -371,7 +370,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
       {/* scrollable content */}
       <div
         className={cn(
-          "flex-1 overflow-y-auto px-4 pb-44 pt-2 sm:px-6",
+          "min-h-48 flex-1 overflow-y-auto px-4 pb-6 pt-2 sm:px-6",
           // Empty state fills the area and centers vertically; content scrolls from top.
           isEmpty && "flex flex-col",
         )}
@@ -406,9 +405,9 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
         )}
       </div>
 
-      {/* docked bar */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background to-transparent px-4 pb-4 pt-12 sm:px-6">
-        <div className="pointer-events-auto mx-auto max-w-4xl">
+      {/* In flow: attachments, long prompts and selection controls reserve their actual height. */}
+      <div className="shrink-0 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-6">
+        <div className="mx-auto max-w-4xl">
           <SelectionBar />
           <PromptBar kind={kind} />
         </div>

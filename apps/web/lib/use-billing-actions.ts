@@ -12,9 +12,13 @@
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { config } from "@/lib/config";
+import { ME_QUERY_KEY } from "@/lib/use-session";
+import { PLANS_QUERY_KEY } from "@/lib/use-plans";
+import { INVOICES_QUERY_KEY, SUBSCRIPTION_QUERY_KEY } from "@/lib/use-subscription";
 
 /** Error codes the API returns that deserve their own message. */
 type BillingErrorCode =
@@ -23,13 +27,14 @@ type BillingErrorCode =
   | "stripe_unconfigured"
   | "no_stripe_customer"
   | "topup_requires_subscription"
-  | "pack_not_purchasable";
+  | "pack_not_purchasable"
+  | "already_subscribed";
 
-async function post<T>(
-  path: string,
-  token: string | null,
-  body?: unknown,
-): Promise<{ ok: true; data: T } | { ok: false; code: string; message: string }> {
+type PostResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: string; message: string; details?: Record<string, unknown> };
+
+async function post<T>(path: string, token: string | null, body?: unknown): Promise<PostResult<T>> {
   const res = await fetch(`${config.apiUrl}${path}`, {
     method: "POST",
     headers: {
@@ -39,13 +44,14 @@ async function post<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = (await res.json().catch(() => null)) as
-    | { data?: T; error?: { code?: string; message?: string } }
+    | { data?: T; error?: { code?: string; message?: string; details?: Record<string, unknown> } }
     | null;
   if (!res.ok || !json?.data) {
     return {
       ok: false,
       code: json?.error?.code ?? `http_${res.status}`,
       message: json?.error?.message ?? "Something went wrong.",
+      details: json?.error?.details,
     };
   }
   return { ok: true, data: json.data };
@@ -54,6 +60,8 @@ async function post<T>(
 export function useBillingActions() {
   const { getToken, isSignedIn } = useAuth();
   const t = useTranslations("pricing");
+  const tb = useTranslations("billing");
+  const queryClient = useQueryClient();
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
   const [pendingPackId, setPendingPackId] = useState<string | null>(null);
   const [portalPending, setPortalPending] = useState(false);
@@ -88,8 +96,20 @@ export function useBillingActions() {
         cancelPath: "/pricing",
       });
       if (!result.ok) {
-        // The one case worth its own copy: they already pay through a
-        // store, and sending them to Stripe would bill them twice.
+        // ── They already pay us ──────────────────────────────────────
+        //
+        // Clicking a plan card is the same gesture whether someone is new,
+        // upgrading, or coming back after cancelling — so the API tells us
+        // which of those it is and we finish the job, rather than showing
+        // an error for a button that did exactly what it looked like it
+        // would do.
+        if (result.code === ("already_subscribed" satisfies BillingErrorCode)) {
+          const action = (result.details as { action?: string } | undefined)?.action;
+          await (action === "resume" ? resumeSubscription() : changePlan(planId));
+          return;
+        }
+        // They pay through a store, and sending them to Stripe would bill
+        // them twice.
         toast.error(
           result.code === ("subscribed_elsewhere" satisfies BillingErrorCode)
             ? t("manageInApp")
@@ -104,6 +124,59 @@ export function useBillingActions() {
     } finally {
       setPendingPlanId(null);
     }
+  }
+
+  /** Plan, credits and entitlement all move together; none may stay stale. */
+  async function refreshBilling() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: SUBSCRIPTION_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: INVOICES_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: PLANS_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY }),
+    ]);
+  }
+
+  /**
+   * Move an existing subscription to another tier.
+   *
+   * An upgrade is charged and granted immediately; a downgrade is booked
+   * for the period end. The API decides which, because the direction is a
+   * ladder position rather than a price comparison.
+   */
+  async function changePlan(planId: string) {
+    const token = await getToken();
+    const result = await post<{
+      direction: "upgrade" | "downgrade";
+      effectiveAt: string | null;
+      tier: string;
+    }>("/v1/billing/change-plan", token, { planId });
+    if (!result.ok) {
+      toast.error(result.message);
+      return;
+    }
+    await refreshBilling();
+    toast.success(
+      result.data.direction === "upgrade"
+        ? tb("upgraded", { plan: result.data.tier })
+        : tb("downgradeBooked", {
+            plan: result.data.tier,
+            date: result.data.effectiveAt
+              ? new Date(result.data.effectiveAt).toLocaleDateString()
+              : "",
+          }),
+    );
+  }
+
+  /** Undo a cancellation that has not taken effect yet. */
+  async function resumeSubscription() {
+    const token = await getToken();
+    const result = await post<{ renewsAt: string | null }>("/v1/billing/resume", token, {});
+    if (!result.ok) {
+      toast.error(result.message);
+      return;
+    }
+    await refreshBilling();
+    toast.success(tb("resumed"));
   }
 
   /**
@@ -166,6 +239,8 @@ export function useBillingActions() {
 
   return {
     startCheckout,
+    changePlan,
+    resumeSubscription,
     startTopup,
     openPortal,
     pendingPlanId,

@@ -27,6 +27,8 @@ import { useAuth } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 import { Check, ArrowUpRight } from "@phosphor-icons/react";
 
+import { planDirection, type UserEntitlement } from "@clickfy/types";
+
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
@@ -235,6 +237,12 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
                 ? String(priceUsd)
                 : priceUsd.toFixed(2);
           const isCurrent = data?.current?.tier === tier;
+          // Up or down the LADDER, never by price: a yearly Basic costs
+          // more than a monthly Ultimate, so comparing the two numbers
+          // would offer an "upgrade" to a cheaper plan.
+          const direction: "upgrade" | "downgrade" | "current" | null = data?.current
+            ? planDirection(data.current.tier as UserEntitlement, tier as UserEntitlement)
+            : null;
           const highlighted = tier === HIGHLIGHT && !isCurrent;
           // A tier with no storefront product cannot be bought yet. Better
           // an honest "coming soon" than a button that leads nowhere —
@@ -334,14 +342,34 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
                   disabled={pendingPlanId !== null}
                   onClick={() => startCheckout(plan!.id)}
                   className={cn(
-                    buttonVariants({ variant: highlighted ? "primary" : "outline", size: "sm" }),
+                    buttonVariants({
+                      // A subscriber sees where each plan sits relative to
+                      // theirs: the way up is the primary action, the way
+                      // down is deliberately quiet. Someone with no plan
+                      // sees the ordinary ladder, where the highlighted
+                      // tier is the one we recommend.
+                      variant:
+                        direction === "upgrade"
+                          ? "primary"
+                          : direction === "downgrade"
+                            ? "ghost"
+                            : highlighted
+                              ? "primary"
+                              : "outline",
+                      size: "sm",
+                    }),
                     "w-full",
+                    direction === "downgrade" && "text-muted-foreground",
                     pendingPlanId !== null && "pointer-events-none opacity-60",
                   )}
                 >
                   {pendingPlanId === plan!.id
                     ? t("starting")
-                    : t("choosePlan", { plan: t(`${tier}Name`) })}
+                    : direction === "upgrade"
+                      ? t("upgradeTo", { plan: t(`${tier}Name`) })
+                      : direction === "downgrade"
+                        ? t("downgradeTo", { plan: t(`${tier}Name`) })
+                        : t("choosePlan", { plan: t(`${tier}Name`) })}
                 </button>
               ) : (
                 <span

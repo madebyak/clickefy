@@ -106,7 +106,7 @@ export function ProfileMenu() {
           <MenuItem
             onClick={() => {
               close();
-              router.push("/settings");
+              router.push("/billing");
             }}
           >
             <CreditCard className="size-4 text-muted-foreground" /> {t("billing")}

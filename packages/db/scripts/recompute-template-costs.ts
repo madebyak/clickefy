@@ -10,7 +10,9 @@
  * costing rule and stored totals could have drifted.
  *
  * Mirrors `computeTemplateCost` deliberately: tier = mode ?? resolution,
- * cost = tier_pricing[tier] ?? cost_credits, unknown models cost 0.
+ * cost comes from `resolveCreditCost` — the same helper the API's own
+ * template costing uses — so tier, duration and native audio are all
+ * applied. Unknown models cost 0.
  *
  * SAFETY
  *   - UPDATE only, scoped to templates whose recomputed total differs.
@@ -23,6 +25,8 @@
  */
 
 import { neon } from '@neondatabase/serverless';
+import { findCapabilities } from '@clickfy/providers';
+import { resolveCreditCost } from '@clickfy/types';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -35,7 +39,7 @@ const sql = neon(url);
 interface StageJson {
   provider?: string;
   model?: string;
-  config?: { mode?: unknown; resolution?: unknown };
+  config?: { mode?: unknown; resolution?: unknown; duration?: unknown; sound?: unknown };
 }
 
 async function main() {
@@ -74,7 +78,27 @@ async function main() {
           : typeof cfg.resolution === 'string'
             ? cfg.resolution
             : undefined;
-      total += (tierKey ? row.tier_pricing?.[tierKey] : undefined) ?? row.cost_credits;
+      // Duration and audio, exactly as `apps/api/src/lib/template-cost.ts`
+      // computes them. This script used to take the tier price alone, so a
+      // template pinning a 10-second clip was recomputed at the 5-second
+      // price — and the API would then charge the other number. Two rules
+      // for one price is how a catalogue drifts.
+      const caps = findCapabilities(s.model);
+      const refDuration = caps?.kind === 'video' ? caps.duration?.default : undefined;
+      const cfgDuration = typeof cfg.duration === 'number' ? cfg.duration : undefined;
+      const cfgSound = cfg.sound === true || cfg.sound === 'on';
+      const soundServed =
+        cfgSound &&
+        caps?.supportsSound === true &&
+        !(caps.nativeAudioRequiresTier && tierKey !== caps.nativeAudioRequiresTier);
+      total += resolveCreditCost({
+        baseCredits: row.cost_credits,
+        tierPricing: row.tier_pricing,
+        mode: tierKey,
+        sound: soundServed,
+        duration: cfgDuration ?? refDuration,
+        defaultDuration: refDuration,
+      });
     }
 
     if (total === t.cost_credits) continue;

@@ -1,0 +1,222 @@
+{
+  "generated": "2026-09-17",
+  "parameters": {
+    "markup": 1.5,
+    "loading": 1,
+    "creditListValueUsd": 0.1,
+    "creditValueFloorUsd": 0.1,
+    "note": "DECIDED 2026-09-17. One credit sells for $0.10 on every plan and every top-up pack - no volume discount between tiers, no bonus on packs, and no annual discount for now (yearly is 12x monthly; the discount is decided after the audit). Because there is no discount anywhere, $0.10 is both the list price and the floor. Markup is 1.5x on provider cost: chosen over 1.3x because whole-number credits flatten the image ladder at 1.3x, because the premium models carry the thinnest rounding cushion, and because an annual discount later comes straight out of this number.",
+    "legacyCreditValueFloorUsd": 0.0066,
+    "legacyNote": "The `current` credits in this file are in TODAY'S denomination, where the cheapest credit (ultimate yearly) is $0.0066. Comparisons against them must use this value, not the proposed one, or a pure denomination change looks like a 10x price cut.",
+    "mobileNote": "Out of scope. The mobile PLAN price carries the store commission (web price + ~30%); the credit price and every model price stay identical."
+  },
+  "models": {
+    "gemini-3.1-flash-lite-image": {
+      "tierPricing": null,
+      "costCredits": 1
+    },
+    "gemini-3.1-flash-image": {
+      "tierPricing": {
+        "512": 1,
+        "1K": 2,
+        "2K": 2,
+        "4K": 3
+      },
+      "costCredits": 2
+    },
+    "gemini-3-pro-image": {
+      "tierPricing": {
+        "1K": 3,
+        "2K": 3,
+        "4K": 4
+      },
+      "costCredits": 3
+    },
+    "gpt-image-2": {
+      "tierPricing": {
+        "low": 1,
+        "medium": 1,
+        "high": 4
+      },
+      "costCredits": 1
+    },
+    "seedream-4-0-250828": {
+      "tierPricing": null,
+      "costCredits": 1
+    },
+    "seedream-5-0-260128": {
+      "tierPricing": null,
+      "costCredits": 1
+    },
+    "dola-seedream-5-0-pro-260628": {
+      "tierPricing": null,
+      "costCredits": 2
+    },
+    "kling-v2-5-turbo": {
+      "tierPricing": {
+        "std": 4,
+        "pro": 6
+      },
+      "costCredits": 4
+    },
+    "kling-v2-6": {
+      "tierPricing": {
+        "std": 4,
+        "pro": 6,
+        "pro_audio": 11
+      },
+      "costCredits": 4
+    },
+    "kling-v3": {
+      "tierPricing": {
+        "std": 7,
+        "pro": 9,
+        "4k": 32,
+        "std_audio": 10,
+        "pro_audio": 13
+      },
+      "costCredits": 9
+    },
+    "kling-v3-turbo": {
+      "tierPricing": {
+        "std": 9,
+        "pro": 11
+      },
+      "costCredits": 9
+    },
+    "kling-v3-omni": {
+      "tierPricing": {
+        "std": 7,
+        "pro": 9,
+        "4k": 32,
+        "std_audio": 9,
+        "pro_audio": 11,
+        "std_videoin": 10,
+        "pro_videoin": 13
+      },
+      "costCredits": 9
+    },
+    "kling-o1": {
+      "tierPricing": {
+        "std": 7,
+        "pro": 9,
+        "std_videoin": 10,
+        "pro_videoin": 13
+      },
+      "costCredits": 7
+    },
+    "dreamina-seedance-2-0-mini-260615": {
+      "tierPricing": {
+        "480p": 3,
+        "480p_videoin": 2,
+        "720p": 6,
+        "720p_videoin": 4
+      },
+      "costCredits": 6
+    },
+    "dreamina-seedance-2-0-fast-260128": {
+      "tierPricing": {
+        "480p": 5,
+        "480p_videoin": 3,
+        "720p": 10,
+        "720p_videoin": 6
+      },
+      "costCredits": 10
+    },
+    "dreamina-seedance-2-0-260128": {
+      "tierPricing": {
+        "480p": 6,
+        "480p_videoin": 4,
+        "720p": 12,
+        "720p_videoin": 7,
+        "1080p": 29,
+        "1080p_videoin": 18,
+        "4k": 59,
+        "4k_videoin": 35
+      },
+      "costCredits": 12
+    },
+    "dreamina-seedance-2-5-260628": {
+      "tierPricing": {
+        "480p": 8,
+        "480p_videoin": 5,
+        "720p": 18,
+        "720p_videoin": 11,
+        "1080p": 43,
+        "1080p_videoin": 26
+      },
+      "costCredits": 18
+    }
+  },
+  "requiresCodeChange": [
+    {
+      "modelKey": "gpt-image-2",
+      "problem": "Priced on quality alone while the output may be up to 8.29 MP. At 1.5x the largest sizes land on break-even rather than a loss, but they earn nothing.",
+      "fix": "Pass `${quality}@${band}` as the mode, band = output pixels <= 2,400,000 ? \"std\" : \"lg\", and add the six keys below. Or cap `sizing.maxPixels` to 2,400,000 until then.",
+      "keys": {
+        "low_lg": 1,
+        "medium_lg": 2,
+        "high_lg": 7
+      }
+    },
+    {
+      "modelKey": "dola-seedream-5-0-pro-260628",
+      "problem": "BytePlus bands this model by output pixels ($0.045 up to 2.61 MP, $0.09 above) and we charge one flat price.",
+      "fix": "Declare 1K / 1.5K / 2K as priced modes in capabilities, then tier_pricing { \"1K\": 1, \"1.5K\": 1, \"2K\": 2 }."
+    },
+    {
+      "modelKey": "dreamina-seedance-2-0-mini-260615",
+      "problem": "We add `input_seconds x 0.6` as extra output seconds at the full silent rate. The provider instead charges ~0.6x the rate over input plus output seconds, with a published minimum.",
+      "fix": "Set capabilities.inputVideoDurationFactor = 1.0 (the `_videoin` keys above now carry the 0.6), and floor the input at ceil(output_seconds x 2/3).",
+      "blocking": true,
+      "warning": "The `_videoin` keys are LOWER than their silent tier by design, because each input second is then charged in full. Applying them while inputVideoDurationFactor is still 0.6 would undercharge every video-input job. Ship the two together or neither."
+    },
+    {
+      "modelKey": "dreamina-seedance-2-0-fast-260128",
+      "problem": "We add `input_seconds x 0.6` as extra output seconds at the full silent rate. The provider instead charges ~0.6x the rate over input plus output seconds, with a published minimum.",
+      "fix": "Set capabilities.inputVideoDurationFactor = 1.0 (the `_videoin` keys above now carry the 0.6), and floor the input at ceil(output_seconds x 2/3).",
+      "blocking": true,
+      "warning": "The `_videoin` keys are LOWER than their silent tier by design, because each input second is then charged in full. Applying them while inputVideoDurationFactor is still 0.6 would undercharge every video-input job. Ship the two together or neither."
+    },
+    {
+      "modelKey": "dreamina-seedance-2-0-260128",
+      "problem": "We add `input_seconds x 0.6` as extra output seconds at the full silent rate. The provider instead charges ~0.6x the rate over input plus output seconds, with a published minimum.",
+      "fix": "Set capabilities.inputVideoDurationFactor = 1.0 (the `_videoin` keys above now carry the 0.6), and floor the input at ceil(output_seconds x 2/3).",
+      "blocking": true,
+      "warning": "The `_videoin` keys are LOWER than their silent tier by design, because each input second is then charged in full. Applying them while inputVideoDurationFactor is still 0.6 would undercharge every video-input job. Ship the two together or neither."
+    },
+    {
+      "modelKey": "dreamina-seedance-2-5-260628",
+      "problem": "We add `input_seconds x 0.6` as extra output seconds at the full silent rate. The provider instead charges ~0.6x the rate over input plus output seconds, with a published minimum.",
+      "fix": "Set capabilities.inputVideoDurationFactor = 1.0 (the `_videoin` keys above now carry the 0.6), and floor the input at ceil(output_seconds x 2/3).",
+      "blocking": true,
+      "warning": "The `_videoin` keys are LOWER than their silent tier by design, because each input second is then charged in full. Applying them while inputVideoDurationFactor is still 0.6 would undercharge every video-input job. Ship the two together or neither."
+    }
+  ],
+  "plans": [
+    {
+      "tier": "basic",
+      "monthlyUsd": 19,
+      "yearlyUsd": 228,
+      "creditsPerPeriod": 190
+    },
+    {
+      "tier": "creator",
+      "monthlyUsd": 39,
+      "yearlyUsd": 468,
+      "creditsPerPeriod": 390
+    },
+    {
+      "tier": "pro",
+      "monthlyUsd": 75,
+      "yearlyUsd": 900,
+      "creditsPerPeriod": 750
+    },
+    {
+      "tier": "ultimate",
+      "monthlyUsd": 99,
+      "yearlyUsd": 1188,
+      "creditsPerPeriod": 990
+    }
+  ]
+}

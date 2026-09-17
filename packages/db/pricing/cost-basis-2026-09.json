@@ -1,0 +1,525 @@
+{
+  "generated": "2026-09-17",
+  "currency": "USD",
+  "scope": "Every model Clickefy sells today (17 active/preview rows in provider_models). Provider list rates only: no promotion, no prepaid pack, no negotiated discount.",
+  "parameters": {
+    "markup": 1.5,
+    "loading": 1.0,
+    "creditListValueUsd": 0.1,
+    "creditValueFloorUsd": 0.1,
+    "note": "DECIDED 2026-09-17. One credit sells for $0.10 on every plan and every top-up pack - no volume discount between tiers, no bonus on packs, and no annual discount for now (yearly is 12x monthly; the discount is decided after the audit). Because there is no discount anywhere, $0.10 is both the list price and the floor. Markup is 1.5x on provider cost: chosen over 1.3x because whole-number credits flatten the image ladder at 1.3x, because the premium models carry the thinnest rounding cushion, and because an annual discount later comes straight out of this number.",
+    "legacyCreditValueFloorUsd": 0.0066,
+    "legacyNote": "The `current` credits in this file are in TODAY'S denomination, where the cheapest credit (ultimate yearly) is $0.0066. Comparisons against them must use this value, not the proposed one, or a pure denomination change looks like a 10x price cut.",
+    "mobileNote": "Out of scope. The mobile PLAN price carries the store commission (web price + ~30%); the credit price and every model price stay identical."
+  },
+  "sources": {
+    "kling": {
+      "url": "https://kling.ai/document-api/pricing/base/video",
+      "read": "2026-09-17",
+      "basis": "Official rate card, read in-browser. Billed per output second. List conversion is $0.14 per API unit; volume packages can lower this."
+    },
+    "byteplus-seedance": {
+      "url": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
+      "read": "2026-09-17",
+      "basis": "ModelArk standard PAYG per million completion tokens. Minimum-token rule and pixel dimensions verified against BytePlus's published lookup tables (531 rows, zero mismatches).",
+      "via": "agentdocks-v3/docs/pricing/2026-09-17/01-seedance.md"
+    },
+    "byteplus-seedream": {
+      "url": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
+      "read": "2026-09-08",
+      "basis": "Per output image. 5.0 Pro is banded by output pixels and charges for references after the first; 4.0 and 5.0 Lite include references.",
+      "via": "agentdocks-v3/docs/pricing/2026-09-09/provider-costs.json"
+    },
+    "google": {
+      "url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "read": "2026-09-08",
+      "basis": "Image output tokens x the image-output rate. Reference images and prompt tokens bill separately at the input rate.",
+      "via": "agentdocks-v3/docs/pricing/2026-09-09/provider-costs.json"
+    },
+    "openai": {
+      "url": "https://developers.openai.com/api/docs/guides/image-generation",
+      "read": "2026-09-11",
+      "basis": "Measured generation-log output tokens at $30/M. Reference images bill at $8/M (1,024 tokens per 1024x1024 reference = $0.008192). Text input at $5/M is additional.",
+      "via": "agentdocks-v3/docs/models/gpt-image-2-pricing-measurement-2026-09-11.md"
+    }
+  },
+  "images": [
+    {
+      "modelKey": "gemini-3.1-flash-lite-image",
+      "name": "Nano Banana 2 Lite",
+      "source": "google",
+      "evidence": "published_rate",
+      "perReferenceUsd": 0.00014,
+      "tiers": {
+        "1K": 0.0336
+      },
+      "current": {
+        "_flat": 7
+      },
+      "currentShape": "flat",
+      "currentCostCredits": 7
+    },
+    {
+      "modelKey": "gemini-3.1-flash-image",
+      "name": "Nano Banana 2",
+      "source": "google",
+      "evidence": "published_rate",
+      "perReferenceUsd": 0.00028,
+      "tiers": {
+        "512": 0.04482,
+        "1K": 0.0672,
+        "2K": 0.1008,
+        "4K": 0.1512
+      },
+      "current": {
+        "512": 9,
+        "1K": 13,
+        "2K": 20,
+        "4K": 30
+      },
+      "currentShape": "tiered",
+      "currentCostCredits": 13
+    },
+    {
+      "modelKey": "gemini-3-pro-image",
+      "name": "Nano Banana Pro",
+      "source": "google",
+      "evidence": "published_rate",
+      "perReferenceUsd": 0.00112,
+      "tiers": {
+        "1K": 0.1344,
+        "2K": 0.1344,
+        "4K": 0.24
+      },
+      "current": {
+        "1K": 27,
+        "2K": 27,
+        "4K": 48
+      },
+      "currentShape": "tiered",
+      "currentCostCredits": 27
+    },
+    {
+      "modelKey": "gpt-image-2",
+      "name": "GPT Image 2",
+      "source": "openai",
+      "evidence": "measured",
+      "perReferenceUsd": 0.008192,
+      "tiers": {
+        "low@1024x1024": 0.00588,
+        "medium@1024x1024": 0.05268,
+        "high@1024x1024": 0.21072,
+        "low@2048x1152": 0.00471,
+        "medium@2048x1152": 0.04239,
+        "high@2048x1152": 0.1695,
+        "low@2048x2048": 0.01191,
+        "medium@2048x2048": 0.10704,
+        "high@2048x2048": 0.42816,
+        "low@3840x2160": 0.01113,
+        "medium@3840x2160": 0.10008,
+        "high@3840x2160": 0.40026,
+        "medium@2496x3312": 0.13308
+      },
+      "current": {
+        "low": 2,
+        "medium": 11,
+        "high": 43
+      },
+      "currentShape": "quality-only",
+      "note": "We price on quality alone while allowing up to 8.29 MP / 3840px. The cost spans 35x across quality AND 2x across size.",
+      "currentCostCredits": 11
+    },
+    {
+      "modelKey": "seedream-4-0-250828",
+      "name": "Seedream 4.0",
+      "source": "byteplus-seedream",
+      "evidence": "published_rate",
+      "perReferenceUsd": 0,
+      "tiers": {
+        "any": 0.03
+      },
+      "current": {
+        "_flat": 7
+      },
+      "currentShape": "flat",
+      "currentCostCredits": 7
+    },
+    {
+      "modelKey": "seedream-5-0-260128",
+      "name": "Seedream 5.0 Lite",
+      "source": "byteplus-seedream",
+      "evidence": "published_rate",
+      "perReferenceUsd": 0,
+      "tiers": {
+        "any": 0.035
+      },
+      "current": {
+        "_flat": 8
+      },
+      "currentShape": "flat",
+      "currentCostCredits": 8
+    },
+    {
+      "modelKey": "dola-seedream-5-0-pro-260628",
+      "name": "Seedream 5.0 Pro",
+      "source": "byteplus-seedream",
+      "evidence": "published_rate",
+      "perReferenceUsd": 0.003,
+      "perReferenceFree": 1,
+      "tiers": {
+        "<=2.61MP": 0.045,
+        ">2.61MP": 0.09
+      },
+      "current": {
+        "_flat": 22
+      },
+      "currentShape": "flat",
+      "note": "We expose 1K / 1.5K / 2K. Only 2K at squarer aspect ratios exceeds 2.61 MP, so most jobs sit in the cheap band and are charged the dear one.",
+      "currentCostCredits": 22
+    }
+  ],
+  "klingVideo": {
+    "billing": "per output second",
+    "models": [
+      {
+        "modelKey": "kling-v2-5-turbo",
+        "name": "Kling 2.5 Turbo",
+        "defaultDuration": 5,
+        "usdPerSecond": {
+          "std": 0.042,
+          "pro": 0.07
+        },
+        "current": {
+          "std": 42,
+          "pro": 70
+        },
+        "note": "No native-audio row on the rate card; silent only.",
+        "currentCostCredits": 42
+      },
+      {
+        "modelKey": "kling-v2-6",
+        "name": "Kling 2.6",
+        "defaultDuration": 5,
+        "usdPerSecond": {
+          "std": 0.042,
+          "pro": 0.07,
+          "pro_audio": 0.14,
+          "pro_audio_voice": 0.168
+        },
+        "current": {
+          "std": 42,
+          "pro": 70,
+          "pro_audio": 140
+        },
+        "note": "Native audio is 1080p-only. Voice control costs 20% more and is not wired in our app.",
+        "currentCostCredits": 42
+      },
+      {
+        "modelKey": "kling-v3",
+        "name": "Kling 3",
+        "defaultDuration": 5,
+        "usdPerSecond": {
+          "std": 0.084,
+          "pro": 0.112,
+          "4k": 0.42,
+          "std_audio": 0.126,
+          "pro_audio": 0.168,
+          "4k_audio": 0.42
+        },
+        "current": {
+          "std": 84,
+          "pro": 112,
+          "4k": 420,
+          "std_audio": 126,
+          "pro_audio": 168
+        },
+        "currentCostCredits": 112
+      },
+      {
+        "modelKey": "kling-v3-turbo",
+        "name": "Kling 3 Turbo",
+        "defaultDuration": 5,
+        "usdPerSecond": {
+          "std": 0.112,
+          "pro": 0.14
+        },
+        "current": {
+          "std": 112,
+          "pro": 140
+        },
+        "note": "Rate card quotes Turbo with native audio only; there is no cheaper silent rate.",
+        "currentCostCredits": 112
+      },
+      {
+        "modelKey": "kling-v3-omni",
+        "name": "Kling 3 Omni",
+        "defaultDuration": 5,
+        "usdPerSecond": {
+          "std": 0.084,
+          "pro": 0.112,
+          "4k": 0.42,
+          "std_audio": 0.112,
+          "pro_audio": 0.14,
+          "4k_audio": 0.42,
+          "std_videoin": 0.126,
+          "pro_videoin": 0.168,
+          "4k_videoin": 0.42
+        },
+        "current": {
+          "std": 84,
+          "pro": 112,
+          "4k": 420,
+          "std_audio": 112,
+          "pro_audio": 140,
+          "std_videoin": 126,
+          "pro_videoin": 168
+        },
+        "currentCostCredits": 112
+      },
+      {
+        "modelKey": "kling-o1",
+        "name": "Kling O1",
+        "defaultDuration": 5,
+        "usdPerSecond": {
+          "std": 0.084,
+          "pro": 0.112,
+          "std_videoin": 0.126,
+          "pro_videoin": 0.168
+        },
+        "current": {
+          "std": 84,
+          "pro": 112,
+          "std_videoin": 126,
+          "pro_videoin": 168
+        },
+        "currentCostCredits": 84
+      }
+    ]
+  },
+  "seedanceVideo": {
+    "billing": "per million completion tokens",
+    "tokenFormula": "tokens = (input_video_seconds + output_seconds) * width * height * fps / 1024, fps = 24",
+    "minimumRule": "with a video input, billable tokens are at least (output_seconds + ceil(output_seconds * 2/3)) * width * height * 24 / 1024",
+    "dimensions": {
+      "seedance-2.5": {
+        "480p": [
+          854,
+          480
+        ],
+        "720p": [
+          1280,
+          720
+        ],
+        "1080p": [
+          1920,
+          1080
+        ]
+      },
+      "seedance-2.0": {
+        "480p": [
+          864,
+          496
+        ],
+        "720p": [
+          1280,
+          720
+        ],
+        "1080p": [
+          1920,
+          1080
+        ],
+        "4k": [
+          3840,
+          2160
+        ]
+      }
+    },
+    "dimensionNote": "16:9 / 9:16. Other aspect groups have their own dimensions (1:1, 4:3/3:4, 21:9) and therefore their own costs; the full 516-row lookup lives in agentdocks-v3/docs/pricing/2026-09-17/seedance-minimums.json.",
+    "models": [
+      {
+        "modelKey": "dreamina-seedance-2-0-mini-260615",
+        "name": "Seedance 2.0 Mini",
+        "family": "seedance-2.0",
+        "defaultDuration": 5,
+        "ratePerMillion": {
+          "480p": {
+            "noVideo": 3.5,
+            "withVideo": 2.1
+          },
+          "720p": {
+            "noVideo": 3.5,
+            "withVideo": 2.1
+          }
+        },
+        "current": {
+          "480p": 30,
+          "720p": 68
+        },
+        "currentCostCredits": 68
+      },
+      {
+        "modelKey": "dreamina-seedance-2-0-fast-260128",
+        "name": "Seedance 2.0 Fast",
+        "family": "seedance-2.0",
+        "defaultDuration": 5,
+        "ratePerMillion": {
+          "480p": {
+            "noVideo": 5.6,
+            "withVideo": 3.3
+          },
+          "720p": {
+            "noVideo": 5.6,
+            "withVideo": 3.3
+          }
+        },
+        "current": {
+          "480p": 48,
+          "720p": 107
+        },
+        "currentCostCredits": 107
+      },
+      {
+        "modelKey": "dreamina-seedance-2-0-260128",
+        "name": "Seedance 2.0",
+        "family": "seedance-2.0",
+        "defaultDuration": 5,
+        "ratePerMillion": {
+          "480p": {
+            "noVideo": 7.0,
+            "withVideo": 4.3
+          },
+          "720p": {
+            "noVideo": 7.0,
+            "withVideo": 4.3
+          },
+          "1080p": {
+            "noVideo": 7.7,
+            "withVideo": 4.7
+          },
+          "4k": {
+            "noVideo": 4.0,
+            "withVideo": 2.4
+          }
+        },
+        "current": {
+          "480p": 60,
+          "720p": 136,
+          "1080p": 306,
+          "4k": 1223
+        },
+        "currentCostCredits": 136
+      },
+      {
+        "modelKey": "dreamina-seedance-2-5-260628",
+        "name": "Seedance 2.5",
+        "family": "seedance-2.5",
+        "defaultDuration": 5,
+        "ratePerMillion": {
+          "480p": {
+            "noVideo": 10.7,
+            "withVideo": 6.4
+          },
+          "720p": {
+            "noVideo": 10.7,
+            "withVideo": 6.4
+          },
+          "1080p": {
+            "noVideo": 11.7,
+            "withVideo": 7.0
+          }
+        },
+        "current": {
+          "480p": 92,
+          "720p": 207,
+          "1080p": 366
+        },
+        "currentCostCredits": 207
+      }
+    ]
+  },
+  "plans": {
+    "note": "DECIDED: flat $0.10 per credit on every tier. Credits = monthly price x 10. Yearly is 12x monthly with no discount for now.",
+    "rows": [
+      {
+        "tier": "basic",
+        "monthlyUsd": 19,
+        "yearlyUsd": 228,
+        "creditsPerPeriod": 190
+      },
+      {
+        "tier": "creator",
+        "monthlyUsd": 39,
+        "yearlyUsd": 468,
+        "creditsPerPeriod": 390
+      },
+      {
+        "tier": "pro",
+        "monthlyUsd": 75,
+        "yearlyUsd": 900,
+        "creditsPerPeriod": 750
+      },
+      {
+        "tier": "ultimate",
+        "monthlyUsd": 99,
+        "yearlyUsd": 1188,
+        "creditsPerPeriod": 990
+      }
+    ]
+  },
+  "defaultTier": {
+    "gemini-3.1-flash-image": "1K",
+    "gemini-3-pro-image": "1K",
+    "gpt-image-2": "medium",
+    "kling-v2-5-turbo": "std",
+    "kling-v2-6": "std",
+    "kling-v3": "pro",
+    "kling-v3-turbo": "std",
+    "kling-v3-omni": "pro",
+    "kling-o1": "std",
+    "dreamina-seedance-2-0-mini-260615": "720p",
+    "dreamina-seedance-2-0-fast-260128": "720p",
+    "dreamina-seedance-2-0-260128": "720p",
+    "dreamina-seedance-2-5-260628": "720p"
+  },
+  "promotions": {
+    "policy": "The CATALOGUE is always priced at the provider's standard rate. A supplier promotion is passed to customers as a separate, dated discount that expires on its own \u2014 never by lowering the catalogue price. A catalogue price built on a promotion has an expiry date nobody gets alerted about, which is exactly how Seedance 2.5 1080p ended up selling at 0.85x.",
+    "source": "https://docs.byteplus.com/en/docs/ModelArk/2630943",
+    "checked": "2026-09-17",
+    "active": [
+      {
+        "modelKey": "dreamina-seedance-2-0-mini-260615",
+        "tiers": [
+          "480p",
+          "720p"
+        ],
+        "supplierFactor": 0.4,
+        "customerFactor": 0.5,
+        "endsAt": "2026-10-07T06:00:00Z",
+        "note": "BytePlus pays-as-you-go campaign, 480p/720p only. We pass on half price rather than the full 60% so the promotion still earns above cost."
+      },
+      {
+        "modelKey": "dreamina-seedance-2-0-fast-260128",
+        "tiers": [
+          "480p",
+          "720p"
+        ],
+        "supplierFactor": 0.75,
+        "customerFactor": 0.75,
+        "endsAt": "2026-10-07T06:00:00Z",
+        "note": "BytePlus pays-as-you-go campaign, 480p/720p only. Passed on in full: at 0.75 the promotional price still earns 1.5x against the promotional cost."
+      }
+    ],
+    "expired": [
+      {
+        "modelKey": "dreamina-seedance-2-5-260628",
+        "tiers": [
+          "1080p"
+        ],
+        "supplierFactor": 0.72,
+        "endedAt": "2026-09-17T06:00:00Z",
+        "note": "Recorded because the live catalogue's 366-credit 1080p price was derived from this promotion ($12.2822 per 30s = standard x 0.72). Nothing to pass on; the standard rate applies from today."
+      }
+    ],
+    "notApplicable": "Promotions apply to pay-as-you-go only. Prepaid ModelArk packs are consumed BEFORE pay-as-you-go, so while a pack balance exists these campaigns do not reach us at all."
+  }
+}

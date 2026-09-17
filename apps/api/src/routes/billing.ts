@@ -24,6 +24,7 @@
  */
 
 import { Hono } from 'hono';
+import type Stripe from 'stripe';
 import { and, asc, eq } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -254,6 +255,57 @@ billingRoute.get(
   },
 );
 
+/**
+ * The customer id to bill, creating one if we have none — and recreating
+ * one if the id we hold no longer resolves.
+ *
+ * THE CASE THIS EXISTS FOR: a `cus_…` created in Stripe's test sandbox
+ * does not exist in live mode. Two production accounts carry exactly
+ * that, from sandbox purchases made before go-live, and without this the
+ * first thing either of them sees on the new keys is a 500 from Stripe.
+ * The same failure appears any time a customer is deleted in the
+ * dashboard, which is an ordinary thing for someone to do.
+ *
+ * Recreating is safe: a customer record holds no money, only an identity
+ * and its history. The worst case is a returning subscriber whose old
+ * invoices sit under a previous customer — far better than a billing page
+ * that cannot open.
+ */
+async function ensureStripeCustomer(
+  stripe: Stripe,
+  db: AppEnv['Variables']['db'],
+  user: NonNullable<AppEnv['Variables']['user']>,
+): Promise<string> {
+  const create = async () => {
+    const created = await stripe.customers.create({
+      email: user.email,
+      name: user.name ?? undefined,
+      metadata: { clickefy_user_id: user.id },
+    });
+    await db.update(users).set({ stripeCustomerId: created.id }).where(eq(users.id, user.id));
+    return created.id;
+  };
+
+  if (!user.stripeCustomerId) return create();
+
+  try {
+    const existing = await stripe.customers.retrieve(user.stripeCustomerId);
+    // A DELETED customer comes back as an object rather than an error, and
+    // billing against it fails later with a much less obvious message.
+    if (!existing.deleted) return user.stripeCustomerId;
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    const status = (err as { statusCode?: number })?.statusCode;
+    if (code !== 'resource_missing' && status !== 404) throw err;
+  }
+
+  console.warn('[billing] stripe customer no longer resolves, recreating', {
+    userId: user.id,
+    stale: user.stripeCustomerId,
+  });
+  return create();
+}
+
 // ─── Checkout ───────────────────────────────────────────────────────
 
 const checkoutSchema = z
@@ -269,8 +321,15 @@ const checkoutSchema = z
  * Only ever redirect back to our own site. An open redirect on a payment
  * flow is a phishing primitive — "pay here, then get sent to a page that
  * looks like us and asks for your card again".
+ *
+ * The ORIGIN comes from configuration, never from the request. It used to
+ * be read from the `Origin` header, which is chosen by whoever is calling
+ * us: the path was validated but the host was not, so the one part that
+ * decides which site the customer lands on was the part we did not
+ * control. `WEB_APP_URL` is ours and cannot be talked out of us.
  */
-function safeReturnUrl(origin: string, path: string | undefined, fallback: string): string {
+function safeReturnUrl(env: AppEnv['Bindings'], path: string | undefined, fallback: string): string {
+  const origin = (env.WEB_APP_URL ?? 'https://clickefy.ai').replace(/\/+$/, '');
   const p = path && path.startsWith('/') && !path.startsWith('//') ? path : fallback;
   return `${origin}${p}`;
 }
@@ -342,23 +401,10 @@ billingRoute.post(
     }
 
     const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
-    const origin = new URL(c.req.url).origin;
 
     // Reuse the customer if we have one, so a returning subscriber keeps a
     // single Stripe identity and one billing history.
-    let customerId = user.stripeCustomerId ?? undefined;
-    if (!customerId) {
-      const created = await stripe.customers.create({
-        email: user.email,
-        name: user.name ?? undefined,
-        metadata: { clickefy_user_id: user.id },
-      });
-      customerId = created.id;
-      await c.var.db
-        .update(users)
-        .set({ stripeCustomerId: customerId })
-        .where(eq(users.id, user.id));
-    }
+    const customerId = await ensureStripeCustomer(stripe, c.var.db, user);
 
     const session = await stripe.checkout.sessions.create(
       {
@@ -377,11 +423,13 @@ billingRoute.post(
           },
         },
         success_url: safeReturnUrl(
-          c.req.header('origin') ?? origin,
+          c.env,
           successPath,
           '/billing/success?session={CHECKOUT_SESSION_ID}',
         ),
-        cancel_url: safeReturnUrl(c.req.header('origin') ?? origin, cancelPath, '/#pricing'),
+        cancel_url: safeReturnUrl(
+          c.env,
+          cancelPath, '/#pricing'),
         allow_promotion_codes: true,
       },
       {
@@ -429,10 +477,9 @@ billingRoute.post(
     }
 
     const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
-    const origin = c.req.header('origin') ?? new URL(c.req.url).origin;
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
-      return_url: `${origin}/settings`,
+      return_url: safeReturnUrl(c.env, '/settings', '/settings'),
     });
 
     return c.json({ data: { url: session.url } });
@@ -532,21 +579,8 @@ billingRoute.post(
     }
 
     const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
-    const origin = new URL(c.req.url).origin;
 
-    let customerId = user.stripeCustomerId ?? undefined;
-    if (!customerId) {
-      const created = await stripe.customers.create({
-        email: user.email,
-        name: user.name ?? undefined,
-        metadata: { clickefy_user_id: user.id },
-      });
-      customerId = created.id;
-      await c.var.db
-        .update(users)
-        .set({ stripeCustomerId: customerId })
-        .where(eq(users.id, user.id));
-    }
+    const customerId = await ensureStripeCustomer(stripe, c.var.db, user);
 
     const session = await stripe.checkout.sessions.create(
       {
@@ -571,11 +605,13 @@ billingRoute.post(
           clickefy_kind: 'topup',
         },
         success_url: safeReturnUrl(
-          c.req.header('origin') ?? origin,
+          c.env,
           successPath,
           '/billing/success?topup=1',
         ),
-        cancel_url: safeReturnUrl(c.req.header('origin') ?? origin, cancelPath, '/#pricing'),
+        cancel_url: safeReturnUrl(
+          c.env,
+          cancelPath, '/#pricing'),
         allow_promotion_codes: true,
       },
       {

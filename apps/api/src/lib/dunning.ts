@@ -44,10 +44,13 @@
  */
 
 import Stripe from 'stripe';
+import { and, eq, isNotNull, lt, ne } from 'drizzle-orm';
 
+import { createDb, users } from '@clickfy/db';
 import { DUNNING_GRACE_HOURS, evaluateDunning } from '@clickfy/types';
 
 import { makeStripe } from './stripe-client';
+import { endSubscriptionAccess } from './subscription-lifecycle';
 import type { Bindings } from '../types';
 
 // The deadline arithmetic lives in `@clickfy/types` so it can be unit
@@ -183,6 +186,101 @@ export async function enforceDunningDeadline(
 
       if (!page.has_more || page.data.length === 0) break;
       startingAfter = page.data[page.data.length - 1]!.id;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Reconcile subscriptions we believe are live against what Stripe says.
+ *
+ * WHY THIS EXISTS
+ *   Every subscription ending runs through `customer.subscription.deleted`.
+ *   If that delivery is ever permanently lost — three days of retries
+ *   against an endpoint that is down, an event we 500 on every time, a
+ *   subscription cancelled while our webhook secret was wrong — the user
+ *   keeps their entitlement forever. Nothing else in the system would ever
+ *   notice, because nothing else asks.
+ *
+ * WHY IT ASKS STRIPE RATHER THAN TRUSTING THE DATE
+ *   `subscription_expires_at` being in the past does NOT mean the
+ *   subscription ended; it far more often means a renewal succeeded and we
+ *   have not processed `invoice.paid` yet. Cutting someone off for that
+ *   would be a self-inflicted outage for a paying customer. So the date
+ *   only selects CANDIDATES, and Stripe decides.
+ *
+ *   The grace period exists for the same reason: a renewal lands on the
+ *   expiry date, and webhook processing is not instant.
+ */
+export const LAPSE_GRACE_HOURS = 48;
+
+export interface ReconcileResult {
+  examined: number;
+  ended: number;
+  stillActive: number;
+  errors: number;
+}
+
+export async function reconcileLapsedSubscriptions(
+  env: Bindings,
+  now: number = Date.now(),
+): Promise<ReconcileResult> {
+  const result: ReconcileResult = { examined: 0, ended: 0, stillActive: 0, errors: 0 };
+  if (!env.STRIPE_SECRET_KEY || !env.DATABASE_URL) return result;
+
+  // A scheduled run has no request, so no `c.var.db` — build a client the
+  // same way the asset purge does.
+  const db = createDb({ connectionString: env.DATABASE_URL, runtime: 'http' });
+
+  const cutoff = new Date(now - LAPSE_GRACE_HOURS * 60 * 60 * 1000);
+  const candidates = await db
+    .select({ id: users.id, customerId: users.stripeCustomerId })
+    .from(users)
+    .where(
+      and(
+        eq(users.subscriptionPlatform, 'stripe'),
+        isNotNull(users.stripeCustomerId),
+        ne(users.entitlement, 'free'),
+        ne(users.entitlement, 'admin'),
+        lt(users.subscriptionExpiresAt, cutoff),
+      ),
+    )
+    .limit(200);
+
+  if (candidates.length === 0) return result;
+  const stripe = makeStripe(env.STRIPE_SECRET_KEY);
+
+  for (const candidate of candidates) {
+    result.examined += 1;
+    try {
+      const subs = await stripe.subscriptions.list({
+        customer: candidate.customerId!,
+        status: 'all',
+        limit: 20,
+      });
+      // `past_due` and `unpaid` still count as live here: the dunning sweep
+      // owns those, and ending them from two places would race.
+      const live = subs.data.some((s) =>
+        ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(s.status),
+      );
+      if (live) {
+        result.stillActive += 1;
+        continue;
+      }
+      await endSubscriptionAccess(
+        db,
+        candidate.id,
+        `Reconciled: no live Stripe subscription ${LAPSE_GRACE_HOURS}h past expiry`,
+      );
+      console.warn('[reconcile] ended a subscription Stripe had already dropped', {
+        userId: candidate.id,
+      });
+      result.ended += 1;
+    } catch (err) {
+      // One bad customer must not abort the sweep; tomorrow retries it.
+      console.error('[reconcile] failed for user', candidate.id, err);
+      result.errors += 1;
     }
   }
 

@@ -38,6 +38,17 @@ export interface Bindings {
   OPENAI_API_KEY?: string;
 
   // ─── Payments ─────────────────────────────────────────────────
+  /**
+   * Where Stripe sends a customer back to after checkout or the billing
+   * portal — our own site, e.g. `https://clickefy.ai`.
+   *
+   * This is configuration and not a request header on purpose. The return
+   * address used to come from `Origin`, which is chosen by whoever calls
+   * us: an open redirect on a payment flow is a phishing primitive ("pay
+   * here, then land on a page that looks like us and asks for your card
+   * again"). Defaults to the production site when unset.
+   */
+  WEB_APP_URL?: string;
   REVENUECAT_WEBHOOK_SECRET?: string;
   /**
    * Stripe secret key (`sk_…` or a restricted `rk_…`). SERVER ONLY — the

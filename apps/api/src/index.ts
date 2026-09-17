@@ -41,7 +41,7 @@ import {
 } from './routes/uploads';
 import { clerkWebhookRoute } from './routes/webhooks/clerk';
 import { stripeWebhookRoute } from './routes/webhooks/stripe';
-import { enforceDunningDeadline } from './lib/dunning';
+import { enforceDunningDeadline, reconcileLapsedSubscriptions } from './lib/dunning';
 import { revenuecatWebhookRoute } from './routes/webhooks/revenuecat';
 import type { AppEnv, Bindings } from './types';
 
@@ -189,6 +189,20 @@ const handler = {
 
     if (new Date(event.scheduledTime).getUTCHours() === 3) {
       ctx.waitUntil(purgeDeletedUserAssets(env));
+
+      // Once a day, check that the subscriptions we believe are live still
+      // exist in Stripe. This is the backstop for a permanently lost
+      // `customer.subscription.deleted` — without it, one undelivered
+      // webhook means a free plan forever. Daily rather than hourly
+      // because it costs a Stripe call per candidate and a day's delay on
+      // an already-ended subscription harms nobody.
+      ctx.waitUntil(
+        reconcileLapsedSubscriptions(env)
+          .then((r) => {
+            if (r.ended > 0 || r.errors > 0) console.log('[reconcile]', JSON.stringify(r));
+          })
+          .catch((err) => console.error('[reconcile] sweep failed', err)),
+      );
     }
   },
 } satisfies ExportedHandler<Bindings>;

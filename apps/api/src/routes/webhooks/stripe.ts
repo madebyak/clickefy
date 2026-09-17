@@ -57,14 +57,40 @@ import {
   TOPUP_LIFETIME_MS,
   closeSubscriptionLots,
   grantCredits,
-  pauseTopupClocks,
   resumeTopupClocks,
   revokeCredits,
 } from '../../lib/credit-grants';
 import { makeStripe, verifyStripeEvent } from '../../lib/stripe-client';
+import { endSubscriptionAccess } from '../../lib/subscription-lifecycle';
 import type { AppEnv } from '../../types';
 
 export const stripeWebhookRoute = new Hono<AppEnv>();
+
+/**
+ * The subscription an invoice belongs to.
+ *
+ * `invoice.subscription` was REMOVED from the Stripe API — it now lives at
+ * `invoice.parent.subscription_details.subscription`. Reading the old
+ * field returned undefined on every invoice, which meant the payment
+ * failure path could never find a subscription to cancel and quietly fell
+ * through to "the sweep will catch it". It did catch it, so nothing
+ * leaked; the fast path was simply dead code that looked alive.
+ *
+ * Both shapes are accepted because an older API version, a replayed
+ * event, or a fixture can still carry the flat field.
+ */
+function invoiceSubscriptionId(invoice: Record<string, unknown>): string | null {
+  const parent = invoice.parent as
+    | { subscription_details?: { subscription?: string | { id?: string } } }
+    | undefined;
+  const fromParent = parent?.subscription_details?.subscription;
+  if (typeof fromParent === 'string') return fromParent;
+  if (fromParent?.id) return fromParent.id;
+
+  const legacy = invoice.subscription as string | { id?: string } | undefined | null;
+  if (typeof legacy === 'string') return legacy;
+  return legacy?.id ?? null;
+}
 
 /** Events worth acting on. Everything else is recorded and ignored. */
 const HANDLED = new Set([
@@ -117,6 +143,26 @@ stripeWebhookRoute.post('/', async (c) => {
     );
   }
 
+  // A TEST event has no business in production, and a live event has no
+  // business in a sandbox. Stripe stamps every event with which world it
+  // came from, so the check is free — and it is the difference between a
+  // stray sandbox delivery being ignored and it granting real credits.
+  // (The signature alone does not settle this: a test-mode endpoint
+  // configured against this URL signs its deliveries perfectly well.)
+  const expectLive = c.env.ENVIRONMENT === 'production';
+  if (event.livemode !== expectLive) {
+    console.warn('[stripe webhook] livemode mismatch, ignoring', {
+      eventId: event.id,
+      type: event.type,
+      eventLivemode: event.livemode,
+      expectLive,
+    });
+    // 200, not an error: Stripe should stop retrying something we will
+    // never accept, and a retry storm on a misconfigured endpoint helps
+    // nobody.
+    return c.json({ ok: true, ignored: 'livemode mismatch' });
+  }
+
   // Pull the identifying ids off whichever object this event carries.
   // Stripe's Event.data.object is a union of ~80 resource types, so a
   // direct cast is rejected. We only read three optional ids off it.
@@ -124,11 +170,9 @@ stripeWebhookRoute.post('/', async (c) => {
   const customerId =
     typeof obj.customer === 'string' ? obj.customer : (obj.customer as { id?: string })?.id ?? null;
   const subscriptionId =
-    typeof obj.subscription === 'string'
-      ? obj.subscription
-      : event.type.startsWith('customer.subscription')
-        ? (obj.id as string)
-        : null;
+    event.type.startsWith('customer.subscription')
+      ? (obj.id as string)
+      : invoiceSubscriptionId(obj);
   const invoiceId = event.type.startsWith('invoice') ? (obj.id as string) : null;
 
   const userRow = customerId
@@ -378,31 +422,16 @@ async function applySubscriptionUpdated(
   return `status ${sub.status}`;
 }
 
-/** Access ends: entitlement to free, allowance forfeited, top-up clocks frozen. */
+/**
+ * Access ends: entitlement to free, allowance forfeited, top-up clocks
+ * frozen. Shared with the reconcile sweep, which handles the case where
+ * this webhook never arrives — both must tear down identically.
+ */
 async function applySubscriptionDeleted(
   c: { var: AppEnv['Variables'] },
   userId: string,
 ): Promise<string | undefined> {
-  await c.var.db
-    .update(users)
-    .set({
-      entitlement: 'free',
-      subscriptionPlatform: null,
-      subscriptionProductId: null,
-      subscriptionRenewsAt: null,
-      subscriptionExpiresAt: null,
-    })
-    .where(eq(users.id, userId));
-
-  const forfeited = await closeSubscriptionLots(c.var.db, userId, 'Stripe subscription ended');
-  // Top-ups survive but become unspendable, so their clock stops rather
-  // than burning time the user cannot use.
-  const paused = await pauseTopupClocks(c.var.db, userId);
-
-  const notes: string[] = ['subscription ended'];
-  if (forfeited > 0) notes.push(`forfeited ${forfeited}`);
-  if (paused > 0) notes.push(`paused ${paused} topup clock(s)`);
-  return notes.join('; ');
+  return endSubscriptionAccess(c.var.db, userId, 'Stripe subscription ended');
 }
 
 /**
@@ -438,10 +467,7 @@ async function applyPaymentFailed(
   const invoice = event.data.object as unknown as Record<string, unknown>;
   const attempts = typeof invoice.attempt_count === 'number' ? invoice.attempt_count : 0;
 
-  const subId =
-    typeof invoice.subscription === 'string'
-      ? invoice.subscription
-      : ((invoice.subscription as { id?: string } | null)?.id ?? null);
+  const subId = invoiceSubscriptionId(invoice);
 
   if (attempts < MAX_PAYMENT_ATTEMPTS) {
     return (

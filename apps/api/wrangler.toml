@@ -41,6 +41,10 @@ custom_domain = true
 [vars]
 ENVIRONMENT = "production"
 LOG_LEVEL = "info"
+# Where Stripe returns a customer after checkout or the billing portal.
+# Configuration, not the request's `Origin` header: the return address on a
+# payment flow must not be chooseable by whoever is calling us.
+WEB_APP_URL = "https://clickefy.ai"
 # ⚠️ LAUNCH-DAY FLIP: "true" ONLY during the TestFlight testing phase so
 # sandbox purchases grant credits end-to-end. Set to "false" before the
 # public App Store release — sandbox purchases are free and renew on an

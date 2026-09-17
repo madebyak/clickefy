@@ -70,3 +70,8 @@ AGENTS.md
 
 # internal dev notes / build logs (legacy — feel free to remove)
 /docs/
+
+# Local-only secrets handed over for a one-off task (Stripe live keys etc).
+# Never committed: a live key in git history is a live key forever.
+*.local
+!*.example.local

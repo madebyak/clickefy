@@ -143,13 +143,20 @@ stripeWebhookRoute.post('/', async (c) => {
     );
   }
 
-  // A TEST event has no business in production, and a live event has no
-  // business in a sandbox. Stripe stamps every event with which world it
-  // came from, so the check is free — and it is the difference between a
-  // stray sandbox delivery being ignored and it granting real credits.
-  // (The signature alone does not settle this: a test-mode endpoint
-  // configured against this URL signs its deliveries perfectly well.)
-  const expectLive = c.env.ENVIRONMENT === 'production';
+  // A TEST event has no business reaching live data, and a live event has
+  // no business reaching a sandbox. Stripe stamps every event with which
+  // world it came from, so the check is free — and it is the difference
+  // between a stray sandbox delivery being ignored and it granting real
+  // credits. (The signature alone does not settle this: a test-mode
+  // endpoint configured against this URL signs its deliveries perfectly
+  // well.)
+  //
+  // The expectation comes from the KEY, not from `ENVIRONMENT`. Both are
+  // the same in production, but `wrangler dev` inherits the production
+  // vars, so keying off the environment would reject every event from
+  // `stripe listen` on a developer's machine. The key and the event must
+  // simply come from the same world as each other.
+  const expectLive = secretKey.startsWith('sk_live_') || secretKey.startsWith('rk_live_');
   if (event.livemode !== expectLive) {
     console.warn('[stripe webhook] livemode mismatch, ignoring', {
       eventId: event.id,

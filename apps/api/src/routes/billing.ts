@@ -29,6 +29,8 @@ import { and, asc, eq } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 
+import type { UserEntitlement } from '@clickfy/types';
+
 import {
   creditPacks,
   packProducts,
@@ -41,6 +43,14 @@ import {
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
 import { makeStripe } from '../lib/stripe-client';
+import {
+  cancelPendingChange,
+  changePlan,
+  currentPeriodEnd,
+  currentPriceId,
+  findLiveSubscription,
+  pendingPriceChange,
+} from '../lib/stripe-subscription';
 import type { AppEnv } from '../types';
 
 export const billingRoute = new Hono<AppEnv>();
@@ -371,6 +381,43 @@ billingRoute.post(
       );
     }
 
+    // ── One subscription per customer ────────────────────────────────
+    //
+    // Stripe will happily give a customer a second subscription, bill
+    // both, and never mention it. Somebody who already pays and clicks a
+    // plan card again — because they forgot, or because they meant to
+    // change tier, or because they cancelled and want back in — must not
+    // end up paying twice.
+    //
+    // Stripe is asked rather than our own columns: a subscription started
+    // in the portal, or cancelled there, is real long before the webhook
+    // telling us about it arrives.
+    if (user.stripeCustomerId) {
+      const stripeForCheck = makeStripe(c.env.STRIPE_SECRET_KEY);
+      const existing = await findLiveSubscription(stripeForCheck, user.stripeCustomerId);
+      if (existing) {
+        const currentPrice = currentPriceId(existing);
+        return c.json(
+          {
+            error: {
+              code: 'already_subscribed',
+              message: existing.cancel_at_period_end
+                ? 'Your plan is set to end. Resume it instead of subscribing again.'
+                : 'You already have a subscription. Change your plan instead.',
+              details: {
+                subscriptionId: existing.id,
+                currentPriceId: currentPrice,
+                cancelAtPeriodEnd: existing.cancel_at_period_end,
+                /** What the client should do: resume, or change plan. */
+                action: existing.cancel_at_period_end ? 'resume' : 'change_plan',
+              },
+            },
+          },
+          409,
+        );
+      }
+    }
+
     const plan = await c.var.db.query.plans.findFirst({
       where: and(eq(plans.id, planId), eq(plans.isActive, true)),
     });
@@ -620,5 +667,355 @@ billingRoute.post(
     );
 
     return c.json({ data: { url: session.url, sessionId: session.id } });
+  },
+);
+
+// ─── Managing a live subscription ───────────────────────────────────
+//
+// Everything below assumes the customer already pays us. `/checkout` is
+// for starting a subscription; these are for the rest of its life, and
+// they exist so that changing or cancelling a plan does not require
+// leaving our site for Stripe's portal. The portal still works — some
+// people will land there — which is why every one of these reads its
+// state back from Stripe rather than from a copy we keep.
+
+/** Plan rows keyed by the Stripe price id that sells them. */
+async function planByPriceId(db: AppEnv['Variables']['db']) {
+  const rows = await db
+    .select({
+      priceId: planProducts.storeProductId,
+      planId: plans.id,
+      tier: plans.tier,
+      interval: plans.interval,
+      credits: plans.creditsPerPeriod,
+      displayName: plans.displayName,
+    })
+    .from(planProducts)
+    .innerJoin(plans, eq(plans.id, planProducts.planId))
+    .where(eq(planProducts.platform, 'stripe'));
+  return new Map(rows.map((r) => [r.priceId, r]));
+}
+
+/**
+ * `GET /v1/billing/subscription` — everything the billing page renders.
+ *
+ * Read LIVE from Stripe on every call rather than from our own columns.
+ * We store entitlement and a renewal date because the app needs them on
+ * every request, but "is it set to cancel", "what card is on file" and
+ * "what is the next amount" are things a customer can change in Stripe's
+ * portal without us hearing about it until a webhook lands. On the one
+ * page where someone is looking straight at their billing state, stale is
+ * worse than slow.
+ */
+billingRoute.get(
+  '/subscription',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  withCurrentUser(),
+  async (c) => {
+    const user = c.var.user!;
+    const base = {
+      entitlement: user.entitlement,
+      /** Where the subscription lives; null for a comp or a free account. */
+      platform: user.subscriptionPlatform ?? null,
+      expiresAt: user.subscriptionExpiresAt?.toISOString() ?? null,
+    };
+
+    // No Stripe customer, or a plan that does not come from Stripe (a
+    // comp, or an App Store subscription). Everything below would be a
+    // pointless round trip, and the client must not offer Stripe controls
+    // for a subscription Stripe has never heard of.
+    if (!c.env.STRIPE_SECRET_KEY || !user.stripeCustomerId || user.subscriptionPlatform !== 'stripe') {
+      return c.json({ data: { ...base, subscription: null, paymentMethod: null } });
+    }
+
+    const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
+    const sub = await findLiveSubscription(stripe, user.stripeCustomerId);
+    if (!sub) return c.json({ data: { ...base, subscription: null, paymentMethod: null } });
+
+    const byPrice = await planByPriceId(c.var.db);
+    const priceId = currentPriceId(sub);
+    const plan = priceId ? byPrice.get(priceId) : undefined;
+    const pending = await pendingPriceChange(stripe, sub);
+    const pendingPlan = pending ? byPrice.get(pending.priceId) : undefined;
+
+    // The card, for "Visa ending 4242". Expanded off the subscription's
+    // default method, falling back to the customer's.
+    let paymentMethod: { brand: string; last4: string; expMonth: number; expYear: number } | null = null;
+    const pmId =
+      typeof sub.default_payment_method === 'string'
+        ? sub.default_payment_method
+        : (sub.default_payment_method?.id ?? null);
+    if (pmId) {
+      try {
+        const pm = await stripe.paymentMethods.retrieve(pmId);
+        if (pm.card) {
+          paymentMethod = {
+            brand: pm.card.brand,
+            last4: pm.card.last4,
+            expMonth: pm.card.exp_month,
+            expYear: pm.card.exp_year,
+          };
+        }
+      } catch {
+        // A card we cannot read is not worth failing the page over.
+      }
+    }
+
+    return c.json({
+      data: {
+        ...base,
+        subscription: {
+          id: sub.id,
+          status: sub.status,
+          tier: plan?.tier ?? null,
+          interval: plan?.interval ?? null,
+          planId: plan?.planId ?? null,
+          creditsPerPeriod: plan?.credits ?? null,
+          currentPeriodEnd: currentPeriodEnd(sub)?.toISOString() ?? null,
+          /** True once cancelled: access runs to `currentPeriodEnd`, then stops. */
+          cancelAtPeriodEnd: sub.cancel_at_period_end,
+          /** A downgrade already booked for the period end. */
+          pendingChange: pending
+            ? {
+                tier: pendingPlan?.tier ?? null,
+                interval: pendingPlan?.interval ?? null,
+                planId: pendingPlan?.planId ?? null,
+                effectiveAt: pending.effectiveAt?.toISOString() ?? null,
+              }
+            : null,
+        },
+        paymentMethod,
+      },
+    });
+  },
+);
+
+/**
+ * `GET /v1/billing/invoices` — the receipts.
+ *
+ * Stripe hosts both the PDF and a viewable page, so we hand back links
+ * rather than rendering anything ourselves. They are short-lived signed
+ * URLs tied to this customer.
+ */
+billingRoute.get(
+  '/invoices',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  withCurrentUser(),
+  async (c) => {
+    const user = c.var.user!;
+    if (!c.env.STRIPE_SECRET_KEY || !user.stripeCustomerId) {
+      return c.json({ data: { invoices: [] } });
+    }
+    const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
+    const list = await stripe.invoices.list({ customer: user.stripeCustomerId, limit: 24 });
+    return c.json({
+      data: {
+        invoices: list.data
+          // A draft invoice is not a receipt of anything yet.
+          .filter((i) => i.status !== 'draft')
+          .map((i) => ({
+            id: i.id,
+            number: i.number,
+            status: i.status,
+            amountPaid: i.amount_paid,
+            amountDue: i.amount_due,
+            currency: i.currency,
+            createdAt: new Date(i.created * 1000).toISOString(),
+            pdfUrl: i.invoice_pdf,
+            hostedUrl: i.hosted_invoice_url,
+          })),
+      },
+    });
+  },
+);
+
+const changePlanSchema = z.object({ planId: z.string().uuid() }).strict();
+
+/**
+ * `POST /v1/billing/change-plan` — move between tiers.
+ *
+ * Upgrades charge and take effect now; downgrades are booked for the
+ * period end. `lib/stripe-subscription.ts` explains why those are not
+ * symmetrical.
+ */
+billingRoute.post(
+  '/change-plan',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  zValidator('json', changePlanSchema),
+  async (c) => {
+    const user = c.var.user!;
+    const { planId } = c.req.valid('json');
+    if (!c.env.STRIPE_SECRET_KEY) {
+      return c.json({ error: { code: 'stripe_unconfigured', message: 'Payments are not configured.' } }, 503);
+    }
+    if (user.subscriptionPlatform !== 'stripe' || !user.stripeCustomerId) {
+      return c.json(
+        {
+          error: {
+            code: 'no_stripe_subscription',
+            message: 'This account has no web subscription to change.',
+          },
+        },
+        409,
+      );
+    }
+
+    const plan = await c.var.db.query.plans.findFirst({
+      where: and(eq(plans.id, planId), eq(plans.isActive, true)),
+    });
+    if (!plan) return c.json({ error: { code: 'plan_not_found', message: 'Plan not found.' } }, 404);
+
+    const product = await c.var.db.query.planProducts.findFirst({
+      where: and(
+        eq(planProducts.planId, planId),
+        eq(planProducts.platform, 'stripe'),
+        eq(planProducts.isActive, true),
+      ),
+    });
+    if (!product) {
+      return c.json(
+        { error: { code: 'plan_not_purchasable', message: 'This plan is not available yet.' } },
+        409,
+      );
+    }
+
+    const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
+    const sub = await findLiveSubscription(stripe, user.stripeCustomerId);
+    if (!sub) {
+      return c.json(
+        {
+          error: {
+            code: 'no_stripe_subscription',
+            message: 'No live subscription found. Start a new one instead.',
+          },
+        },
+        409,
+      );
+    }
+
+    if (currentPriceId(sub) === product.storeProductId) {
+      return c.json(
+        { error: { code: 'already_on_plan', message: 'You are already on this plan.' } },
+        409,
+      );
+    }
+
+    const result = await changePlan(stripe, sub, {
+      newPriceId: product.storeProductId,
+      fromTier: user.entitlement,
+      toTier: plan.tier as UserEntitlement,
+      userId: user.id,
+    });
+
+    // The entitlement and the credits both follow from the webhook, not
+    // from here: an upgrade's invoice grants them, and a downgrade grants
+    // nothing until the period turns over. Writing either here would race
+    // the webhook and double-count.
+    return c.json({
+      data: {
+        direction: result.direction,
+        chargedNow: result.chargedNow,
+        effectiveAt: result.effectiveAt?.toISOString() ?? null,
+        tier: plan.tier,
+        interval: plan.interval,
+      },
+    });
+  },
+);
+
+const cancelSchema = z
+  .object({
+    /** Stripe's own survey values, so the reason lands in their dashboard. */
+    reason: z
+      .enum(['too_expensive', 'missing_features', 'switched_service', 'unused', 'customer_service', 'too_complex', 'low_quality', 'other'])
+      .optional(),
+    comment: z.string().max(500).optional(),
+  })
+  .strict();
+
+/**
+ * `POST /v1/billing/cancel` — stop at the end of the paid period.
+ *
+ * NOT an immediate cancellation. They have paid for this period; ending
+ * it early would mean taking the money and withdrawing the service. The
+ * subscription stays `active`, `cancel_at_period_end` goes true, and
+ * Stripe's `customer.subscription.deleted` at the boundary is what
+ * actually revokes access — one teardown path, whoever pressed cancel.
+ */
+billingRoute.post(
+  '/cancel',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  zValidator('json', cancelSchema),
+  async (c) => {
+    const user = c.var.user!;
+    const { reason, comment } = c.req.valid('json');
+    if (!c.env.STRIPE_SECRET_KEY || !user.stripeCustomerId) {
+      return c.json({ error: { code: 'no_stripe_customer', message: 'No web billing account.' } }, 404);
+    }
+    const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
+    const sub = await findLiveSubscription(stripe, user.stripeCustomerId);
+    if (!sub) {
+      return c.json({ error: { code: 'no_stripe_subscription', message: 'Nothing to cancel.' } }, 409);
+    }
+
+    const updated = await stripe.subscriptions.update(sub.id, {
+      cancel_at_period_end: true,
+      cancellation_details: {
+        ...(reason ? { feedback: reason } : {}),
+        ...(comment ? { comment } : {}),
+      },
+    });
+
+    return c.json({
+      data: {
+        cancelAtPeriodEnd: true,
+        // What they keep until, so the UI can say it plainly.
+        accessUntil: currentPeriodEnd(updated)?.toISOString() ?? null,
+      },
+    });
+  },
+);
+
+/**
+ * `POST /v1/billing/resume` — undo a cancellation, or a booked downgrade.
+ *
+ * Only possible before the period ends; afterwards the subscription is
+ * gone and there is nothing to resume, which is why the client offers
+ * this alongside "your plan ends on …" and not after.
+ */
+billingRoute.post(
+  '/resume',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  async (c) => {
+    const user = c.var.user!;
+    if (!c.env.STRIPE_SECRET_KEY || !user.stripeCustomerId) {
+      return c.json({ error: { code: 'no_stripe_customer', message: 'No web billing account.' } }, 404);
+    }
+    const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
+    const sub = await findLiveSubscription(stripe, user.stripeCustomerId);
+    if (!sub) {
+      return c.json({ error: { code: 'no_stripe_subscription', message: 'Nothing to resume.' } }, 409);
+    }
+
+    const releasedChange = await cancelPendingChange(stripe, sub);
+    const updated = sub.cancel_at_period_end
+      ? await stripe.subscriptions.update(sub.id, { cancel_at_period_end: false })
+      : sub;
+
+    return c.json({
+      data: {
+        cancelAtPeriodEnd: false,
+        pendingChangeCancelled: releasedChange,
+        renewsAt: currentPeriodEnd(updated)?.toISOString() ?? null,
+      },
+    });
   },
 );

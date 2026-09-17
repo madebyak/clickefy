@@ -70,16 +70,27 @@ const q = <T = Record<string, unknown>>(s: string) =>
 /**
  * Display price per tier, in cents.
  *
- * Yearly is two months free — the customer pays for ten. Stripe bills the
- * yearly amount once; our own 30-day refresh is what keeps the CREDIT
- * allowance monthly, so a yearly subscriber cannot draw a year of credits
- * on day one.
+ * Yearly is TWELVE times monthly — no annual discount, decided 2026-09-17.
+ * It used to be ten (two months free), and that discount is what made the
+ * cheapest credit in the system worth $0.0066 while the catalogue was
+ * priced against $0.01. One credit now sells for $0.10 everywhere, on
+ * every plan and every pack, which is the whole reason the price book is
+ * a single line of arithmetic.
+ *
+ * An annual discount may come back once the launch numbers are in. When it
+ * does it comes straight out of the 1.5x markup, so it is a pricing
+ * decision and not a marketing one — and Stripe prices are IMMUTABLE, so
+ * it means new price objects rather than an edit.
+ *
+ * Stripe bills the yearly amount once; our own 30-day refresh is what
+ * keeps the CREDIT allowance monthly, so a yearly subscriber cannot draw
+ * a year of credits on day one.
  */
 const PRICE_CENTS: Record<string, { month: number; year: number }> = {
-  basic: { month: 1_900, year: 19_000 },
-  creator: { month: 3_900, year: 39_000 },
-  pro: { month: 7_500, year: 75_000 },
-  ultimate: { month: 9_900, year: 99_000 },
+  basic: { month: 1_900, year: 22_800 },
+  creator: { month: 3_900, year: 46_800 },
+  pro: { month: 7_500, year: 90_000 },
+  ultimate: { month: 9_900, year: 118_800 },
 };
 
 const TIER_LABEL: Record<string, string> = {

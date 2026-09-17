@@ -423,14 +423,24 @@ export interface ModelCapabilities {
 
   /**
    * Seedance: extra effective output-seconds billed per second of INPUT
-   * video (reference_video). BytePlus's token formula charges
-   * (input + output duration) x pixels x fps at a ~40%-discounted
-   * per-token rate whenever a request carries video — validated against
-   * their published with-video price tables, 0.6 covers the worst
-   * observed cost multiplier on every model/resolution with the
-   * catalog's margin intact. Feeds `resolveCreditCost`'s
+   * video (reference_video). Feeds `resolveCreditCost`'s
    * `inputVideoFactor`. Absent = input video adds no per-second charge
-   * (Kling prices video input as `${tier}_videoin` rate keys instead).
+   * (Kling swaps to a `${tier}_videoin` per-second rate instead, which
+   * does not depend on the input clip's length at all).
+   *
+   * This is 1.0, and it used to be 0.6 — same arithmetic, moved to the
+   * right place. BytePlus charges (input + output) x pixels x fps at a
+   * per-token rate about 0.6x the silent one whenever a request carries
+   * video. The old model kept the FULL silent rate and counted each input
+   * second as 0.6 of an output second, which happens to agree for short
+   * sources and drifts apart for long ones. The discount now lives in the
+   * `${tier}_videoin` price (0.6x the silent tier, exactly as Kling's
+   * keys work) and every input second counts in full — so the charge
+   * tracks the provider's own formula at any length.
+   *
+   * Verified against BytePlus's published examples at three points, all
+   * landing on the catalogue's markup: 30s source + 5s output, 4s + 15s
+   * (where their minimum binds rather than the formula), and 15s + 15s.
    */
   inputVideoDurationFactor?: number;
 
@@ -1110,7 +1120,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
     supportsSound: true,
-    inputVideoDurationFactor: 0.6,
+    inputVideoDurationFactor: 1.0,
     referenceVideo: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     referenceAudio: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     audioRefRequiresVisual: true,
@@ -1149,7 +1159,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
     supportsSound: true,
-    inputVideoDurationFactor: 0.6,
+    inputVideoDurationFactor: 1.0,
     referenceVideo: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     referenceAudio: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     audioRefRequiresVisual: true,
@@ -1190,7 +1200,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 30,
     acceptsStartEndImage: true,
     supportsSound: true,
-    inputVideoDurationFactor: 0.6,
+    inputVideoDurationFactor: 1.0,
     referenceVideo: { max: 10, maxTotalSeconds: 30, minClipSeconds: 2, maxClipSeconds: 30 },
     referenceAudio: { max: 10, maxTotalSeconds: 30, minClipSeconds: 2, maxClipSeconds: 30 },
     // A first / first+last frame makes 2.5 preserve that frame's own
@@ -1226,7 +1236,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxImagesTotal: 9,
     acceptsStartEndImage: true,
     supportsSound: true,
-    inputVideoDurationFactor: 0.6,
+    inputVideoDurationFactor: 1.0,
     referenceVideo: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     referenceAudio: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     audioRefRequiresVisual: true,

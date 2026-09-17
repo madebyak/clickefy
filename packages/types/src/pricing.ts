@@ -54,14 +54,18 @@
  *        `_audio` when both flags are somehow set.
  *      - Seedance (reference_video): token billing includes the INPUT
  *        video's duration — (input + output seconds) x pixels x fps —
- *        at a discounted per-token rate. Modeled as extra effective
- *        output-seconds: `inputVideoSeconds x inputVideoFactor` added to
- *        the duration term. The factor (0.6, from
- *        `capabilities.inputVideoDurationFactor`) was validated against
- *        BytePlus's published with-video price tables across every
- *        model/resolution: charging 0.6 extra seconds per input second
- *        covers the worst observed cost multiplier (4.19x at 30s input
- *        on 2.5) with the catalog's margin intact.
+ *        at a per-token rate about 0.6x the silent one. So BOTH levers
+ *        apply: the `${tier}_videoin` key carries the cheaper rate, and
+ *        `inputVideoFactor` (1.0) adds every input second to the
+ *        duration term.
+ *
+ *        BytePlus also publishes a MINIMUM: a request carrying video
+ *        bills for at least `output + ceil(output x 2/3)` seconds, so a
+ *        long clip generated from a short source cannot be billed as if
+ *        the source were free. The floor is applied here, which is why
+ *        `inputVideoSeconds` is raised rather than used as given.
+ *        Verified against their published examples at 30s+5s, 4s+15s
+ *        (where the minimum binds) and 15s+15s.
  *
  *      A model with neither `_videoin` keys nor a factor charges nothing
  *      extra — the dimension is data-driven and inert until fed.
@@ -107,8 +111,9 @@ export interface CreditCostInputs {
   inputVideoSeconds?: number | null;
   /**
    * Seedance only: extra effective output-seconds billed per input
-   * second (`capabilities.inputVideoDurationFactor`, 0.6). Absent means
-   * the model either prices input video via `_videoin` tier keys
+   * second (`capabilities.inputVideoDurationFactor`, 1.0 — the discount
+   * lives in the `_videoin` tier price, not here). Absent means the
+   * model either prices input video purely via `_videoin` tier keys
    * (Kling) or not at all.
    */
   inputVideoFactor?: number | null;
@@ -147,13 +152,22 @@ export function resolveCreditCost(input: CreditCostInputs): number {
   const reference = input.defaultDuration;
   // Seedance's token billing includes the input video's duration, so it
   // is charged as extra effective output-seconds. Only meaningful when
-  // duration scaling itself is active (a reference length exists).
-  const extraSeconds =
+  // duration scaling itself is active (a reference length exists), and
+  // only for a provider that prices input video this way — Kling's
+  // `_videoin` rate already covers it and must not be charged twice.
+  const scalesWithInput =
     inputVideoSeconds > 0 &&
     typeof input.inputVideoFactor === 'number' &&
-    input.inputVideoFactor > 0
-      ? inputVideoSeconds * input.inputVideoFactor
-      : 0;
+    input.inputVideoFactor > 0;
+  // The provider's published floor: a request carrying video bills for at
+  // least `output + ceil(output x 2/3)` seconds. Without it, a 15-second
+  // clip built from a 4-second source would be billed as 19 seconds where
+  // the provider charges for 25.
+  const outputSeconds = typeof chosen === 'number' && chosen > 0 ? chosen : (reference ?? 0);
+  const billableInput = scalesWithInput
+    ? Math.max(inputVideoSeconds, Math.ceil((outputSeconds * 2) / 3))
+    : 0;
+  const extraSeconds = scalesWithInput ? billableInput * input.inputVideoFactor! : 0;
   // Guard every term: a zero or missing reference would divide by zero
   // or silently scale to nothing.
   const factor =

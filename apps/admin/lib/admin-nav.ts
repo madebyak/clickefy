@@ -13,6 +13,7 @@ import {
   Bell,
   Briefcase,
   Coins,
+  CreditCard,
   FileText,
   Flag,
   FolderTree,
@@ -43,6 +44,10 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { title: 'Reports', href: '/admin/reports', icon: Flag, page: 'reports' },
   { title: 'Push', href: '/admin/push', icon: Bell, page: 'push' },
   { title: 'Credits', href: '/admin/credits', icon: Coins, page: 'credits' },
+  // Gated on the same page permission as Credits: the two answer the
+  // same question from different ends, and a separate key would mean a
+  // permissions migration for no change in who may look.
+  { title: 'Billing', href: '/admin/billing', icon: CreditCard, page: 'credits' },
   { title: 'Analytics', href: '/admin/analytics', icon: BarChart3, page: 'analytics' },
   { title: 'Settings', href: '/admin/settings', icon: Settings, page: 'settings' },
 ];

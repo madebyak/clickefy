@@ -49,8 +49,7 @@ import {
   type AdminUserDetail,
   type AdminUserJobSummary,
   type AdminUserListItem,
-  type CreditReason,
-} from '@clickfy/types';
+  type CreditReason, ASSIGNABLE_ENTITLEMENTS} from '@clickfy/types';
 
 import { grantCredits, revokeCredits } from '../lib/credit-grants';
 import type { AppEnv } from '../types';
@@ -453,7 +452,10 @@ adminUsersRoute.post(
 
 const setEntitlementSchema = z
   .object({
-    entitlement: z.enum(['free', 'pro', 'pro_max', 'admin']),
+    // `admin` stays assignable here — this is the one screen that can
+    // grant it — but the plan tiers come from the shared ladder so they
+    // cannot drift from what the catalogue actually sells.
+    entitlement: z.enum([...ASSIGNABLE_ENTITLEMENTS, 'admin']),
   })
   .strict();
 

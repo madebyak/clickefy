@@ -29,6 +29,55 @@ export type UserEntitlement =
   | 'pro_max'
   | 'admin';
 
+/**
+ * The paid tiers, cheapest first. This is the ladder: its ORDER is what
+ * decides whether a plan change is an upgrade or a downgrade, so the two
+ * must never be assumed from price — a yearly Basic costs more than a
+ * monthly Ultimate.
+ */
+export const PAID_TIERS = ['basic', 'creator', 'pro', 'ultimate'] as const;
+export type PaidTier = (typeof PAID_TIERS)[number];
+
+/**
+ * The entitlements an admin may ASSIGN, in ladder order.
+ *
+ * `pro_max` is excluded (retired), and so is `admin` — that is a role
+ * granted through the team screen, not a plan someone can be put on.
+ *
+ * Every admin surface should render THIS list rather than its own copy.
+ * Three of them had drifted to `['free', 'pro', 'pro_max']`, which meant
+ * that after the four-tier migration an admin could not grant Basic,
+ * Creator or Ultimate at all, while still being offered a tier that no
+ * longer exists.
+ */
+export const ASSIGNABLE_ENTITLEMENTS = ['free', ...PAID_TIERS] as const;
+export type AssignableEntitlement = (typeof ASSIGNABLE_ENTITLEMENTS)[number];
+
+/**
+ * Where an entitlement sits on the ladder. Free is 0, the paid tiers climb
+ * from 1, and `admin` sits above everything.
+ *
+ * `pro_max` ranks with `ultimate`, the tier that replaced it, so a legacy
+ * row compares sensibly instead of falling off the bottom.
+ */
+export function tierRank(entitlement: UserEntitlement): number {
+  if (entitlement === 'admin') return PAID_TIERS.length + 1;
+  if (entitlement === 'pro_max') return PAID_TIERS.indexOf('ultimate') + 1;
+  const i = (PAID_TIERS as readonly string[]).indexOf(entitlement);
+  return i === -1 ? 0 : i + 1;
+}
+
+/** Which direction a move from one tier to another goes. */
+export function planDirection(
+  from: UserEntitlement,
+  to: UserEntitlement,
+): 'current' | 'upgrade' | 'downgrade' {
+  const a = tierRank(from);
+  const b = tierRank(to);
+  if (a === b) return 'current';
+  return b > a ? 'upgrade' : 'downgrade';
+}
+
 export type ThemeMode = 'system' | 'light' | 'dark';
 
 /**

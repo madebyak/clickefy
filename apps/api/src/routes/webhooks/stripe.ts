@@ -289,6 +289,9 @@ stripeWebhookRoute.post('/', async (c) => {
  * Resolves the plan from the PRICE on the invoice line, because that is
  * the only thing that survives a plan change: the subscription's metadata
  * still names whatever was bought originally.
+ *
+ * Credits carry forward on every invoice EXCEPT a renewal — see the
+ * use-it-or-lose-it block below.
  */
 async function applyInvoicePaid(
   c: { var: AppEnv['Variables']; env: AppEnv['Bindings'] },
@@ -340,12 +343,36 @@ async function applyInvoicePaid(
   // topped up by `refresh-subscription-credits`, not handed a year at once.
   const creditsExpireAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-  // Use-it-or-lose-it, exactly as the store path does.
-  const forfeited = await closeSubscriptionLots(
+  // ── Use-it-or-lose-it, but ONLY at a renewal ──────────────────────
+  //
+  // Credits do not roll over from one period to the next: that is the
+  // deal, and `subscription_cycle` is Stripe's word for "the period
+  // turned over". Every OTHER invoice — an upgrade, a downgrade taking
+  // effect, a first subscription — is a mid-period event, and wiping
+  // someone's balance at one of those destroys credits they have already
+  // paid for.
+  //
+  // It used to wipe on all of them. Someone upgrading from Basic to
+  // Creator on day ten, holding 100 unspent credits, received 390 and
+  // lost the 100. They now receive 490, on one lot expiring 30 days from
+  // the upgrade — the balance carries, and the clock restarts with the
+  // plan.
+  //
+  // The lots are closed either way, so a user always has exactly one
+  // subscription lot with one expiry date. What changes is whether the
+  // closed amount is handed back.
+  const billingReason = invoice.billing_reason ?? null;
+  const isRenewal = billingReason === 'subscription_cycle';
+  const closed = await closeSubscriptionLots(
     c.var.db,
     userId,
-    `Stripe ${plan.tier}/${plan.interval} renewal`,
+    isRenewal
+      ? `Stripe ${plan.tier}/${plan.interval} renewal`
+      : `Stripe ${plan.tier}/${plan.interval} — balance carried to the new period`,
   );
+  const carried = isRenewal ? 0 : closed;
+  const forfeited = isRenewal ? closed : 0;
+  const granted = plan.creditsPerPeriod + carried;
 
   await c.var.db
     .update(users)
@@ -362,19 +389,30 @@ async function applyInvoicePaid(
     userId,
     class: 'subscription',
     kind: 'subscription',
-    amount: plan.creditsPerPeriod,
+    amount: granted,
     expiresAt: creditsExpireAt,
     reason: 'subscription_grant',
     sourcePlatform: 'stripe',
     // The invoice id makes a redelivery a no-op at the database level.
     sourceRef: invoice.id,
-    note: `Stripe ${plan.tier}/${plan.interval}`,
-    metadata: { priceId, tier: plan.tier, interval: plan.interval, invoiceId: invoice.id },
+    note: carried > 0
+      ? `Stripe ${plan.tier}/${plan.interval} (${plan.creditsPerPeriod} + ${carried} carried)`
+      : `Stripe ${plan.tier}/${plan.interval}`,
+    metadata: {
+      priceId,
+      tier: plan.tier,
+      interval: plan.interval,
+      invoiceId: invoice.id,
+      billingReason,
+      allowance: plan.creditsPerPeriod,
+      carried,
+    },
   });
 
   const resumed = await resumeTopupClocks(c.var.db, userId);
 
-  const notes: string[] = [`granted ${plan.creditsPerPeriod} (${plan.tier})`];
+  const notes: string[] = [`granted ${granted} (${plan.tier})`];
+  if (carried > 0) notes.push(`carried ${carried} forward (${billingReason})`);
   if (forfeited > 0) notes.push(`forfeited ${forfeited} unspent`);
   if (resumed > 0) notes.push(`resumed ${resumed} topup clock(s)`);
   return notes.join('; ');

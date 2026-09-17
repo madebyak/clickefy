@@ -8,7 +8,8 @@
  * Targeting:
  *   - `audience: 'all'`         → every active token in the table.
  *   - `audience: 'entitlement'` → tokens whose user has the given
- *                                  entitlement (free / pro / pro_max).
+ *                                  entitlement (free / basic / creator /
+ *                                  pro / ultimate).
  *   - `audience: 'platform'`    → ios / android only.
  *   - `audience: 'userIds'`     → explicit user-id list (max 1000).
  *
@@ -26,6 +27,8 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
+
+import { ASSIGNABLE_ENTITLEMENTS } from '@clickfy/types';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq, inArray } from 'drizzle-orm';
 
@@ -44,7 +47,7 @@ const BroadcastSchema = z.object({
   data: z.record(z.string(), z.unknown()).optional(),
   audience: z.discriminatedUnion('type', [
     z.object({ type: z.literal('all') }),
-    z.object({ type: z.literal('entitlement'), value: z.enum(['free', 'pro', 'pro_max']) }),
+    z.object({ type: z.literal('entitlement'), value: z.enum(ASSIGNABLE_ENTITLEMENTS) }),
     z.object({ type: z.literal('platform'), value: z.enum(['ios', 'android']) }),
     z.object({ type: z.literal('userIds'), value: z.array(z.string().uuid()).min(1).max(1000) }),
   ]),

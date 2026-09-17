@@ -7,6 +7,8 @@
  * bundle.
  */
 
+import type { AssignableEntitlement, PaidTier } from '@clickfy/types';
+
 import { apiFetch, type TokenGetter } from '@/lib/api';
 
 // ── Overview ────────────────────────────────────────────────────────
@@ -140,7 +142,7 @@ export interface SubscriptionPlanRow {
   id: string;
   storeProductId: string;
   displayName: string;
-  entitlement: 'pro' | 'pro_max';
+  entitlement: PaidTier;
   intervalUnit: 'week' | 'month' | 'year';
   intervalCount: number;
   creditsPerPeriod: number;
@@ -155,7 +157,7 @@ export interface SubscriptionPlanRow {
 export interface SubscriptionPlanInput {
   storeProductId: string;
   displayName: string;
-  entitlement: 'pro' | 'pro_max';
+  entitlement: PaidTier;
   intervalUnit: 'week' | 'month' | 'year';
   intervalCount?: number;
   creditsPerPeriod: number;
@@ -211,7 +213,7 @@ export interface GrantPolicyRow {
   amount: number;
   periodUnit: 'day' | 'week' | 'month' | null;
   periodCount: number | null;
-  audience: { entitlement?: 'free' | 'pro' | 'pro_max' };
+  audience: { entitlement?: AssignableEntitlement };
   updatedAt: string;
 }
 
@@ -220,7 +222,7 @@ export interface GrantPolicyUpdate {
   amount?: number;
   periodUnit?: 'day' | 'week' | 'month' | null;
   periodCount?: number | null;
-  audience?: { entitlement?: 'free' | 'pro' | 'pro_max' };
+  audience?: { entitlement?: AssignableEntitlement };
 }
 
 export function fetchGrants(getToken: TokenGetter) {

@@ -22,17 +22,23 @@ import type { CreditLotClass, CreditLotKind } from '@clickfy/db';
 /**
  * How long a bought credit pack lives.
  *
- * Deliberately gentler than the 90 days Higgsfield uses, because we sell
- * through Apple and Google where "my credits vanished" is a one-tap
- * refund and a review risk. The clock also PAUSES while the user is
- * unsubscribed (`pauseTopupClocks`), so nobody loses time they were not
- * allowed to spend.
+ * SIX MONTHS, and it was twelve. Still comfortably gentler than the 90
+ * days Higgsfield uses, and the clock PAUSES while the user is
+ * unsubscribed (`pauseTopupClocks`) — so six months of spendable time is
+ * what it says, not six months of calendar during which a lapsed plan
+ * quietly ate half of it. That pause is what makes the shorter window
+ * defensible; without it this would be a straight takeaway.
+ *
+ * We sell through Apple and Google too, where "my credits vanished" is a
+ * one-tap refund and a review risk, so the number is deliberately round
+ * and easy to state on the pricing page.
  *
  * Lives here rather than in a webhook file because two payment paths now
  * grant top-ups — RevenueCat and Stripe — and a lifetime that differed
  * between storefronts would be indefensible to the customer who noticed.
  */
-export const TOPUP_LIFETIME_MS = 365 * 24 * 60 * 60 * 1000;
+export const TOPUP_LIFETIME_MONTHS = 6;
+export const TOPUP_LIFETIME_MS = TOPUP_LIFETIME_MONTHS * 30 * 24 * 60 * 60 * 1000;
 
 export interface GrantCreditsInput {
   userId: string;

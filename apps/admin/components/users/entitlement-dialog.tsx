@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { toast } from 'sonner';
-import type { AdminUserListItem, UserEntitlement } from '@clickfy/types';
+import { ASSIGNABLE_ENTITLEMENTS, type AdminUserListItem, type UserEntitlement } from '@clickfy/types';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -29,6 +29,10 @@ interface EntitlementDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+/** What an admin may pick. `admin` is a role, and this is the one screen
+ *  that grants it; `pro_max` is retired and deliberately absent. */
+const ASSIGNABLE_WITH_ADMIN: UserEntitlement[] = [...ASSIGNABLE_ENTITLEMENTS, 'admin'];
 
 const ENTITLEMENT_LABELS: Record<UserEntitlement, string> = {
   free: 'Free',
@@ -100,7 +104,11 @@ export function EntitlementDialog({
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {(Object.keys(ENTITLEMENT_LABELS) as UserEntitlement[]).map((k) => (
+              {/* The label map still carries `pro_max` so a legacy row
+                  renders, but it must not be OFFERED — it is retired, and
+                  picking it would put someone on a tier the catalogue no
+                  longer sells. */}
+              {ASSIGNABLE_WITH_ADMIN.map((k) => (
                 <SelectItem key={k} value={k}>
                   {ENTITLEMENT_LABELS[k]}
                 </SelectItem>

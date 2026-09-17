@@ -36,6 +36,8 @@ import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
+import { ASSIGNABLE_ENTITLEMENTS, PAID_TIERS } from '@clickfy/types';
+
 import {
   creditBroadcasts,
   creditLedger,
@@ -384,7 +386,7 @@ adminCreditsRoute.get('/subscriptions', async (c) => {
 const createSubSchema = z.object({
   storeProductId: z.string().min(1).max(200),
   displayName: z.string().min(1).max(120),
-  entitlement: z.enum(['pro', 'pro_max']),
+  entitlement: z.enum(PAID_TIERS),
   intervalUnit: z.enum(['week', 'month', 'year']),
   intervalCount: z.number().int().min(1).max(12).default(1),
   creditsPerPeriod: z.number().int().min(0).max(1_000_000),
@@ -493,7 +495,7 @@ const updateGrantSchema = z.object({
   periodCount: z.number().int().min(1).max(52).nullable().optional(),
   audience: z
     .object({
-      entitlement: z.enum(['free', 'pro', 'pro_max']).optional(),
+      entitlement: z.enum(ASSIGNABLE_ENTITLEMENTS).optional(),
     })
     .optional(),
 });

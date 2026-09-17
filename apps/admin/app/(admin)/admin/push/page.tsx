@@ -1,5 +1,7 @@
 'use client';
 
+import { ASSIGNABLE_ENTITLEMENTS } from '@clickfy/types';
+
 /**
  * Push broadcasts.
  *
@@ -60,7 +62,7 @@ interface TestPushResult {
   firstError: { token: string; message?: string; errorType?: string } | null;
 }
 
-const ENTITLEMENT_OPTIONS = ['free', 'pro', 'pro_max'] as const;
+const ENTITLEMENT_OPTIONS = ASSIGNABLE_ENTITLEMENTS;
 const PLATFORM_OPTIONS = ['ios', 'android'] as const;
 
 export default function PushBroadcastPage() {
@@ -299,7 +301,7 @@ export default function PushBroadcastPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Everyone</SelectItem>
-              <SelectItem value="entitlement">By entitlement (free / pro / pro_max)</SelectItem>
+              <SelectItem value="entitlement">By entitlement (plan tier)</SelectItem>
               <SelectItem value="platform">By platform (iOS / Android)</SelectItem>
               <SelectItem value="userIds">Specific user ids</SelectItem>
             </SelectContent>

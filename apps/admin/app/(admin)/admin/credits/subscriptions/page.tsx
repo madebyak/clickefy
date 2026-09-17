@@ -1,5 +1,7 @@
 'use client';
 
+import { PAID_TIERS, type PaidTier } from '@clickfy/types';
+
 /**
  * Subscription plans — auto-renewable IAPs that grant credits each
  * period AND an entitlement that unlocks top-up purchases.
@@ -54,7 +56,7 @@ import {
 interface FormState {
   storeProductId: string;
   displayName: string;
-  entitlement: 'pro' | 'pro_max';
+  entitlement: PaidTier;
   intervalUnit: 'week' | 'month' | 'year';
   intervalCount: string;
   creditsPerPeriod: string;
@@ -350,13 +352,16 @@ export default function SubscriptionsPage() {
               <Select
                 value={form.entitlement}
                 onValueChange={(v) =>
-                  setForm((s) => ({ ...s, entitlement: v as 'pro' | 'pro_max' }))
+                  setForm((s) => ({ ...s, entitlement: v as PaidTier }))
                 }
               >
                 <SelectTrigger id="entitlement"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pro">Pro</SelectItem>
-                  <SelectItem value="pro_max">Pro Max</SelectItem>
+                  {PAID_TIERS.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

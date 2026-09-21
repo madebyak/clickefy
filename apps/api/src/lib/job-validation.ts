@@ -395,7 +395,19 @@ export async function validateCreateSubmission(
   // parameters in the worker.
   const prompt = body.prompt.trim();
   const isCameraTool = body.tool?.kind === 'camera_angle' || body.tool?.kind === 'camera_preset';
-  if (prompt.length === 0 && !isCameraTool) {
+  /**
+   * Some models read no prompt at all, and asking for one would be
+   * asking for something we then throw away.
+   *
+   * Expressed as a CAPABILITY rather than another name on the tool
+   * list: the Video Upscaler takes a clip and returns it larger, and it
+   * is not a "tool" in the sense the two camera modes are — it is an
+   * ordinary model whose input happens not to include words. Any future
+   * model with `maxPromptChars: 0` is exempt for the same reason,
+   * without this line growing.
+   */
+  const takesNoPrompt = model.maxPromptChars === 0;
+  if (prompt.length === 0 && !isCameraTool && !takesNoPrompt) {
     return fail({
       code: 'prompt_empty',
       message:

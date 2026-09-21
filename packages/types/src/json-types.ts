@@ -180,8 +180,14 @@ export type TemplateInputField =
  * worker which SDK / endpoint to use; the model decides the exact call
  * shape inside that SDK. The list is intentionally narrow — we add a
  * value here only when a provider adapter actually exists.
+ *
+ * `fal` is an AGGREGATOR rather than a lab: one queue protocol in front
+ * of hundreds of third-party models. It is a single provider here because
+ * that is what the worker needs to know — one adapter, one key, one
+ * polling shape — while which model runs is decided by the capability
+ * entry, exactly as it is for everyone else.
  */
-export type Provider = 'gemini' | 'kling' | 'seedance' | 'openai';
+export type Provider = 'gemini' | 'kling' | 'seedance' | 'openai' | 'fal';
 
 /**
  * Role tags admins attach to reference images so the prompt-compiler

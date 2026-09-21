@@ -26,14 +26,22 @@ import { useSearchParams } from "next/navigation";
 import { usePathname, useRouter } from "@/i18n/navigation";
 import { CameraAngleModal } from "@/components/tools/camera-angle-modal";
 import { StoryboardModal } from "@/components/tools/storyboard-modal";
+import { UpscaleModal, type ToolVideo } from "@/components/tools/upscale-modal";
 
 /** A photo handed to Camera Angle from an existing tile. */
 export type ToolPhoto = { id: string; src: string };
+export type { ToolVideo };
 
 type ToolsValue = {
   /** Open Camera Angle — optionally pre-loaded with an existing image. */
   openCameraAngle: (photo?: ToolPhoto) => void;
   openStoryboard: () => void;
+  /**
+   * Open the Video Upscaler. With a clip it skips the upload step; empty
+   * it asks for one. Both entry points the product has — the nav link
+   * and a finished video's action — are the same modal.
+   */
+  openUpscale: (video?: ToolVideo) => void;
 };
 
 const ToolsContext = createContext<ToolsValue | null>(null);
@@ -42,22 +50,32 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraPhoto, setCameraPhoto] = useState<ToolPhoto | null>(null);
   const [storyboardOpen, setStoryboardOpen] = useState(false);
+  const [upscaleOpen, setUpscaleOpen] = useState(false);
+  const [upscaleVideo, setUpscaleVideo] = useState<ToolVideo | null>(null);
 
   const openCameraAngle = useCallback((photo?: ToolPhoto) => {
     setCameraPhoto(photo ?? null);
     setCameraOpen(true);
   }, []);
   const openStoryboard = useCallback(() => setStoryboardOpen(true), []);
+  const openUpscale = useCallback((video?: ToolVideo) => {
+    setUpscaleVideo(video ?? null);
+    setUpscaleOpen(true);
+  }, []);
 
   const value = useMemo(
-    () => ({ openCameraAngle, openStoryboard }),
-    [openCameraAngle, openStoryboard],
+    () => ({ openCameraAngle, openStoryboard, openUpscale }),
+    [openCameraAngle, openStoryboard, openUpscale],
   );
 
   return (
     <ToolsContext.Provider value={value}>
       <Suspense fallback={null}>
-        <ToolDeepLink openCameraAngle={openCameraAngle} openStoryboard={openStoryboard} />
+        <ToolDeepLink
+          openCameraAngle={openCameraAngle}
+          openStoryboard={openStoryboard}
+          openUpscale={openUpscale}
+        />
       </Suspense>
       {children}
       {cameraOpen && (
@@ -70,6 +88,15 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
         />
       )}
       {storyboardOpen && <StoryboardModal onClose={() => setStoryboardOpen(false)} />}
+      {upscaleOpen && (
+        <UpscaleModal
+          initialVideo={upscaleVideo}
+          onClose={() => {
+            setUpscaleOpen(false);
+            setUpscaleVideo(null);
+          }}
+        />
+      )}
     </ToolsContext.Provider>
   );
 }
@@ -84,9 +111,11 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
 function ToolDeepLink({
   openCameraAngle,
   openStoryboard,
+  openUpscale,
 }: {
   openCameraAngle: () => void;
   openStoryboard: () => void;
+  openUpscale: () => void;
 }) {
   const params = useSearchParams();
   const router = useRouter();
@@ -100,7 +129,8 @@ function ToolDeepLink({
     router.replace(pathname);
     if (tool === "camera") openCameraAngle();
     else if (tool === "storyboard") openStoryboard();
-  }, [params, router, pathname, openCameraAngle, openStoryboard]);
+    else if (tool === "upscale") openUpscale();
+  }, [params, router, pathname, openCameraAngle, openStoryboard, openUpscale]);
 
   return null;
 }

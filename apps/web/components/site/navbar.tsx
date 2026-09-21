@@ -19,6 +19,7 @@ const NAV_LINKS = [
   { key: "createVideo", href: "/create-video" },
   { key: "storyboard", href: "/create?tool=storyboard" },
   { key: "cameraAngles", href: "/create?tool=camera" },
+  { key: "upscaleVideo", href: "/create?tool=upscale" },
   { key: "templates", href: "/templates" },
   { key: "pricing", href: "/pricing" },
 ] as const;

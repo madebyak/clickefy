@@ -347,6 +347,13 @@ export type CreateAttachmentMode = 'references' | 'frames' | 'seedance';
  */
 export interface GenModel {
   modelKey: string;
+  /**
+   * Served so its price can be read, but never listed as something to
+   * pick. Tool models (the Video Upscaler) are opened from their own
+   * modal; they take media and options rather than a prompt, so offering
+   * one in the model dropdown would be offering a dead end.
+   */
+  toolOnly?: boolean;
   provider: string;
   /** Commercial name shown in the picker. */
   name: string;

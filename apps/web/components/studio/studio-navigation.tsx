@@ -11,6 +11,7 @@ const NAV = [
   { key: "createVideo", href: "/create-video" },
   { key: "storyboard", tool: "storyboard" },
   { key: "cameraAngles", tool: "camera" },
+  { key: "upscaleVideo", tool: "upscale" },
   { key: "templates", href: "/templates" },
 ] as const;
 
@@ -28,6 +29,7 @@ export function StudioNavigation({ className, onNavigate }: { className?: string
             onClick={() => {
               onNavigate?.();
               if (item.tool === "camera") tools?.openCameraAngle();
+              else if (item.tool === "upscale") tools?.openUpscale();
               else tools?.openStoryboard();
             }}>
             {t(item.key)}

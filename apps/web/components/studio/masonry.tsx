@@ -3,19 +3,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
-  Info,
-  DownloadSimple,
-  DotsThree,
-  Heart,
-  X,
-  Images,
-  Play,
-  Check,
-  ImageSquare,
   ArrowCounterClockwise,
+  ArrowsOutSimple,
+  Check,
   CircleNotch,
+  DotsThree,
+  DownloadSimple,
+  Heart,
+  ImageSquare,
+  Images,
+  Info,
+  Play,
   Trash,
   VideoCamera,
+  X,
 } from "@phosphor-icons/react";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
@@ -450,6 +451,20 @@ export function Masonry({
                       >
                         <VideoCamera className="size-4 text-muted-foreground" />
                         {t("changeCameraAngle")}
+                      </MenuItem>
+                    )}
+                    {/* The other half of the upscaler's two entry points:
+                        the clip is already here, so the modal opens past
+                        the upload step. */}
+                    {tools && a.type === "video" && (
+                      <MenuItem
+                        onClick={() => {
+                          tools.openUpscale({ id: a.id, src: a.src });
+                          close();
+                        }}
+                      >
+                        <ArrowsOutSimple className="size-4 text-muted-foreground" />
+                        {t("upscaleVideo")}
                       </MenuItem>
                     )}
                     {onAssetInfo && (

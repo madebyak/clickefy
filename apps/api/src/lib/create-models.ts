@@ -25,6 +25,17 @@ export type CreateAttachmentMode = 'references' | 'frames' | 'seedance';
 
 interface CreateModelDef {
   modelKey: string;
+  /**
+   * Served by `/v1/models` but never offered in the composer's picker.
+   *
+   * A tool model is real and priced — the Upscale modal reads its credit
+   * cost from the same endpoint every other price comes from — but it is
+   * not something you choose and then type a prompt at. Leaving it out of
+   * the roster entirely would hide its price too, and hard-coding that
+   * price into the modal is exactly the drift this roster exists to
+   * prevent.
+   */
+  toolOnly?: boolean;
   /** Commercial name shown in the picker (registry displayName is internal). */
   name: string;
   attachments: CreateAttachmentMode;
@@ -134,6 +145,17 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     attachments: 'references',
     requiresStartFrame: false,
     supportsEndFrame: false,
+  },
+  {
+    // Tool-only: opened from the Upscale modal, never picked in the
+    // composer. It takes a clip and returns it larger — there is no
+    // prompt to write and nothing to choose it *for*.
+    modelKey: 'bytedance-upscaler',
+    name: 'Video Upscaler',
+    attachments: 'references',
+    requiresStartFrame: false,
+    supportsEndFrame: false,
+    toolOnly: true,
   },
   {
     modelKey: 'dreamina-seedance-2-5-260628',
@@ -344,6 +366,8 @@ export function buildCreateModelDTO(
     provider: caps.provider,
     name: def.name,
     kind: caps.kind,
+    // Priced and returned, but not offered in the composer's picker.
+    ...(def.toolOnly ? { toolOnly: true as const } : {}),
     costCredits,
     maxPromptChars: caps.maxPromptChars ?? DEFAULT_CREATE_PROMPT_CHARS,
     aspectRatios,

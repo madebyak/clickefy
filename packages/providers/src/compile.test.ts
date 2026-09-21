@@ -18,6 +18,7 @@ import { aspectRatiosFor, getCapabilities } from './capabilities';
 import { compile } from './compile';
 import type {
   CompileContext,
+  CompiledRequest,
   GeminiCompiledRequest,
   KlingCompiledRequest,
   RuntimeInputValue,
@@ -84,6 +85,19 @@ function makeCtx(partial: Partial<CompileContext> & { stage: GenerationStage }):
 }
 
 // ─── Gemini: ordinal labelling ──────────────────────────────────────
+
+
+/**
+ * The wire model id, for assertions.
+ *
+ * Every compiled request names its model except fal's, which addresses
+ * the model BY endpoint (`fal-ai/…/upscale/video` is both). Rather than
+ * give the production type a second name for the same string, the tests
+ * that care narrow here.
+ */
+function modelOf(request: CompiledRequest): string | undefined {
+  return 'model' in request ? request.model : 'endpoint' in request ? request.endpoint : undefined;
+}
 
 describe('compile() — Gemini multimodal', () => {
   it('substitutes {{input:text}} inline and assembles ordinal preambles for images', () => {
@@ -1173,13 +1187,13 @@ describe('compile() — apiModelId indirection', () => {
     // The stage (and every stored snapshot) keeps the preview key…
     expect(stage.model).toBe('gemini-3-pro-image-preview');
     // …but the wire request targets the GA id.
-    expect(request.model).toBe('gemini-3-pro-image');
+    expect(modelOf(request)).toBe('gemini-3-pro-image');
   });
 
   it('maps the Nano Banana 2 preview key to its GA id too', () => {
     const stage = makeStage({ model: 'gemini-3.1-flash-image-preview', prompt: 'A banana.' });
     const { request } = compile(makeCtx({ stage }));
-    expect(request.model).toBe('gemini-3.1-flash-image');
+    expect(modelOf(request)).toBe('gemini-3.1-flash-image');
   });
 
   it('falls back to stage.model for models whose upstream id already matches', () => {
@@ -1187,7 +1201,7 @@ describe('compile() — apiModelId indirection', () => {
     // this case: every ported model carries a path-segment apiModelId.)
     const stage = makeStage({ model: 'gemini-3-pro-image', prompt: 'A banana.' });
     const { request } = compile(makeCtx({ stage }));
-    expect(request.model).toBe('gemini-3-pro-image');
+    expect(modelOf(request)).toBe('gemini-3-pro-image');
   });
 
   it('maps ported Kling keys to their API 2.0 path segment and flags the route', () => {
@@ -1424,7 +1438,7 @@ describe('compile() — OpenAI GPT Image 2', () => {
 
   it('pins the dated snapshot on the wire, not the floating alias', () => {
     const { request } = compile(makeCtx({ stage: openaiStage() }));
-    expect(request.model).toBe('gpt-image-2-2026-04-21');
+    expect(modelOf(request)).toBe('gpt-image-2-2026-04-21');
   });
 
   it('uses the generate variant with no references and edit with them', () => {

@@ -39,6 +39,12 @@ const envSchema = z.object({
    */
   SEEDANCE_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
+  /**
+   * fal.ai, from fal.ai/dashboard/keys. One key covers every fal-hosted
+   * model, which is the point of an aggregator. Optional like the rest:
+   * the worker boots without it and only a fal stage fails.
+   */
+  FAL_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

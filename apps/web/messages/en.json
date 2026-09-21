@@ -4,6 +4,7 @@
     "description": "Professional AI image and video generation. Create with Nano Banana, Kling, Seedance and more."
   },
   "nav": {
+    "upscaleVideo": "Upscale video",
     "createImage": "Create Image",
     "createVideo": "Create Video",
     "storyboard": "Storyboard",
@@ -399,6 +400,7 @@
     "topupLocked": "Locked — subscribe to unlock"
   },
   "studio": {
+    "upscaleVideo": "Upscale video",
     "createNewProject": "Create new project",
     "myProjects": "My Projects",
     "favorites": "All favorites",
@@ -674,6 +676,20 @@
     "fileOptions": "File options"
   },
   "tools": {
+    "upscaleTitle": "Upscale video",
+    "upscale": "Upscale",
+    "upscaleTo": "Upscale to",
+    "upscaleSamePrice": "Every size costs the same — you're charged for the clip's length, not its resolution.",
+    "upscaleNote": "Takes a few minutes. We'll tell you when it's ready.",
+    "upscaleStarted": "Upscaling started — we'll let you know when it's done.",
+    "uploadVideo": "Upload a video",
+    "uploadVideoHint": "MP4, MOV or WebM · up to {max} seconds",
+    "videoTooLarge": "That file is over {max}MB. Try a shorter clip or a smaller export.",
+    "videoTooLong": "Clips up to {max} seconds for now. Trim it and try again.",
+    "videoUnreadable": "We couldn't read that video. Try a different file.",
+    "unsupportedVideo": "Use an MP4, MOV or WebM file.",
+    "preparing": "Preparing…",
+    "chooseAnother": "Choose another video",
     "cameraAngle": "Camera Angle",
     "storyboard": "Storyboard",
     "uploadPhoto": "Upload a photo",

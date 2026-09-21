@@ -493,6 +493,100 @@ function substituteTokens(args: {
   return prompt;
 }
 
+
+/**
+ * fal — one compiler arm per model family, because that is where the
+ * per-model knowledge belongs.
+ *
+ * The adapter deliberately knows only fal's queue protocol; what each
+ * model wants in its body is decided here, the same way every other
+ * provider's request shape is. A second fal model adds a branch below,
+ * not a change to the adapter.
+ */
+function compileFal(ctx: CompileContext, warnings: CompileWarning[]): CompileResult {
+  const { capabilities, stage } = ctx;
+  const endpoint = capabilities.apiModelId;
+  if (!endpoint) {
+    throw new Error(
+      `fal model "${capabilities.modelKey}" has no apiModelId — that field IS the fal endpoint id.`,
+    );
+  }
+
+  if (capabilities.modelKey === 'bytedance-upscaler') {
+    return compileVideoUpscale(ctx, endpoint, warnings);
+  }
+
+  throw new Error(
+    `No fal compiler for "${capabilities.modelKey}". Add a branch in compileFal().`,
+  );
+}
+
+/**
+ * Video Upscaler — take the attached clip and enlarge it.
+ *
+ * The ONE input is a video, arriving through the same reference-slot
+ * plumbing that carries Seedance's video references; there is no second
+ * path for "a video the user attached". No prompt is read: this model
+ * generates nothing, and passing the user's text would imply an
+ * influence it does not have.
+ */
+function compileVideoUpscale(
+  ctx: CompileContext,
+  endpoint: string,
+  warnings: CompileWarning[],
+): CompileResult {
+  const { stage, capabilities } = ctx;
+  const cfg = (stage.config ?? {}) as {
+    referenceSlots?: Array<import('@clickfy/types').SeedanceReferenceSlot>;
+    mode?: string;
+    enhancementPreset?: string;
+    enhancementTier?: string;
+  };
+
+  const videoSlot = (cfg.referenceSlots ?? []).find((slot) => slot.assetKind === 'video');
+  if (!videoSlot) {
+    throw new Error('Video Upscaler needs a video to upscale — no video reference on the stage.');
+  }
+  const part = resolveFrameSlot(videoSlot.source, ctx, 1, 'video', warnings, 'Video Upscaler');
+  const videoUrl = part?.url;
+  if (!videoUrl) {
+    // fal fetches the source itself, so a URL is the only usable form —
+    // inline bytes would mean uploading to fal first, which is a
+    // different integration and not one this model needs.
+    throw new Error(
+      'Video Upscaler needs a fetchable URL for the source clip; the attached video resolved to none.',
+    );
+  }
+
+  // `cfg`, not `stage.config` — the latter is an untyped record.
+  const mode = cfg.mode ?? capabilities.modes?.default ?? '1080p';
+  const allowed = capabilities.modes?.values ?? [];
+  const targetResolution = allowed.includes(mode) ? mode : (capabilities.modes?.default ?? '1080p');
+  if (mode !== targetResolution) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `Video Upscaler does not offer "${mode}"; using ${targetResolution}.`,
+    });
+  }
+
+  return {
+    request: {
+      provider: 'fal',
+      endpoint,
+      input: {
+        video_url: videoUrl,
+        target_resolution: targetResolution,
+        // `aigc` is tuned for AI-generated footage, which is what this
+        // upscales in practice. The others exist for real-camera and
+        // archival material and would be the wrong default here.
+        enhancement_preset: cfg.enhancementPreset ?? 'aigc',
+        enhancement_tier: cfg.enhancementTier ?? 'standard',
+      },
+    },
+    warnings,
+  };
+}
+
 // ─── Top-level compiler ─────────────────────────────────────────────
 
 function isImagen(model: string): boolean {
@@ -517,6 +611,9 @@ export function compile(ctx: CompileContext): CompileResult {
   }
   if (capabilities.provider === 'openai') {
     return compileOpenAI(ctx, tokens, warnings);
+  }
+  if (capabilities.provider === 'fal') {
+    return compileFal(ctx, warnings);
   }
   if (capabilities.provider === 'seedance') {
     // One vendor, two product lines: Seedream (image) is a synchronous

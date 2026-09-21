@@ -125,7 +125,21 @@ export type CreditBucket = 'promo' | 'subscription' | 'topup';
  *   - 0000  gemini, kling, veo  (veo never wired)
  *   - 0014  + seedance          (BytePlus Seedance 2.0 integration)
  */
-export const providerEnum = pgEnum('provider', ['gemini', 'kling', 'veo', 'seedance', 'openai']);
+/**
+ * Provider families a `provider_models` row can belong to.
+ *
+ * `fal` is an AGGREGATOR rather than a lab — one queue protocol and one
+ * key in front of many third-party models — but it is one value here for
+ * the same reason as the rest: it names which adapter runs the call.
+ */
+export const providerEnum = pgEnum('provider', [
+  'gemini',
+  'kling',
+  'veo',
+  'seedance',
+  'openai',
+  'fal',
+]);
 
 export const modelStatusEnum = pgEnum('model_status', [
   'active',

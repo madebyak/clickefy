@@ -12,6 +12,8 @@
  */
 
 import type { CompiledRequest } from './compile-types';
+import { executeFal, pollFal, type FalEnv } from './adapters/fal';
+import { ProviderTaskFailedError } from './provider-errors';
 import { executeGemini, type GeminiEnv } from './adapters/gemini';
 import {
   executeKling,
@@ -39,6 +41,7 @@ export interface ProviderEnv {
   klingApi2?: KlingApi2Env;
   seedance?: SeedanceEnv;
   openai?: OpenAIEnv;
+  fal?: FalEnv;
 }
 
 /** A single output piece returned by an adapter. */
@@ -72,6 +75,16 @@ export type ExecuteResult =
       status: 'pending';
       taskId: string;
       provider: 'seedance';
+    }
+  | {
+      status: 'pending';
+      taskId: string;
+      provider: 'fal';
+      /**
+       * Carried forward because fal's poll path is per-endpoint: a task
+       * id alone cannot be polled, unlike Kling's and Seedance's.
+       */
+      endpoint: string;
     };
 
 /**
@@ -110,6 +123,12 @@ export async function executeStage(
     }
     return executeOpenAI(request, env.openai);
   }
+  if (request.provider === 'fal') {
+    if (!env.fal) {
+      throw new Error('executeStage(): missing `env.fal` for a fal request. Set FAL_KEY.');
+    }
+    return executeFal(request, env.fal);
+  }
   if (request.provider === 'seedance') {
     if (!env.seedance) {
       throw new Error('executeStage(): missing `env.seedance` for a Seedance request.');
@@ -145,11 +164,28 @@ export async function executeStage(
  */
 export async function pollAsyncTask(
   taskId: string,
-  provider: 'kling' | 'seedance',
+  provider: 'kling' | 'seedance' | 'fal',
   variant: KlingPollVariant,
   env: ProviderEnv,
   api2?: boolean,
+  /** fal only: which endpoint the task belongs to. */
+  endpoint?: string,
 ): Promise<ExecuteResult> {
+  if (provider === 'fal') {
+    if (!env.fal) throw new Error('pollAsyncTask(): missing `env.fal`.');
+    if (!endpoint) throw new Error('pollAsyncTask(): fal needs the endpoint the task was submitted to.');
+    const result = await pollFal(taskId, endpoint, env.fal);
+    if (result.status === 'pending') {
+      return { status: 'pending', taskId, provider: 'fal', endpoint };
+    }
+    if (result.status === 'failed') {
+      // Terminal on fal's side: surfaced as a throw so the worker's
+      // existing provider-failure handling refunds and stops, rather
+      // than polling a task that will never change.
+      throw new ProviderTaskFailedError(result.error);
+    }
+    return { status: 'completed', outputs: result.outputs };
+  }
   if (provider === 'kling') {
     if (api2) {
       if (!env.klingApi2) {

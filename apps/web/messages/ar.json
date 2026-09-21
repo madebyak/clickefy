@@ -4,6 +4,7 @@
     "description": "توليد احترافي للصور والفيديو بالذكاء الاصطناعي. أنشئ باستخدام Nano Banana وKling وSeedance والمزيد."
   },
   "nav": {
+    "upscaleVideo": "تحسين دقة الفيديو",
     "createImage": "إنشاء صورة",
     "createVideo": "إنشاء فيديو",
     "storyboard": "ستوري بورد",
@@ -399,6 +400,7 @@
     "topupLocked": "مقفل — اشترك لفتحه"
   },
   "studio": {
+    "upscaleVideo": "تحسين دقة الفيديو",
     "createNewProject": "إنشاء مشروع جديد",
     "myProjects": "مشاريعي",
     "favorites": "كل المفضلة",
@@ -674,6 +676,20 @@
     "fileOptions": "خيارات الملف"
   },
   "tools": {
+    "upscaleTitle": "تحسين دقة الفيديو",
+    "upscale": "تحسين الدقة",
+    "upscaleTo": "الترقية إلى",
+    "upscaleSamePrice": "كل الأحجام بالسعر نفسه — تُحتسب التكلفة حسب مدة المقطع لا دقته.",
+    "upscaleNote": "تستغرق بضع دقائق. سنخبرك عند الانتهاء.",
+    "upscaleStarted": "بدأ تحسين الدقة — سنخبرك عند الانتهاء.",
+    "uploadVideo": "ارفع فيديو",
+    "uploadVideoHint": "MP4 أو MOV أو WebM · حتى {max} ثانية",
+    "videoTooLarge": "حجم الملف يتجاوز {max} ميغابايت. جرّب مقطعاً أقصر أو تصديراً أصغر.",
+    "videoTooLong": "المقاطع حتى {max} ثانية حالياً. اقتطع المقطع وحاول مجدداً.",
+    "videoUnreadable": "تعذّرت قراءة هذا الفيديو. جرّب ملفاً آخر.",
+    "unsupportedVideo": "استخدم ملف MP4 أو MOV أو WebM.",
+    "preparing": "جارٍ التحضير…",
+    "chooseAnother": "اختر فيديو آخر",
     "cameraAngle": "زاوية الكاميرا",
     "storyboard": "ستوري بورد",
     "uploadPhoto": "ارفع صورة",

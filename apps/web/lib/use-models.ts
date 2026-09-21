@@ -25,8 +25,22 @@ export function useModels(kind?: "image" | "video") {
   });
 
   const models: GenModel[] = query.data ?? [];
+  const byKind = kind ? models.filter((m) => m.kind === kind) : models;
   return {
     ...query,
-    models: kind ? models.filter((m) => m.kind === kind) : models,
+    /**
+     * What the composer may OFFER — tool-only models excluded.
+     *
+     * The Video Upscaler is real and priced, but it takes a clip and a
+     * resolution rather than a prompt; listing it in the model dropdown
+     * would be listing a dead end.
+     */
+    models: byKind.filter((m) => !m.toolOnly),
+    /**
+     * Everything, including tool-only models. A tool modal reads its own
+     * model's price from here rather than hard-coding it — the roster
+     * exists so a price lives in exactly one place.
+     */
+    allModels: byKind,
   };
 }

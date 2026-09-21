@@ -392,11 +392,17 @@ export const generateJob = task({
         const variant = pendingProvider === 'kling' ? result.variant : 'image2video';
         const api2 = pendingProvider === 'kling' ? result.api2 === true : false;
         try {
-          result = await waitForAsync(result.taskId, pendingProvider, variant, providerEnv, api2, {
-            jobId,
-            stageNumber,
-            totalStages,
-          });
+          result = await waitForAsync(
+            result.taskId,
+            pendingProvider,
+            variant,
+            providerEnv,
+            api2,
+            { jobId, stageNumber, totalStages },
+            // fal addresses a queued task by endpoint + id, unlike Kling
+            // and Seedance where the id alone is enough.
+            pendingProvider === 'fal' ? result.endpoint : undefined,
+          );
         } catch (err) {
           // The provider said the task failed (e.g. Seedance classifying a
           // References prompt as an edit), or polling kept erroring. Fail
@@ -680,6 +686,7 @@ function buildProviderEnv(): ProviderEnv {
     klingApi2: env.KLING_API_KEY ? { apiKey: env.KLING_API_KEY } : undefined,
     seedance: env.SEEDANCE_API_KEY ? { apiKey: env.SEEDANCE_API_KEY } : undefined,
     openai: env.OPENAI_API_KEY ? { apiKey: env.OPENAI_API_KEY } : undefined,
+    fal: env.FAL_KEY ? { apiKey: env.FAL_KEY } : undefined,
   };
 }
 
@@ -699,9 +706,16 @@ function buildProviderEnv(): ProviderEnv {
  * `wait.for`, which is checkpointed and does NOT count toward the task's
  * `maxDuration` (that measures CPU time) or its compute bill.
  */
-const ASYNC_POLL_BUDGET_MS: Record<'kling' | 'seedance', number> = {
+const ASYNC_POLL_BUDGET_MS: Record<'kling' | 'seedance' | 'fal', number> = {
   kling: 15 * 60 * 1000,
   seedance: 15 * 60 * 1000,
+  // fal's upscaler runs at roughly 24x realtime — a measured 242 seconds
+  // of inference for a 10-second clip at 1080p. The capability caps the
+  // source at 60 seconds, so the worst case is around 25 minutes and the
+  // budget has to clear it with room, or we would abandon jobs that were
+  // going to succeed. The `wait.for` sleeps are unbilled, so a long
+  // budget costs patience rather than money.
+  fal: 45 * 60 * 1000,
 };
 
 /** Polling errors in a row (≈30s at the 6s cadence) before the job is failed. */
@@ -718,12 +732,14 @@ const MAX_CONSECUTIVE_POLL_ERRORS = 5;
  */
 async function waitForAsync(
   taskId: string,
-  provider: 'kling' | 'seedance',
+  provider: 'kling' | 'seedance' | 'fal',
   variant: 'text2video' | 'image2video' | 'omni',
   providerEnv: ProviderEnv,
   /** Kling API 2.0 task — polls `GET /tasks` instead of the legacy URL. */
   api2: boolean,
   ctx: { jobId: string; stageNumber: number; totalStages: number },
+  /** fal only: the endpoint the task belongs to — its poll path needs it. */
+  endpoint?: string,
 ): Promise<ExecuteResult> {
   const start = Date.now();
   const maxMs = ASYNC_POLL_BUDGET_MS[provider];
@@ -753,7 +769,7 @@ async function waitForAsync(
 
     let result: ExecuteResult;
     try {
-      result = await pollAsyncTask(taskId, provider, variant, providerEnv, api2);
+      result = await pollAsyncTask(taskId, provider, variant, providerEnv, api2, endpoint);
       consecutivePollErrors = 0;
     } catch (err) {
       // A task the provider reports as failed is final — hand it to the

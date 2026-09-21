@@ -75,3 +75,8 @@ AGENTS.md
 # Never committed: a live key in git history is a live key forever.
 *.local
 !*.example.local
+
+# Money-table snapshots: production credit balances, per user. A restore
+# point, never a repository artifact — and impossible to un-publish once
+# it is in history.
+packages/db/money-backup-*.json

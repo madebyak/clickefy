@@ -1379,6 +1379,76 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   },
 
   // ── OpenAI ──────────────────────────────────────────────────────────
+  /**
+   * Video Upscaler — ByteDance, via fal.
+   *
+   * The first model here that GENERATES NOTHING. It takes a clip and
+   * returns the same clip larger, so several of the fields below are
+   * zero rather than small: no prompt, no references, no aspect ratio,
+   * no duration choice. The output's shape and length are the source's,
+   * because anything else would be a different video.
+   *
+   * `duration` is deliberately ABSENT rather than an allow-list. The
+   * length is whatever the uploaded file is, and offering a picker would
+   * be a lie — the same reasoning that pins Seedance `edit` to its source
+   * clip. Cost still scales with length: the API probes the upload and
+   * passes the real seconds to `resolveCreditCost`, which is why fal's
+   * per-video-second billing needs no special case.
+   *
+   * `modes` are the TARGET resolutions, and they do not change the price.
+   * fal bills the source's duration at a flat $0.0072/second whatever you
+   * upscale to — verified against an invoice line, not assumed — so 4K
+   * costs the same as 1080p and the picker is a pure quality choice.
+   *
+   * SLOW. A 10-second clip to 1080p measured 242 seconds of inference,
+   * about 24x realtime. The poll budget for fal is set accordingly, and
+   * the UI must treat this as a background job rather than a wait.
+   */
+  'bytedance-upscaler': {
+    provider: 'fal',
+    modelKey: 'bytedance-upscaler',
+    apiModelId: 'fal-ai/bytedance-upscaler/upscale/video',
+    displayName: 'Video Upscaler',
+    status: 'active',
+    kind: 'video',
+    // The source decides the frame. Declared as an aspect mode with no
+    // values because there is nothing to choose, and the compiler sends
+    // no size field at all.
+    sizing: { mode: 'aspect', values: [] },
+    outputs: { min: 1, max: 1, default: 1 },
+    /**
+     * An EMPTY value list with a default: nothing for the user to pick,
+     * but a reference length for the price to scale from.
+     *
+     * `resolveCreditCost` multiplies by `duration / defaultDuration`, and
+     * the API passes the PROBED length of the uploaded clip as `duration`.
+     * So the catalogue stores the price of five seconds and every other
+     * length falls out of it — which is exactly how fal bills us, per
+     * second of source video. Without a default here there would be no
+     * reference and every upscale would cost the same regardless of
+     * length.
+     */
+    duration: { values: [], default: 5 },
+    // Target resolution. 6k and 8k exist upstream and are withheld until
+    // we have seen what they cost in TIME — 4K is already minutes.
+    modes: {
+      values: ['1080p', '2k', '4k'],
+      default: '1080p',
+      labels: { '1080p': '1080p', '2k': '2K', '4k': '4K' },
+    },
+    refAddressing: 'none',
+    maxReferences: 0,
+    maxSubjects: 0,
+    maxImagesTotal: 0,
+    // No prompt. The job route exempts tools from the empty-prompt rule.
+    maxPromptChars: 0,
+    // Exactly one clip, and the cap is a COST cap as much as a technical
+    // one: at 24x realtime a long upload is a long wait and a real bill.
+    referenceVideo: { max: 1, maxTotalSeconds: 60, minClipSeconds: 1, maxClipSeconds: 60 },
+    notes:
+      'Upscales an existing clip to 1080p/2K/4K. Billed on the source duration, not the target size.',
+  },
+
   'gpt-image-2': {
     provider: 'openai',
     modelKey: 'gpt-image-2',

@@ -277,7 +277,24 @@ export type CompiledRequest =
   | KlingCompiledRequest
   | SeedanceCompiledRequest
   | SeedreamCompiledRequest
-  | GptImageCompiledRequest;
+  | GptImageCompiledRequest
+  | FalCompiledRequest;
+
+/**
+ * fal — an aggregator, so the compiled shape is deliberately thin.
+ *
+ * `endpoint` is the fal model id and `input` is that model's own body.
+ * The adapter never inspects `input`: every fal model has a different
+ * schema, and teaching one adapter about all of them would rebuild the
+ * bottleneck the aggregator removes. What goes in the body is decided
+ * per model in `compile.ts`, which is where every other provider's
+ * request shape is decided too.
+ */
+export interface FalCompiledRequest {
+  provider: 'fal';
+  endpoint: string;
+  input: Record<string, unknown>;
+}
 
 /**
  * Seedream — BytePlus ModelArk's IMAGE line.

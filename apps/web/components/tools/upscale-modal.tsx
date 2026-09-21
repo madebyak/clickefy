@@ -443,6 +443,13 @@ export function UpscaleModal({
                     </select>
                     <CaretDown className="pointer-events-none absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   </div>
+                  {/* What the chosen preset is FOR. A native select can
+                      only show one line per option, so the explanation
+                      follows the selection instead of sitting inside the
+                      list — five scene names mean nothing on their own. */}
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {t(`preset_${preset}_desc`)}
+                  </p>
                 </div>
 
                 {/* Detail and colour depth change the output but not the
@@ -463,6 +470,7 @@ export function UpscaleModal({
                     <div className="mt-3 space-y-4">
                       <ChipRow
                         label={t("detail")}
+                        hint={t(`fidelity_${fidelity}_desc`)}
                         options={options.fidelities as UpscaleFidelity[]}
                         value={fidelity}
                         onChange={setFidelity}

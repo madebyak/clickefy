@@ -750,7 +750,14 @@
     "colorDepth": "عمق الألوان",
     "colorDepthProOnly": "10 و12 بت تتطلب Pro",
     "bitValue": "{bits} بت",
-    "upscaleNotePro": "وضع Pro يستغرق وقتًا أطول بكثير. سنخبرك عند الانتهاء."
+    "upscaleNotePro": "وضع Pro يستغرق وقتًا أطول بكثير. سنخبرك عند الانتهاء.",
+    "preset_general_desc": "تحسين متوازن للقطات العادية",
+    "preset_ugc_desc": "فيديوهات الهاتف ومقاطع السوشيال",
+    "preset_short_series_desc": "الدراما القصيرة والحلقات",
+    "preset_aigc_desc": "لقطات من إنتاج نماذج الذكاء الاصطناعي",
+    "preset_old_film_desc": "ترميم الأفلام القديمة والأرشيفية",
+    "fidelity_high_desc": "تحسين لطيف يحافظ على شكل المصدر",
+    "fidelity_medium_desc": "تحسين أقوى للصورة"
   },
   "modelsPage": {
     "metaTitle": "نماذج الذكاء الاصطناعي",

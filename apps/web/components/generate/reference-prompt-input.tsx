@@ -199,8 +199,30 @@ export const ReferencePromptInput = forwardRef<ReferencePromptInputHandle, Props
 
     const listId = textareaProps.id ? `${textareaProps.id}-refs` : undefined;
 
+    /*
+     * `w-full` on the wrapper below is load-bearing, not decoration.
+     *
+     * The wrapper's only in-flow child is the textarea, and that textarea
+     * is `w-full` — so without a width here the two define each other: a
+     * shrink-to-fit box around a child asking for 100% of that box. CSS
+     * resolves the circle using the textarea's INTRINSIC width, and
+     * browsers disagree about what that is for a `field-sizing: content`
+     * textarea. Chromium lands near max-content; Safari lands near
+     * min-content, which with `break-words` is a few characters — on iOS
+     * the composer wrapped "Creative" as "Creat / ive", a word fragment
+     * per line.
+     *
+     * Before this mirror layer existed the textarea was a direct child of
+     * the flex row, so its `w-full` resolved against something real. An
+     * explicit width here restores that: the size comes from the layout
+     * rather than from an intrinsic-size heuristic, and `field-sizing`
+     * goes back to being a progressive enhancement for the HEIGHT only.
+     *
+     * `min-w-0` lets it shrink below its content inside a flex row; a
+     * width alone would overflow the row instead.
+     */
     return (
-      <div className={cn("relative min-w-0", wrapperClassName)}>
+      <div className={cn("relative w-full min-w-0", wrapperClassName)}>
         <div
           ref={mirrorRef}
           aria-hidden

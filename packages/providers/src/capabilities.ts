@@ -18,7 +18,24 @@
  * resolve.
  */
 
-import type { Provider } from '@clickfy/types';
+import type {
+  Provider,
+  UpscaleBitDepth,
+  UpscaleFidelity,
+  UpscaleFps,
+  UpscalePreset,
+  UpscaleResolution,
+  UpscaleTier,
+} from '@clickfy/types';
+import {
+  UPSCALE_BIT_DEPTHS,
+  UPSCALE_DEFAULTS,
+  UPSCALE_FIDELITIES,
+  UPSCALE_FPS,
+  UPSCALE_PRESETS,
+  UPSCALE_RESOLUTIONS,
+  UPSCALE_TIERS,
+} from '@clickfy/types';
 
 /** What the model produces. Drives which arm of `CompiledRequest` is built. */
 export type ModelKind = 'image' | 'video';
@@ -116,6 +133,43 @@ export interface ModelCapabilities {
 
   /** Video-only. Seconds. */
   duration?: { values: readonly number[]; default: number };
+
+  /**
+   * Video-only: the billed length is the attached SOURCE clip's, not a
+   * chosen output length.
+   *
+   * True for transforms — a model that takes a video in and returns the
+   * same video changed (the upscaler; Seedance's `edit` task reaches the
+   * same place through its own branch). The route feeds the probed clip
+   * duration to `resolveCreditCost` instead of the model's reference
+   * length, because that is what the provider bills us for.
+   */
+  billsSourceDuration?: boolean;
+
+  /**
+   * The Video Upscaler's non-resolution option surface, served to
+   * clients so the modal draws itself from the roster.
+   *
+   * Not generalised into "every model's extra knobs": one model has
+   * these, and a shape invented for a second model that does not exist
+   * yet would be a guess. The vocabularies themselves live in
+   * `@clickfy/types` (the request schema and the price key need them).
+   */
+  upscaleOptions?: {
+    presets: readonly UpscalePreset[];
+    tiers: readonly UpscaleTier[];
+    fps: readonly UpscaleFps[];
+    fidelities: readonly UpscaleFidelity[];
+    bitDepths: readonly UpscaleBitDepth[];
+    defaults: {
+      resolution: UpscaleResolution;
+      preset: UpscalePreset;
+      tier: UpscaleTier;
+      fps: UpscaleFps;
+      fidelity: UpscaleFidelity;
+      bitDepth: UpscaleBitDepth;
+    };
+  };
 
   /**
    * Kling O1: with a bare first frame — no last frame, no reference
@@ -1391,24 +1445,30 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
    * `duration` is deliberately ABSENT rather than an allow-list. The
    * length is whatever the uploaded file is, and offering a picker would
    * be a lie — the same reasoning that pins Seedance `edit` to its source
-   * clip. Cost still scales with length: the API probes the upload and
-   * passes the real seconds to `resolveCreditCost`, which is why fal's
-   * per-video-second billing needs no special case.
+   * clip. Cost still scales with length, via `billsSourceDuration`: the
+   * API probes the upload and bills the real seconds.
    *
-   * `modes` are the TARGET resolutions, and they do not change the price.
-   * fal bills the source's duration at a flat $0.0072/second whatever you
-   * upscale to — verified against an invoice line, not assumed — so 4K
-   * costs the same as 1080p and the picker is a pure quality choice.
+   * `modes` are the TARGET resolutions, and they DO change the price —
+   * 2K is twice 1080p and 4K is four times it, with a further doubling
+   * at 60fps and a TENFOLD multiplier on the `pro` tier. All three
+   * dimensions collapse into one `tier_pricing` key via
+   * `upscalePriceKey` (`4k_60_pro`), which is why the modes list can
+   * stay a plain resolution picker.
+   *
+   * (An earlier note here claimed resolution was free, from an invoice
+   * line that happened to be a 1080p job — the one resolution where the
+   * multiplier is 1. fal's own pricing note is the source now.)
    *
    * SLOW. A 10-second clip to 1080p measured 242 seconds of inference,
-   * about 24x realtime. The poll budget for fal is set accordingly, and
-   * the UI must treat this as a background job rather than a wait.
+   * about 24x realtime, and `pro` is slower still. The poll budget for
+   * fal is set accordingly, and the UI must treat this as a background
+   * job rather than a wait.
    */
   'bytedance-upscaler': {
     provider: 'fal',
     modelKey: 'bytedance-upscaler',
     apiModelId: 'fal-ai/bytedance-upscaler/upscale/video',
-    displayName: 'Video Upscaler',
+    displayName: 'ByteDance Upscale',
     status: 'active',
     kind: 'video',
     // The source decides the frame. Declared as an aspect mode with no
@@ -1421,20 +1481,45 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
      * but a reference length for the price to scale from.
      *
      * `resolveCreditCost` multiplies by `duration / defaultDuration`, and
-     * the API passes the PROBED length of the uploaded clip as `duration`.
-     * So the catalogue stores the price of five seconds and every other
-     * length falls out of it — which is exactly how fal bills us, per
-     * second of source video. Without a default here there would be no
-     * reference and every upscale would cost the same regardless of
-     * length.
+     * `billsSourceDuration` makes the API pass the PROBED length of the
+     * uploaded clip as `duration`. So the catalogue stores the price of
+     * five seconds and every other length falls out of it — which is
+     * exactly how fal bills us, per second of source video.
      */
     duration: { values: [], default: 5 },
-    // Target resolution. 6k and 8k exist upstream and are withheld until
-    // we have seen what they cost in TIME — 4K is already minutes.
+    /**
+     * The length billed is the SOURCE clip's, not a chosen output
+     * length. Without this the route fell back to the model's reference
+     * duration and charged five seconds' worth for a sixty-second
+     * upload — the price shown in the modal and the price charged were
+     * different numbers.
+     */
+    billsSourceDuration: true,
+    // Target resolution. 6K and 8K are offered (the model does them) but
+    // fal publishes prices only to 4K — see UPSCALE_RESOLUTIONS for how
+    // their catalogue entries are derived, and verify them on a real
+    // invoice line before leaning on them.
     modes: {
-      values: ['1080p', '2k', '4k'],
-      default: '1080p',
-      labels: { '1080p': '1080p', '2k': '2K', '4k': '4K' },
+      values: [...UPSCALE_RESOLUTIONS],
+      default: UPSCALE_DEFAULTS.resolution,
+      labels: { '1080p': '1080p', '2k': '2K', '4k': '4K', '6k': '6K', '8k': '8K' },
+    },
+    /**
+     * The rest of the option surface — scene preset, enhancement tier,
+     * frame rate, fidelity, bit depth.
+     *
+     * Declared here so `/v1/models` serves it and the modal draws itself
+     * from the roster rather than from its own copy of the lists. The
+     * vocabularies live in `@clickfy/types` because the request schema
+     * and the price key need them too.
+     */
+    upscaleOptions: {
+      presets: [...UPSCALE_PRESETS],
+      tiers: [...UPSCALE_TIERS],
+      fps: [...UPSCALE_FPS],
+      fidelities: [...UPSCALE_FIDELITIES],
+      bitDepths: [...UPSCALE_BIT_DEPTHS],
+      defaults: { ...UPSCALE_DEFAULTS },
     },
     refAddressing: 'none',
     maxReferences: 0,
@@ -1446,7 +1531,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // one: at 24x realtime a long upload is a long wait and a real bill.
     referenceVideo: { max: 1, maxTotalSeconds: 60, minClipSeconds: 1, maxClipSeconds: 60 },
     notes:
-      'Upscales an existing clip to 1080p/2K/4K. Billed on the source duration, not the target size.',
+      'Upscales an existing clip to 1080p-8K. Billed on the source duration, the target resolution, the frame rate and the enhancement tier.',
   },
 
   'gpt-image-2': {

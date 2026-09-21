@@ -197,6 +197,8 @@ export const generateJob = task({
         // Studio tool request (Camera Angle / Storyboard) — the
         // engineered prompt is composed in buildCreateStage from this.
         tool?: import('@clickfy/providers').CreateToolRequest;
+        // Video Upscaler settings, as charged for at submit.
+        upscale?: import('@clickfy/types').UpscaleOptions;
       };
       const rawInputs = jobRow.inputs as Record<string, { kind?: string }>;
       const rawInputKeys = Object.keys(rawInputs);
@@ -225,6 +227,7 @@ export const generateJob = task({
           task: opts.task,
           shots: opts.shots,
           tool: opts.tool,
+          upscale: opts.upscale,
         });
         stages = [built.stage];
         stageTemplateInputs = built.templateInputs;
@@ -709,13 +712,18 @@ function buildProviderEnv(): ProviderEnv {
 const ASYNC_POLL_BUDGET_MS: Record<'kling' | 'seedance' | 'fal', number> = {
   kling: 15 * 60 * 1000,
   seedance: 15 * 60 * 1000,
-  // fal's upscaler runs at roughly 24x realtime — a measured 242 seconds
-  // of inference for a 10-second clip at 1080p. The capability caps the
-  // source at 60 seconds, so the worst case is around 25 minutes and the
-  // budget has to clear it with room, or we would abandon jobs that were
-  // going to succeed. The `wait.for` sleeps are unbilled, so a long
-  // budget costs patience rather than money.
-  fal: 45 * 60 * 1000,
+  // fal's upscaler runs at roughly 24x realtime AT 1080p ON THE STANDARD
+  // TIER — a measured 242 seconds for a 10-second clip. Neither number
+  // holds at the top of the range: 4K is four times the pixels and the
+  // `pro` tier is large-model restoration (fal's own note: "longer
+  // processing time"). With the source capped at 60 seconds, the worst
+  // combination plausibly runs for over an hour.
+  //
+  // Two hours, then. A budget that expires is worse than a long one: the
+  // job is failed and refunded while fal keeps working and still bills
+  // us, so we pay for a render nobody receives. The `wait.for` sleeps
+  // are unbilled CPU time, so patience here is free.
+  fal: 120 * 60 * 1000,
 };
 
 /** Polling errors in a row (≈30s at the 6s cadence) before the job is failed. */

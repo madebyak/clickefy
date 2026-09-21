@@ -34,6 +34,7 @@
 
 import type {
   GenerationStage,
+  UpscaleOptions,
   Provider,
   SeedanceFrameSlots,
   SeedanceReferenceSlot,
@@ -131,6 +132,12 @@ export interface BuildCreateStageInput {
    * only ever see what the user actually typed.
    */
   tool?: CreateToolRequest;
+  /**
+   * Video Upscaler settings (scene preset, enhancement tier, frame rate,
+   * fidelity, bit depth). Ignored by every other model — the fal branch
+   * below is the only reader.
+   */
+  upscale?: UpscaleOptions;
 }
 
 export interface BuiltCreateStage {
@@ -209,7 +216,44 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
   // same key) but is an IMAGE model on a completely different endpoint —
   // it has no duration, no frames and no reference slots. Branch on the
   // model kind, not the provider, or an image job gets a video's config.
-  if (provider === 'seedance' && !isImage) {
+  if (provider === 'fal') {
+    /**
+     * fal — the Video Upscaler.
+     *
+     * Its OWN branch, and it has to be: without one it fell through to
+     * the Kling arm below, which writes `referenceInputs` (a list of
+     * field keys) where the upscale compiler reads `referenceSlots` (a
+     * list of bound slots). Every upscale job therefore failed at
+     * compile with "no video reference on the stage" — the source clip
+     * was attached and simply never bound.
+     *
+     * The clip rides the same `SeedanceReferenceSlot` shape Seedance
+     * uses for reference video, because `resolveFrameSlot` — the one
+     * piece of plumbing that turns a slot into a fetchable URL — speaks
+     * that shape. It is a binding format, not a Seedance feature.
+     */
+    if (refCount > 0) {
+      config.referenceSlots = Array.from(
+        { length: refCount },
+        (_, i): SeedanceReferenceSlot => ({
+          id: createReferenceKey(i),
+          assetKind: input.referenceKinds?.[i] ?? 'video',
+          source: { kind: 'user_input', fieldKey: createReferenceKey(i) },
+        }),
+      );
+    }
+    // The settings the user chose, verbatim. The compiler validates them
+    // against the model (and drops a bit depth the tier cannot serve),
+    // so nothing is clamped twice.
+    if (input.upscale) {
+      const u = input.upscale;
+      if (u.preset) config.enhancementPreset = u.preset;
+      if (u.tier) config.enhancementTier = u.tier;
+      if (typeof u.fps === 'number') config.targetFps = u.fps;
+      if (u.fidelity) config.fidelity = u.fidelity;
+      if (typeof u.bitDepth === 'number') config.bitDepth = u.bitDepth;
+    }
+  } else if (provider === 'seedance' && !isImage) {
     const seedance = config as SeedanceStageConfig;
     if (typeof input.duration === 'number') seedance.duration = input.duration;
     // Edit / Extend (Seedance 2.5): declare the sub-task so BytePlus

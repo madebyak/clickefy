@@ -35,7 +35,7 @@ import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 
 import { jobs, projects, providerModels, templates } from '@clickfy/db';
-import { resolveCreditCost } from '@clickfy/types';
+import { resolveCreditCost, upscalePriceKey } from '@clickfy/types';
 import {
   aspectRatiosFor,
   CREATE_END_FRAME_KEY,
@@ -477,7 +477,22 @@ jobsRoute.post(
     // gets charged — they disagreed whenever duration moved off the
     // model's default.
     const refDuration = caps.kind === 'video' ? caps.duration?.default : undefined;
-    const baseCost = (mode ? priceRow?.tierPricing?.[mode] : undefined) ?? priceRow?.costCredits ?? 0;
+    /**
+     * The `tier_pricing` key to charge at.
+     *
+     * For every model it is just the quality tier. The Video Upscaler is
+     * the one model whose price moves on THREE axes — resolution, frame
+     * rate and enhancement tier (`pro` costs ten times `standard`) — so
+     * the three collapse into one key (`4k_60_pro`) that the ordinary
+     * tier lookup then prices. Without this a Pro 4K 60fps job would be
+     * billed at the 1080p rate and lose 80x its own price.
+     */
+    const priceKey =
+      caps.upscaleOptions && mode
+        ? upscalePriceKey(mode, body.upscale?.fps, body.upscale?.tier ?? caps.upscaleOptions.defaults.tier)
+        : mode;
+    const baseCost =
+      (priceKey ? priceRow?.tierPricing?.[priceKey] : undefined) ?? priceRow?.costCredits ?? 0;
     if (!priceRow || baseCost <= 0) {
       return c.json(
         { error: { code: 'model_unpriced', message: 'That model is not available right now.' } },
@@ -543,8 +558,14 @@ jobsRoute.post(
     // Edit tasks pin the output length to the source clip (duration -1
     // on the wire), so the billed output term IS the probed input
     // length, rounded up in the house's favour.
+    // A transform bills the SOURCE clip's length: Seedance's `edit` task
+    // pins output to the source (duration -1 on the wire), and the
+    // upscaler has no output length of its own at all. Either way the
+    // billed term is the probed input, rounded up in the house's favour
+    // — the alternative, which is what shipped, was charging the model's
+    // five-second reference price for a sixty-second upload.
     const billedDuration =
-      body.task === 'edit'
+      body.task === 'edit' || caps.billsSourceDuration
         ? Math.max(1, Math.ceil(inputVideoSeconds))
         : typeof body.duration === 'number'
           ? body.duration
@@ -552,7 +573,7 @@ jobsRoute.post(
     const cost = resolveCreditCost({
       baseCredits: priceRow.costCredits,
       tierPricing: priceRow.tierPricing ?? null,
-      mode,
+      mode: priceKey,
       sound: soundServed,
       duration: billedDuration,
       defaultDuration: refDuration,
@@ -639,6 +660,10 @@ jobsRoute.post(
       // Studio tool request — the worker composes the engineered prompt
       // from these parameters, keeping it out of `jobs.inputs`.
       tool: body.tool,
+      // Video Upscaler settings. Persisted because two of them (frame
+      // rate, enhancement tier) are part of what was CHARGED, so the job
+      // row has to record the combination the user paid for.
+      upscale: body.upscale,
     };
 
     // ── Atomic debit + insert (isolated create CTE) ────────────────

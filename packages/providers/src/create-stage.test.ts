@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { RuntimeInputValue } from './compile-types';
 import type {
+  FalCompiledRequest,
   GeminiCompiledRequest,
   KlingCompiledRequest,
   SeedanceCompiledRequest,
@@ -28,6 +29,11 @@ import {
 
 function img(key: string): RuntimeInputValue {
   return { kind: 'image', r2Key: key, mimeType: 'image/png', bytes: new Uint8Array([1, 2, 3]) };
+}
+
+/** A video attachment as the executor hands it over: fetchable by URL. */
+function vid(key: string): RuntimeInputValue {
+  return { kind: 'video', r2Key: key, mimeType: 'video/mp4', url: `https://cdn.example/${key}` };
 }
 
 function run(
@@ -644,5 +650,73 @@ describe('buildCreateStage — Seedream is an image model on the seedance tag', 
     const { request } = run(built, {});
     const [w, h] = (request as { size?: string }).size!.split('x').map(Number) as [number, number];
     expect(w / h).toBeCloseTo(9 / 16, 2);
+  });
+});
+
+describe('buildCreateStage — Video Upscaler (fal)', () => {
+  /**
+   * The regression this file exists to prevent, in its most expensive
+   * form: fal had no branch of its own, so a video reference was written
+   * as `referenceInputs` (Kling's shape) while the upscale compiler
+   * reads `referenceSlots`. Every upscale job failed at compile — AFTER
+   * the credits were debited.
+   */
+  it('binds the source clip as a reference slot the compiler can read', () => {
+    const built = buildCreateStage({
+      modelKey: 'bytedance-upscaler',
+      prompt: '',
+      referenceCount: 1,
+      referenceKinds: ['video'],
+      mode: '4k',
+    });
+    const { request } = run(built, {
+      [createReferenceKey(0)]: vid('clips/source.mp4'),
+    });
+    const f = request as FalCompiledRequest;
+    expect(f.provider).toBe('fal');
+    expect(f.endpoint).toBe('fal-ai/bytedance-upscaler/upscale/video');
+    expect(f.input.video_url).toBe('https://cdn.example/clips/source.mp4');
+    expect(f.input.target_resolution).toBe('4k');
+  });
+
+  it('sends every option the user chose, and defaults the rest', () => {
+    const built = buildCreateStage({
+      modelKey: 'bytedance-upscaler',
+      prompt: '',
+      referenceCount: 1,
+      referenceKinds: ['video'],
+      mode: '2k',
+      upscale: { preset: 'old_film', tier: 'pro', fps: 60, fidelity: 'medium', bitDepth: 12 },
+    });
+    const { request } = run(built, { [createReferenceKey(0)]: vid('clips/a.mp4') });
+    const f = request as FalCompiledRequest;
+    expect(f.input).toMatchObject({
+      target_resolution: '2k',
+      target_fps: 60,
+      enhancement_preset: 'old_film',
+      enhancement_tier: 'pro',
+      fidelity: 'medium',
+      bit_depth: 12,
+    });
+    // Never sent: it would override the resolution the user paid for.
+    expect(f.input).not.toHaveProperty('scale_ratio');
+  });
+
+  it('drops a bit depth the chosen tier cannot serve, with a warning', () => {
+    const built = buildCreateStage({
+      modelKey: 'bytedance-upscaler',
+      prompt: '',
+      referenceCount: 1,
+      referenceKinds: ['video'],
+      upscale: { tier: 'standard', bitDepth: 10 },
+    });
+    const { request, warnings } = run(built, { [createReferenceKey(0)]: vid('clips/a.mp4') });
+    expect((request as FalCompiledRequest).input.bit_depth).toBe(8);
+    expect(warnings.some((w) => w.message.includes('Pro tier'))).toBe(true);
+  });
+
+  it('refuses to compile without a source clip rather than calling fal', () => {
+    const built = buildCreateStage({ modelKey: 'bytedance-upscaler', prompt: '' });
+    expect(() => run(built, {})).toThrow(/no video reference/i);
   });
 });

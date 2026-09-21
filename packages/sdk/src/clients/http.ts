@@ -630,6 +630,12 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
               quality: input.quality,
               task: input.task,
               tool: input.tool,
+              upscale: input.upscale,
+              // The composer has been sending `shots` since multi-shot
+              // landed; this list never forwarded them, so every Kling
+              // storyboard submitted as a single-shot job. Exactly the
+              // failure the note above describes.
+              shots: input.shots,
               startFrame: input.startFrame,
               endFrame: input.endFrame,
               references: input.references ?? [],

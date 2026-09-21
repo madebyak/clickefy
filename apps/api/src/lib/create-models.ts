@@ -151,7 +151,7 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     // composer. It takes a clip and returns it larger — there is no
     // prompt to write and nothing to choose it *for*.
     modelKey: 'bytedance-upscaler',
-    name: 'Video Upscaler',
+    name: 'ByteDance Upscale',
     attachments: 'references',
     requiresStartFrame: false,
     supportsEndFrame: false,
@@ -195,6 +195,19 @@ export function getCreateModelDef(modelKey: string): CreateModelDef | undefined 
 
 export function isCreateEligible(modelKey: string): boolean {
   return DEF_BY_KEY.has(modelKey);
+}
+
+/**
+ * Priced and runnable, but never OFFERED — not in the composer's picker
+ * and not in the public pricing table.
+ *
+ * Three consumers read this roster for three different questions, and
+ * the pricing page was the one that got missed: it listed the Video
+ * Upscaler beside the generators, as though a plan's credits bought
+ * "one video for 1 credit".
+ */
+export function isToolOnlyModel(modelKey: string): boolean {
+  return DEF_BY_KEY.get(modelKey)?.toolOnly === true;
 }
 
 /** Conservative fallback prompt cap when a model omits `maxPromptChars`. */
@@ -261,6 +274,37 @@ export interface CreateModelDTO {
   }[];
   /** The pre-selected tier (what `costCredits` reflects). */
   defaultTier?: string;
+  /**
+   * The model's FULL `tier_pricing` map, served only for models whose
+   * price key is composed from more than the tier.
+   *
+   * The Video Upscaler prices resolution x frame rate x enhancement tier
+   * as one key (`4k_60_pro`), so `tiers[]` — one row per resolution —
+   * cannot express it and the modal would have to hard-code the
+   * multipliers to show a price. It reads the same map the server
+   * charges from instead.
+   */
+  priceTable?: Record<string, number>;
+  /**
+   * The Video Upscaler's option surface: scene presets, enhancement
+   * tiers, frame rates, fidelities, bit depths, and the defaults. The
+   * modal draws its controls from this rather than from its own copy.
+   */
+  upscaleOptions?: {
+    presets: string[];
+    tiers: string[];
+    fps: number[];
+    fidelities: string[];
+    bitDepths: number[];
+    defaults: {
+      resolution: string;
+      preset: string;
+      tier: string;
+      fps: number;
+      fidelity: string;
+      bitDepth: number;
+    };
+  };
   /**
    * The provider ignores/forbids an explicit aspect ratio once a start
    * frame is attached (Kling omits the field; Seedance 2.5 accepts only
@@ -384,6 +428,19 @@ export function buildCreateModelDTO(
     soundRequiresTier: caps.nativeAudioRequiresTier,
     tiers,
     defaultTier: caps.modes?.default,
+    // Only where the key is composite — every other model's prices are
+    // fully described by `tiers[]` above.
+    priceTable: caps.upscaleOptions && tierPricing ? { ...tierPricing } : undefined,
+    upscaleOptions: caps.upscaleOptions
+      ? {
+          presets: [...caps.upscaleOptions.presets],
+          tiers: [...caps.upscaleOptions.tiers],
+          fps: [...caps.upscaleOptions.fps],
+          fidelities: [...caps.upscaleOptions.fidelities],
+          bitDepths: [...caps.upscaleOptions.bitDepths],
+          defaults: { ...caps.upscaleOptions.defaults },
+        }
+      : undefined,
     aspectLockedByStartFrame:
       caps.kind === 'video' && (caps.provider === 'kling' || caps.framesRatioAdaptiveOnly === true)
         ? true

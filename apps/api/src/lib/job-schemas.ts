@@ -11,6 +11,15 @@
 
 import { z } from 'zod';
 
+import type { UpscaleBitDepth, UpscaleFps } from '@clickfy/types';
+import {
+  UPSCALE_BIT_DEPTHS,
+  UPSCALE_FIDELITIES,
+  UPSCALE_FPS,
+  UPSCALE_PRESETS,
+  UPSCALE_TIERS,
+} from '@clickfy/types';
+
 // Hard ceilings, sized to match the upload route's `USER_MAX_BYTES`
 // (25MB) for images, with extra headroom for short video references.
 const IMAGE_MAX_BYTES = 25 * 1024 * 1024;
@@ -166,6 +175,38 @@ export const createUserJobSchema = z.object({
     )
     .min(2)
     .max(6)
+    .optional(),
+  /**
+   * Video Upscaler settings beyond the target resolution (which travels
+   * as `quality`, like every other model's tier).
+   *
+   * Enumerated from the shared vocabulary in `@clickfy/types` rather
+   * than spelled out here: the modal draws its controls from the same
+   * lists and the compiler clamps against them, so a value that passes
+   * this schema is a value fal accepts. `fps` and `tier` also change the
+   * PRICE (60fps doubles it, `pro` multiplies it by ten), so they are
+   * validated before anything is charged, not on the way to the worker.
+   */
+  upscale: z
+    .object({
+      preset: z.enum(UPSCALE_PRESETS).optional(),
+      tier: z.enum(UPSCALE_TIERS).optional(),
+      fps: z
+        .number()
+        .int()
+        .refine((n): n is UpscaleFps => (UPSCALE_FPS as readonly number[]).includes(n), {
+          message: 'Unsupported frame rate.',
+        })
+        .optional(),
+      fidelity: z.enum(UPSCALE_FIDELITIES).optional(),
+      bitDepth: z
+        .number()
+        .int()
+        .refine((n): n is UpscaleBitDepth => (UPSCALE_BIT_DEPTHS as readonly number[]).includes(n), {
+          message: 'Unsupported bit depth.',
+        })
+        .optional(),
+    })
     .optional(),
   // Web-studio project to file the outputs into. Ownership is verified
   // in the handler; omitted (mobile) keeps the flat-history behavior.

@@ -412,6 +412,35 @@ export interface GenModel {
   /** Pre-selected tier (what `costCredits` reflects). */
   defaultTier?: string;
   /**
+   * The model's full `tier_pricing` map, served when the price key is
+   * composed from more than the tier. The Video Upscaler prices
+   * resolution x frame rate x enhancement tier as one key (`4k_60_pro`),
+   * so its modal looks prices up here rather than re-deriving the
+   * multipliers — the number on the button is then, by construction, the
+   * number the server charges.
+   */
+  priceTable?: Record<string, number>;
+  /**
+   * The Video Upscaler's option surface. Present only on that model;
+   * the modal renders its controls from these lists so a new preset
+   * upstream is a catalogue change, not a client release.
+   */
+  upscaleOptions?: {
+    presets: string[];
+    tiers: string[];
+    fps: number[];
+    fidelities: string[];
+    bitDepths: number[];
+    defaults: {
+      resolution: string;
+      preset: string;
+      tier: string;
+      fps: number;
+      fidelity: string;
+      bitDepth: number;
+    };
+  };
+  /**
    * The provider ignores an explicit aspect ratio once a start frame is
    * attached — the composer disables the ratio picker in that state.
    */
@@ -539,6 +568,19 @@ export interface CreateGenerationInput {
    * prompt (≤512 chars) and a duration; durations must sum to `duration`.
    */
   shots?: Array<{ seconds: number; text: string }>;
+  /**
+   * Video Upscaler settings beyond the target resolution (which travels
+   * as `quality`). `fps` and `tier` change the PRICE — 60fps doubles it,
+   * `pro` multiplies it by ten — so they are part of the quote, not a
+   * rendering detail.
+   */
+  upscale?: {
+    preset?: 'general' | 'ugc' | 'short_series' | 'aigc' | 'old_film';
+    tier?: 'fast' | 'standard' | 'pro';
+    fps?: 30 | 60;
+    fidelity?: 'high' | 'medium';
+    bitDepth?: 8 | 10 | 12;
+  };
   idempotencyKey?: string;
   /** Web-studio project to file the outputs into (omitted on mobile). */
   projectId?: string;

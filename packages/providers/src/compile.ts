@@ -35,6 +35,22 @@ import type {
   KlingElementRef,
   GenerationStage,
   TemplateInputField,
+  UpscaleBitDepth,
+  UpscaleFidelity,
+  UpscaleFps,
+  UpscalePreset,
+  UpscaleResolution,
+  UpscaleTier,
+} from '@clickfy/types';
+import {
+  bitDepthAllowed,
+  UPSCALE_BIT_DEPTHS,
+  UPSCALE_DEFAULTS,
+  UPSCALE_FIDELITIES,
+  UPSCALE_FPS,
+  UPSCALE_PRESETS,
+  UPSCALE_RESOLUTIONS,
+  UPSCALE_TIERS,
 } from '@clickfy/types';
 
 import type { ModelCapabilities } from './capabilities';
@@ -529,6 +545,11 @@ function compileFal(ctx: CompileContext, warnings: CompileWarning[]): CompileRes
  * path for "a video the user attached". No prompt is read: this model
  * generates nothing, and passing the user's text would imply an
  * influence it does not have.
+ *
+ * Every other field is a user setting, and each one is clamped against
+ * the shared vocabulary rather than trusted: a stage can also arrive
+ * from a template snapshot written before an option existed, and an
+ * unknown enum value is a 422 from fal AFTER we have debited the user.
  */
 function compileVideoUpscale(
   ctx: CompileContext,
@@ -541,6 +562,9 @@ function compileVideoUpscale(
     mode?: string;
     enhancementPreset?: string;
     enhancementTier?: string;
+    targetFps?: number;
+    fidelity?: string;
+    bitDepth?: number;
   };
 
   const videoSlot = (cfg.referenceSlots ?? []).find((slot) => slot.assetKind === 'video');
@@ -558,15 +582,72 @@ function compileVideoUpscale(
     );
   }
 
-  // `cfg`, not `stage.config` — the latter is an untyped record.
-  const mode = cfg.mode ?? capabilities.modes?.default ?? '1080p';
-  const allowed = capabilities.modes?.values ?? [];
-  const targetResolution = allowed.includes(mode) ? mode : (capabilities.modes?.default ?? '1080p');
-  if (mode !== targetResolution) {
+  /**
+   * One clamp for every enum field. Falling back silently would be the
+   * wrong trade here — the user was charged for a specific combination,
+   * so a substitution has to be visible in the job's warnings.
+   */
+  const pick = <T extends string | number>(
+    value: T | undefined,
+    allowed: readonly T[],
+    fallback: T,
+    field: string,
+  ): T => {
+    if (value === undefined) return fallback;
+    if (allowed.includes(value)) return value;
     warnings.push({
       code: 'config_clamped',
-      message: `Video Upscaler does not offer "${mode}"; using ${targetResolution}.`,
+      message: `Video Upscaler does not offer ${field} "${value}"; using ${fallback}.`,
     });
+    return fallback;
+  };
+
+  // `cfg`, not `stage.config` — the latter is an untyped record.
+  const targetResolution = pick(
+    cfg.mode as UpscaleResolution | undefined,
+    capabilities.modes?.values as readonly UpscaleResolution[] | undefined ?? UPSCALE_RESOLUTIONS,
+    (capabilities.modes?.default as UpscaleResolution) ?? UPSCALE_DEFAULTS.resolution,
+    'resolution',
+  );
+  const enhancementTier = pick(
+    cfg.enhancementTier as UpscaleTier | undefined,
+    UPSCALE_TIERS,
+    UPSCALE_DEFAULTS.tier,
+    'enhancement tier',
+  );
+  const enhancementPreset = pick(
+    cfg.enhancementPreset as UpscalePreset | undefined,
+    UPSCALE_PRESETS,
+    UPSCALE_DEFAULTS.preset,
+    'preset',
+  );
+  const fidelity = pick(
+    cfg.fidelity as UpscaleFidelity | undefined,
+    UPSCALE_FIDELITIES,
+    UPSCALE_DEFAULTS.fidelity,
+    'fidelity',
+  );
+  const targetFps = pick(
+    cfg.targetFps as UpscaleFps | undefined,
+    UPSCALE_FPS,
+    UPSCALE_DEFAULTS.fps,
+    'frame rate',
+  );
+  let bitDepth = pick(
+    cfg.bitDepth as UpscaleBitDepth | undefined,
+    UPSCALE_BIT_DEPTHS,
+    UPSCALE_DEFAULTS.bitDepth,
+    'bit depth',
+  );
+  // 10-bit and 12-bit exist only on the pro tier; sending one with a
+  // cheaper tier is a hard 422 upstream, which would fail a job the user
+  // has already paid for. Drop to 8-bit instead, loudly.
+  if (!bitDepthAllowed(bitDepth, enhancementTier)) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `${bitDepth}-bit output needs the Pro tier; using 8-bit.`,
+    });
+    bitDepth = 8;
   }
 
   return {
@@ -576,11 +657,15 @@ function compileVideoUpscale(
       input: {
         video_url: videoUrl,
         target_resolution: targetResolution,
-        // `aigc` is tuned for AI-generated footage, which is what this
-        // upscales in practice. The others exist for real-camera and
-        // archival material and would be the wrong default here.
-        enhancement_preset: cfg.enhancementPreset ?? 'aigc',
-        enhancement_tier: cfg.enhancementTier ?? 'standard',
+        target_fps: targetFps,
+        enhancement_preset: enhancementPreset,
+        enhancement_tier: enhancementTier,
+        fidelity,
+        bit_depth: bitDepth,
+        // `scale_ratio` is deliberately never sent: it OVERRIDES
+        // target_resolution, so the output size — and therefore what fal
+        // charges us — would stop matching the tier the user was billed
+        // for. It comes back if it ever comes back with a price.
       },
     },
     warnings,

@@ -42,6 +42,7 @@ import {
 
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, byIp, withRateLimit } from '../middleware/with-rate-limit';
+import { isToolOnlyModel } from '../lib/create-models';
 import { makeStripe } from '../lib/stripe-client';
 import {
   cancelPendingChange,
@@ -73,9 +74,16 @@ async function welcomeCredits(db: AppEnv['Variables']['db']): Promise<number> {
  * these numbers are the SAME ones the job route charges. So they come
  * from `provider_models`, never from a constant in the web app.
  *
- * Three deliberate exclusions:
+ * Four deliberate exclusions:
  *   - `deprecated` models: still in the table so old jobs render, but
  *     nobody should be choosing one from a pricing page.
+ *   - TOOL-ONLY models: the Video Upscaler is real and priced, but this
+ *     table answers "how many images and videos does this plan buy?"
+ *     and it makes neither — it takes a clip you already have. Listed
+ *     between Nano Banana and Kling it read as "a video for 1 credit",
+ *     which is three different kinds of wrong at once. The roster in
+ *     `create-models.ts` is where that fact lives; this is its third
+ *     consumer after the picker and `/v1/models`.
  *   - unpriced models (`cost_credits = 0`): dividing by zero would
  *     advertise unlimited generations, which is the single worst number
  *     to get wrong on a page where people are deciding whether to pay.
@@ -88,7 +96,7 @@ async function welcomeCredits(db: AppEnv['Variables']['db']): Promise<number> {
  */
 function marketingModels(rows: Array<typeof providerModels.$inferSelect>) {
   return rows
-    .filter((m) => m.status !== 'deprecated' && m.costCredits > 0)
+    .filter((m) => m.status !== 'deprecated' && m.costCredits > 0 && !isToolOnlyModel(m.modelKey))
     .map((m) => {
       const caps = m.capabilities as Record<string, unknown>;
       const kind = caps.kind === 'video' ? 'video' : 'image';

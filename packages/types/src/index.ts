@@ -13,3 +13,4 @@ export * from './search-text';
 export * from './job-errors';
 export * from './video-task-intent';
 export * from './reference-tokens';
+export * from './upscale';

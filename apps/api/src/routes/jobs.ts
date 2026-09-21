@@ -664,6 +664,18 @@ jobsRoute.post(
       // rate, enhancement tier) are part of what was CHARGED, so the job
       // row has to record the combination the user paid for.
       upscale: body.upscale,
+      /**
+       * The probed clip length the charge was computed FROM, on models
+       * that bill the source (`billsSourceDuration`).
+       *
+       * Every other term of a variable charge is already on the row —
+       * the tier, the settings, the total — and this one was thrown
+       * away, which left no way to check a bill afterwards except to
+       * re-derive it from the total and hope the rounding matched.
+       * It is also what the provider invoices us per second, so it is
+       * the number any margin report has to start from.
+       */
+      sourceSeconds: caps.billsSourceDuration ? billedDuration : undefined,
     };
 
     // ── Atomic debit + insert (isolated create CTE) ────────────────

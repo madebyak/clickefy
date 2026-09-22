@@ -2,7 +2,7 @@
   "name": "clickfy",
   "private": true,
   "version": "0.0.0",
-  "description": "Clickfy monorepo — admin dashboard, mobile app, and API.",
+  "description": "Clickfy monorepo \u2014 admin dashboard, mobile app, and API.",
   "packageManager": "pnpm@10.13.1",
   "engines": {
     "node": ">=22.0.0"
@@ -26,7 +26,6 @@
       "@google/genai",
       "msw",
       "protobufjs",
-      "sharp",
       "unrs-resolver",
       "esbuild",
       "workerd"

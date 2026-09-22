@@ -15,7 +15,9 @@
     "preflight": "pnpm typecheck && pnpm lint",
     "build:android:preview": "pnpm preflight && EXPO_TOKEN=$(sed -n 's/^# export EXPO_TOKEN=//p' .env) eas build --profile preview --platform android",
     "clean": "rm -rf .expo node_modules .turbo ios android",
-    "build:ios:preview": "pnpm preflight && EXPO_TOKEN=$(sed -n 's/^# export EXPO_TOKEN=//p' .env) eas build --profile preview --platform ios"
+    "build:ios:preview": "pnpm preflight && EXPO_TOKEN=$(sed -n 's/^# export EXPO_TOKEN=//p' .env) eas build --profile preview --platform ios",
+    "build:ios:prod": "pnpm preflight && EXPO_TOKEN=$(sed -n 's/^# export EXPO_TOKEN=//p' .env) eas build --profile production --platform ios --non-interactive",
+    "submit:ios": "EXPO_TOKEN=$(sed -n 's/^# export EXPO_TOKEN=//p' .env) eas submit --platform ios --latest"
   },
   "dependencies": {
     "@clerk/expo": "^3.2.10",

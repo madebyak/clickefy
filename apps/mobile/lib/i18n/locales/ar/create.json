@@ -128,6 +128,18 @@
     "saveDeniedBody": "اسمح بالوصول إلى الصور من الإعدادات لحفظ أعمالك.",
     "on": "مفعّل",
     "off": "متوقف",
-    "soundNeedsTier": "الصوت الأصلي يتطلب جودة {{tier}}"
+    "soundNeedsTier": "الصوت الأصلي يتطلب جودة {{tier}}",
+    "items_one": "عنصر واحد",
+    "items_two": "عنصران",
+    "items_few": "{{count}} عناصر",
+    "items_many": "{{count}} عنصرًا",
+    "items_other": "{{count}} عنصر",
+    "minutesAgo_other": "قبل {{count}} دقيقة",
+    "hoursAgo_other": "قبل {{count}} ساعة",
+    "daysAgo_other": "قبل {{count}} يوم",
+    "tooManyRunning": "يمكن تشغيل {{count}} عمليات إنشاء كحد أقصى — واحدة على وشك الانتهاء.",
+    "attachFailed": "تعذّر إرفاق هذه الصورة",
+    "notNow": "ليس الآن",
+    "viewPlans": "عرض الخطط"
   }
 }

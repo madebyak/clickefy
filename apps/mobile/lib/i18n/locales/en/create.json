@@ -116,6 +116,18 @@
     "saveDeniedBody": "Allow photo access in Settings to save your work.",
     "on": "On",
     "off": "Off",
-    "soundNeedsTier": "Native audio needs the {{tier}} tier"
+    "soundNeedsTier": "Native audio needs the {{tier}} tier",
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} items",
+    "minutesAgo_one": "{{count}} min ago",
+    "minutesAgo_other": "{{count}} min ago",
+    "hoursAgo_one": "{{count}} hour ago",
+    "hoursAgo_other": "{{count}} hours ago",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago",
+    "tooManyRunning": "Up to {{count}} generations can run at once — one is about to finish.",
+    "attachFailed": "Couldn't attach that image",
+    "notNow": "Not now",
+    "viewPlans": "View plans"
   }
 }

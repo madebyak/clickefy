@@ -1,41 +1,49 @@
 /**
- * Composer — the redesigned Create surface. Full-screen over the tabs
- * (launched from the Create tab, dismissed with ✕), structured like a
- * conversation with the generator:
+ * Composer — the Create surface. Full-screen over the tabs (launched
+ * from the Create tab, dismissed with ✕), structured as a conversation
+ * with the generator:
  *
- *   ☰  Create                 [total credits] ✕
+ *   ☰  Create / <project>       [total credits] ✕
  *   ───────────────────────────────────────────
- *   artifact feed (empty state → generated work)
+ *   fresh session → chat-like artifact feed
+ *   open project  → web-style masonry of its media
  *   ───────────────────────────────────────────
- *   (Image)(Model)(Ratio)(Quality)(Duration)      ← pills → bottom sheets
+ *   (Image)(Model)(Ratio)(Quality)(Duration)(Sound)   ← pills → sheets
  *   [ attachments / prompt / + / Generate · N cr ]
  *
- * FRONT-END PHASE: everything on screen runs on the DEMO fixtures
- * below — no network, no uploads, no billing. Generate appends a
- * shimmer card that resolves to a bundled sample image, so the whole
- * flow is tangible while the design settles. Wiring swaps the fixtures
- * for `GET /v1/models` + `createGenerate` (the logic already proven in
- * the old create tab, see git history) without changing components.
+ * WIRED. Contracts verified against the web studio's source (see the
+ * composer-wiring notes): submit payload mirrors prompt-bar's, the
+ * idempotency key is a header rotated only after confirmed success,
+ * fresh sessions file into a server-created project that auto-titles
+ * from the first prompt, polling caps concurrency to respect
+ * RL_USER_READ, and failures never promise refunds (the server refunds
+ * infra failures on its own; we just refresh the balance).
  */
 
 import { useTheme } from '@clickfy/ui';
-import type { GenModel } from '@clickfy/sdk';
+import { useUser } from '@clerk/expo';
+import { JobSubmissionError, type CreateGenerationInput, type GenModel } from '@clickfy/sdk';
 import { resolveCreditCost } from '@clickfy/types';
-import { useQuery } from '@tanstack/react-query';
-import { Asset } from 'expo-asset';
-import * as MediaLibrary from 'expo-media-library';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AiConsentSheet } from '@/components/AiConsentSheet';
 import { ArtifactFeed, type Artifact } from '@/components/composer/ArtifactFeed';
+import { AssetDetailsDrawer } from '@/components/composer/AssetDetailsDrawer';
+import { AssetViewer } from '@/components/composer/AssetViewer';
 import { AttachSheet, type AttachAction } from '@/components/composer/AttachSheet';
 import { ComposerHeader } from '@/components/composer/ComposerHeader';
+import { ProjectMasonry, type MasonryCell } from '@/components/composer/ProjectMasonry';
 import { PromptDock, type DockAttachment } from '@/components/composer/PromptDock';
-import { RecentsDrawer } from '@/components/composer/RecentsDrawer';
+import {
+  RecentsDrawer,
+  type DrawerFolder,
+  type DrawerRecentRef,
+} from '@/components/composer/RecentsDrawer';
 import { OptionPillsRow, type PillSpec } from '@/components/composer/pills';
 import {
   DurationSheet,
@@ -44,24 +52,47 @@ import {
   RatioSheet,
   type ComposerMode,
 } from '@/components/composer/sheets';
-import {
-  DEMO_FOLDERS,
-  DEMO_OUTPUTS,
-  DEMO_PROJECT_DETAILS,
-  DEMO_RECENT_PROJECTS,
-} from '@/components/composer/demo-fixtures';
-import { ProjectMasonry, type MasonryCell } from '@/components/composer/ProjectMasonry';
-import { AssetViewer } from '@/components/composer/AssetViewer';
-import { AssetDetailsDrawer } from '@/components/composer/AssetDetailsDrawer';
 import type { AssetInfo } from '@/components/composer/asset-info';
 import { MODE_TINT } from '@/components/composer/mode-colors';
 import { ModelLogo } from '@/components/create/ModelLogo';
 import { useToast } from '@/components/shared/Toast';
+import { hasAiConsent, setAiConsent } from '@/lib/ai-consent';
+import { downloadOutput } from '@/lib/download';
 import { getSDK } from '@/lib/sdk';
-import { useSession } from '@/lib/use-session';
-
+import { ME_QUERY_KEY, useSession } from '@/lib/use-session';
+import {
+  uploadRemoteUrl,
+  useImageUpload,
+  type PickedUpload,
+} from '@/lib/use-image-upload';
+import type { UploadedMedia } from '@/components/use-template/InputField';
 
 type SheetName = 'mode' | 'model' | 'ratio' | 'quality' | 'duration' | 'attach' | null;
+
+/** One attachment in the dock: preview + its persisted upload (null while in flight). */
+interface ComposerAttachment {
+  id: string;
+  previewUri: string | number;
+  media: UploadedMedia | null;
+}
+
+/** RL_USER_READ (240/min) affords ~4 jobs polling at 1s; cap below that. */
+const MAX_CONCURRENT_JOBS = 3;
+
+function idempotencyKey(): string {
+  const hex = (n: number) =>
+    Math.floor(Math.random() * 16 ** n)
+      .toString(16)
+      .padStart(n, '0');
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${hex(4)}-${hex(12)}`;
+}
+
+/** Masonry cell shape from real dimensions, clamped like web's grid. */
+function ratioFrom(width: number | null, height: number | null, kind: 'image' | 'video'): string {
+  const raw = width && height && height > 0 ? width / height : kind === 'video' ? 16 / 9 : 1;
+  const clamped = Math.min(2.4, Math.max(0.45, raw));
+  return `${Math.round(clamped * 100)}:100`;
+}
 
 // ─── Screen ─────────────────────────────────────────────────────────
 
@@ -72,12 +103,15 @@ export default function ComposerScreen() {
   const { t } = useTranslation('create');
   const { plan } = useSession();
   const toast = useToast();
+  const qc = useQueryClient();
+  const sdk = getSDK();
+  const { user: clerkUser } = useUser();
+  const consentUserId = clerkUser?.id ?? '';
+  const { pickFromSource } = useImageUpload();
 
   const [mode, setMode] = useState<ComposerMode>('image');
 
-  // SLICE 1 (wired): the real roster. Same query + rules as the old
-  // create tab and the web: tool-only entries never reach the picker.
-  const sdk = getSDK();
+  // ── Roster (same query + rules as web / the old tab) ─────────────
   const modelsQuery = useQuery({
     queryKey: ['models'],
     queryFn: () => sdk.models.listModels(),
@@ -92,9 +126,8 @@ export default function ComposerScreen() {
     [models, mode],
   );
 
-  // Remember the chosen model per mode so flipping Image⇄Video and back
-  // doesn't lose the pick. `null` = "no explicit pick yet": the default
-  // DERIVES from the roster, so a refetch can't clobber a user's choice.
+  // `null` = "no explicit pick yet": the default DERIVES from the
+  // roster, so a refetch can't clobber a user's choice.
   const [modelByMode, setModelByMode] = useState<Record<ComposerMode, string | null>>({
     image: null,
     video: null,
@@ -104,6 +137,7 @@ export default function ComposerScreen() {
     [modeModels, modelByMode, mode],
   );
 
+  // ── Option state ──────────────────────────────────────────────────
   const [ratio, setRatio] = useState<string | undefined>(undefined);
   const [tier, setTier] = useState<string | undefined>(undefined);
   const [duration, setDuration] = useState<number | undefined>(undefined);
@@ -111,22 +145,99 @@ export default function ComposerScreen() {
   // means "no explicit choice yet" so the default derives per model.
   const [soundChoice, setSoundChoice] = useState<boolean | null>(null);
   const [prompt, setPrompt] = useState('');
-  const [attachments, setAttachments] = useState<DockAttachment[]>([]);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [sheet, setSheet] = useState<SheetName>(null);
   const [drawer, setDrawer] = useState(false);
-  // The ChatGPT-style context: null = fresh session (chat feed); an id =
-  // that project is open, its media fills the content area (masonry) and
-  // new generations file into it.
+  const [showConsent, setShowConsent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  // The ChatGPT-style context: null = fresh session (chat feed); an id
+  // = that project is open, its media fills the content area and new
+  // generations file into it.
   const [openProjectId, setOpenProjectId] = useState<string | null>(null);
-  const openProject = openProjectId ? (DEMO_PROJECT_DETAILS[openProjectId] ?? null) : null;
   const [viewerAsset, setViewerAsset] = useState<AssetInfo | null>(null);
   const [detailsAsset, setDetailsAsset] = useState<AssetInfo | null>(null);
-  const demoCounter = useRef(0);
 
-  // Effective values fall back to each model's own defaults, exactly
-  // like the old tab: an explicit pick only sticks while the model
-  // still offers it.
+  // A fresh session's server project, created lazily on the first
+  // generate (never named client-side — the server auto-titles it from
+  // the prompt, matching web). Reset by "New session".
+  const sessionProjectRef = useRef<string | null>(null);
+  // One idempotency key per submission attempt-sequence: a retry after
+  // a timeout re-sends the SAME key so the server dedupes instead of
+  // charging twice. Rotated only after a confirmed success.
+  const submitKeyRef = useRef(idempotencyKey());
+  // Live pollers, so leaving the screen stops the traffic.
+  const unsubsRef = useRef(new Map<string, () => void>());
+  useEffect(() => {
+    const unsubs = unsubsRef.current;
+    return () => {
+      for (const stop of unsubs.values()) stop();
+      unsubs.clear();
+    };
+  }, []);
+
+  // ── Projects (drawer + open-project content) ─────────────────────
+  const projectsQuery = useQuery({
+    queryKey: ['studio-projects'],
+    queryFn: () => sdk.projects.list({ limit: 50 }),
+    staleTime: 15_000,
+  });
+  const assetsQuery = useQuery({
+    queryKey: ['project-assets', openProjectId],
+    queryFn: () => sdk.projects.listAssets(openProjectId!, { limit: 50 }),
+    enabled: openProjectId !== null,
+    staleTime: 15_000,
+  });
+
+  const relTime = useCallback(
+    (iso: string): string => {
+      const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+      if (mins < 1) return t('composer.justNow');
+      if (mins < 60) return t('composer.minutesAgo', { count: mins });
+      const hours = Math.round(mins / 60);
+      if (hours < 24) return t('composer.hoursAgo', { count: hours });
+      return t('composer.daysAgo', { count: Math.round(hours / 24) });
+    },
+    [t],
+  );
+
+  const drawerFolders = useMemo<DrawerFolder[]>(() => {
+    const data = projectsQuery.data;
+    if (!data) return [];
+    return data.folders.map((f) => ({
+      id: f.id,
+      name: f.name,
+      projects: data.projects
+        .filter((p) => p.folderId === f.id)
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          countLabel: t('composer.items', { count: p.assetCount }),
+          coverUri: p.cover ? (p.cover.posterUrl ?? p.cover.url) : undefined,
+        })),
+    }));
+  }, [projectsQuery.data, t]);
+
+  // "Recent" = the server's updated_at ordering, folder-filed or not —
+  // the flat "pick up where I left off" list.
+  const drawerRecents = useMemo<DrawerRecentRef[]>(() => {
+    const data = projectsQuery.data;
+    if (!data) return [];
+    return data.projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      when: relTime(p.updatedAt),
+      coverUri: p.cover ? (p.cover.posterUrl ?? p.cover.url) : undefined,
+    }));
+  }, [projectsQuery.data, relTime]);
+
+  const openProjectName = useMemo(
+    () => projectsQuery.data?.projects.find((p) => p.id === openProjectId)?.name ?? null,
+    [projectsQuery.data, openProjectId],
+  );
+
+  // ── Effective option values (fall back to the model's defaults) ──
   // Web parity: "Auto" is an image-only affordance (omitted from the
   // payload at submit); video providers REQUIRE an explicit ratio.
   const ratios = useMemo(() => {
@@ -147,9 +258,8 @@ export default function ComposerScreen() {
   const sound = soundChoice ?? !!model?.supportsSound;
   // Native audio that can't play at the selected tier: the server drops
   // the audio rather than upgrading the billed resolution, so the price
-  // follows suit (same rule as the old tab / web).
-  const soundGated =
-    !!model?.soundRequiresTier && effTier !== model.soundRequiresTier;
+  // follows suit.
+  const soundGated = !!model?.soundRequiresTier && effTier !== model.soundRequiresTier;
   const soundTierLabel =
     model?.tiers?.find((x) => x.mode === model.soundRequiresTier)?.label ??
     model?.soundRequiresTier ??
@@ -177,7 +287,13 @@ export default function ComposerScreen() {
       })
     : 0;
   const promptCap = model?.maxPromptChars ?? 2500;
-  const maxImages = model?.maxImages ?? 6;
+
+  // ── Attachment surfaces (frames vs references, per model) ─────────
+  // v1: Seedance's dual mode defaults to frames; the references toggle
+  // is a follow-up.
+  const useFrames = model?.attachments === 'frames' || model?.attachments === 'seedance';
+  const attachmentCap = useFrames ? (model?.supportsEndFrame ? 2 : 1) : model?.maxImages ?? 6;
+  const uploadsInFlight = attachments.some((a) => a.media === null);
 
   const selectModel = (key: string) => {
     setModelByMode((prev) => ({ ...prev, [mode]: key }));
@@ -198,95 +314,310 @@ export default function ComposerScreen() {
     setAttachments([]);
   };
 
-  // ── Asset viewer / details (front-end phase: provenance is derived
-  // from the fixtures; wiring reads it from the job record) ─────────
-  const resolveAsset = (cellId: string): AssetInfo | null => {
-    const art = artifacts.find((a) => a.id === cellId);
-    if (art) {
-      return {
-        id: art.id,
-        kind: art.kind,
-        ratio: art.aspectRatio,
-        uri: art.uri ?? '',
-        prompt: art.prompt,
-        modelName: model?.name ?? '',
-        when: t('composer.justNow'),
-        quality: model?.tiers?.find((x) => x.mode === effTier)?.label,
-        durationSeconds: art.kind === 'video' ? effDuration : undefined,
-      };
-    }
-    const asset = openProject?.assets.find((a) => a.id === cellId);
-    if (asset) {
-      return {
-        id: asset.id,
-        kind: asset.kind,
-        ratio: asset.ratio,
-        uri: asset.uri,
-        prompt: asset.prompt,
-        modelName: asset.kind === 'video' ? 'Kling 3.0' : 'Nano Banana Pro',
-        when: t('composer.demoWhen'),
-        quality: asset.kind === 'video' ? '1080p' : '2K',
-        durationSeconds: asset.kind === 'video' ? 5 : undefined,
-      };
-    }
-    return null;
+  const appendUploads = useCallback(
+    (picked: PickedUpload[], cap: number) => {
+      if (picked.length === 0) return;
+      setAttachments((prev) =>
+        [
+          ...prev,
+          ...picked.map((u, i) => ({
+            id: `${Date.now()}-${i}-${u.media.r2Key}`,
+            previewUri: u.previewUri,
+            media: u.media,
+          })),
+        ].slice(0, cap),
+      );
+    },
+    [],
+  );
+
+  const pickAttachment = async (source: 'camera' | 'photos') => {
+    const remaining = attachmentCap - attachments.length;
+    if (remaining <= 0) return;
+    const picked = await pickFromSource(source === 'camera' ? 'camera' : 'library', {
+      multiple: !useFrames && remaining > 1,
+      limit: remaining,
+    });
+    appendUploads(picked, attachmentCap);
   };
 
-  const openCell = (cell: MasonryCell) => setViewerAsset(resolveAsset(cell.id));
-  const openCellMenu = (cell: MasonryCell) => setDetailsAsset(resolveAsset(cell.id));
+  /** Re-upload a remote asset (generated output) as a fresh reference. */
+  const attachFromUrl = useCallback(
+    async (url: string, cap: number, replace: boolean) => {
+      const placeholderId = `remote-${Date.now()}`;
+      setAttachments((prev) =>
+        [...(replace ? [] : prev), { id: placeholderId, previewUri: url, media: null }].slice(0, cap),
+      );
+      const uploaded = await uploadRemoteUrl(url);
+      if (!uploaded) {
+        setAttachments((prev) => prev.filter((a) => a.id !== placeholderId));
+        toast.error(t('composer.attachFailed'));
+        return;
+      }
+      setAttachments((prev) =>
+        prev.map((a) =>
+          a.id === placeholderId ? { ...a, previewUri: uploaded.previewUri, media: uploaded.media } : a,
+        ),
+      );
+    },
+    [toast, t],
+  );
+
+  const attachActions: AttachAction[] = [
+    { id: 'camera', icon: 'camera', label: t('composer.attachCamera') },
+    { id: 'photos', icon: 'imageStack', label: t('composer.attachPhotos') },
+  ];
+
+  // ── Generation ─────────────────────────────────────────────────────
+  const generatingCount = artifacts.filter((a) => a.status === 'generating').length;
+  const promptRequired = (model?.maxPromptChars ?? 2500) !== 0;
+  const canGenerate =
+    !!model &&
+    !submitting &&
+    !uploadsInFlight &&
+    (!promptRequired || prompt.trim().length > 0) &&
+    (!model.requiresStartFrame || (useFrames && attachments[0]?.media != null));
+
+  const trackJob = useCallback(
+    (jobId: string, projectId: string) => {
+      const stop = sdk.generation.subscribe(jobId, (update) => {
+        if (update.status === 'completed') {
+          unsubsRef.current.get(jobId)?.();
+          unsubsRef.current.delete(jobId);
+          const out = update.outputs?.[0];
+          setArtifacts((prev) =>
+            prev.map((a) =>
+              a.id === jobId
+                ? {
+                    ...a,
+                    status: 'ready',
+                    uri: out?.url,
+                    posterUri: undefined,
+                  }
+                : a,
+            ),
+          );
+          // The project grid's truth is the assets table, not job
+          // outputs — refetch so the open masonry swaps the pending
+          // tile for the real asset row.
+          void qc.invalidateQueries({ queryKey: ['project-assets', projectId] });
+          void qc.invalidateQueries({ queryKey: ['studio-projects'] });
+          void qc.invalidateQueries({ queryKey: ME_QUERY_KEY });
+        } else if (update.status === 'failed') {
+          unsubsRef.current.get(jobId)?.();
+          unsubsRef.current.delete(jobId);
+          setArtifacts((prev) =>
+            prev.map((a) =>
+              a.id === jobId ? { ...a, status: 'failed', errorMessage: update.error } : a,
+            ),
+          );
+          // Infra failures refund server-side; refresh quietly, promise
+          // nothing.
+          void qc.invalidateQueries({ queryKey: ME_QUERY_KEY });
+        }
+      });
+      unsubsRef.current.set(jobId, stop);
+    },
+    [sdk, qc],
+  );
+
+  const runGeneration = async () => {
+    if (!model || !canGenerate) return;
+    if (generatingCount >= MAX_CONCURRENT_JOBS) {
+      toast.info(t('composer.tooManyRunning', { count: MAX_CONCURRENT_JOBS }));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // Fresh sessions file into a lazily created project the server
+      // auto-titles from this prompt (web behavior, verified).
+      let projectId = openProjectId ?? sessionProjectRef.current;
+      if (!projectId) {
+        const project = await sdk.projects.create({ folderId: null });
+        sessionProjectRef.current = project.id;
+        projectId = project.id;
+        void qc.invalidateQueries({ queryKey: ['studio-projects'] });
+      }
+
+      const mediaRefs = attachments
+        .filter((a) => a.media !== null)
+        .map((a) => ({ kind: 'image' as const, ...a.media! }));
+
+      const input: CreateGenerationInput = {
+        modelKey: model.modelKey,
+        prompt: prompt.trim().slice(0, promptCap),
+        // "Auto" (image-only) = omit the field; video is always explicit.
+        aspectRatio: !effRatio || effRatio === 'Auto' ? undefined : effRatio,
+        duration: model.kind === 'video' ? effDuration : undefined,
+        quality: model.tiers ? effTier : undefined,
+        sound: model.supportsSound ? sound && !soundGated : undefined,
+        startFrame: useFrames ? mediaRefs[0] : undefined,
+        endFrame: useFrames && model.supportsEndFrame ? mediaRefs[1] : undefined,
+        references: useFrames ? [] : mediaRefs,
+        projectId,
+        idempotencyKey: submitKeyRef.current,
+      };
+
+      const res = await sdk.generation.createGenerate(input);
+      // Confirmed success — only now may the key rotate.
+      submitKeyRef.current = idempotencyKey();
+
+      const cardRatio =
+        !effRatio || effRatio === 'Auto' ? (mode === 'video' ? '16:9' : '1:1') : effRatio;
+      setArtifacts((prev) => [
+        ...prev,
+        {
+          id: res.jobId,
+          status: 'generating',
+          kind: mode,
+          prompt: prompt.trim(),
+          aspectRatio: cardRatio,
+          projectId,
+          modelName: model.name,
+          qualityLabel: model.tiers?.find((x) => x.mode === effTier)?.label,
+          durationSeconds: model.kind === 'video' ? effDuration : undefined,
+        },
+      ]);
+      trackJob(res.jobId, projectId);
+      setPrompt('');
+      // Attachments deliberately survive (web parity) — iterate on the
+      // same references without re-picking.
+      void qc.invalidateQueries({ queryKey: ME_QUERY_KEY });
+    } catch (err) {
+      if (err instanceof JobSubmissionError) {
+        // The SDK's code union is stale — branch on the string.
+        const code = err.code as string;
+        if (code === 'insufficient_credits' || code === 'topup_locked') {
+          Alert.alert(
+            t('errors.insufficientTitle'),
+            code === 'topup_locked' ? err.message : t('errors.insufficientMessage'),
+            [
+              { text: t('composer.notNow'), style: 'cancel' },
+              { text: t('composer.viewPlans'), onPress: () => router.push('/paywall') },
+            ],
+          );
+        } else {
+          // Validation refusals carry a human sentence — show it verbatim.
+          Alert.alert(t('errors.genericTitle'), err.message);
+        }
+      } else {
+        Alert.alert(
+          t('errors.genericTitle'),
+          err instanceof Error ? err.message : t('errors.genericMessage'),
+        );
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onGeneratePress = async () => {
+    if (!canGenerate) return;
+    if (await hasAiConsent(consentUserId)) void runGeneration();
+    else setShowConsent(true);
+  };
+
+  const onConsentAgree = async () => {
+    setShowConsent(false);
+    await setAiConsent(consentUserId);
+    void runGeneration();
+  };
+
+  // ── Asset viewer / details ─────────────────────────────────────────
+  const artifactInfo = (a: Artifact): AssetInfo => ({
+    id: a.id,
+    kind: a.kind,
+    ratio: a.aspectRatio,
+    uri: a.uri ?? '',
+    prompt: a.prompt,
+    modelName: a.modelName ?? '',
+    when: t('composer.justNow'),
+    quality: a.qualityLabel,
+    durationSeconds: a.durationSeconds,
+  });
+
+  const cellInfo = (cell: MasonryCell): AssetInfo | null => {
+    const art = artifacts.find((a) => a.id === cell.id);
+    if (art) return artifactInfo(art);
+    const asset = assetsQuery.data?.items.find((a) => a.id === cell.id);
+    if (!asset) return null;
+    return {
+      id: asset.id,
+      kind: asset.kind,
+      ratio: ratioFrom(asset.width, asset.height, asset.kind),
+      uri: asset.url,
+      prompt: '',
+      modelName: '',
+      when: relTime(asset.createdAt),
+      durationSeconds: asset.durationSec ?? undefined,
+    };
+  };
+
+  const openCell = (cell: MasonryCell) => {
+    const info = cellInfo(cell);
+    if (info) setViewerAsset(info);
+  };
+
+  /** ⋯ — pull real provenance off the job record, like web's info panel. */
+  const openDetails = async (base: AssetInfo) => {
+    const art = artifacts.find((a) => a.id === base.id);
+    if (art || !openProjectId) {
+      setDetailsAsset(base);
+      return;
+    }
+    setDetailsAsset(base); // show immediately; enrich when the fetch lands
+    try {
+      const detail = await sdk.projects.getAsset(openProjectId, base.id);
+      const gen = detail.generation;
+      setDetailsAsset((prev) =>
+        prev && prev.id === base.id
+          ? {
+              ...prev,
+              // Template prompts are ours, not the user's — the server
+              // already nulls them; show only what came back.
+              prompt: gen?.prompt ?? '',
+              modelName: gen?.modelName ?? gen?.modelKey ?? '',
+              quality: gen?.quality ?? prev.quality,
+              durationSeconds: gen?.duration ?? prev.durationSeconds,
+            }
+          : prev,
+      );
+    } catch {
+      // The sheet still shows the basics; provenance just stays blank.
+    }
+  };
 
   const attachAsReference = (a: AssetInfo) => {
     setViewerAsset(null);
-    setAttachments((prev) =>
-      [...prev, { id: `att-${a.id}-${Date.now()}`, previewUri: a.uri }].slice(0, maxImages),
-    );
+    if (typeof a.uri !== 'string' || a.kind !== 'image') return;
+    void attachFromUrl(a.uri, attachmentCap, false);
   };
+
   const reuseAsset = (a: AssetInfo) => {
     setViewerAsset(null);
     if (a.kind !== mode) switchMode(a.kind);
     setPrompt(a.prompt);
   };
-  /**
-   * Save to Photos. FRONT-END PHASE: demo media are bundled require()
-   * assets, so we resolve a local file via expo-asset and hand it to
-   * MediaLibrary. Wiring swaps this for lib/download's downloadOutput
-   * (real URLs, filename/extension handling, Sentry) — the buttons and
-   * toasts stay as they are.
-   */
-  const saveAsset = async (a: AssetInfo) => {
-    try {
-      const perm = await MediaLibrary.requestPermissionsAsync(true);
-      if (!perm.granted) {
-        toast.error(t('composer.saveDeniedTitle'), t('composer.saveDeniedBody'));
-        return;
-      }
-      let localUri: string;
-      if (typeof a.uri === 'number') {
-        const resolved = Asset.fromModule(a.uri);
-        await resolved.downloadAsync();
-        if (!resolved.localUri) throw new Error('asset has no local file');
-        localUri = resolved.localUri;
-      } else {
-        localUri = a.uri;
-      }
-      await MediaLibrary.saveToLibraryAsync(localUri);
-      toast.success(t('composer.savedTitle'), t('composer.savedBody'));
-    } catch (err) {
-      toast.error(
-        t('composer.saveFailedTitle'),
-        err instanceof Error ? err.message : undefined,
-      );
-    }
-  };
 
   const turnIntoVideo = (a: AssetInfo) => {
     setViewerAsset(null);
+    if (typeof a.uri !== 'string') return;
     if (mode !== 'video') switchMode('video');
-    // The image rides along as the clip's start frame.
-    setAttachments([{ id: `att-${a.id}-${Date.now()}`, previewUri: a.uri }]);
+    // The image rides along as the clip's start frame; the prompt
+    // clears so the user describes the MOTION (web behavior).
+    setPrompt('');
+    void attachFromUrl(a.uri, 2, true);
   };
 
-  // ── Pills ───────────────────────────────────────────────────────
+  const saveAsset = async (a: AssetInfo) => {
+    if (typeof a.uri !== 'string' || a.uri.length === 0) return;
+    await downloadOutput({ kind: a.kind, url: a.uri }, {
+      success: (m, d) => toast.success(m, d),
+      error: (m, d) => toast.error(m, d),
+    });
+  };
+
+  // ── Pills ──────────────────────────────────────────────────────────
   const pills: PillSpec[] = [
     {
       id: 'mode',
@@ -357,61 +688,49 @@ export default function ComposerScreen() {
       : []),
   ];
 
-  // ── Attachments (local-only in the front-end phase) ─────────────
-  const pickLocal = async (source: 'camera' | 'photos') => {
-    const opts: ImagePicker.ImagePickerOptions = {
-      mediaTypes: 'images',
-      quality: 0.9,
-      allowsMultipleSelection: source === 'photos' && maxImages > 1,
-      selectionLimit: Math.max(1, maxImages - attachments.length),
-    };
-    const res =
-      source === 'camera'
-        ? await ImagePicker.launchCameraAsync(opts)
-        : await ImagePicker.launchImageLibraryAsync(opts);
-    if (res.canceled) return;
-    const picked = res.assets.map((a, i) => ({
-      id: `${Date.now()}-${i}`,
-      previewUri: a.uri,
+  // ── Content cells ──────────────────────────────────────────────────
+  const masonryCells: MasonryCell[] = useMemo(() => {
+    if (!openProjectId) return [];
+    const pendingHere = artifacts
+      .filter((a) => a.projectId === openProjectId)
+      .slice()
+      .reverse()
+      .map<MasonryCell>((a) => ({
+        id: a.id,
+        kind: a.kind,
+        ratio: a.aspectRatio,
+        uri: a.kind === 'video' ? a.posterUri : a.uri,
+        pending: a.status === 'generating',
+      }));
+    const settled = (assetsQuery.data?.items ?? []).map<MasonryCell>((asset) => ({
+      id: asset.id,
+      kind: asset.kind,
+      ratio: ratioFrom(asset.width, asset.height, asset.kind),
+      uri: asset.kind === 'video' ? (asset.posterUrl ?? undefined) : asset.url,
     }));
-    setAttachments((prev) => [...prev, ...picked].slice(0, maxImages));
-  };
+    // A completed artifact whose asset row already arrived would render
+    // twice; the assets list wins.
+    const settledJobIds = new Set(
+      (assetsQuery.data?.items ?? []).map((a) => a.jobId).filter(Boolean),
+    );
+    return [...pendingHere.filter((c) => !settledJobIds.has(c.id)), ...settled];
+  }, [openProjectId, artifacts, assetsQuery.data]);
 
-  const attachActions: AttachAction[] = [
-    { id: 'camera', icon: 'camera', label: t('composer.attachCamera') },
-    { id: 'photos', icon: 'imageStack', label: t('composer.attachPhotos') },
-  ];
-
-  // ── Demo generation ─────────────────────────────────────────────
-  const canGenerate = prompt.trim().length > 0;
-  const generate = () => {
-    if (!canGenerate) return;
-    const id = `demo-${Date.now()}`;
-    const output = DEMO_OUTPUTS[demoCounter.current % DEMO_OUTPUTS.length];
-    demoCounter.current += 1;
-    setArtifacts((prev) => [
-      ...prev,
-      {
-        id,
-        status: 'generating',
-        kind: mode,
-        prompt: prompt.trim(),
-        aspectRatio: !effRatio || effRatio === 'Auto' ? (mode === 'video' ? '16:9' : '1:1') : effRatio,
-      },
-    ]);
-    setPrompt('');
-    // Resolve after a beat so the shimmer → media transition is felt.
-    setTimeout(() => {
-      setArtifacts((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status: 'ready', uri: output } : a)),
-      );
-    }, 2600);
-  };
+  const dockAttachments: DockAttachment[] = attachments.map((a, i) => ({
+    id: a.id,
+    previewUri: a.previewUri,
+    uploading: a.media === null,
+    slotLabel: useFrames
+      ? i === 0
+        ? t('attachments.startFrame')
+        : t('attachments.endFrame')
+      : undefined,
+  }));
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
       <ComposerHeader
-        title={openProject?.name ?? t('composer.title')}
+        title={openProjectName ?? t('composer.title')}
         credits={plan?.credits ?? 0}
         menuLabel={t('composer.menu')}
         closeLabel={t('composer.close')}
@@ -423,34 +742,20 @@ export default function ComposerScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {openProject ? (
+        {openProjectId ? (
           <ProjectMasonry
-            cells={[
-              // Session generations made inside this project lead the grid
-              // (pending ones shimmer in their mode color), then the
-              // project's existing media.
-              ...artifacts
-                .slice()
-                .reverse()
-                .map<MasonryCell>((a) => ({
-                  id: a.id,
-                  kind: a.kind,
-                  ratio: a.aspectRatio,
-                  uri: a.uri,
-                  pending: a.status === 'generating',
-                })),
-              ...openProject.assets.map<MasonryCell>((asset) => ({
-                id: asset.id,
-                kind: asset.kind,
-                ratio: asset.ratio,
-                uri: asset.uri,
-              })),
-            ]}
+            cells={masonryCells}
             onOpenCell={openCell}
-            onCellMenu={openCellMenu}
+            onCellMenu={(cell) => {
+              const info = cellInfo(cell);
+              if (info) void openDetails(info);
+            }}
             onCellDownload={(cell) => {
-              const a = resolveAsset(cell.id);
-              if (a) void saveAsset(a);
+              const info = cellInfo(cell);
+              // Videos save from their playable URL, not the poster thumb.
+              const asset = assetsQuery.data?.items.find((x) => x.id === cell.id);
+              if (asset) void saveAsset({ ...info!, uri: asset.url });
+              else if (info) void saveAsset(info);
             }}
             menuLabel={t('composer.assetMenu')}
             downloadLabel={t('composer.download')}
@@ -461,7 +766,7 @@ export default function ComposerScreen() {
             emptyTitle={t('composer.emptyTitle')}
             emptyBody={t('composer.emptyBody')}
             failedLabel={t('composer.failed')}
-            onOpen={(a) => setViewerAsset(resolveAsset(a.id))}
+            onOpen={(a) => setViewerAsset(artifactInfo(a))}
           />
         )}
 
@@ -471,21 +776,21 @@ export default function ComposerScreen() {
             prompt={prompt}
             onPromptChange={setPrompt}
             placeholder={
-              mode === 'image'
-                ? t('composer.placeholderImage')
-                : t('composer.placeholderVideo')
+              mode === 'image' ? t('composer.placeholderImage') : t('composer.placeholderVideo')
             }
             maxLength={promptCap}
-            attachments={attachments}
-            onRemoveAttachment={(id) =>
-              setAttachments((prev) => prev.filter((a) => a.id !== id))
-            }
+            attachments={dockAttachments}
+            onRemoveAttachment={(id) => setAttachments((prev) => prev.filter((a) => a.id !== id))}
             onOpenAttach={() => setSheet('attach')}
             canGenerate={canGenerate}
-            generating={false}
-            generateLabel={t('composer.generate', { count: cost })}
+            generating={submitting}
+            generateLabel={
+              model?.requiresStartFrame && !(useFrames && attachments[0]?.media)
+                ? t('needStartFrame')
+                : t('composer.generate', { count: cost })
+            }
             tint={MODE_TINT[mode]}
-            onGenerate={generate}
+            onGenerate={() => void onGeneratePress()}
           />
         </View>
       </KeyboardAvoidingView>
@@ -553,7 +858,7 @@ export default function ComposerScreen() {
         visible={sheet === 'attach'}
         title={t('composer.attachTitle')}
         actions={attachActions}
-        onAction={(id) => void pickLocal(id as 'camera' | 'photos')}
+        onAction={(id) => void pickAttachment(id as 'camera' | 'photos')}
         onClose={() => setSheet(null)}
       />
       <RecentsDrawer
@@ -563,19 +868,20 @@ export default function ComposerScreen() {
         projectsLabel={t('composer.drawerProjects')}
         recentsLabel={t('composer.drawerRecents')}
         emptyLabel={t('composer.drawerEmpty')}
-        folders={DEMO_FOLDERS}
-        recents={DEMO_RECENT_PROJECTS}
+        folders={drawerFolders}
+        recents={drawerRecents}
         activeProjectId={openProjectId}
         onNewSession={() => {
           setOpenProjectId(null);
+          sessionProjectRef.current = null;
           setArtifacts([]);
           setPrompt('');
           setAttachments([]);
         }}
         onOpenProject={(projectId) => {
           setOpenProjectId(projectId);
-          // A freshly opened project starts with its own media only —
-          // the previous session's cards belong to the previous context.
+          // A freshly opened project shows its own media; session cards
+          // belong to the previous context.
           setArtifacts([]);
           setAttachments([]);
         }}
@@ -588,7 +894,7 @@ export default function ComposerScreen() {
         downloadLabel={t('composer.download')}
         onDetails={(a) => {
           setViewerAsset(null);
-          setDetailsAsset(a);
+          void openDetails(a);
         }}
         onDownload={(a) => void saveAsset(a)}
         onClose={() => setViewerAsset(null)}
@@ -615,6 +921,11 @@ export default function ComposerScreen() {
         onReuse={reuseAsset}
         onTurnVideo={turnIntoVideo}
         onClose={() => setDetailsAsset(null)}
+      />
+      <AiConsentSheet
+        visible={showConsent}
+        onAgree={() => void onConsentAgree()}
+        onCancel={() => setShowConsent(false)}
       />
     </View>
   );

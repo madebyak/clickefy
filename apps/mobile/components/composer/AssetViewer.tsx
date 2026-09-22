@@ -6,6 +6,7 @@
  */
 
 import { Pressable } from '@clickfy/ui';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import { Modal, StyleSheet, View } from 'react-native';
@@ -19,20 +20,23 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/ui/Icon';
-import { MODE_TINT } from './mode-colors';
 import type { AssetInfo } from './asset-info';
 
 export function AssetViewer({
   asset,
   closeLabel,
   detailsLabel,
+  downloadLabel,
   onDetails,
+  onDownload,
   onClose,
 }: {
   asset: AssetInfo | null;
   closeLabel: string;
   detailsLabel: string;
+  downloadLabel: string;
   onDetails: (asset: AssetInfo) => void;
+  onDownload: (asset: AssetInfo) => void;
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -63,31 +67,46 @@ export function AssetViewer({
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
       <Animated.View style={[styles.stage, fade]}>
-        <Image
-          source={current.uri}
-          contentFit="contain"
-          style={StyleSheet.absoluteFill}
-          transition={120}
-        />
-
-        {/* Videos: static poster + a center badge for now (player lands
-            with wiring — the demo media are stills). */}
-        {current.kind === 'video' ? (
-          <View style={styles.playCenter} pointerEvents="none">
-            <View style={styles.playCircle}>
-              <Icon name="play" size={22} color="#FFFFFF" weight="fill" />
-            </View>
-            <View style={[styles.modeDot, { backgroundColor: MODE_TINT.video.solid }]} />
-          </View>
-        ) : null}
+        {current.kind === 'video' && typeof current.uri === 'string' ? (
+          // Real clip: plays immediately, WITH sound (the viewer is a
+          // deliberate, user-initiated open), looping like the web's
+          // asset detail. Byte-range support on /v1/outputs makes the
+          // URL directly seekable for AVPlayer.
+          <ViewerVideo url={current.uri} />
+        ) : (
+          <Image
+            source={current.uri}
+            contentFit="contain"
+            style={StyleSheet.absoluteFill}
+            transition={120}
+          />
+        )}
 
         <View style={[styles.topBar, { top: insets.top + 8 }]}>
           <StageButton icon="close" label={closeLabel} onPress={onClose} />
           <View style={{ flex: 1 }} />
+          <StageButton icon="download" label={downloadLabel} onPress={() => onDownload(current)} />
           <StageButton icon="more" label={detailsLabel} onPress={() => onDetails(current)} />
         </View>
       </Animated.View>
     </Modal>
+  );
+}
+
+function ViewerVideo({ url }: { url: string }) {
+  const player = useVideoPlayer(url, (p) => {
+    p.loop = true;
+    p.play();
+  });
+  return (
+    <VideoView
+      player={player}
+      style={StyleSheet.absoluteFill}
+      contentFit="contain"
+      nativeControls={false}
+      fullscreenOptions={{ enable: false }}
+      allowsPictureInPicture={false}
+    />
   );
 }
 
@@ -96,7 +115,7 @@ function StageButton({
   label,
   onPress,
 }: {
-  icon: 'close' | 'more';
+  icon: 'close' | 'more' | 'download';
   label: string;
   onPress: () => void;
 }) {
@@ -125,6 +144,7 @@ const styles = StyleSheet.create({
     right: 16,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
   },
   stageButton: {
     width: 38,
@@ -133,24 +153,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  playCenter: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  playCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
   },
 });

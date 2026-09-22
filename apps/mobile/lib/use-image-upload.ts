@@ -14,6 +14,7 @@
  * R2. Returns the persisted metadata for every successful upload.
  */
 
+import { File, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -42,8 +43,17 @@ function inferMimeType(uri: string, fallback: string): string {
   return fallback;
 }
 
+interface UploadCandidate {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  width?: number | null;
+  height?: number | null;
+}
+
 /** Compress + upload a single picked asset. Returns null on failure. */
-async function uploadAsset(asset: ImagePicker.ImagePickerAsset): Promise<PickedUpload | null> {
+async function uploadAsset(asset: UploadCandidate): Promise<PickedUpload | null> {
   try {
     let uploadUri = asset.uri;
     let mime = asset.mimeType ?? undefined;
@@ -71,6 +81,27 @@ async function uploadAsset(asset: ImagePicker.ImagePickerAsset): Promise<PickedU
       previewUri: asset.uri,
       media: { r2Key: up.key, mimeType: up.contentType, sizeBytes: up.sizeBytes },
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-upload a REMOTE image (a generated output or an old reference) so it
+ * can ride a new generation as a real `user-uploads/…` r2Key. The API only
+ * accepts attachment keys under the caller's own upload prefix, and asset
+ * detail exposes URLs, not keys — so web and mobile alike download the
+ * bytes and upload them again (see composer-wiring notes). Returns null on
+ * any failure; callers toast.
+ */
+export async function uploadRemoteUrl(url: string): Promise<PickedUpload | null> {
+  try {
+    const clean = url.split('?')[0] ?? url;
+    const name = clean.split('/').pop() || 'reference.jpg';
+    const withExt = /\.[a-z0-9]{2,5}$/i.test(name) ? name : `${name}.jpg`;
+    const destination = new File(Paths.cache, `reuse-${Date.now()}-${withExt}`);
+    const downloaded = await File.downloadFileAsync(url, destination);
+    return await uploadAsset({ uri: downloaded.uri, fileName: withExt });
   } catch {
     return null;
   }
@@ -159,5 +190,46 @@ export function useImageUpload() {
     [chooseSource, t],
   );
 
-  return { pickImages };
+  /**
+   * Same intake pipeline, but the SOURCE is decided by the caller's own
+   * UI (the composer's attach sheet) instead of the iOS action sheet.
+   */
+  const pickFromSource = useCallback(
+    async (source: Source, { multiple = false, limit }: PickImagesOptions = {}): Promise<PickedUpload[]> => {
+      let assets: ImagePicker.ImagePickerAsset[] = [];
+      if (source === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) return [];
+        const res = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          quality: 0.9,
+          exif: false,
+        });
+        if (res.canceled) return [];
+        assets = res.assets;
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) return [];
+        const res = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsMultipleSelection: multiple,
+          selectionLimit: multiple ? Math.max(0, limit ?? 0) : 1,
+          quality: 0.9,
+          exif: false,
+        });
+        if (res.canceled) return [];
+        assets = res.assets;
+      }
+      if (assets.length === 0) return [];
+      const results = await Promise.all(assets.map(uploadAsset));
+      const ok = results.filter((r): r is PickedUpload => r !== null);
+      if (ok.length === 0 && assets.length > 0) {
+        Alert.alert(t('errors.genericTitle'), t('errors.genericMessage'));
+      }
+      return ok;
+    },
+    [t],
+  );
+
+  return { pickImages, pickFromSource };
 }

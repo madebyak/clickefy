@@ -44,12 +44,16 @@ export function ProjectMasonry({
   cells,
   onOpenCell,
   onCellMenu,
+  onCellDownload,
   menuLabel,
+  downloadLabel,
 }: {
   cells: MasonryCell[];
   onOpenCell: (cell: MasonryCell) => void;
   onCellMenu: (cell: MasonryCell) => void;
+  onCellDownload: (cell: MasonryCell) => void;
   menuLabel: string;
+  downloadLabel: string;
 }) {
   // Balance by accumulated height so neither column runs long.
   const [colA, colB] = useMemo(() => {
@@ -85,12 +89,12 @@ export function ProjectMasonry({
     >
       <View style={{ flex: 1, gap: 10 }}>
         {colA.map((cell) => (
-          <Cell key={cell.id} cell={cell} menuLabel={menuLabel} onOpen={() => onOpenCell(cell)} onMenu={() => onCellMenu(cell)} />
+          <Cell key={cell.id} cell={cell} menuLabel={menuLabel} downloadLabel={downloadLabel} onOpen={() => onOpenCell(cell)} onMenu={() => onCellMenu(cell)} onDownload={() => onCellDownload(cell)} />
         ))}
       </View>
       <View style={{ flex: 1, gap: 10 }}>
         {colB.map((cell) => (
-          <Cell key={cell.id} cell={cell} menuLabel={menuLabel} onOpen={() => onOpenCell(cell)} onMenu={() => onCellMenu(cell)} />
+          <Cell key={cell.id} cell={cell} menuLabel={menuLabel} downloadLabel={downloadLabel} onOpen={() => onOpenCell(cell)} onMenu={() => onCellMenu(cell)} onDownload={() => onCellDownload(cell)} />
         ))}
       </View>
     </ScrollView>
@@ -100,13 +104,17 @@ export function ProjectMasonry({
 function Cell({
   cell,
   menuLabel,
+  downloadLabel,
   onOpen,
   onMenu,
+  onDownload,
 }: {
   cell: MasonryCell;
   menuLabel: string;
+  downloadLabel: string;
   onOpen: () => void;
   onMenu: () => void;
+  onDownload: () => void;
 }) {
   const { colors } = useTheme();
   return (
@@ -123,24 +131,41 @@ function Cell({
           <Shimmer tint={MODE_TINT[cell.kind].solid} />
         ) : (
           <>
-            <Image source={cell.uri} contentFit="cover" style={{ width: '100%', height: '100%' }} transition={150} />
+            {cell.uri ? (
+              <Image source={cell.uri} contentFit="cover" style={{ width: '100%', height: '100%' }} transition={150} />
+            ) : (
+              // Poster-less video: a quiet dark stage under the play badge.
+              <View style={{ width: '100%', height: '100%', backgroundColor: '#101019' }} />
+            )}
             {cell.kind === 'video' ? (
               <View style={styles.playBadge}>
                 <Icon name="play" size={11} color="#FFFFFF" weight="fill" />
                 <View style={[styles.modeDot, { backgroundColor: MODE_TINT.video.solid }]} />
               </View>
             ) : null}
-            {/* ⋯ — the asset's detail drawer (web's info panel). */}
-            <Pressable
-              onPress={onMenu}
-              haptic="light"
-              pressedOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel={menuLabel}
-              style={styles.menuButton}
-            >
-              <Icon name="more" size={14} color="#FFFFFF" weight="bold" />
-            </Pressable>
+            {/* ↓ save + ⋯ details, stacked in the corner. */}
+            <View style={styles.cornerActions}>
+              <Pressable
+                onPress={onDownload}
+                haptic="light"
+                pressedOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={downloadLabel}
+                style={styles.cornerButton}
+              >
+                <Icon name="download" size={13} color="#FFFFFF" weight="bold" />
+              </Pressable>
+              <Pressable
+                onPress={onMenu}
+                haptic="light"
+                pressedOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={menuLabel}
+                style={styles.cornerButton}
+              >
+                <Icon name="more" size={14} color="#FFFFFF" weight="bold" />
+              </Pressable>
+            </View>
           </>
         )}
       </View>
@@ -193,10 +218,14 @@ const styles = StyleSheet.create({
     height: 5,
     borderRadius: 2.5,
   },
-  menuButton: {
+  cornerActions: {
     position: 'absolute',
     top: 8,
     right: 8,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  cornerButton: {
     width: 26,
     height: 26,
     borderRadius: 13,

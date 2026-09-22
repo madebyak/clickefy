@@ -35,9 +35,18 @@ export interface Artifact {
   prompt: string;
   /** "9:16" etc — sizes the card before media exists. */
   aspectRatio: string;
-  /** Preview source once ready (poster for videos in the feed). A number
-   *  is a bundled `require()` asset — the demo phase uses those. */
+  /** Media source once ready (for video: the playable URL). */
   uri?: string | number;
+  /** Still to show in the feed for a video (job outputs may lack one). */
+  posterUri?: string;
+  /** The project this generation files into (server-side). */
+  projectId?: string;
+  /** Provenance captured at submit, for the details drawer. */
+  modelName?: string;
+  qualityLabel?: string;
+  durationSeconds?: number;
+  /** Server's failure sentence, when status === 'failed'. */
+  errorMessage?: string;
 }
 
 function aspectValue(ratio: string): number {
@@ -136,7 +145,18 @@ function ArtifactCard({
       >
         {artifact.status === 'ready' && artifact.uri ? (
           <>
-            <Image source={artifact.uri} contentFit="cover" style={StyleSheet.absoluteFill} transition={220} />
+            {artifact.kind === 'video' ? (
+              // A finished clip: show its poster still when we have one,
+              // otherwise a quiet dark stage — never hand a video URL to
+              // an <Image>. Tap opens the playing viewer either way.
+              artifact.posterUri ? (
+                <Image source={artifact.posterUri} contentFit="cover" style={StyleSheet.absoluteFill} transition={220} />
+              ) : (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#101019' }]} />
+              )
+            ) : (
+              <Image source={artifact.uri} contentFit="cover" style={StyleSheet.absoluteFill} transition={220} />
+            )}
             {artifact.kind === 'video' ? (
               <View style={styles.playBadge}>
                 <Icon name="play" size={16} color="#FFFFFF" weight="fill" />
@@ -146,8 +166,8 @@ function ArtifactCard({
         ) : artifact.status === 'failed' ? (
           <View style={styles.centerFill}>
             <Icon name="warning" size={20} color={colors.inkMuted} />
-            <Text variant="caption" color="inkMuted" style={{ marginTop: 6 }}>
-              {failedLabel}
+            <Text variant="caption" color="inkMuted" align="center" style={{ marginTop: 6, paddingHorizontal: 12 }}>
+              {artifact.errorMessage || failedLabel}
             </Text>
           </View>
         ) : (

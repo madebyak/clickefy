@@ -9,6 +9,7 @@ import { purgeDeletedUserAssets } from './lib/purge-assets';
 import { health } from './routes/health';
 import { billingRoute } from './routes/billing';
 import { catalog } from './routes/catalog';
+import { libraryRoute } from './routes/library';
 import { categoriesRoute } from './routes/categories';
 import { jobsRoute } from './routes/jobs';
 import { assetsRoute, foldersRoute, projectsRoute } from './routes/projects';
@@ -82,6 +83,7 @@ app.get('/', (c) =>
 app.route('/v1/health', health);
 app.route('/v1/billing', billingRoute);
 app.route('/v1/catalog', catalog);
+app.route('/v1/library', libraryRoute);
 app.route('/v1/categories', categoriesRoute);
 app.route('/v1/admin/me', adminMeRoute);
 app.route('/v1/admin/team', adminTeamRoute);

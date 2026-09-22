@@ -53,7 +53,7 @@ export function TopBar({ credits, plan, onMenu, onCreditsPress }: TopBarProps) {
           <Icon name="menu" size={20} color={colors.ink} weight="bold" />
         </Pressable>
 
-        {/* Brand mark — the official SVG logo (the violet ".Ai" replaces the
+        {/* Brand mark — the official SVG logo (the accent "C" mark replaces the
             old accent-dot affordance, baked into the artwork). */}
         <Logo width={108} />
       </HStack>

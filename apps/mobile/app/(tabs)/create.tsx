@@ -78,7 +78,13 @@ export default function CreateScreen() {
   });
   // Memoised: a fresh array on every render made both the `selectedModel`
   // memo and the default-selection effect below recompute every render.
-  const models = useMemo(() => modelsQuery.data ?? [], [modelsQuery.data]);
+  // Tool-only entries (the video upscaler) are not promptable — they exist
+  // in the roster for the tools' own price display and must never appear
+  // in the picker (same rule as web's use-models.ts).
+  const models = useMemo(
+    () => (modelsQuery.data ?? []).filter((m) => !m.toolOnly),
+    [modelsQuery.data],
+  );
 
   // `null` means "the user has not picked a model yet", so the default is
   // DERIVED below rather than written by an effect — a refetch of the

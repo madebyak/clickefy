@@ -1,11 +1,16 @@
 import { Badge, Box, Button, Card, HStack, Skeleton, Stack, Text, useTheme } from '@clickfy/ui';
 import type { UserProject } from '@clickfy/sdk';
 import { FlashList } from '@shopify/flash-list';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, RefreshControl, View } from 'react-native';
 import ReanimatedSwipeable, {
@@ -52,9 +57,16 @@ export default function ProjectsScreen() {
   // a time" behaviour — without it the UI feels chaotic.
   const openRowRef = useRef<SwipeableMethods | null>(null);
 
-  const projectsQuery = useQuery({
+  // Cursor-paginated: the server caps a page at 50 and hands back a
+  // `nextCursor`; scrolling near the end pulls the next page, so the
+  // whole history is reachable instead of silently stopping at the
+  // first page.
+  const projectsQuery = useInfiniteQuery({
     queryKey: ['projects'],
-    queryFn: () => sdk.library.listProjects({ limit: 30 }),
+    queryFn: ({ pageParam }) =>
+      sdk.library.listProjects({ limit: 30, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
     ...PROJECTS_QUERY,
   });
 
@@ -64,17 +76,25 @@ export default function ProjectsScreen() {
   // "force me a fresh copy" gesture.
   useRefreshOnFocus(projectsQuery.refetch);
 
+  type ProjectsPage = { items: UserProject[]; nextCursor: string | null };
+  type ProjectsData = InfiniteData<ProjectsPage, string | null>;
+
   const deleteMutation = useMutation({
     mutationFn: (jobId: string) => sdk.library.deleteProject(jobId),
     onMutate: async (jobId) => {
       await qc.cancelQueries({ queryKey: ['projects'] });
-      const previous = qc.getQueryData<{ items: UserProject[]; nextCursor: string | null }>([
-        'projects',
-      ]);
-      // Optimistic remove. Keep the rest of the page intact.
-      qc.setQueryData(['projects'], (old: { items: UserProject[]; nextCursor: string | null } | undefined) =>
+      const previous = qc.getQueryData<ProjectsData>(['projects']);
+      // Optimistic remove across every loaded page; cursors are left
+      // alone (they key off createdAt|id of rows that still exist).
+      qc.setQueryData<ProjectsData>(['projects'], (old) =>
         old
-          ? { ...old, items: old.items.filter((p) => p.id !== jobId) }
+          ? {
+              ...old,
+              pages: old.pages.map((page) => ({
+                ...page,
+                items: page.items.filter((p) => p.id !== jobId),
+              })),
+            }
           : old,
       );
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -94,7 +114,10 @@ export default function ProjectsScreen() {
     },
   });
 
-  const items = projectsQuery.data?.items ?? [];
+  const items = useMemo(
+    () => projectsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [projectsQuery.data],
+  );
 
   const handleOpenProject = useCallback(
     (p: UserProject) => {
@@ -181,6 +204,22 @@ export default function ProjectsScreen() {
           // composing with a container `gap` would break virtualization.
           ItemSeparatorComponent={ItemGap}
           ListEmptyComponent={<EmptyState />}
+          // Pull the next page when the user nears the bottom. The guard
+          // on isFetchingNextPage stops the burst of onEndReached events
+          // a fast fling fires from queueing duplicate requests.
+          onEndReached={() => {
+            if (projectsQuery.hasNextPage && !projectsQuery.isFetchingNextPage) {
+              void projectsQuery.fetchNextPage();
+            }
+          }}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            projectsQuery.isFetchingNextPage ? (
+              <View style={{ paddingVertical: 16, gap: 12 }}>
+                <Skeleton height={86} radius={18} />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
           refreshControl={

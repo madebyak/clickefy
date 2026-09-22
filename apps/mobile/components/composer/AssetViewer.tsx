@@ -6,6 +6,7 @@
  */
 
 import { Pressable } from '@clickfy/ui';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
@@ -68,18 +69,13 @@ export function AssetViewer({
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
       <Animated.View style={[styles.stage, fade]}>
         {current.kind === 'video' && typeof current.uri === 'string' ? (
-          // Real clip: plays immediately, WITH sound (the viewer is a
-          // deliberate, user-initiated open), looping like the web's
-          // asset detail. Byte-range support on /v1/outputs makes the
-          // URL directly seekable for AVPlayer.
+          // Real clip: autoplays WITH sound (a deliberate, user-initiated
+          // open), loops, and carries the platform's standard transport —
+          // play/pause, scrubbing, volume. Byte-range support on
+          // /v1/outputs makes the URL directly seekable for AVPlayer.
           <ViewerVideo url={current.uri} />
         ) : (
-          <Image
-            source={current.uri}
-            contentFit="contain"
-            style={StyleSheet.absoluteFill}
-            transition={120}
-          />
+          <ZoomableImage uri={current.uri} resetKey={current.id} />
         )}
 
         <View style={[styles.topBar, { top: insets.top + 8 }]}>
@@ -103,10 +99,100 @@ function ViewerVideo({ url }: { url: string }) {
       player={player}
       style={StyleSheet.absoluteFill}
       contentFit="contain"
-      nativeControls={false}
+      // Industry-standard transport: the OS supplies play/pause, the
+      // scrubber and volume — no reinvented controls.
+      nativeControls
       fullscreenOptions={{ enable: false }}
       allowsPictureInPicture={false}
     />
+  );
+}
+
+/**
+ * Pinch-to-zoom + pan + double-tap, the standard photo-viewer gesture
+ * set. Scale clamps to [1, 4]; releasing below 1 springs back and
+ * recenters; double-tap toggles 1 ⇄ 2.5. Pan only bites while zoomed
+ * so the stage's own taps stay usable at rest.
+ */
+function ZoomableImage({ uri, resetKey }: { uri: string | number; resetKey: string }) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  const savedTx = useSharedValue(0);
+  const savedTy = useSharedValue(0);
+
+  // A new asset resets the camera.
+  useEffect(() => {
+    scale.value = 1;
+    savedScale.value = 1;
+    tx.value = 0;
+    ty.value = 0;
+    savedTx.value = 0;
+    savedTy.value = 0;
+  }, [resetKey, scale, savedScale, tx, ty, savedTx, savedTy]);
+
+  const settle = () => {
+    'worklet';
+    if (scale.value < 1) {
+      scale.value = withTiming(1, { duration: 180 });
+      tx.value = withTiming(0, { duration: 180 });
+      ty.value = withTiming(0, { duration: 180 });
+      savedScale.value = 1;
+      savedTx.value = 0;
+      savedTy.value = 0;
+    } else {
+      savedScale.value = scale.value;
+      savedTx.value = tx.value;
+      savedTy.value = ty.value;
+    }
+  };
+
+  const pinch = Gesture.Pinch()
+    .onUpdate((e) => {
+      scale.value = Math.min(4, savedScale.value * e.scale);
+    })
+    .onEnd(() => {
+      settle();
+    });
+
+  const pan = Gesture.Pan()
+    .onUpdate((e) => {
+      if (savedScale.value <= 1) return;
+      tx.value = savedTx.value + e.translationX;
+      ty.value = savedTy.value + e.translationY;
+    })
+    .onEnd(() => {
+      settle();
+    });
+
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      if (scale.value > 1) {
+        scale.value = withTiming(1, { duration: 200 });
+        tx.value = withTiming(0, { duration: 200 });
+        ty.value = withTiming(0, { duration: 200 });
+        savedScale.value = 1;
+        savedTx.value = 0;
+        savedTy.value = 0;
+      } else {
+        scale.value = withTiming(2.5, { duration: 200 });
+        savedScale.value = 2.5;
+      }
+    });
+
+  const gesture = Gesture.Simultaneous(pinch, pan, doubleTap);
+  const zoomStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
+  }));
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View style={[StyleSheet.absoluteFill, zoomStyle]}>
+        <Image source={uri} contentFit="contain" style={StyleSheet.absoluteFill} transition={120} />
+      </Animated.View>
+    </GestureDetector>
   );
 }
 

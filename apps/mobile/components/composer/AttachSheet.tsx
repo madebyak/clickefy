@@ -26,17 +26,20 @@ export function AttachSheet({
   title,
   actions,
   onAction,
+  onDismissed,
   onClose,
 }: {
   visible: boolean;
   title: string;
   actions: AttachAction[];
+  /** Called with the tapped action id AFTER the sheet fully dismissed. */
   onAction: (id: string) => void;
+  onDismissed?: () => void;
   onClose: () => void;
 }) {
   const { colors } = useTheme();
   return (
-    <Sheet visible={visible} onClose={onClose} title={title} maxHeight="45%">
+    <Sheet visible={visible} onClose={onClose} onDismissed={onDismissed} title={title} maxHeight="45%">
       <HStack gap="md" style={{ paddingBottom: 8, flexWrap: 'wrap' }}>
         {actions.map((a) => (
           <Pressable

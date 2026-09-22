@@ -31,13 +31,20 @@ const EXIT_MS = 190;
 interface SheetProps {
   visible: boolean;
   onClose: () => void;
+  /**
+   * Fires once the exit animation finished AND the native Modal
+   * unmounted. iOS silently drops any presentation (image picker,
+   * camera) requested while a modal is still dismissing — actions that
+   * present something must wait for this.
+   */
+  onDismissed?: () => void;
   title?: string;
   children: ReactNode;
   /** Max sheet height as a percentage of the screen. Default '70%'. */
   maxHeight?: `${number}%`;
 }
 
-export function Sheet({ visible, onClose, title, children, maxHeight = '70%' }: SheetProps) {
+export function Sheet({ visible, onClose, onDismissed, title, children, maxHeight = '70%' }: SheetProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -46,6 +53,12 @@ export function Sheet({ visible, onClose, title, children, maxHeight = '70%' }: 
   const [mounted, setMounted] = useState(visible);
   const backdrop = useSharedValue(0);
   const translateY = useSharedValue(SLIDE_DISTANCE);
+  const finishExit = () => {
+    setMounted(false);
+    // A beat for the native dismissal to settle before anything new
+    // presents (picker/camera).
+    if (onDismissed) setTimeout(onDismissed, 80);
+  };
 
   // React's sanctioned "adjust state during render" pattern — mounting
   // must happen before the enter animation, and doing it here (not in
@@ -62,7 +75,7 @@ export function Sheet({ visible, onClose, title, children, maxHeight = '70%' }: 
         SLIDE_DISTANCE,
         { duration: EXIT_MS, easing: Easing.in(Easing.cubic) },
         (finished) => {
-          if (finished) runOnJS(setMounted)(false);
+          if (finished) runOnJS(finishExit)();
         },
       );
     }

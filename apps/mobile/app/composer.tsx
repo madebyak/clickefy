@@ -5,8 +5,9 @@
  *
  *   ☰  Create / <project>       [total credits] ✕
  *   ───────────────────────────────────────────
- *   fresh session → chat-like artifact feed
- *   open project  → web-style masonry of its media
+ *   ONE content surface: a web-style masonry — the session's own
+ *   generations (skeleton → media in place), plus the open project's
+ *   assets when one is selected from the drawer.
  *   ───────────────────────────────────────────
  *   (Image)(Model)(Ratio)(Quality)(Duration)(Sound)   ← pills → sheets
  *   [ attachments / prompt / + / Generate · N cr ]
@@ -32,12 +33,15 @@ import { Alert, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiConsentSheet } from '@/components/AiConsentSheet';
-import { ArtifactFeed, type Artifact } from '@/components/composer/ArtifactFeed';
 import { AssetDetailsDrawer } from '@/components/composer/AssetDetailsDrawer';
 import { AssetViewer } from '@/components/composer/AssetViewer';
 import { AttachSheet, type AttachAction } from '@/components/composer/AttachSheet';
 import { ComposerHeader } from '@/components/composer/ComposerHeader';
-import { ProjectMasonry, type MasonryCell } from '@/components/composer/ProjectMasonry';
+import {
+  ProjectMasonry,
+  type MasonryCell,
+  type MasonryLabels,
+} from '@/components/composer/ProjectMasonry';
 import { PromptDock, type DockAttachment } from '@/components/composer/PromptDock';
 import {
   RecentsDrawer,
@@ -68,6 +72,25 @@ import {
 import type { UploadedMedia } from '@/components/use-template/InputField';
 
 type SheetName = 'mode' | 'model' | 'ratio' | 'quality' | 'duration' | 'attach' | null;
+
+/** One in-flight or finished generation from THIS session. */
+interface Artifact {
+  id: string;
+  status: 'generating' | 'ready' | 'failed';
+  kind: ComposerMode;
+  prompt: string;
+  aspectRatio: string;
+  uri?: string;
+  posterUri?: string;
+  projectId?: string;
+  modelName?: string;
+  qualityLabel?: string;
+  durationSeconds?: number;
+  errorMessage?: string;
+  pendingStatus?: 'queued' | 'processing';
+  stageLabel?: string;
+  stageProgress?: number;
+}
 
 /** One attachment in the dock: preview + its persisted upload (null while in flight). */
 interface ComposerAttachment {
@@ -148,6 +171,9 @@ export default function ComposerScreen() {
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [sheet, setSheet] = useState<SheetName>(null);
+  // iOS drops a picker presented while a modal is dismissing — a tapped
+  // attach action waits for the sheet's onDismissed before launching.
+  const pendingPickRef = useRef<'camera' | 'photos' | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -403,6 +429,19 @@ export default function ComposerScreen() {
           void qc.invalidateQueries({ queryKey: ['project-assets', projectId] });
           void qc.invalidateQueries({ queryKey: ['studio-projects'] });
           void qc.invalidateQueries({ queryKey: ME_QUERY_KEY });
+        } else if (update.status === 'queued' || update.status === 'processing') {
+          setArtifacts((prev) =>
+            prev.map((a) =>
+              a.id === jobId
+                ? {
+                    ...a,
+                    pendingStatus: update.status as 'queued' | 'processing',
+                    stageLabel: update.stageLabel,
+                    stageProgress: update.stageProgress,
+                  }
+                : a,
+            ),
+          );
         } else if (update.status === 'failed') {
           unsubsRef.current.get(jobId)?.();
           unsubsRef.current.delete(jobId);
@@ -469,6 +508,7 @@ export default function ComposerScreen() {
         {
           id: res.jobId,
           status: 'generating',
+          pendingStatus: 'queued',
           kind: mode,
           prompt: prompt.trim(),
           aspectRatio: cardRatio,
@@ -545,7 +585,7 @@ export default function ComposerScreen() {
       id: asset.id,
       kind: asset.kind,
       ratio: ratioFrom(asset.width, asset.height, asset.kind),
-      uri: asset.url,
+      uri: asset.url, // playable for video; the viewer plays it directly
       prompt: '',
       modelName: '',
       when: relTime(asset.createdAt),
@@ -688,33 +728,53 @@ export default function ComposerScreen() {
       : []),
   ];
 
-  // ── Content cells ──────────────────────────────────────────────────
+  // ── Content cells: ONE surface. Session work leads (newest first),
+  // then — with a project open — its settled assets. ──────────────────
+  const artifactCell = (a: Artifact): MasonryCell => ({
+    id: a.id,
+    kind: a.kind,
+    ratio: a.aspectRatio,
+    uri: a.kind === 'video' ? a.posterUri : a.uri,
+    videoUrl: a.kind === 'video' && a.status === 'ready' ? a.uri : undefined,
+    pending: a.status === 'generating',
+    pendingStatus: a.pendingStatus,
+    stageLabel: a.stageLabel,
+    stageProgress: a.stageProgress,
+    failed: a.status === 'failed',
+    errorMessage: a.errorMessage,
+  });
+
   const masonryCells: MasonryCell[] = useMemo(() => {
-    if (!openProjectId) return [];
-    const pendingHere = artifacts
-      .filter((a) => a.projectId === openProjectId)
-      .slice()
-      .reverse()
-      .map<MasonryCell>((a) => ({
-        id: a.id,
-        kind: a.kind,
-        ratio: a.aspectRatio,
-        uri: a.kind === 'video' ? a.posterUri : a.uri,
-        pending: a.status === 'generating',
-      }));
+    const sessionScope = openProjectId
+      ? artifacts.filter((a) => a.projectId === openProjectId)
+      : artifacts;
+    const sessionCells = sessionScope.slice().reverse().map(artifactCell);
+    if (!openProjectId) return sessionCells;
     const settled = (assetsQuery.data?.items ?? []).map<MasonryCell>((asset) => ({
       id: asset.id,
       kind: asset.kind,
       ratio: ratioFrom(asset.width, asset.height, asset.kind),
       uri: asset.kind === 'video' ? (asset.posterUrl ?? undefined) : asset.url,
+      videoUrl: asset.kind === 'video' ? asset.url : undefined,
     }));
     // A completed artifact whose asset row already arrived would render
     // twice; the assets list wins.
     const settledJobIds = new Set(
       (assetsQuery.data?.items ?? []).map((a) => a.jobId).filter(Boolean),
     );
-    return [...pendingHere.filter((c) => !settledJobIds.has(c.id)), ...settled];
+    return [...sessionCells.filter((c) => !settledJobIds.has(c.id)), ...settled];
   }, [openProjectId, artifacts, assetsQuery.data]);
+
+  const masonryLabels: MasonryLabels = {
+    menu: t('composer.assetMenu'),
+    download: t('composer.download'),
+    queued: t('composer.queuedLabel'),
+    generating: t('composer.generatingLabel'),
+    failed: t('composer.failed'),
+    dismiss: t('composer.dismiss'),
+    emptyTitle: t('composer.emptyTitle'),
+    emptyBody: t('composer.emptyBody'),
+  };
 
   const dockAttachments: DockAttachment[] = attachments.map((a, i) => ({
     id: a.id,
@@ -742,33 +802,23 @@ export default function ComposerScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {openProjectId ? (
-          <ProjectMasonry
-            cells={masonryCells}
-            onOpenCell={openCell}
-            onCellMenu={(cell) => {
-              const info = cellInfo(cell);
-              if (info) void openDetails(info);
-            }}
-            onCellDownload={(cell) => {
-              const info = cellInfo(cell);
-              // Videos save from their playable URL, not the poster thumb.
-              const asset = assetsQuery.data?.items.find((x) => x.id === cell.id);
-              if (asset) void saveAsset({ ...info!, uri: asset.url });
-              else if (info) void saveAsset(info);
-            }}
-            menuLabel={t('composer.assetMenu')}
-            downloadLabel={t('composer.download')}
-          />
-        ) : (
-          <ArtifactFeed
-            artifacts={artifacts}
-            emptyTitle={t('composer.emptyTitle')}
-            emptyBody={t('composer.emptyBody')}
-            failedLabel={t('composer.failed')}
-            onOpen={(a) => setViewerAsset(artifactInfo(a))}
-          />
-        )}
+        <ProjectMasonry
+          cells={masonryCells}
+          labels={masonryLabels}
+          onOpenCell={openCell}
+          onCellMenu={(cell) => {
+            const info = cellInfo(cell);
+            if (info) void openDetails(info);
+          }}
+          onCellDownload={(cell) => {
+            const info = cellInfo(cell);
+            // Videos save from their playable URL, not the poster thumb.
+            if (info) void saveAsset(cell.videoUrl ? { ...info, uri: cell.videoUrl } : info);
+          }}
+          onDismissFailed={(cell) =>
+            setArtifacts((prev) => prev.filter((a) => a.id !== cell.id))
+          }
+        />
 
         <View style={{ gap: 10, paddingBottom: insets.bottom + 10, paddingTop: 4 }}>
           <OptionPillsRow pills={pills} />
@@ -858,7 +908,14 @@ export default function ComposerScreen() {
         visible={sheet === 'attach'}
         title={t('composer.attachTitle')}
         actions={attachActions}
-        onAction={(id) => void pickAttachment(id as 'camera' | 'photos')}
+        onAction={(id) => {
+          pendingPickRef.current = id as 'camera' | 'photos';
+        }}
+        onDismissed={() => {
+          const source = pendingPickRef.current;
+          pendingPickRef.current = null;
+          if (source) void pickAttachment(source);
+        }}
         onClose={() => setSheet(null)}
       />
       <RecentsDrawer

@@ -128,6 +128,9 @@
     "tooManyRunning": "Up to {{count}} generations can run at once — one is about to finish.",
     "attachFailed": "Couldn't attach that image",
     "notNow": "Not now",
-    "viewPlans": "View plans"
+    "viewPlans": "View plans",
+    "queuedLabel": "Queued",
+    "generatingLabel": "Generating…",
+    "dismiss": "Dismiss"
   }
 }

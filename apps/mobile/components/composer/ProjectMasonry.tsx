@@ -1,18 +1,25 @@
 /**
- * ProjectMasonry — an open project's media in the composer's content
- * area, the mobile echo of the web studio workspace: a two-column
- * masonry where every cell keeps its media's true aspect ratio.
+ * ProjectMasonry — the composer's ONE content surface: a two-column
+ * masonry of generated media, whether the session is fresh (its own
+ * generations) or a project is open (its assets + in-flight work).
  *
- * Cells deal into whichever column is currently shorter, which gives
- * the stagger without a measurement pass. A cell can be PENDING (a
- * generation running inside this project): it renders the same
- * mode-tinted shimmer as the chat feed and resolves in place.
+ * Cells deal into whichever column is currently shorter, keeping each
+ * media's true aspect ratio — the stagger with no measurement pass.
+ *
+ * Cell states, mirroring the web workspace's pending strip:
+ *   pending → pulsing skeleton card: spinner, Queued/Generating label,
+ *             stage label, bottom progress bar — all in the mode color.
+ *   failed  → warning + the server's sentence + a dismiss ✕.
+ *   video   → AUTOPLAYING muted loop via VideoPreview (poster
+ *             underneath, global decoder-slot limited), purple dot badge.
+ *   image   → plain image.
+ * Ready cells carry ↓ save and ⋯ details in the corner.
  */
 
-import { Pressable, useTheme } from '@clickfy/ui';
+import { Pressable, Text, useTheme } from '@clickfy/ui';
 import { Image } from 'expo-image';
 import { useEffect, useMemo } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -21,6 +28,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { LogoMark } from '@/components/brand/Logo';
+import { VideoPreview } from '@/components/home/VideoPreview';
 import { Icon } from '@/components/ui/Icon';
 import { MODE_TINT } from './mode-colors';
 import type { ComposerMode } from './sheets';
@@ -30,9 +39,29 @@ export interface MasonryCell {
   kind: ComposerMode;
   /** "3:4" etc — the cell's shape. */
   ratio: string;
-  /** Media source; absent while `pending`. */
+  /** Still/poster source; absent while pending (and for posterless video). */
   uri?: string | number;
+  /** Playable URL for a finished video — enables the in-grid autoplay. */
+  videoUrl?: string;
   pending?: boolean;
+  /** Pending detail, verbatim from the job poller. */
+  pendingStatus?: 'queued' | 'processing';
+  stageLabel?: string;
+  /** 0–1 within the active stage. */
+  stageProgress?: number;
+  failed?: boolean;
+  errorMessage?: string;
+}
+
+export interface MasonryLabels {
+  menu: string;
+  download: string;
+  queued: string;
+  generating: string;
+  failed: string;
+  dismiss: string;
+  emptyTitle: string;
+  emptyBody: string;
 }
 
 function aspectValue(ratio: string): number {
@@ -42,18 +71,18 @@ function aspectValue(ratio: string): number {
 
 export function ProjectMasonry({
   cells,
+  labels,
   onOpenCell,
   onCellMenu,
   onCellDownload,
-  menuLabel,
-  downloadLabel,
+  onDismissFailed,
 }: {
   cells: MasonryCell[];
+  labels: MasonryLabels;
   onOpenCell: (cell: MasonryCell) => void;
   onCellMenu: (cell: MasonryCell) => void;
   onCellDownload: (cell: MasonryCell) => void;
-  menuLabel: string;
-  downloadLabel: string;
+  onDismissFailed: (cell: MasonryCell) => void;
 }) {
   // Balance by accumulated height so neither column runs long.
   const [colA, colB] = useMemo(() => {
@@ -74,6 +103,37 @@ export function ProjectMasonry({
     return [a, b];
   }, [cells]);
 
+  if (cells.length === 0) {
+    return (
+      <View style={styles.emptyWrap}>
+        <LogoMark size={44} />
+        <Text
+          variant="display"
+          color="ink"
+          align="center"
+          style={{ fontSize: 24, lineHeight: 31, letterSpacing: 0, maxWidth: 300, marginTop: 16 }}
+        >
+          {labels.emptyTitle}
+        </Text>
+        <Text variant="caption" color="inkMuted" align="center" style={{ maxWidth: 260, marginTop: 6 }}>
+          {labels.emptyBody}
+        </Text>
+      </View>
+    );
+  }
+
+  const renderCell = (cell: MasonryCell) => (
+    <Cell
+      key={cell.id}
+      cell={cell}
+      labels={labels}
+      onOpen={() => onOpenCell(cell)}
+      onMenu={() => onCellMenu(cell)}
+      onDownload={() => onCellDownload(cell)}
+      onDismiss={() => onDismissFailed(cell)}
+    />
+  );
+
   return (
     <ScrollView
       style={{ flex: 1 }}
@@ -87,38 +147,34 @@ export function ProjectMasonry({
         paddingBottom: 16,
       }}
     >
-      <View style={{ flex: 1, gap: 10 }}>
-        {colA.map((cell) => (
-          <Cell key={cell.id} cell={cell} menuLabel={menuLabel} downloadLabel={downloadLabel} onOpen={() => onOpenCell(cell)} onMenu={() => onCellMenu(cell)} onDownload={() => onCellDownload(cell)} />
-        ))}
-      </View>
-      <View style={{ flex: 1, gap: 10 }}>
-        {colB.map((cell) => (
-          <Cell key={cell.id} cell={cell} menuLabel={menuLabel} downloadLabel={downloadLabel} onOpen={() => onOpenCell(cell)} onMenu={() => onCellMenu(cell)} onDownload={() => onCellDownload(cell)} />
-        ))}
-      </View>
+      <View style={{ flex: 1, gap: 10 }}>{colA.map(renderCell)}</View>
+      <View style={{ flex: 1, gap: 10 }}>{colB.map(renderCell)}</View>
     </ScrollView>
   );
 }
 
+// ─── Cell ───────────────────────────────────────────────────────────
+
 function Cell({
   cell,
-  menuLabel,
-  downloadLabel,
+  labels,
   onOpen,
   onMenu,
   onDownload,
+  onDismiss,
 }: {
   cell: MasonryCell;
-  menuLabel: string;
-  downloadLabel: string;
+  labels: MasonryLabels;
   onOpen: () => void;
   onMenu: () => void;
   onDownload: () => void;
+  onDismiss: () => void;
 }) {
   const { colors } = useTheme();
+  const interactive = !cell.pending && !cell.failed;
+
   return (
-    <Pressable onPress={cell.pending ? undefined : onOpen} haptic="light" pressedOpacity={0.94}>
+    <Pressable onPress={interactive ? onOpen : undefined} haptic="light" pressedOpacity={0.94}>
       <View
         style={{
           borderRadius: 16,
@@ -128,18 +184,53 @@ function Cell({
         }}
       >
         {cell.pending ? (
-          <Shimmer tint={MODE_TINT[cell.kind].solid} />
+          <PendingSkeleton cell={cell} labels={labels} />
+        ) : cell.failed ? (
+          <View style={[styles.centerFill, { backgroundColor: colors.surfaceMuted }]}>
+            <Icon name="warning" size={20} color={colors.inkMuted} />
+            <Text
+              variant="caption"
+              color="inkMuted"
+              align="center"
+              numberOfLines={4}
+              style={{ marginTop: 6, paddingHorizontal: 12 }}
+            >
+              {cell.errorMessage || labels.failed}
+            </Text>
+            <Pressable
+              onPress={onDismiss}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel={labels.dismiss}
+              style={[styles.cornerButton, { position: 'absolute', top: 8, right: 8 }]}
+            >
+              <Icon name="close" size={13} color="#FFFFFF" weight="bold" />
+            </Pressable>
+          </View>
         ) : (
           <>
-            {cell.uri ? (
-              <Image source={cell.uri} contentFit="cover" style={{ width: '100%', height: '100%' }} transition={150} />
+            {cell.kind === 'video' && cell.videoUrl ? (
+              // Autoplaying muted loop, poster underneath, capped by the
+              // global decoder-slot limiter — the home feed's exact rig.
+              <VideoPreview
+                source={cell.videoUrl}
+                posterUri={typeof cell.uri === 'string' ? cell.uri : undefined}
+                contentFit="cover"
+                cardId={cell.id}
+                style={StyleSheet.absoluteFill}
+              />
+            ) : cell.uri ? (
+              <Image
+                source={cell.uri}
+                contentFit="cover"
+                style={{ width: '100%', height: '100%' }}
+                transition={150}
+              />
             ) : (
-              // Poster-less video: a quiet dark stage under the play badge.
               <View style={{ width: '100%', height: '100%', backgroundColor: '#101019' }} />
             )}
             {cell.kind === 'video' ? (
-              <View style={styles.playBadge}>
-                <Icon name="play" size={11} color="#FFFFFF" weight="fill" />
+              <View style={styles.videoBadge}>
                 <View style={[styles.modeDot, { backgroundColor: MODE_TINT.video.solid }]} />
               </View>
             ) : null}
@@ -150,7 +241,7 @@ function Cell({
                 haptic="light"
                 pressedOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel={downloadLabel}
+                accessibilityLabel={labels.download}
                 style={styles.cornerButton}
               >
                 <Icon name="download" size={13} color="#FFFFFF" weight="bold" />
@@ -160,7 +251,7 @@ function Cell({
                 haptic="light"
                 pressedOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel={menuLabel}
+                accessibilityLabel={labels.menu}
                 style={styles.cornerButton}
               >
                 <Icon name="more" size={14} color="#FFFFFF" weight="bold" />
@@ -173,50 +264,80 @@ function Cell({
   );
 }
 
-function Shimmer({ tint }: { tint: string }) {
+// ─── Pending skeleton (mirrors web's PendingStrip tile) ─────────────
+
+function PendingSkeleton({ cell, labels }: { cell: MasonryCell; labels: MasonryLabels }) {
   const { colors } = useTheme();
-  const pulse = useSharedValue(0.35);
+  const tint = MODE_TINT[cell.kind];
+
+  // The web tile pulses the whole card; same rhythm here.
+  const pulse = useSharedValue(0.55);
   useEffect(() => {
     pulse.value = withRepeat(
-      withTiming(0.75, { duration: 900, easing: Easing.inOut(Easing.quad) }),
+      withTiming(1, { duration: 850, easing: Easing.inOut(Easing.quad) }),
       -1,
       true,
     );
   }, [pulse]);
-  const style = useAnimatedStyle(() => ({ opacity: pulse.value }));
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+
   return (
-    <View
-      style={{
-        ...StyleSheet.absoluteFill,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.surfaceMuted,
-      }}
+    <Animated.View
+      style={[styles.centerFill, { backgroundColor: colors.surfaceMuted, gap: 8 }, pulseStyle]}
     >
-      <Animated.View style={style}>
-        <Icon name="sparkle" size={22} color={tint} weight="fill" />
-      </Animated.View>
-    </View>
+      <ActivityIndicator size="small" color={tint.solid} />
+      <Text variant="caption" color="ink" weight="700">
+        {cell.pendingStatus === 'queued' ? labels.queued : labels.generating}
+      </Text>
+      {cell.stageLabel ? (
+        <Text variant="caption" color="inkMuted" numberOfLines={1} style={{ paddingHorizontal: 12 }}>
+          {cell.stageLabel}
+        </Text>
+      ) : null}
+      {cell.pendingStatus === 'processing' && typeof cell.stageProgress === 'number' ? (
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { backgroundColor: tint.solid, width: `${Math.round(cell.stageProgress * 100)}%` },
+            ]}
+          />
+        </View>
+      ) : null}
+    </Animated.View>
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  playBadge: {
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingBottom: 40,
+  },
+  centerFill: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoBadge: {
     position: 'absolute',
     bottom: 8,
     left: 8,
-    flexDirection: 'row',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
   },
   modeDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   cornerActions: {
     position: 'absolute',
@@ -232,5 +353,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  progressTrack: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 12,
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
   },
 });

@@ -140,6 +140,9 @@
     "tooManyRunning": "يمكن تشغيل {{count}} عمليات إنشاء كحد أقصى — واحدة على وشك الانتهاء.",
     "attachFailed": "تعذّر إرفاق هذه الصورة",
     "notNow": "ليس الآن",
-    "viewPlans": "عرض الخطط"
+    "viewPlans": "عرض الخطط",
+    "queuedLabel": "في قائمة الانتظار",
+    "generatingLabel": "جارٍ الإنشاء…",
+    "dismiss": "إغلاق"
   }
 }

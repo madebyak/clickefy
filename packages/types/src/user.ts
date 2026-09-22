@@ -85,7 +85,7 @@ export type ThemeMode = 'system' | 'light' | 'dark';
  * If a new accent ships in the UI package, add it here too — the API's
  * Zod validator will reject anything unknown otherwise.
  */
-export type ThemeAccent = 'violet' | 'coral' | 'citrus' | 'ocean';
+export type ThemeAccent = 'green' | 'violet' | 'coral' | 'citrus' | 'ocean';
 
 /**
  * Per-user appearance preferences. Stored server-side so a user's
@@ -123,7 +123,7 @@ export interface UserPreferences {
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   appearance: {
     mode: 'system',
-    accent: 'violet',
+    accent: 'green',
   },
   notifications: {
     jobCompleted: true,

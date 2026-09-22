@@ -39,7 +39,7 @@ export const usersRoute = new Hono<AppEnv>();
 const appearancePatchSchema = z
   .object({
     mode: z.enum(['system', 'light', 'dark']).optional(),
-    accent: z.enum(['violet', 'coral', 'citrus', 'ocean']).optional(),
+    accent: z.enum(['green', 'violet', 'coral', 'citrus', 'ocean']).optional(),
   })
   .strict();
 

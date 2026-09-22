@@ -27,7 +27,7 @@ import { LEGAL_DOCS, LEGAL_DOC_ORDER } from '@/lib/legal-content';
 import { useNotificationPrefs } from '@/lib/use-notification-prefs';
 import { useSession } from '@/lib/use-session';
 
-const ACCENT_OPTIONS: AccentKey[] = ['violet', 'coral', 'citrus', 'ocean'];
+const ACCENT_OPTIONS: AccentKey[] = ['green', 'violet', 'coral', 'citrus', 'ocean'];
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();

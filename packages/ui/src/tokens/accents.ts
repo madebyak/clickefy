@@ -1,6 +1,7 @@
 /**
  * Accent palettes — user-selectable brand tints.
- * Violet is the canonical Clickfy brand; the others let users personalize.
+ * Green is the canonical Clickfy brand (matches the web's `--brand-green`);
+ * the others let users personalize.
  */
 
 export interface AccentPalette {
@@ -17,6 +18,15 @@ export interface AccentPalette {
 }
 
 export const accents = {
+  green: {
+    solid: '#42d676',
+    soft: '#DCF7E6',
+    deep: '#12813F',
+    // Black, not white — white on the brand green fails contrast (1.9:1),
+    // same reasoning as the web's --primary-foreground.
+    ink: '#04150C',
+    glow: 'rgba(66, 214, 118, 0.35)',
+  },
   violet: {
     solid: '#6E3CFF',
     soft: '#EDE5FF',
@@ -48,7 +58,7 @@ export const accents = {
 } as const satisfies Record<string, AccentPalette>;
 
 export type AccentKey = keyof typeof accents;
-export const defaultAccent: AccentKey = 'violet';
+export const defaultAccent: AccentKey = 'green';
 
 /** Pro / paid plan badge color — independent of user accent. */
 export const gold = {

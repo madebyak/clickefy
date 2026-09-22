@@ -11,12 +11,15 @@ import {
   IBMPlexSansArabic_600SemiBold,
   IBMPlexSansArabic_700Bold,
 } from '@expo-google-fonts/ibm-plex-sans-arabic';
-import { ThemeProvider as NavThemeProvider, type Theme as NavTheme } from '@react-navigation/native';
+// Since SDK 56 expo-router bundles its own react-navigation and refuses a
+// direct `@react-navigation/*` import at bundle time — the provider and the
+// Theme type both come from the router now.
+import type { Theme as NavTheme } from 'expo-router/react-navigation';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@clickfy/ui';
 import { useFonts } from 'expo-font';
 import { requireOptionalNativeModule } from 'expo-modules-core';
-import { router, Stack } from 'expo-router';
+import { router, Stack, ThemeProvider as NavThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -221,7 +224,7 @@ function RootLayout() {
         <SafeAreaProvider>
           <QueryClientProvider client={queryClient}>
             <RevenueCatBridge />
-            <ThemeProvider defaultMode="system" defaultAccentKey="violet" locale={locale}>
+            <ThemeProvider defaultMode="system" defaultAccentKey="green" locale={locale}>
               <ThemedShell>
               <ToastProvider>
               <ErrorBoundary

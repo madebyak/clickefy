@@ -134,7 +134,12 @@
           }
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "@sentry/react-native",
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

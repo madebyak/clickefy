@@ -195,7 +195,7 @@ export function Splash({ onComplete }: SplashProps) {
     <Animated.View
       pointerEvents="none"
       style={[
-        StyleSheet.absoluteFillObject,
+        StyleSheet.absoluteFill,
         styles.container,
         { backgroundColor: colors.bg },
         containerStyle,
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   columnsRow: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 10,

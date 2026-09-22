@@ -18,13 +18,17 @@
  * shipped routes — so typecheck failed on valid code.
  *
  * This calls the same generator the dev server uses, headlessly, with no
- * Metro and no bundling. Wired to `pretypecheck` so the declarations are
- * always current before `tsc` reads them.
+ * Metro and no bundling. Since SDK 57 that generator lives in
+ * `@expo/router-server` (it left `expo-router/build/typed-routes` when
+ * the router went universal); `regenerateDeclarations` is exactly what
+ * `expo customize tsconfig.json` runs, minus the tsconfig rewrite.
+ * Wired to `pretypecheck` so the declarations are always current before
+ * `tsc` reads them.
  *
  * Usage:  node scripts/gen-router-types.mjs
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -33,27 +37,24 @@ const require = createRequire(import.meta.url);
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const appRoot = resolve(projectRoot, 'app');
 const outDir = resolve(projectRoot, '.expo/types');
+const outFile = resolve(outDir, 'router.d.ts');
 
 // The generator reads the app directory through a `require.context`
 // ponyfill rooted at this env var; it must be set before importing.
 process.env.EXPO_ROUTER_APP_ROOT = appRoot;
 
-const { getTypedRoutesDeclarationFile } = require('expo-router/build/typed-routes/generate');
-const requireContext = require('expo-router/build/testing-library/require-context-ponyfill').default;
-const { EXPO_ROUTER_CTX_IGNORE } = require('expo-router/_ctx-shared');
+const { regenerateDeclarations } = require('@expo/router-server/build/typed-routes');
 
-const ctx = requireContext(appRoot, true, EXPO_ROUTER_CTX_IGNORE);
-const declaration = getTypedRoutesDeclarationFile(ctx);
+mkdirSync(outDir, { recursive: true });
+regenerateDeclarations(outDir);
 
-if (!declaration) {
-  console.error('[gen-router-types] generator returned no output — is app/ present?');
+if (!existsSync(outFile)) {
+  console.error('[gen-router-types] generator produced no router.d.ts — is app/ present?');
   process.exit(1);
 }
 
-mkdirSync(outDir, { recursive: true });
-writeFileSync(resolve(outDir, 'router.d.ts'), declaration);
-
 // Distinct concrete pathnames, for a log line that means something.
+const declaration = readFileSync(outFile, 'utf8');
 const routes = new Set(
   [...declaration.matchAll(/pathname: `([^`$]+)`/g)].map((m) => m[1]),
 );

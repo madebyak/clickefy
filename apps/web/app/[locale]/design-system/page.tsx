@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { notFound } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { FolderTreeView } from "@/components/studio/folder-tree";
@@ -623,9 +622,9 @@ const NAV = [
 ];
 
 export default function DesignSystemPage() {
-  // Internal living style guide — dev-only. 404s on production deploys
-  // (NODE_ENV is inlined at build time, so the branch compiles away).
-  if (process.env.NODE_ENV === "production") notFound();
+  // Internal living style guide. Served on production too (the team uses
+  // it as the brand reference), but unlisted: it's absent from the
+  // sitemap's allowlist and the route's layout sends noindex.
   const [dir, setDir] = useState<"ltr" | "rtl">("ltr");
   useEffect(() => {
     document.documentElement.dir = dir;

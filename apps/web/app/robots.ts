@@ -16,6 +16,9 @@ const PRIVATE_PATHS = [
   "/settings",
   "/billing",
   "/templates/",
+  // Served on production for the team's reference, but unlisted — see
+  // design-system/layout.tsx (noindex) and its absence from the sitemap.
+  "/design-system",
 ] as const;
 
 /**

@@ -259,11 +259,34 @@ export default function SignUpScreen() {
                 <View style={{ flex: 1 }}>
                   <Text variant="caption" color="ink" style={{ lineHeight: 20, fontSize: 13.5 }}>
                     {t('signUp.tos.prefix')}
-                    <Text variant="caption" color="ink" weight="700" style={{ fontSize: 13.5 }}>
+                    {/* onPress on a nested Text wins over the surrounding
+                        checkbox Pressable, so tapping the link opens the
+                        document instead of toggling agreement. */}
+                    <Text
+                      variant="caption"
+                      color="ink"
+                      weight="700"
+                      accessibilityRole="link"
+                      suppressHighlighting
+                      style={{ fontSize: 13.5, textDecorationLine: 'underline' }}
+                      onPress={() =>
+                        router.push({ pathname: '/legal/[doc]', params: { doc: 'terms' } })
+                      }
+                    >
                       {t('signUp.tos.terms')}
                     </Text>
                     {t('signUp.tos.and')}
-                    <Text variant="caption" color="ink" weight="700" style={{ fontSize: 13.5 }}>
+                    <Text
+                      variant="caption"
+                      color="ink"
+                      weight="700"
+                      accessibilityRole="link"
+                      suppressHighlighting
+                      style={{ fontSize: 13.5, textDecorationLine: 'underline' }}
+                      onPress={() =>
+                        router.push({ pathname: '/legal/[doc]', params: { doc: 'privacy' } })
+                      }
+                    >
                       {t('signUp.tos.privacy')}
                     </Text>
                     {t('signUp.tos.period')}

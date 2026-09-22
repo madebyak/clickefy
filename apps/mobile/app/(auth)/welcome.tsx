@@ -2,10 +2,10 @@
  * Welcome — auth entry screen, shown after onboarding for unauthenticated users.
  *
  * Layout (top → bottom, full-bleed):
- *   1. Hero    — full FloatingDeck orbit composition (our own assets, big &
- *                tilted, with Ken-Burns drift) instead of a stock product photo.
- *                A soft vertical gradient fades the hero into the page so the
- *                wordmark sits cleanly on `colors.bg`.
+ *   1. Hero    — bundled brand reel (assets/onboarding/welcome-hero.mp4,
+ *                muted + looping, ~2.6 MB so it ships in the app bundle and
+ *                starts instantly with no network), cut sharp against the
+ *                brand zone below — no fade.
  *   2. Brand   — official SVG Logo (theme-aware) + serif tagline.
  *   3. Auth    — three sign-in paths: Apple, Google, Email. Apple/Google are
  *                instant mock auth → paywall; Email routes to the OTP flow.
@@ -23,7 +23,6 @@ import { isClerkAPIResponseError } from '@clerk/react/errors';
 import * as Sentry from '@sentry/react-native';
 import { Box, Button, Stack, Text, useTheme } from '@clickfy/ui';
 import * as AuthSession from 'expo-auth-session';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useState } from 'react';
@@ -38,11 +37,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useVideoPlayer, VideoView } from 'expo-video';
+
 import { GoogleG } from '@/components/auth/GoogleG';
 import { Logo } from '@/components/brand/Logo';
-import { FloatingDeck } from '@/components/onboarding/FloatingDeck';
-import { slide1Images } from '@/components/onboarding/images';
 import { Icon } from '@/components/ui/Icon';
+
+// Bundled with the app so the hero never waits on the network. Encoded
+// muted (no audio track at all) at ~1.5 Mbps / 720p — re-run the ffmpeg
+// recipe in the PR if the source reel changes.
+const HERO_VIDEO = require('../../assets/onboarding/welcome-hero.mp4');
 
 // Required by `useSSO()` — finishes any auth session that was running when the
 // browser closed (e.g., user backgrounded the app mid-flow). Idempotent and
@@ -57,6 +61,12 @@ export default function WelcomeScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // Decorative background reel: silent, endless, starts immediately.
+  const heroPlayer = useVideoPlayer(HERO_VIDEO, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
   const { startSSOFlow } = useSSO();
   // Native Sign in with Apple (iOS system sheet via expo-apple-authentication).
   // Clerk exchanges the Apple identity token for a session — no browser
@@ -185,24 +195,20 @@ export default function WelcomeScreen() {
   }));
   const tosStyle = useAnimatedStyle(() => ({ opacity: tosOpacity.value }));
 
-  const fadeColor = colors.bg;
-  const fadeTransparent = `${colors.bg}00`;
-
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
       {/* ─── Hero ─── */}
-      <View
-        style={[
-          styles.hero,
-          { paddingTop: insets.top + 8, pointerEvents: 'none' },
-        ]}
-      >
-        <FloatingDeck layout="orbit" sources={slide1Images} />
-        {/* Bottom fade so the brand zone reads on `colors.bg`. */}
-        <LinearGradient
-          colors={[fadeTransparent, fadeColor] as const}
-          locations={[0, 0.85]}
-          style={styles.heroFade}
+      {/* pointerEvents="none": the native VideoView surface would otherwise
+          swallow touches on Android (same lesson as VideoPreview). The hero
+          is purely decorative. */}
+      <View style={[styles.hero, { pointerEvents: 'none' }]}>
+        <VideoView
+          player={heroPlayer}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          nativeControls={false}
+          fullscreenOptions={{ enable: false }}
+          allowsPictureInPicture={false}
         />
       </View>
 
@@ -212,13 +218,22 @@ export default function WelcomeScreen() {
         <Text
           variant="display"
           color="ink"
-          italic
           align="center"
+          numberOfLines={1}
+          // 26pt is the TARGET size; on narrower screens the line shrinks
+          // just enough to stay whole instead of wrapping or clipping.
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
           style={styles.tagline}
         >
           {t('welcome.tagline')}
         </Text>
       </Animated.View>
+
+      {/* The screen's ONE elastic zone. Everything above (hero → brand) and
+          below (buttons → ToS → home indicator) keeps a fixed rhythm; screen
+          height differences are absorbed entirely here. */}
+      <View style={styles.spacer} />
 
       {/* ─── Auth buttons ─── */}
       <Animated.View style={[styles.buttons, buttonsStyle]}>
@@ -281,11 +296,30 @@ export default function WelcomeScreen() {
             style={{ lineHeight: 18 }}
           >
             {t('welcome.tos.prefix')}
-            <Text variant="caption" color="ink" weight="600">
+            {/* Inline links — RN supports onPress on nested Text, which keeps
+                the sentence flowing naturally in both English and Arabic
+                instead of breaking it apart into separate pressables. */}
+            <Text
+              variant="caption"
+              color="ink"
+              weight="600"
+              accessibilityRole="link"
+              suppressHighlighting
+              style={{ textDecorationLine: 'underline' }}
+              onPress={() => router.push({ pathname: '/legal/[doc]', params: { doc: 'terms' } })}
+            >
               {t('welcome.tos.terms')}
             </Text>
             {t('welcome.tos.and')}
-            <Text variant="caption" color="ink" weight="600">
+            <Text
+              variant="caption"
+              color="ink"
+              weight="600"
+              accessibilityRole="link"
+              suppressHighlighting
+              style={{ textDecorationLine: 'underline' }}
+              onPress={() => router.push({ pathname: '/legal/[doc]', params: { doc: 'privacy' } })}
+            >
               {t('welcome.tos.privacy')}
             </Text>
             {t('welcome.tos.period')}
@@ -301,38 +335,41 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   hero: {
-    // Hero claims the upper portion of the screen and contains its own
-    // gradient fade — no margin trick like the old hero needed.
-    flex: 1.15,
-    minHeight: 360,
+    // Cinematic band: a fixed share of the screen, so the composition
+    // reads identically on every device — `cover` center-crops the 16:9
+    // reel inside it, which is the intended look.
+    width: '100%',
+    height: '44%',
     position: 'relative',
-    justifyContent: 'center',
-  },
-  heroFade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 160,
   },
   brand: {
     alignItems: 'center',
     paddingHorizontal: 24,
-    gap: 10,
-    marginTop: -8,
+    gap: 12,
+    // Fixed rhythm from the hero's sharp edge: 32 to the logo, 12 to the
+    // tagline — constant on every screen because the hero never flexes
+    // into this space.
+    marginTop: 32,
   },
   tagline: {
-    fontSize: 22,
-    lineHeight: 28,
-    maxWidth: 320,
+    fontSize: 26,
+    lineHeight: 33,
+    // The display variant ships -1.4 tracking for its 44pt default; at
+    // this size it crushes the words together, so reset to natural.
+    letterSpacing: 0,
+    alignSelf: 'stretch',
+  },
+  spacer: {
+    flex: 1,
+    minHeight: 24,
   },
   buttons: {
     paddingHorizontal: 24,
-    marginTop: 24,
   },
   tos: {
-    marginTop: 'auto',
+    // Part of the bottom-anchored group: fixed 20 below the buttons, never
+    // floating on its own.
+    marginTop: 20,
     paddingHorizontal: 24,
-    paddingTop: 16,
   },
 });

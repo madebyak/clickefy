@@ -98,6 +98,10 @@ export async function identifyRevenueCat(userId: string): Promise<void> {
 /** Reset to a fresh anonymous id on sign-out so the next user starts clean. */
 export async function resetRevenueCat(): Promise<void> {
   if (!configured) return;
+  // Nothing to log out of: the SDK is still on an anonymous id (sign-out
+  // without a prior identify). Calling logOut anyway makes the SDK throw
+  // and pollutes Sentry with a handled error on every such sign-out.
+  if (identifiedUserId === null) return;
   identifiedUserId = null;
   try {
     await Purchases.logOut();

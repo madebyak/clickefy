@@ -50,7 +50,11 @@
 
 import * as Haptics from 'expo-haptics';
 import { File, Paths } from 'expo-file-system';
-import * as MediaLibrary from 'expo-media-library';
+// SDK 57 made the classic API throw from the main entry
+// (errorOnLegacyMethodUse) — /legacy is the sanctioned bridge until we
+// migrate to the class-based `next` API. Without this, EVERY save to
+// Photos failed in the 1.0.1(7) release build (Sentry REACT-NATIVE-Q).
+import * as MediaLibrary from 'expo-media-library/legacy';
 import { Alert } from 'react-native';
 import * as Sentry from '@sentry/react-native';
 

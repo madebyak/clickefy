@@ -4,7 +4,7 @@
  * Layout per slide:
  *   - Top: back chevron · 3-segment progress bar · Skip
  *   - Middle: FloatingDeck composition (orbit / grid / stack)
- *   - Bottom: eyebrow + serif-italic headline + body + Continue button
+ *   - Bottom: eyebrow + serif headline + body + Continue button
  *   - Footer (last slide only): "Already have an account? Sign in"
  *
  * Motion:

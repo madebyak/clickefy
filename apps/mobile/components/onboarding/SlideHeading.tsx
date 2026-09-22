@@ -1,7 +1,12 @@
 /**
- * SlideHeading — eyebrow + Instrument-Serif headline with an italic emphasis
- * word + supporting body copy. Animates in (slide up + fade) whenever its
- * `slideKey` prop changes, which the parent screen flips on each navigation.
+ * SlideHeading — eyebrow + upright Instrument-Serif headline with an
+ * accent-colored emphasis word + supporting body copy. Animates in (slide up
+ * + fade) whenever its `slideKey` prop changes, which the parent screen flips
+ * on each navigation.
+ *
+ * Matches the welcome screen's tagline voice (upright serif, natural
+ * tracking, sentence case) — emphasis is carried by the brand accent color,
+ * not italics.
  *
  * Centralising the headline layout means every slide looks identical in
  * rhythm/spacing/weight — only the copy changes.
@@ -20,11 +25,11 @@ import Animated, {
 export interface SlideHeadingProps {
   /** Small uppercase label above the headline */
   eyebrow: string;
-  /** Headline pre-italic copy (regular weight) */
+  /** Headline copy before the emphasis */
   headPre: string;
-  /** Italic emphasis word(s) */
+  /** Accent-colored emphasis word(s) */
   headEm: string;
-  /** Headline post-italic copy */
+  /** Headline copy after the emphasis */
   headPost: string;
   /** Body sub-copy under the headline */
   body: string;
@@ -70,7 +75,7 @@ export function SlideHeading({
 
       <Text style={[styles.headline, { color: colors.ink }]}>
         {headPre}
-        <Text style={[styles.headlineItalic, { color: colors.ink }]}>
+        <Text style={[styles.headlineEm, { color: accent.solid }]}>
           {headEm}
         </Text>
         {headPost}
@@ -94,18 +99,19 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     lineHeight: 14,
   },
+  // Same face and tracking rules as the welcome tagline, sized up for the
+  // slide's display moment.
   headline: {
-    fontFamily: 'Geist_700Bold',
-    fontSize: 32,
-    lineHeight: 38,
-    letterSpacing: -0.9,
+    fontFamily: 'InstrumentSerif_400Regular',
+    fontSize: 34,
+    lineHeight: 41,
+    letterSpacing: 0,
   },
-  headlineItalic: {
-    fontFamily: 'InstrumentSerif_400Regular_Italic',
-    // Serif italic is taller — bump size slightly so it reads as the same word.
-    fontSize: 38,
-    lineHeight: 38,
-    letterSpacing: -0.6,
+  headlineEm: {
+    fontFamily: 'InstrumentSerif_400Regular',
+    fontSize: 34,
+    lineHeight: 41,
+    letterSpacing: 0,
   },
   body: {
     fontFamily: 'Geist_400Regular',

@@ -291,6 +291,13 @@ function RootLayout() {
                 name="legal/[doc]"
                 options={{ presentation: 'card', animation: 'slide_from_right' }}
               />
+              {/* The redesigned Create surface: full-screen over the tabs,
+                  launched by the Create tab (see (tabs)/_layout) and
+                  dismissed with its ✕. */}
+              <Stack.Screen
+                name="composer"
+                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+              />
               <Stack.Screen
                 name="report"
                 options={{

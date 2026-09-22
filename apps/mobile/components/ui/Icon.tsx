@@ -20,6 +20,7 @@ import { useTheme } from '@clickfy/ui';
 import {
   AppleLogo,
   ArrowLeft,
+  ArrowUp,
   ArrowRight,
   ArrowsClockwise,
   ArrowSquareOut,
@@ -141,6 +142,7 @@ export type IconName =
   | 'trash'
   | 'flag'
   | 'send'
+  | 'arrowUp'
   | 'play'
   // Status
   | 'info'
@@ -223,6 +225,7 @@ const ICONS: Record<IconName, PhosphorIcon> = {
   trash: Trash,
   flag: Flag,
   send: PaperPlaneTilt,
+  arrowUp: ArrowUp,
   play: Play,
   info: Info,
   warning: Warning,

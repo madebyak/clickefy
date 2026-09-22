@@ -1,5 +1,5 @@
 import { useTheme } from '@clickfy/ui';
-import { Redirect, Tabs } from 'expo-router';
+import { Redirect, router, Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -106,6 +106,15 @@ export default function TabLayout() {
         options={{
           title: t('tabBar.create'),
           tabBarIcon: ({ focused }) => renderIcon('create', focused),
+        }}
+        // The Create tab is a LAUNCHER, not a destination: it presents the
+        // full-screen composer above the tabs (which keeps the current tab
+        // selected underneath, so ✕ returns exactly where the user was).
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push('/composer');
+          },
         }}
       />
       <Tabs.Screen

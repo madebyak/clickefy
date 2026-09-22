@@ -138,7 +138,10 @@ export function ProjectMasonry({
     <ScrollView
       style={{ flex: 1 }}
       showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
+      // Standard iOS manners: with the keyboard up, the FIRST tap on the
+      // grid only dismisses it (no cell action fires), and starting a
+      // scroll drags it away too.
+      keyboardDismissMode="on-drag"
       contentContainerStyle={{
         flexDirection: 'row',
         gap: 10,

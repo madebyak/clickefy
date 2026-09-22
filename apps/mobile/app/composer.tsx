@@ -29,7 +29,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiConsentSheet } from '@/components/AiConsentSheet';
@@ -170,11 +170,31 @@ export default function ComposerScreen() {
   const [prompt, setPrompt] = useState('');
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [sheet, setSheet] = useState<SheetName>(null);
+  const [sheet, setSheetState] = useState<SheetName>(null);
+  // Opening any sheet retires the keyboard first — a sheet sliding up
+  // under an open keyboard reads as two stacked surfaces fighting.
+  const setSheet = (next: SheetName) => {
+    if (next !== null) Keyboard.dismiss();
+    setSheetState(next);
+  };
   // iOS drops a picker presented while a modal is dismissing — a tapped
   // attach action waits for the sheet's onDismissed before launching.
   const pendingPickRef = useRef<'camera' | 'photos' | null>(null);
   const [drawer, setDrawer] = useState(false);
+  // The dock's bottom spacing: the home-indicator inset while resting,
+  // nearly nothing while the keyboard supplies its own bottom edge —
+  // otherwise the inset is double-counted as a floating gap.
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s1 = Keyboard.addListener(showEvt, () => setKeyboardUp(true));
+    const s2 = Keyboard.addListener(hideEvt, () => setKeyboardUp(false));
+    return () => {
+      s1.remove();
+      s2.remove();
+    };
+  }, []);
   const [showConsent, setShowConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -820,7 +840,7 @@ export default function ComposerScreen() {
           }
         />
 
-        <View style={{ gap: 10, paddingBottom: insets.bottom + 10, paddingTop: 4 }}>
+        <View style={{ gap: 10, paddingBottom: keyboardUp ? 8 : insets.bottom + 10, paddingTop: 4 }}>
           <OptionPillsRow pills={pills} />
           <PromptDock
             prompt={prompt}

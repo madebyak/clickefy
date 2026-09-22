@@ -103,22 +103,32 @@ export function ProjectMasonry({
     return [a, b];
   }, [cells]);
 
+  // The empty state rides INSIDE the scroll surface (not a bare View):
+  // that's what makes a tap anywhere in an empty project dismiss the
+  // keyboard exactly like a tap between cells does.
   if (cells.length === 0) {
     return (
-      <View style={styles.emptyWrap}>
-        <LogoMark size={44} />
-        <Text
-          variant="display"
-          color="ink"
-          align="center"
-          style={{ fontSize: 24, lineHeight: 31, letterSpacing: 0, maxWidth: 300, marginTop: 16 }}
-        >
-          {labels.emptyTitle}
-        </Text>
-        <Text variant="caption" color="inkMuted" align="center" style={{ maxWidth: 260, marginTop: 6 }}>
-          {labels.emptyBody}
-        </Text>
-      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
+        <View style={styles.emptyWrap}>
+          <LogoMark size={44} />
+          <Text
+            variant="display"
+            color="ink"
+            align="center"
+            style={{ fontSize: 24, lineHeight: 31, letterSpacing: 0, maxWidth: 300, marginTop: 16 }}
+          >
+            {labels.emptyTitle}
+          </Text>
+          <Text variant="caption" color="inkMuted" align="center" style={{ maxWidth: 260, marginTop: 6 }}>
+            {labels.emptyBody}
+          </Text>
+        </View>
+      </ScrollView>
     );
   }
 

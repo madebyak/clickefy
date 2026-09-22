@@ -814,7 +814,10 @@ export default function ComposerScreen() {
         credits={plan?.credits ?? 0}
         menuLabel={t('composer.menu')}
         closeLabel={t('composer.close')}
-        onMenu={() => setDrawer(true)}
+        onMenu={() => {
+          Keyboard.dismiss();
+          setDrawer(true);
+        }}
         onClose={() => router.back()}
       />
 

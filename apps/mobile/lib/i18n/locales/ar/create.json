@@ -119,6 +119,15 @@
     "actionReuse": "إعادة استخدام",
     "actionTurnVideo": "تحويل إلى فيديو",
     "fieldType": "النوع",
-    "fieldCreated": "تاريخ الإنشاء"
+    "fieldCreated": "تاريخ الإنشاء",
+    "download": "حفظ في الصور",
+    "savedTitle": "تم الحفظ",
+    "savedBody": "أُضيفت إلى مكتبة الصور.",
+    "saveFailedTitle": "تعذّر الحفظ",
+    "saveDeniedTitle": "مطلوب إذن الصور",
+    "saveDeniedBody": "اسمح بالوصول إلى الصور من الإعدادات لحفظ أعمالك.",
+    "on": "مفعّل",
+    "off": "متوقف",
+    "soundNeedsTier": "الصوت الأصلي يتطلب جودة {{tier}}"
   }
 }

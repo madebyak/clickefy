@@ -19,6 +19,11 @@
  */
 
 import { useTheme } from '@clickfy/ui';
+import type { GenModel } from '@clickfy/sdk';
+import { resolveCreditCost } from '@clickfy/types';
+import { useQuery } from '@tanstack/react-query';
+import { Asset } from 'expo-asset';
+import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useMemo, useRef, useState } from 'react';
@@ -51,95 +56,9 @@ import { AssetDetailsDrawer } from '@/components/composer/AssetDetailsDrawer';
 import type { AssetInfo } from '@/components/composer/asset-info';
 import { MODE_TINT } from '@/components/composer/mode-colors';
 import { ModelLogo } from '@/components/create/ModelLogo';
+import { useToast } from '@/components/shared/Toast';
+import { getSDK } from '@/lib/sdk';
 import { useSession } from '@/lib/use-session';
-
-// ─── Demo fixtures (front-end phase only) ───────────────────────────
-
-interface DemoTier {
-  mode: string;
-  label: string;
-  cost: number;
-}
-
-interface DemoModel {
-  key: string;
-  name: string;
-  provider: string;
-  kind: ComposerMode;
-  cost: number;
-  ratios: string[];
-  tiers?: DemoTier[];
-  durations?: number[];
-  maxImages: number;
-}
-
-const DEMO_MODELS: DemoModel[] = [
-  {
-    key: 'gemini-3-pro-image',
-    name: 'Nano Banana Pro',
-    provider: 'gemini',
-    kind: 'image',
-    cost: 2,
-    ratios: ['1:1', '4:5', '3:4', '16:9', '9:16'],
-    tiers: [
-      { mode: '1K', label: '1K', cost: 2 },
-      { mode: '2K', label: '2K', cost: 3 },
-      { mode: '4K', label: '4K', cost: 5 },
-    ],
-    maxImages: 6,
-  },
-  {
-    key: 'gpt-image-2',
-    name: 'GPT Image 2',
-    provider: 'openai',
-    kind: 'image',
-    cost: 3,
-    ratios: ['1:1', '3:2', '2:3'],
-    tiers: [
-      { mode: 'medium', label: 'Medium', cost: 1 },
-      { mode: 'high', label: 'High', cost: 3 },
-    ],
-    maxImages: 4,
-  },
-  {
-    key: 'seedream-5-0',
-    name: 'Seedream 5',
-    provider: 'seedance',
-    kind: 'image',
-    cost: 1,
-    ratios: ['1:1', '4:3', '3:4', '16:9', '9:16', '21:9'],
-    maxImages: 6,
-  },
-  {
-    key: 'kling-v3',
-    name: 'Kling 3.0',
-    provider: 'kling',
-    kind: 'video',
-    cost: 20,
-    ratios: ['16:9', '9:16', '1:1'],
-    tiers: [
-      { mode: 'std', label: '720p', cost: 20 },
-      { mode: 'pro', label: '1080p', cost: 35 },
-      { mode: '4k', label: '4K', cost: 80 },
-    ],
-    durations: [5, 10],
-    maxImages: 1,
-  },
-  {
-    key: 'seedance-2-5',
-    name: 'Seedance 2.5',
-    provider: 'seedance',
-    kind: 'video',
-    cost: 15,
-    ratios: ['16:9', '9:16', '4:3', '1:1'],
-    tiers: [
-      { mode: '720p', label: '720p', cost: 15 },
-      { mode: '1080p', label: '1080p', cost: 30 },
-    ],
-    durations: [4, 6, 8, 10, 12],
-    maxImages: 4,
-  },
-];
 
 
 type SheetName = 'mode' | 'model' | 'ratio' | 'quality' | 'duration' | 'attach' | null;
@@ -152,22 +71,45 @@ export default function ComposerScreen() {
   const router = useRouter();
   const { t } = useTranslation('create');
   const { plan } = useSession();
+  const toast = useToast();
 
   const [mode, setMode] = useState<ComposerMode>('image');
-  // Remember the chosen model per mode so flipping Image⇄Video and back
-  // doesn't lose the pick.
-  const [modelByMode, setModelByMode] = useState<Record<ComposerMode, string>>({
-    image: DEMO_MODELS.find((m) => m.kind === 'image')!.key,
-    video: DEMO_MODELS.find((m) => m.kind === 'video')!.key,
+
+  // SLICE 1 (wired): the real roster. Same query + rules as the old
+  // create tab and the web: tool-only entries never reach the picker.
+  const sdk = getSDK();
+  const modelsQuery = useQuery({
+    queryKey: ['models'],
+    queryFn: () => sdk.models.listModels(),
+    staleTime: 5 * 60_000,
   });
-  const model = useMemo(
-    () => DEMO_MODELS.find((m) => m.key === modelByMode[mode]) ?? DEMO_MODELS[0]!,
-    [mode, modelByMode],
+  const models = useMemo(
+    () => (modelsQuery.data ?? []).filter((m) => !m.toolOnly),
+    [modelsQuery.data],
+  );
+  const modeModels = useMemo(
+    () => models.filter((m) => (m.kind === 'video' ? 'video' : 'image') === mode),
+    [models, mode],
+  );
+
+  // Remember the chosen model per mode so flipping Image⇄Video and back
+  // doesn't lose the pick. `null` = "no explicit pick yet": the default
+  // DERIVES from the roster, so a refetch can't clobber a user's choice.
+  const [modelByMode, setModelByMode] = useState<Record<ComposerMode, string | null>>({
+    image: null,
+    video: null,
+  });
+  const model = useMemo<GenModel | undefined>(
+    () => modeModels.find((m) => m.modelKey === modelByMode[mode]) ?? modeModels[0],
+    [modeModels, modelByMode, mode],
   );
 
   const [ratio, setRatio] = useState<string | undefined>(undefined);
   const [tier, setTier] = useState<string | undefined>(undefined);
   const [duration, setDuration] = useState<number | undefined>(undefined);
+  // Web parity: sound defaults ON for sound-capable models; `null`
+  // means "no explicit choice yet" so the default derives per model.
+  const [soundChoice, setSoundChoice] = useState<boolean | null>(null);
   const [prompt, setPrompt] = useState('');
   const [attachments, setAttachments] = useState<DockAttachment[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
@@ -182,17 +124,60 @@ export default function ComposerScreen() {
   const [detailsAsset, setDetailsAsset] = useState<AssetInfo | null>(null);
   const demoCounter = useRef(0);
 
-  // Effective values fall back to each model's defaults.
-  const effRatio = ratio && model.ratios.includes(ratio) ? ratio : model.ratios[0]!;
-  const effTier = model.tiers?.some((x) => x.mode === tier)
+  // Effective values fall back to each model's own defaults, exactly
+  // like the old tab: an explicit pick only sticks while the model
+  // still offers it.
+  // Web parity: "Auto" is an image-only affordance (omitted from the
+  // payload at submit); video providers REQUIRE an explicit ratio.
+  const ratios = useMemo(() => {
+    if (!model) return [];
+    return model.kind === 'video' ? model.aspectRatios : ['Auto', ...model.aspectRatios];
+  }, [model]);
+  const effRatio = ratio && ratios.includes(ratio) ? ratio : ratios[0];
+  const effTier = model?.tiers?.some((x) => x.mode === tier)
     ? tier
-    : model.tiers?.[0]?.mode;
+    : model?.defaultTier ?? model?.tiers?.[0]?.mode;
   const effDuration =
-    model.durations && duration && model.durations.includes(duration)
-      ? duration
-      : model.durations?.[0];
+    model && model.durations.length > 0
+      ? duration && model.durations.includes(duration)
+        ? duration
+        : model.durations[0]
+      : undefined;
 
-  const cost = model.tiers?.find((x) => x.mode === effTier)?.cost ?? model.cost;
+  const sound = soundChoice ?? !!model?.supportsSound;
+  // Native audio that can't play at the selected tier: the server drops
+  // the audio rather than upgrading the billed resolution, so the price
+  // follows suit (same rule as the old tab / web).
+  const soundGated =
+    !!model?.soundRequiresTier && effTier !== model.soundRequiresTier;
+  const soundTierLabel =
+    model?.tiers?.find((x) => x.mode === model.soundRequiresTier)?.label ??
+    model?.soundRequiresTier ??
+    '';
+
+  // The same resolver the server bills with — tier + clip length + the
+  // `${tier}_audio` keys for native audio.
+  const cost = model
+    ? resolveCreditCost({
+        baseCredits: model.costCredits,
+        tierPricing: model.tiers
+          ? Object.fromEntries(
+              model.tiers.flatMap((x) => [
+                [x.mode, x.costCredits] as [string, number],
+                ...(x.soundCostCredits != null
+                  ? [[`${x.mode}_audio`, x.soundCostCredits] as [string, number]]
+                  : []),
+              ]),
+            )
+          : null,
+        mode: effTier,
+        sound: sound && !soundGated,
+        duration: model.kind === 'video' ? effDuration : undefined,
+        defaultDuration: model.defaultDuration,
+      })
+    : 0;
+  const promptCap = model?.maxPromptChars ?? 2500;
+  const maxImages = model?.maxImages ?? 6;
 
   const selectModel = (key: string) => {
     setModelByMode((prev) => ({ ...prev, [mode]: key }));
@@ -200,6 +185,7 @@ export default function ComposerScreen() {
     setRatio(undefined);
     setTier(undefined);
     setDuration(undefined);
+    setSoundChoice(null);
     setAttachments([]);
   };
 
@@ -208,6 +194,7 @@ export default function ComposerScreen() {
     setRatio(undefined);
     setTier(undefined);
     setDuration(undefined);
+    setSoundChoice(null);
     setAttachments([]);
   };
 
@@ -222,9 +209,9 @@ export default function ComposerScreen() {
         ratio: art.aspectRatio,
         uri: art.uri ?? '',
         prompt: art.prompt,
-        modelName: model.name,
+        modelName: model?.name ?? '',
         when: t('composer.justNow'),
-        quality: model.tiers?.find((x) => x.mode === effTier)?.label,
+        quality: model?.tiers?.find((x) => x.mode === effTier)?.label,
         durationSeconds: art.kind === 'video' ? effDuration : undefined,
       };
     }
@@ -251,7 +238,7 @@ export default function ComposerScreen() {
   const attachAsReference = (a: AssetInfo) => {
     setViewerAsset(null);
     setAttachments((prev) =>
-      [...prev, { id: `att-${a.id}-${Date.now()}`, previewUri: a.uri }].slice(0, model.maxImages),
+      [...prev, { id: `att-${a.id}-${Date.now()}`, previewUri: a.uri }].slice(0, maxImages),
     );
   };
   const reuseAsset = (a: AssetInfo) => {
@@ -259,6 +246,39 @@ export default function ComposerScreen() {
     if (a.kind !== mode) switchMode(a.kind);
     setPrompt(a.prompt);
   };
+  /**
+   * Save to Photos. FRONT-END PHASE: demo media are bundled require()
+   * assets, so we resolve a local file via expo-asset and hand it to
+   * MediaLibrary. Wiring swaps this for lib/download's downloadOutput
+   * (real URLs, filename/extension handling, Sentry) — the buttons and
+   * toasts stay as they are.
+   */
+  const saveAsset = async (a: AssetInfo) => {
+    try {
+      const perm = await MediaLibrary.requestPermissionsAsync(true);
+      if (!perm.granted) {
+        toast.error(t('composer.saveDeniedTitle'), t('composer.saveDeniedBody'));
+        return;
+      }
+      let localUri: string;
+      if (typeof a.uri === 'number') {
+        const resolved = Asset.fromModule(a.uri);
+        await resolved.downloadAsync();
+        if (!resolved.localUri) throw new Error('asset has no local file');
+        localUri = resolved.localUri;
+      } else {
+        localUri = a.uri;
+      }
+      await MediaLibrary.saveToLibraryAsync(localUri);
+      toast.success(t('composer.savedTitle'), t('composer.savedBody'));
+    } catch (err) {
+      toast.error(
+        t('composer.saveFailedTitle'),
+        err instanceof Error ? err.message : undefined,
+      );
+    }
+  };
+
   const turnIntoVideo = (a: AssetInfo) => {
     setViewerAsset(null);
     if (mode !== 'video') switchMode('video');
@@ -276,35 +296,62 @@ export default function ComposerScreen() {
       fill: { bg: MODE_TINT[mode].solid, fg: MODE_TINT[mode].fg },
       onPress: () => setSheet('mode'),
     },
-    {
-      id: 'model',
-      label: t('model.label'),
-      value: model.name,
-      onPress: () => setSheet('model'),
-    },
-    {
-      id: 'ratio',
-      label: t('aspect.label'),
-      value: effRatio,
-      onPress: () => setSheet('ratio'),
-    },
-    ...(model.tiers && model.tiers.length > 0
+    ...(model
+      ? [
+          {
+            id: 'model',
+            label: t('model.label'),
+            value: model.name,
+            onPress: () => setSheet('model'),
+          } satisfies PillSpec,
+        ]
+      : []),
+    ...(model && ratios.length > 0
+      ? [
+          {
+            id: 'ratio',
+            label: t('aspect.label'),
+            value: effRatio,
+            onPress: () => setSheet('ratio'),
+          } satisfies PillSpec,
+        ]
+      : []),
+    ...(model?.tiers && model.tiers.length > 0
       ? [
           {
             id: 'quality',
             label: t('quality.label'),
-            value: model.tiers.find((x) => x.mode === effTier)?.label,
+            value: model.tiers.find((x) => x.mode === effTier)?.label ?? effTier,
             onPress: () => setSheet('quality'),
           } satisfies PillSpec,
         ]
       : []),
-    ...(model.durations && model.durations.length > 0
+    ...(model && model.kind === 'video' && model.durations.length > 0
       ? [
           {
             id: 'duration',
             label: t('duration.label'),
             value: t('duration.seconds', { count: effDuration }),
             onPress: () => setSheet('duration'),
+          } satisfies PillSpec,
+        ]
+      : []),
+    // Native audio (Kling Omni): a direct toggle, no sheet. Web parity:
+    // a gated tier keeps the pill visible and a tap EXPLAINS the
+    // requirement instead of toggling.
+    ...(model?.supportsSound
+      ? [
+          {
+            id: 'sound',
+            label: t('sound.label'),
+            value: `${t('sound.label')} ${sound && !soundGated ? t('composer.on') : t('composer.off')}`,
+            onPress: () => {
+              if (soundGated) {
+                toast.info(t('composer.soundNeedsTier', { tier: soundTierLabel }));
+                return;
+              }
+              setSoundChoice(!sound);
+            },
           } satisfies PillSpec,
         ]
       : []),
@@ -315,8 +362,8 @@ export default function ComposerScreen() {
     const opts: ImagePicker.ImagePickerOptions = {
       mediaTypes: 'images',
       quality: 0.9,
-      allowsMultipleSelection: source === 'photos' && model.maxImages > 1,
-      selectionLimit: Math.max(1, model.maxImages - attachments.length),
+      allowsMultipleSelection: source === 'photos' && maxImages > 1,
+      selectionLimit: Math.max(1, maxImages - attachments.length),
     };
     const res =
       source === 'camera'
@@ -327,7 +374,7 @@ export default function ComposerScreen() {
       id: `${Date.now()}-${i}`,
       previewUri: a.uri,
     }));
-    setAttachments((prev) => [...prev, ...picked].slice(0, model.maxImages));
+    setAttachments((prev) => [...prev, ...picked].slice(0, maxImages));
   };
 
   const attachActions: AttachAction[] = [
@@ -349,7 +396,7 @@ export default function ComposerScreen() {
         status: 'generating',
         kind: mode,
         prompt: prompt.trim(),
-        aspectRatio: effRatio,
+        aspectRatio: !effRatio || effRatio === 'Auto' ? (mode === 'video' ? '16:9' : '1:1') : effRatio,
       },
     ]);
     setPrompt('');
@@ -401,7 +448,12 @@ export default function ComposerScreen() {
             ]}
             onOpenCell={openCell}
             onCellMenu={openCellMenu}
+            onCellDownload={(cell) => {
+              const a = resolveAsset(cell.id);
+              if (a) void saveAsset(a);
+            }}
             menuLabel={t('composer.assetMenu')}
+            downloadLabel={t('composer.download')}
           />
         ) : (
           <ArtifactFeed
@@ -423,7 +475,7 @@ export default function ComposerScreen() {
                 ? t('composer.placeholderImage')
                 : t('composer.placeholderVideo')
             }
-            maxLength={2500}
+            maxLength={promptCap}
             attachments={attachments}
             onRemoveAttachment={(id) =>
               setAttachments((prev) => prev.filter((a) => a.id !== id))
@@ -451,17 +503,16 @@ export default function ComposerScreen() {
       <OptionsSheet
         visible={sheet === 'model'}
         title={t('model.sheetTitle')}
-        options={DEMO_MODELS.filter((m) => m.kind === mode).map((m) => ({
-          id: m.key,
+        options={modeModels.map((m) => ({
+          id: m.modelKey,
           label: m.name,
-          subtitle:
-            m.kind === 'video' ? t('model.video') : t('model.image'),
-          trailing: t('composer.fromCredits', { count: m.cost }),
+          subtitle: m.kind === 'video' ? t('model.video') : t('model.image'),
+          trailing: t('composer.fromCredits', { count: m.costCredits }),
           leading: (
             <ModelLogo provider={m.provider} kind={m.kind} size={24} fallbackColor={colors.ink} />
           ),
         }))}
-        selectedId={model.key}
+        selectedId={model?.modelKey ?? null}
         tint={MODE_TINT[mode]}
         onSelect={selectModel}
         onClose={() => setSheet(null)}
@@ -469,7 +520,7 @@ export default function ComposerScreen() {
       <RatioSheet
         visible={sheet === 'ratio'}
         title={t('aspect.label')}
-        ratios={model.ratios}
+        ratios={ratios}
         value={effRatio}
         tint={MODE_TINT[mode]}
         onSelect={setRatio}
@@ -478,10 +529,10 @@ export default function ComposerScreen() {
       <OptionsSheet
         visible={sheet === 'quality'}
         title={t('quality.label')}
-        options={(model.tiers ?? []).map((x) => ({
+        options={(model?.tiers ?? []).map((x) => ({
           id: x.mode,
           label: x.label,
-          trailing: t('composer.credits', { count: x.cost }),
+          trailing: t('composer.credits', { count: x.costCredits }),
         }))}
         selectedId={effTier ?? null}
         tint={MODE_TINT[mode]}
@@ -491,7 +542,7 @@ export default function ComposerScreen() {
       <DurationSheet
         visible={sheet === 'duration'}
         title={t('duration.label')}
-        seconds={model.durations ?? []}
+        seconds={model?.durations ?? []}
         value={effDuration}
         format={(s) => t('duration.seconds', { count: s })}
         tint={MODE_TINT[mode]}
@@ -534,10 +585,12 @@ export default function ComposerScreen() {
         asset={viewerAsset}
         closeLabel={t('composer.close')}
         detailsLabel={t('composer.assetMenu')}
+        downloadLabel={t('composer.download')}
         onDetails={(a) => {
           setViewerAsset(null);
           setDetailsAsset(a);
         }}
+        onDownload={(a) => void saveAsset(a)}
         onClose={() => setViewerAsset(null)}
       />
       <AssetDetailsDrawer

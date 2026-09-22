@@ -107,6 +107,15 @@
     "actionReuse": "Re-use",
     "actionTurnVideo": "Turn into video",
     "fieldType": "Type",
-    "fieldCreated": "Created"
+    "fieldCreated": "Created",
+    "download": "Save to Photos",
+    "savedTitle": "Saved",
+    "savedBody": "Added to your photo library.",
+    "saveFailedTitle": "Couldn't save",
+    "saveDeniedTitle": "Photos access needed",
+    "saveDeniedBody": "Allow photo access in Settings to save your work.",
+    "on": "On",
+    "off": "Off",
+    "soundNeedsTier": "Native audio needs the {{tier}} tier"
   }
 }

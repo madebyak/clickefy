@@ -35,7 +35,7 @@
  */
 
 import { logger, task } from '@trigger.dev/sdk';
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 
 import { projectAssets } from '@clickfy/db';
 
@@ -68,9 +68,17 @@ interface RowResult {
  * A row that still needs work. Videos: missing or self-referencing
  * poster, or no preview. Images: no thumbhash. Written once so the
  * SELECT and the guarded UPDATE cannot drift apart.
+ *
+ * Generated outputs only (`jobs/…`). A file placed from My Assets keeps
+ * its `user-uploads/…` key, which lives in the UPLOADS bucket: the
+ * rendition writer targets OUTPUTS and every reader routes by key
+ * prefix, so a rendition for it would be written where nothing looks.
+ * Those rows wait for the library feature to grow its own renditions.
  */
 function needsRenditions(kind?: 'image' | 'video') {
+  const generated = like(projectAssets.r2Key, 'jobs/%');
   const video = and(
+    generated,
     eq(projectAssets.kind, 'video'),
     or(
       isNull(projectAssets.posterR2Key),
@@ -78,7 +86,7 @@ function needsRenditions(kind?: 'image' | 'video') {
       isNull(projectAssets.previewR2Key),
     ),
   );
-  const image = and(eq(projectAssets.kind, 'image'), isNull(projectAssets.thumbhash));
+  const image = and(generated, eq(projectAssets.kind, 'image'), isNull(projectAssets.thumbhash));
   if (kind === 'video') return video;
   if (kind === 'image') return image;
   return or(video, image);

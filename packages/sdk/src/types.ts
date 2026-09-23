@@ -106,8 +106,15 @@ export interface CatalogTemplate {
  * camera roll, both work through `MediaLibrary.saveToLibraryAsync`.
  */
 export interface JobOutput {
+  /** The original file — what the result screen plays and the download saves. */
   url: string;
   kind: 'image' | 'video';
+  /** Video poster frame, when the output has been filed with renditions. */
+  posterUrl?: string | null;
+  /** Muted grid-autoplay clip (video only), when available. */
+  previewUrl?: string | null;
+  /** ThumbHash placeholder (base64), when available. */
+  thumbhash?: string | null;
   /**
    * Native pixel width of the asset, when known. Image outputs always
    * carry this (sourced from the stored `MediaRef`); video outputs may

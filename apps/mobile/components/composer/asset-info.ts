@@ -10,7 +10,12 @@ export interface AssetInfo {
   id: string;
   kind: ComposerMode;
   ratio: string;
+  /** The ORIGINAL file: what the viewer opens and Save to Photos writes. */
   uri: string | number;
+  /** Poster frame for a video (grid/thumb use); the viewer plays `uri`. */
+  posterUri?: string;
+  /** ThumbHash placeholder for the thumb. */
+  thumbhash?: string;
   prompt: string;
   modelName: string;
   /** Relative creation time, preformatted ("2h ago"). */

@@ -77,6 +77,7 @@ import { pushUser } from '../lib/push';
 import { aspectRatioToNumber, probeImageDimensions } from '../lib/media-dimensions';
 import { writeOutputObject } from '../lib/r2';
 import { isRefundable, refundForJob } from '../lib/refund';
+import { persistOutputRenditions } from '../lib/renditions';
 
 interface GenerateJobPayload {
   /** UUID of the row in the `jobs` table to execute. */
@@ -320,13 +321,17 @@ export const generateJob = task({
       r2Key: string;
       mimeType: string;
       kind: 'image' | 'video';
-      /** Probed from the bytes (images). */
+      /** Probed from the bytes (images: header; videos: ffprobe). */
       width?: number;
       height?: number;
-      /** Real provider-reported duration (videos). */
+      /** Probed clip length, else the provider-reported one (videos). */
       durationSec?: number;
       /** Probed (images) or requested `stage.config.aspectRatio` fallback. */
       aspectRatio?: number;
+      /** Grid companions — see lib/renditions.ts. Null when a step failed. */
+      posterR2Key: string | null;
+      previewR2Key: string | null;
+      thumbhash: string | null;
     }> = [];
 
     const providerEnv = buildProviderEnv();
@@ -451,12 +456,30 @@ export const generateJob = task({
           mimeType: mime,
           url: out.url,
         });
-        // Capture real dimensions while the bytes are in memory: images
-        // are header-probed (PNG/JPEG/WebP, no decode); videos fall back
-        // to the ratio the stage REQUESTED (`stage.config.aspectRatio`) —
-        // good enough for true-shape layout on mobile. Without this the
-        // result screen guessed 4:5/9:16 and cropped everything else.
-        const probed = out.type === 'image' ? probeImageDimensions(bytes) : null;
+        // Grid renditions while the bytes are in memory: a poster frame,
+        // a muted preview clip and a ThumbHash for videos, a ThumbHash
+        // for images. Best-effort by contract — a failure logs and the
+        // output keeps its original only, never delaying or failing the
+        // job over a thumbnail.
+        const renditions = await persistOutputRenditions({
+          r2Key: persisted.r2Key,
+          kind: out.type,
+          bytes,
+          onWarn: (message, detail) =>
+            logger.warn('generate-job:renditions', { jobId, stage: stageNumber, message, ...detail }),
+        });
+
+        // Real dimensions: images are header-probed (PNG/JPEG/WebP, no
+        // decode); videos come from ffprobe when the rendition step got
+        // that far, else fall back to the ratio the stage REQUESTED
+        // (`stage.config.aspectRatio`) — good enough for true-shape
+        // layout. Without this the result screen guessed 4:5/9:16.
+        const probed =
+          out.type === 'image'
+            ? probeImageDimensions(bytes)
+            : renditions.width && renditions.height
+              ? { width: renditions.width, height: renditions.height }
+              : null;
         const requestedRatio = aspectRatioToNumber(stage.config?.aspectRatio);
         allOutputKeys.push({
           stageIndex: stageNumber,
@@ -465,8 +488,11 @@ export const generateJob = task({
           kind: out.type,
           width: probed?.width,
           height: probed?.height,
-          durationSec: out.durationSec,
+          durationSec: renditions.durationSec ?? out.durationSec,
           aspectRatio: probed ? probed.width / probed.height : (requestedRatio ?? undefined),
+          posterR2Key: renditions.posterR2Key,
+          previewR2Key: renditions.previewR2Key,
+          thumbhash: renditions.thumbhash,
         });
       }
     }
@@ -529,6 +555,7 @@ export const generateJob = task({
         width: k.width ?? 0,
         height: k.height ?? 0,
         blurhash: '',
+        thumbhash: k.thumbhash,
       }));
     const videos: StreamRef[] = userVisibleKeys
       .filter((k) => k.kind === 'video')
@@ -538,7 +565,11 @@ export const generateJob = task({
         // (post-launch), this populates from the Stream API response.
         streamId: k.r2Key,
         durationSec: k.durationSec ?? 0,
-        posterR2Key: k.r2Key,
+        // A real frame, or null — never the video's own key (rows before
+        // migration 0038 hold that, and every reader treats it as none).
+        posterR2Key: k.posterR2Key,
+        previewR2Key: k.previewR2Key,
+        thumbhash: k.thumbhash,
         width: k.width,
         height: k.height,
         // Requested-ratio fallback — lets mobile render the true shape.
@@ -596,6 +627,7 @@ export const generateJob = task({
             r2Key: img.r2Key,
             width: img.width || null,
             height: img.height || null,
+            thumbhash: img.thumbhash ?? null,
           })),
           ...videos.map((vid, i) => ({
             projectId: completedProjectId,
@@ -608,6 +640,8 @@ export const generateJob = task({
             height: vid.height ?? null,
             durationSec: vid.durationSec || null,
             posterR2Key: vid.posterR2Key,
+            previewR2Key: vid.previewR2Key ?? null,
+            thumbhash: vid.thumbhash ?? null,
           })),
         ];
         if (assetRows.length > 0) {

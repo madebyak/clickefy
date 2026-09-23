@@ -319,12 +319,19 @@ function ProjectRow({
             >
               <Image
                 // Row-sized derivative of the first output (grid use only —
-                // the result screen opens the original); template covers
-                // go through the browse-media resizer as elsewhere.
+                // the result screen opens the original): a video shows its
+                // poster frame, an image its own thumb; template covers go
+                // through the browse-media resizer as elsewhere.
                 source={
-                  outputThumbnailUrl(project.outputs[0]?.url, { width: 56 }) ??
+                  outputThumbnailUrl(rowStill(project.outputs[0]), { width: 56 }) ??
                   thumbnailUrl(project.templateCoverImage || undefined, { width: 56 })
                 }
+                placeholder={
+                  project.outputs[0]?.thumbhash
+                    ? { thumbhash: project.outputs[0].thumbhash }
+                    : undefined
+                }
+                placeholderContentFit="cover"
                 recyclingKey={project.id}
                 cachePolicy="memory-disk"
                 style={{ width: '100%', height: '100%' }}
@@ -452,6 +459,12 @@ function DeleteAction({
 }
 
 // ─── Small helpers ──────────────────────────────────────────────────
+
+/** The still an output can show in a row: the image itself, or a video's poster. */
+function rowStill(output: UserProject['outputs'][number] | undefined): string | undefined {
+  if (!output) return undefined;
+  return output.kind === 'video' ? (output.posterUrl ?? undefined) : output.url;
+}
 
 function Dot({ color }: { color: string }) {
   return <View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: color }} />;

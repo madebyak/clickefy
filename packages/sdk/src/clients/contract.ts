@@ -464,7 +464,12 @@ export interface StudioFolder {
 export interface StudioProjectCover {
   kind: 'image' | 'video';
   url: string;
+  /** Video poster frame; null while the row still awaits its renditions. */
   posterUrl: string | null;
+  /** Muted grid-autoplay clip (video only); absent on older API builds. */
+  previewUrl?: string | null;
+  /** ThumbHash placeholder (base64); absent on older API builds. */
+  thumbhash?: string | null;
 }
 
 export interface StudioProject {
@@ -482,8 +487,17 @@ export interface StudioAsset {
   projectId: string;
   jobId: string | null;
   kind: 'image' | 'video';
+  /** The original file — what the viewer plays and the download saves. */
   url: string;
+  /** Video poster frame; null while the row still awaits its renditions. */
   posterUrl: string | null;
+  /**
+   * Muted, low-bitrate clip for grid autoplay (video only). Grids should
+   * prefer it over `url` and fall back to `url` when null.
+   */
+  previewUrl?: string | null;
+  /** ThumbHash placeholder (base64) for the image or the video poster. */
+  thumbhash?: string | null;
   width: number | null;
   height: number | null;
   durationSec: number | null;

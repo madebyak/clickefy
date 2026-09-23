@@ -34,6 +34,7 @@ import { and, desc, eq, inArray, sql as dsql } from 'drizzle-orm';
 import { favoriteAssets, folders, jobs, projectAssets, projects, templates } from '@clickfy/db';
 
 import { assetUrl } from '../lib/asset-url';
+import { renditionUrls } from '../lib/renditions';
 
 import type { JobInputValue } from '@clickfy/types';
 import {
@@ -186,7 +187,13 @@ projectsRoute.get('/', ...readChain, async (c) => {
   const counts = new Map<string, number>();
   const covers = new Map<
     string,
-    { kind: 'image' | 'video'; r2Key: string; posterR2Key: string | null }
+    {
+      kind: 'image' | 'video';
+      r2Key: string;
+      posterR2Key: string | null;
+      previewR2Key: string | null;
+      thumbhash: string | null;
+    }
   >();
   if (ids.length > 0) {
     const countRows = await c.var.db
@@ -209,9 +216,12 @@ projectsRoute.get('/', ...readChain, async (c) => {
       kind: 'image' | 'video';
       r2_key: string;
       poster_r2_key: string | null;
+      preview_r2_key: string | null;
+      thumbhash: string | null;
     }>(dsql`
       SELECT DISTINCT ON (pa.project_id)
-             pa.project_id, pa.kind, pa.r2_key, pa.poster_r2_key
+             pa.project_id, pa.kind, pa.r2_key, pa.poster_r2_key,
+             pa.preview_r2_key, pa.thumbhash
       FROM project_assets pa
       JOIN projects p ON p.id = pa.project_id
       WHERE pa.project_id IN (${dsql.join(
@@ -227,7 +237,13 @@ projectsRoute.get('/', ...readChain, async (c) => {
       ? coverRows
       : ((coverRows as { rows?: typeof coverRows.rows }).rows ?? []);
     for (const r of coverList) {
-      covers.set(r.project_id, { kind: r.kind, r2Key: r.r2_key, posterR2Key: r.poster_r2_key });
+      covers.set(r.project_id, {
+        kind: r.kind,
+        r2Key: r.r2_key,
+        posterR2Key: r.poster_r2_key,
+        previewR2Key: r.preview_r2_key,
+        thumbhash: r.thumbhash,
+      });
     }
   }
 
@@ -252,7 +268,7 @@ projectsRoute.get('/', ...readChain, async (c) => {
             ? {
                 kind: cover.kind,
                 url: assetUrl(origin, cover.r2Key),
-                posterUrl: cover.posterR2Key ? assetUrl(origin, cover.posterR2Key) : null,
+                ...renditionUrls(origin, cover),
               }
             : null,
           createdAt: p.createdAt.toISOString(),
@@ -333,6 +349,8 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
       kind: projectAssets.kind,
       r2Key: projectAssets.r2Key,
       posterR2Key: projectAssets.posterR2Key,
+      previewR2Key: projectAssets.previewR2Key,
+      thumbhash: projectAssets.thumbhash,
       width: projectAssets.width,
       height: projectAssets.height,
       durationSec: projectAssets.durationSec,
@@ -444,7 +462,7 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
       jobId: row.jobId,
       kind: row.kind,
       url: assetUrl(origin, row.r2Key),
-      posterUrl: row.posterR2Key ? assetUrl(origin, row.posterR2Key) : null,
+      ...renditionUrls(origin, row),
       width: row.width,
       height: row.height,
       durationSec: row.durationSec,
@@ -608,7 +626,7 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
         jobId: a.jobId,
         kind: a.kind,
         url: assetUrl(origin, a.r2Key),
-        posterUrl: a.posterR2Key ? assetUrl(origin, a.posterR2Key) : null,
+        ...renditionUrls(origin, a),
         width: a.width,
         height: a.height,
         durationSec: a.durationSec,
@@ -822,7 +840,7 @@ assetsRoute.get('/favorites', ...readChain, async (c) => {
         jobId: a.jobId,
         kind: a.kind,
         url: assetUrl(origin, a.r2Key),
-        posterUrl: a.posterR2Key ? assetUrl(origin, a.posterR2Key) : null,
+        ...renditionUrls(origin, a),
         width: a.width,
         height: a.height,
         durationSec: a.durationSec,

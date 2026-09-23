@@ -44,37 +44,18 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 
 import { logger, task } from '@trigger.dev/sdk';
 import { and, eq, inArray, isNull, isNotNull } from 'drizzle-orm';
-import ffmpegStatic from 'ffmpeg-static';
-import ffprobeStatic from 'ffprobe-static';
 
 import { templates } from '@clickfy/db';
 import type { MediaRef } from '@clickfy/types';
 
 import { getDb } from '../lib/db';
 import { env } from '../env';
-
-const execFileP = promisify(execFile);
-
-/** ffmpeg-static's default export is the binary path or null on
- *  unsupported platforms. We crash early if it's missing — the task
- *  cannot do anything useful without it. */
-const FFMPEG_PATH = ffmpegStatic;
-const FFPROBE_PATH = ffprobeStatic.path;
-
-if (!FFMPEG_PATH || !FFPROBE_PATH) {
-  throw new Error(
-    '[backfill-template-posters] ffmpeg-static / ffprobe-static missing — ' +
-      "this Trigger.dev runtime doesn't bundle the binaries.",
-  );
-}
+import { probeDimensions, probeDuration, runFfmpeg, withTempDir } from '../lib/ffmpeg';
 
 interface Payload {
   /**
@@ -274,10 +255,9 @@ interface ExtractedPoster {
  * to keep the JPEG cheap and consistent with other covers.
  */
 async function extractBestPoster(r2Key: string): Promise<ExtractedPoster> {
-  const dir = await mkdtemp(join(tmpdir(), 'poster-'));
-  const inputPath = join(dir, 'input.mp4');
+  return withTempDir('poster-', async (dir) => {
+    const inputPath = join(dir, 'input.mp4');
 
-  try {
     // 1. Download mp4 to /tmp via the Worker's public read route.
     const res = await fetch(`${env.WORKER_API_URL.replace(/\/$/, '')}/v1/uploads/${r2Key}`);
     if (!res.ok) {
@@ -309,7 +289,7 @@ async function extractBestPoster(r2Key: string): Promise<ExtractedPoster> {
           outPath,
         ]);
         const bytes = new Uint8Array(await readFile(outPath));
-        const { width, height } = await probeImageDimensions(outPath);
+        const { width, height } = await probeDimensions(outPath);
         candidates.push({ bytes, width, height, timestampPct: pct });
       } catch (err) {
         // One bad seek shouldn't kill the whole row — keep going with
@@ -332,12 +312,7 @@ async function extractBestPoster(r2Key: string): Promise<ExtractedPoster> {
     //    rank-order to Laplacian variance for our use case.
     candidates.sort((a, b) => b.bytes.length - a.bytes.length);
     return candidates[0]!;
-  } finally {
-    // Best-effort cleanup. /tmp will get pruned eventually, but
-    // jobs-worker containers can run many tasks back-to-back so we
-    // tidy explicitly.
-    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
-  }
+  });
 }
 
 /**
@@ -361,36 +336,3 @@ async function uploadPoster(r2Key: string, bytes: Uint8Array): Promise<void> {
   }
 }
 
-async function probeDuration(file: string): Promise<number> {
-  // Returns the format-level duration in seconds (most accurate for
-  // mp4/mov; falls back to stream-level if format duration is empty).
-  const { stdout } = await execFileP(FFPROBE_PATH!, [
-    '-v', 'error',
-    '-show_entries', 'format=duration',
-    '-of', 'default=noprint_wrappers=1:nokey=1',
-    file,
-  ]);
-  return Number.parseFloat(stdout.trim());
-}
-
-async function probeImageDimensions(file: string): Promise<{ width: number; height: number }> {
-  const { stdout } = await execFileP(FFPROBE_PATH!, [
-    '-v', 'error',
-    '-select_streams', 'v:0',
-    '-show_entries', 'stream=width,height',
-    '-of', 'csv=s=,:p=0',
-    file,
-  ]);
-  const parts = stdout.trim().split(',').map((s) => Number.parseInt(s, 10));
-  const w = parts[0] ?? 0;
-  const h = parts[1] ?? 0;
-  return { width: Number.isFinite(w) ? w : 0, height: Number.isFinite(h) ? h : 0 };
-}
-
-async function runFfmpeg(args: string[]): Promise<void> {
-  await execFileP(FFMPEG_PATH!, args, {
-    // Plenty of room for the largest 25 MB upload we accept; small
-    // mp4s won't come close.
-    maxBuffer: 64 * 1024 * 1024,
-  });
-}

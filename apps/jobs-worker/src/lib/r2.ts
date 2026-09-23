@@ -57,7 +57,22 @@ export async function writeOutputObject(args: {
 }): Promise<{ r2Key: string }> {
   const ext = extensionForMime(args.mimeType);
   const r2Key = `jobs/${args.jobId}/stage${args.stageIndex}-${args.outputIndex}.${ext}`;
-  const url = `${baseUrl()}/v1/outputs/internal/${r2Key}`;
+  await writeOutputBytes({ r2Key, bytes: args.bytes, mimeType: args.mimeType });
+  return { r2Key };
+}
+
+/**
+ * Write bytes to an explicit key in the OUTPUTS bucket. The generation
+ * path names its keys through `writeOutputObject`; renditions (poster,
+ * preview clip) sit next to their original under a derived key, so they
+ * come through here directly.
+ */
+export async function writeOutputBytes(args: {
+  r2Key: string;
+  bytes: Uint8Array | Buffer;
+  mimeType: string;
+}): Promise<void> {
+  const url = `${baseUrl()}/v1/outputs/internal/${args.r2Key}`;
 
   // Node's fetch accepts a Uint8Array / Buffer as body directly,
   // streaming under the hood. We pass it raw rather than wrapping
@@ -79,7 +94,6 @@ export async function writeOutputObject(args: {
       `Worker write failed: PUT ${url} -> ${res.status} ${res.statusText} ${text.slice(0, 200)}`,
     );
   }
-  return { r2Key };
 }
 
 function baseUrl(): string {

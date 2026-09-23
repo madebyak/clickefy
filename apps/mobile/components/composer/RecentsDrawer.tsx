@@ -41,6 +41,8 @@ export interface DrawerProjectRef {
   name: string;
   countLabel: string;
   coverUri?: string | number;
+  /** ThumbHash of the cover — paints before (or instead of) the bytes. */
+  coverThumbhash?: string;
 }
 
 export interface DrawerFolder {
@@ -55,6 +57,7 @@ export interface DrawerRecentRef {
   /** Relative time, preformatted ("2h ago"). */
   when: string;
   coverUri?: string | number;
+  coverThumbhash?: string;
 }
 
 interface RecentsDrawerProps {
@@ -249,6 +252,7 @@ export function RecentsDrawer({
                                 name={p.name}
                                 caption={p.countLabel}
                                 coverUri={p.coverUri}
+                                coverThumbhash={p.coverThumbhash}
                                 active={p.id === activeProjectId}
                                 indent
                                 onPress={() => pick(p.id)}
@@ -274,6 +278,7 @@ export function RecentsDrawer({
                         name={r.name}
                         caption={r.when}
                         coverUri={r.coverUri}
+                        coverThumbhash={r.coverThumbhash}
                         active={r.id === activeProjectId}
                         onPress={() => pick(r.id)}
                       />
@@ -293,6 +298,7 @@ function ProjectRow({
   name,
   caption,
   coverUri,
+  coverThumbhash,
   active,
   indent,
   onPress,
@@ -300,6 +306,7 @@ function ProjectRow({
   name: string;
   caption: string;
   coverUri?: string | number;
+  coverThumbhash?: string;
   active: boolean;
   indent?: boolean;
   onPress: () => void;
@@ -328,8 +335,15 @@ function ProjectRow({
             justifyContent: 'center',
           }}
         >
-          {coverUri ? (
-            <Image source={coverUri} contentFit="cover" style={{ width: '100%', height: '100%' }} />
+          {coverUri || coverThumbhash ? (
+            <Image
+              source={coverUri}
+              placeholder={coverThumbhash ? { thumbhash: coverThumbhash } : undefined}
+              placeholderContentFit="cover"
+              cachePolicy="memory-disk"
+              contentFit="cover"
+              style={{ width: '100%', height: '100%' }}
+            />
           ) : (
             <Icon name="sparkle" size={14} color={colors.inkMuted} />
           )}

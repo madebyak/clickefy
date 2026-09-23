@@ -32,9 +32,9 @@
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, or } from 'drizzle-orm';
 
-import { jobs, projects, providerModels, templates } from '@clickfy/db';
+import { jobs, projectAssets, projects, providerModels, templates, type Db } from '@clickfy/db';
 import { resolveCreditCost, upscalePriceKey } from '@clickfy/types';
 import {
   aspectRatiosFor,
@@ -56,6 +56,7 @@ import { createJobAtomically, createUserJobAtomically, isCreditRace } from '../l
 import { getCreateModelDef, isCreateEligible } from '../lib/create-models';
 import { dispatchJob } from '../lib/dispatch-job';
 import { resolveOwnMediaUrl } from '../lib/template-dto';
+import { renditionUrls, type RenditionUrls } from '../lib/renditions';
 
 export const jobsRoute = new Hono<AppEnv>();
 
@@ -897,6 +898,11 @@ jobsRoute.get(
     const page = hasMore ? rows.slice(0, limit) : rows;
 
     const origin = new URL(c.req.url).origin;
+    const filed = await filedRenditions(
+      c.var.db,
+      origin,
+      page.map((j) => j.id),
+    );
     const items = page.map((j) => {
       const finalImages = j.result?.images ?? [];
       const finalVideos = j.result?.videos ?? [];
@@ -907,21 +913,16 @@ jobsRoute.get(
       // never hardcoded client-side. Image dimensions come straight off
       // the asset; video dims aren't tracked in StreamRef yet, so those
       // remain undefined and mobile falls back to its 9:16 default.
-      const outputs: Array<{
-        url: string;
-        kind: 'image' | 'video';
-        width?: number;
-        height?: number;
-        aspectRatio?: number;
-      }> = [
-        ...finalImages.map((i) => ({
+      const outputs: JobOutputWire[] = [
+        ...finalImages.map((i, idx) => ({
           url: `${origin}/v1/outputs/${i.r2Key}`,
           kind: 'image' as const,
           width: i.width || undefined,
           height: i.height || undefined,
           aspectRatio: i.width && i.height ? i.width / i.height : undefined,
+          ...mergeRenditions(renditionUrls(origin, i), filed.get(`${j.id}:${idx}`)),
         })),
-        ...finalVideos.map((v) => ({
+        ...finalVideos.map((v, idx) => ({
           url: `${origin}/v1/outputs/${v.streamId}`,
           kind: 'video' as const,
           // Dims/ratio persisted by the worker (probed or requested-ratio
@@ -930,6 +931,10 @@ jobsRoute.get(
           height: v.height || undefined,
           aspectRatio:
             v.aspectRatio ?? (v.width && v.height ? v.width / v.height : undefined),
+          ...mergeRenditions(
+            renditionUrls(origin, { ...v, r2Key: v.streamId }),
+            filed.get(`${j.id}:${finalImages.length + idx}`),
+          ),
         })),
       ];
 
@@ -1091,24 +1096,21 @@ jobsRoute.get(
     // Mirror the list endpoint's output shape: surface stored dimensions
     // and the convenience `aspectRatio` so the mobile result hero can lay
     // the asset out at its real ratio instead of guessing 4:5 vs 9:16.
-    const outputs: Array<{
-      url: string;
-      kind: 'image' | 'video';
-      width?: number;
-      height?: number;
-      aspectRatio?: number;
-    }> = [];
+    const outputs: JobOutputWire[] = [];
     if (job.status === 'completed' && job.result) {
-      for (const img of job.result.images ?? []) {
+      const filed = await filedRenditions(c.var.db, origin, [job.id]);
+      const images = job.result.images ?? [];
+      images.forEach((img, idx) => {
         outputs.push({
           url: `${origin}/v1/outputs/${img.r2Key}`,
           kind: 'image',
           width: img.width || undefined,
           height: img.height || undefined,
           aspectRatio: img.width && img.height ? img.width / img.height : undefined,
+          ...mergeRenditions(renditionUrls(origin, img), filed.get(`${job.id}:${idx}`)),
         });
-      }
-      for (const vid of job.result.videos ?? []) {
+      });
+      (job.result.videos ?? []).forEach((vid, idx) => {
         outputs.push({
           url: `${origin}/v1/outputs/${vid.streamId}`,
           kind: 'video',
@@ -1116,8 +1118,12 @@ jobsRoute.get(
           height: vid.height || undefined,
           aspectRatio:
             vid.aspectRatio ?? (vid.width && vid.height ? vid.width / vid.height : undefined),
+          ...mergeRenditions(
+            renditionUrls(origin, { ...vid, r2Key: vid.streamId }),
+            filed.get(`${job.id}:${images.length + idx}`),
+          ),
         });
-      }
+      });
     }
 
     c.header('Cache-Control', 'no-store');
@@ -1188,6 +1194,55 @@ jobsRoute.delete(
 );
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** One output as the jobs endpoints serialise it (mirrored by the SDK's `JobOutput`). */
+type JobOutputWire = {
+  url: string;
+  kind: 'image' | 'video';
+  width?: number;
+  height?: number;
+  aspectRatio?: number;
+} & RenditionUrls;
+
+/**
+ * Renditions the worker filed into `project_assets`, keyed
+ * `<jobId>:<outputIndex>` — the same index the outputs array uses
+ * (images first, then videos). Results written since migration 0038
+ * carry their renditions inline; older jobs only have them once the
+ * backfill fixed their rows, so this is the fallback read.
+ */
+async function filedRenditions(
+  db: Db,
+  origin: string,
+  jobIds: string[],
+): Promise<Map<string, RenditionUrls>> {
+  const map = new Map<string, RenditionUrls>();
+  if (jobIds.length === 0) return map;
+  const rows = await db
+    .select({
+      jobId: projectAssets.jobId,
+      outputIndex: projectAssets.outputIndex,
+      r2Key: projectAssets.r2Key,
+      posterR2Key: projectAssets.posterR2Key,
+      previewR2Key: projectAssets.previewR2Key,
+      thumbhash: projectAssets.thumbhash,
+    })
+    .from(projectAssets)
+    .where(inArray(projectAssets.jobId, jobIds));
+  for (const row of rows) {
+    if (row.jobId) map.set(`${row.jobId}:${row.outputIndex}`, renditionUrls(origin, row));
+  }
+  return map;
+}
+
+/** Inline (from `jobs.result`) wins; a filed row fills whatever it lacks. */
+function mergeRenditions(inline: RenditionUrls, filed: RenditionUrls | undefined): RenditionUrls {
+  return {
+    posterUrl: inline.posterUrl ?? filed?.posterUrl ?? null,
+    previewUrl: inline.previewUrl ?? filed?.previewUrl ?? null,
+    thumbhash: inline.thumbhash ?? filed?.thumbhash ?? null,
+  };
+}
+
 function isUuid(s: string): boolean {
   return UUID_RE.test(s);
 }

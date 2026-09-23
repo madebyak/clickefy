@@ -31,6 +31,13 @@ export interface MediaRef {
   height: number;
   /** Compact placeholder string for `expo-image`. */
   blurhash: string;
+  /**
+   * ThumbHash placeholder (base64), computed by the jobs-worker at
+   * persist time. Preferred over `blurhash`: it encodes the aspect ratio
+   * and alpha, and expo-image decodes it natively. Absent on outputs
+   * persisted before renditions existed.
+   */
+  thumbhash?: string | null;
   /** Optional CDN URL override (Stream uses a `streamId` instead, see below). */
   cdnUrl?: string;
 }
@@ -40,8 +47,17 @@ export interface StreamRef {
   /** Stream's UID for this video. */
   streamId: string;
   durationSec: number;
-  /** Poster frame stored in R2 (for thumbs / first-frame on mobile). */
-  posterR2Key: string;
+  /**
+   * Poster frame (JPEG) stored in R2, for thumbs and first-frame paint.
+   * Null when the worker could not extract one — never the video's own
+   * key, which is what every row written before renditions existed
+   * holds (see `apps/jobs-worker/src/lib/renditions.ts`).
+   */
+  posterR2Key: string | null;
+  /** Muted, low-bitrate clip for grid autoplay; the original stays for the viewer. */
+  previewR2Key?: string | null;
+  /** ThumbHash placeholder (base64) of the poster frame. */
+  thumbhash?: string | null;
   /** Pixel dimensions when known (parsed or provider-reported). */
   width?: number;
   height?: number;

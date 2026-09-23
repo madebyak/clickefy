@@ -54,7 +54,17 @@ export const projectAssets = pgTable(
     width: integer('width'),
     height: integer('height'),
     durationSec: real('duration_sec'),
+    /**
+     * Video poster frame (JPEG). Rows written before migration 0038 hold
+     * the VIDEO'S OWN key here — the worker used to copy `r2Key` across —
+     * so readers must treat `poster_r2_key = r2_key` as "no poster" until
+     * the renditions backfill has replaced it.
+     */
     posterR2Key: text('poster_r2_key'),
+    /** Muted low-bitrate clip for grid autoplay (video only; 0038). */
+    previewR2Key: text('preview_r2_key'),
+    /** ThumbHash placeholder, base64 (images and video posters; 0038). */
+    thumbhash: text('thumbhash'),
     /**
      * Set when this asset was placed from "My Assets" rather than
      * generated (0035). Distinguishes "never had a job" from "the job was

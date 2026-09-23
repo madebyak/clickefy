@@ -12,10 +12,22 @@
  */
 
 import * as Sentry from '@sentry/node';
+import { ffmpeg } from '@trigger.dev/build/extensions/core';
 import { defineConfig } from '@trigger.dev/sdk';
 
 export default defineConfig({
   project: 'proj_dqwnwsfyhccgrtzxoqbt',
+
+  build: {
+    // Installs ffmpeg/ffprobe into the deployed image and exports
+    // FFMPEG_PATH / FFPROBE_PATH, which `src/lib/ffmpeg.ts` reads. This
+    // replaces `ffmpeg-static`, whose postinstall download pnpm's
+    // build-script allow-list never ran — the binary existed on paper
+    // only, and the template-poster backfill (2026-05) never had one to
+    // run with. Dev runs use a locally installed ffmpeg via the same
+    // two variables.
+    extensions: [ffmpeg()],
+  },
 
   /**
    * Boot hook: initialise Sentry once per worker process before any

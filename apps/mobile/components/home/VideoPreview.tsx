@@ -51,6 +51,12 @@ export interface VideoPreviewProps {
   source: VideoSource;
   /** Poster shown underneath until the first video frame paints. */
   posterUri?: string;
+  /**
+   * ThumbHash placeholder painted before the poster bytes arrive — and
+   * instead of them when there is no poster yet (assets filed before
+   * renditions existed). Keeps the cell coloured rather than blank.
+   */
+  posterThumbhash?: string;
   /** Object-fit. Matches `contentFit` from `expo-image` for parity. */
   contentFit?: 'cover' | 'contain';
   style?: ViewStyle;
@@ -66,6 +72,7 @@ export interface VideoPreviewProps {
 export function VideoPreview({
   source,
   posterUri,
+  posterThumbhash,
   contentFit = 'cover',
   style,
   cardId,
@@ -113,13 +120,15 @@ export function VideoPreview({
     // parent Pressable — so the whole subtree opts out of the touch system.
     <Animated.View pointerEvents="none" style={[{ overflow: 'hidden' }, style]}>
       {/* Poster base layer — always present underneath the player. */}
-      {posterUri ? (
+      {posterUri || posterThumbhash ? (
         <Animated.View
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, posterStyle]}
         >
           <Image
             source={posterUri}
+            placeholder={posterThumbhash ? { thumbhash: posterThumbhash } : undefined}
+            placeholderContentFit={contentFit}
             style={StyleSheet.absoluteFill}
             contentFit={contentFit}
             transition={0}

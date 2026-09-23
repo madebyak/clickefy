@@ -49,7 +49,13 @@ export interface MasonryCell {
   ratio: string;
   /** Still/poster source; absent while pending (and for posterless video). */
   uri?: string | number;
-  /** Playable URL for a finished video — enables the in-grid autoplay. */
+  /** ThumbHash painted before `uri` loads, or alone when there is no still. */
+  thumbhash?: string;
+  /**
+   * What the grid autoplays for a finished video — the muted preview
+   * rendition when the asset has one, else the original. Never used for
+   * the viewer or Save to Photos, which read the asset's own URL.
+   */
   videoUrl?: string;
   pending?: boolean;
   /** Pending detail, verbatim from the job poller. */
@@ -284,12 +290,17 @@ function Cell({
               // global decoder-slot limiter — the home feed's exact rig.
               <VideoPreview
                 source={cell.videoUrl}
-                posterUri={typeof cell.uri === 'string' ? cell.uri : undefined}
+                posterUri={
+                  typeof cell.uri === 'string'
+                    ? outputThumbnailUrl(cell.uri, { width: thumbWidth })
+                    : undefined
+                }
+                posterThumbhash={cell.thumbhash}
                 contentFit="cover"
                 cardId={cell.id}
                 style={StyleSheet.absoluteFill}
               />
-            ) : cell.uri ? (
+            ) : cell.uri || cell.thumbhash ? (
               // Grid derivative only — the viewer and Save to Photos read
               // the untouched original off the asset row.
               <Image
@@ -298,6 +309,8 @@ function Cell({
                     ? outputThumbnailUrl(cell.uri, { width: thumbWidth })
                     : cell.uri
                 }
+                placeholder={cell.thumbhash ? { thumbhash: cell.thumbhash } : undefined}
+                placeholderContentFit="cover"
                 recyclingKey={cell.id}
                 cachePolicy="memory-disk"
                 contentFit="cover"

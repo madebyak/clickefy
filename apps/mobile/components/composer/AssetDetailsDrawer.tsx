@@ -155,11 +155,16 @@ export function AssetDetailsDrawer({
               }}
             >
               <Image
+                // A video's still is its poster; an image is its own thumb.
                 source={
-                  typeof current.uri === 'string'
-                    ? outputThumbnailUrl(current.uri, { width: panelWidth - 32 })
-                    : current.uri
+                  current.kind === 'video'
+                    ? current.posterUri
+                    : typeof current.uri === 'string'
+                      ? outputThumbnailUrl(current.uri, { width: panelWidth - 32 })
+                      : current.uri
                 }
+                placeholder={current.thumbhash ? { thumbhash: current.thumbhash } : undefined}
+                placeholderContentFit="cover"
                 cachePolicy="memory-disk"
                 contentFit="cover"
                 style={{ width: '100%', height: '100%' }}

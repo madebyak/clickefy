@@ -81,8 +81,13 @@ interface Artifact {
   kind: ComposerMode;
   prompt: string;
   aspectRatio: string;
+  /** The original output — viewer and Save to Photos use this. */
   uri?: string;
+  /** Video poster frame (grid still). */
   posterUri?: string;
+  /** Muted grid-autoplay clip; the grid falls back to `uri` without it. */
+  previewUri?: string;
+  thumbhash?: string;
   projectId?: string;
   modelName?: string;
   qualityLabel?: string;
@@ -111,9 +116,20 @@ function idempotencyKey(): string {
   return `${hex(8)}-${hex(4)}-4${hex(3)}-${hex(4)}-${hex(12)}`;
 }
 
-/** Drawer covers at their 38pt slot; video covers pass through untouched. */
-function coverThumb(cover: { url: string; posterUrl: string | null } | null): string | undefined {
-  return cover ? outputThumbnailUrl(cover.posterUrl ?? cover.url, { width: 38 }) : undefined;
+/**
+ * Drawer cover at its 38pt slot: an image resized for the row, a video's
+ * poster frame, and the ThumbHash that paints before either arrives (or
+ * alone, for a video filed before it had a poster).
+ */
+function coverThumb(
+  cover: { kind: 'image' | 'video'; url: string; posterUrl: string | null; thumbhash?: string | null } | null,
+): { coverUri?: string; coverThumbhash?: string } {
+  if (!cover) return {};
+  const still = cover.kind === 'video' ? cover.posterUrl : cover.url;
+  return {
+    coverUri: still ? outputThumbnailUrl(still, { width: 38 }) : undefined,
+    coverThumbhash: cover.thumbhash ?? undefined,
+  };
 }
 
 /** Masonry cell shape from real dimensions, clamped like web's grid. */
@@ -271,7 +287,7 @@ export default function ComposerScreen() {
           id: p.id,
           name: p.name,
           countLabel: t('composer.items', { count: p.assetCount }),
-          coverUri: coverThumb(p.cover),
+          ...coverThumb(p.cover),
         })),
     }));
   }, [projectsQuery.data, t]);
@@ -285,7 +301,7 @@ export default function ComposerScreen() {
       id: p.id,
       name: p.name,
       when: relTime(p.updatedAt),
-      coverUri: coverThumb(p.cover),
+      ...coverThumb(p.cover),
     }));
   }, [projectsQuery.data, relTime]);
 
@@ -449,7 +465,9 @@ export default function ComposerScreen() {
                     ...a,
                     status: 'ready',
                     uri: out?.url,
-                    posterUri: undefined,
+                    posterUri: out?.posterUrl ?? undefined,
+                    previewUri: out?.previewUrl ?? undefined,
+                    thumbhash: out?.thumbhash ?? undefined,
                   }
                 : a,
             ),
@@ -616,7 +634,9 @@ export default function ComposerScreen() {
       id: asset.id,
       kind: asset.kind,
       ratio: ratioFrom(asset.width, asset.height, asset.kind),
-      uri: asset.url, // playable for video; the viewer plays it directly
+      uri: asset.url, // the original — the viewer plays it, the download saves it
+      posterUri: asset.posterUrl ?? undefined,
+      thumbhash: asset.thumbhash ?? undefined,
       prompt: '',
       modelName: '',
       when: relTime(asset.createdAt),
@@ -766,7 +786,8 @@ export default function ComposerScreen() {
     kind: a.kind,
     ratio: a.aspectRatio,
     uri: a.kind === 'video' ? a.posterUri : a.uri,
-    videoUrl: a.kind === 'video' && a.status === 'ready' ? a.uri : undefined,
+    thumbhash: a.thumbhash,
+    videoUrl: a.kind === 'video' && a.status === 'ready' ? (a.previewUri ?? a.uri) : undefined,
     pending: a.status === 'generating',
     pendingStatus: a.pendingStatus,
     stageLabel: a.stageLabel,
@@ -786,7 +807,10 @@ export default function ComposerScreen() {
       kind: asset.kind,
       ratio: ratioFrom(asset.width, asset.height, asset.kind),
       uri: asset.kind === 'video' ? (asset.posterUrl ?? undefined) : asset.url,
-      videoUrl: asset.kind === 'video' ? asset.url : undefined,
+      thumbhash: asset.thumbhash ?? undefined,
+      // The grid loops the light preview rendition; the original stays
+      // for the viewer and the download (`cellInfo` reads `asset.url`).
+      videoUrl: asset.kind === 'video' ? (asset.previewUrl ?? asset.url) : undefined,
     }));
     // A completed artifact whose asset row already arrived would render
     // twice; the assets list wins.
@@ -852,9 +876,10 @@ export default function ComposerScreen() {
             if (info) void openDetails(info);
           }}
           onCellDownload={(cell) => {
+            // `info.uri` is always the original file (never the grid
+            // preview or the poster) — exactly what Save to Photos wants.
             const info = cellInfo(cell);
-            // Videos save from their playable URL, not the poster thumb.
-            if (info) void saveAsset(cell.videoUrl ? { ...info, uri: cell.videoUrl } : info);
+            if (info) void saveAsset(info);
           }}
           onDismissFailed={(cell) =>
             setArtifacts((prev) => prev.filter((a) => a.id !== cell.id))

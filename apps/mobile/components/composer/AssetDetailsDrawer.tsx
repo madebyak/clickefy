@@ -16,8 +16,10 @@
  */
 
 import { HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { I18nManager, Modal, ScrollView, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
@@ -29,6 +31,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/ui/Icon';
+import { outputThumbnailUrl } from '@/lib/image-url';
 import { MODE_TINT } from './mode-colors';
 import type { AssetInfo } from './asset-info';
 
@@ -38,6 +41,8 @@ export interface AssetDetailsLabels {
   reuse: string;
   turnVideo: string;
   prompt: string;
+  copyPrompt: string;
+  copied: string;
   model: string;
   type: string;
   typeImage: string;
@@ -149,7 +154,16 @@ export function AssetDetailsDrawer({
                 backgroundColor: colors.surface,
               }}
             >
-              <Image source={current.uri} contentFit="cover" style={{ width: '100%', height: '100%' }} />
+              <Image
+                source={
+                  typeof current.uri === 'string'
+                    ? outputThumbnailUrl(current.uri, { width: panelWidth - 32 })
+                    : current.uri
+                }
+                cachePolicy="memory-disk"
+                contentFit="cover"
+                style={{ width: '100%', height: '100%' }}
+              />
               {current.kind === 'video' ? (
                 <View
                   style={{
@@ -185,15 +199,17 @@ export function AssetDetailsDrawer({
               ) : null}
             </Stack>
 
-            {/* ── Prompt ── */}
-            <Stack gap="xs">
-              <FieldLabel text={labels.prompt} />
-              <View style={{ padding: 14, borderRadius: 16, backgroundColor: colors.surface }}>
-                <Text variant="body" color="ink" style={{ lineHeight: 22 }}>
-                  {current.prompt}
-                </Text>
-              </View>
-            </Stack>
+            {/* ── Prompt (template prompts are withheld server-side → hidden) ── */}
+            {current.prompt.length > 0 ? (
+              <Stack gap="xs">
+                <FieldLabel text={labels.prompt} />
+                <PromptBox
+                  prompt={current.prompt}
+                  copyLabel={labels.copyPrompt}
+                  copiedLabel={labels.copied}
+                />
+              </Stack>
+            ) : null}
 
             {/* ── Provenance ── */}
             <Stack gap="xs">
@@ -214,6 +230,77 @@ export function AssetDetailsDrawer({
         </Animated.View>
       </View>
     </Modal>
+  );
+}
+
+/** How long the "Copied" confirmation replaces the copy affordance. */
+const COPIED_FEEDBACK_MS = 1600;
+/** The prompt box never grows past this; longer prompts scroll inside it. */
+const PROMPT_MAX_HEIGHT = 168;
+
+/**
+ * The prompt, capped in height and scrollable within, with tap-to-copy.
+ * Feedback is inline ("Copied ✓" in the header row) rather than a toast:
+ * this drawer is a native Modal, and the app's toast layer renders
+ * underneath it.
+ */
+function PromptBox({
+  prompt,
+  copyLabel,
+  copiedLabel,
+}: {
+  prompt: string;
+  copyLabel: string;
+  copiedLabel: string;
+}) {
+  const { colors, accent } = useTheme();
+  const [copied, setCopied] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (resetTimer.current) clearTimeout(resetTimer.current);
+    },
+    [],
+  );
+
+  const copy = async () => {
+    try {
+      await Clipboard.setStringAsync(prompt);
+    } catch {
+      return; // Clipboard unavailable (simulator quirk) — no false "Copied".
+    }
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCopied(true);
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    resetTimer.current = setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+  };
+
+  return (
+    <Pressable onPress={() => void copy()} pressedOpacity={0.9} accessibilityRole="button" accessibilityLabel={copyLabel}>
+      <View style={{ borderRadius: 16, backgroundColor: colors.surface, overflow: 'hidden' }}>
+        <ScrollView
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
+          style={{ maxHeight: PROMPT_MAX_HEIGHT }}
+          contentContainerStyle={{ padding: 14, paddingBottom: 8 }}
+        >
+          <Text variant="body" color="ink" style={{ lineHeight: 22 }}>
+            {prompt}
+          </Text>
+        </ScrollView>
+        <HStack align="center" gap="xs" style={{ paddingHorizontal: 14, paddingBottom: 12, paddingTop: 2 }}>
+          <Icon
+            name={copied ? 'check' : 'copy'}
+            size={13}
+            color={copied ? accent.deep : colors.inkMuted}
+            weight="bold"
+          />
+          <Text variant="caption" color={copied ? accent.deep : 'inkMuted'}>
+            {copied ? copiedLabel : copyLabel}
+          </Text>
+        </HStack>
+      </View>
+    </Pressable>
   );
 }
 

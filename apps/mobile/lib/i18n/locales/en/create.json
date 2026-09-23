@@ -131,6 +131,10 @@
     "viewPlans": "View plans",
     "queuedLabel": "Queued",
     "generatingLabel": "Generating…",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "copyPrompt": "Copy prompt",
+    "copied": "Copied",
+    "loadError": "Couldn't load this project",
+    "drawerLoadError": "Couldn't load your projects"
   }
 }

@@ -1,5 +1,7 @@
 {
   "title": "Something went wrong",
   "body": "An unexpected error occurred. You can try again or go back.",
-  "tryAgain": "Try again"
+  "tryAgain": "Try again",
+  "loadTitle": "Couldn't load",
+  "loadBody": "Check your connection and try again."
 }

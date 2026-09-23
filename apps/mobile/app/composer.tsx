@@ -22,7 +22,7 @@
  */
 
 import { useTheme } from '@clickfy/ui';
-import { useUser } from '@clerk/expo';
+import { useAuth, useUser } from '@clerk/expo';
 import { JobSubmissionError, type CreateGenerationInput, type GenModel } from '@clickfy/sdk';
 import { resolveCreditCost } from '@clickfy/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -62,6 +62,7 @@ import { ModelLogo } from '@/components/create/ModelLogo';
 import { useToast } from '@/components/shared/Toast';
 import { hasAiConsent, setAiConsent } from '@/lib/ai-consent';
 import { downloadOutput } from '@/lib/download';
+import { outputThumbnailUrl } from '@/lib/image-url';
 import { getSDK } from '@/lib/sdk';
 import { ME_QUERY_KEY, useSession } from '@/lib/use-session';
 import {
@@ -110,6 +111,11 @@ function idempotencyKey(): string {
   return `${hex(8)}-${hex(4)}-4${hex(3)}-${hex(4)}-${hex(12)}`;
 }
 
+/** Drawer covers at their 38pt slot; video covers pass through untouched. */
+function coverThumb(cover: { url: string; posterUrl: string | null } | null): string | undefined {
+  return cover ? outputThumbnailUrl(cover.posterUrl ?? cover.url, { width: 38 }) : undefined;
+}
+
 /** Masonry cell shape from real dimensions, clamped like web's grid. */
 function ratioFrom(width: number | null, height: number | null, kind: 'image' | 'video'): string {
   const raw = width && height && height > 0 ? width / height : kind === 'video' ? 16 / 9 : 1;
@@ -130,6 +136,10 @@ export default function ComposerScreen() {
   const sdk = getSDK();
   const { user: clerkUser } = useUser();
   const consentUserId = clerkUser?.id ?? '';
+  // Authed queries wait for a session to sign with — an early
+  // unauthenticated fetch fails and used to render as an empty project.
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const authReady = authLoaded && !!isSignedIn;
   const { pickFromSource } = useImageUpload();
 
   const [mode, setMode] = useState<ComposerMode>('image');
@@ -227,12 +237,13 @@ export default function ComposerScreen() {
   const projectsQuery = useQuery({
     queryKey: ['studio-projects'],
     queryFn: () => sdk.projects.list({ limit: 50 }),
+    enabled: authReady,
     staleTime: 15_000,
   });
   const assetsQuery = useQuery({
     queryKey: ['project-assets', openProjectId],
     queryFn: () => sdk.projects.listAssets(openProjectId!, { limit: 50 }),
-    enabled: openProjectId !== null,
+    enabled: authReady && openProjectId !== null,
     staleTime: 15_000,
   });
 
@@ -260,7 +271,7 @@ export default function ComposerScreen() {
           id: p.id,
           name: p.name,
           countLabel: t('composer.items', { count: p.assetCount }),
-          coverUri: p.cover ? (p.cover.posterUrl ?? p.cover.url) : undefined,
+          coverUri: coverThumb(p.cover),
         })),
     }));
   }, [projectsQuery.data, t]);
@@ -274,7 +285,7 @@ export default function ComposerScreen() {
       id: p.id,
       name: p.name,
       when: relTime(p.updatedAt),
-      coverUri: p.cover ? (p.cover.posterUrl ?? p.cover.url) : undefined,
+      coverUri: coverThumb(p.cover),
     }));
   }, [projectsQuery.data, relTime]);
 
@@ -794,6 +805,7 @@ export default function ComposerScreen() {
     dismiss: t('composer.dismiss'),
     emptyTitle: t('composer.emptyTitle'),
     emptyBody: t('composer.emptyBody'),
+    loadError: t('composer.loadError'),
   };
 
   const dockAttachments: DockAttachment[] = attachments.map((a, i) => ({
@@ -828,6 +840,12 @@ export default function ComposerScreen() {
         <ProjectMasonry
           cells={masonryCells}
           labels={masonryLabels}
+          loading={openProjectId !== null && assetsQuery.isLoading}
+          error={
+            openProjectId !== null && assetsQuery.isError
+              ? { onRetry: () => void assetsQuery.refetch(), retrying: assetsQuery.isFetching }
+              : null
+          }
           onOpenCell={openCell}
           onCellMenu={(cell) => {
             const info = cellInfo(cell);
@@ -950,6 +968,15 @@ export default function ComposerScreen() {
         emptyLabel={t('composer.drawerEmpty')}
         folders={drawerFolders}
         recents={drawerRecents}
+        error={
+          projectsQuery.isError
+            ? {
+                message: t('composer.drawerLoadError'),
+                onRetry: () => void projectsQuery.refetch(),
+                retrying: projectsQuery.isFetching,
+              }
+            : null
+        }
         activeProjectId={openProjectId}
         onNewSession={() => {
           setOpenProjectId(null);
@@ -987,6 +1014,8 @@ export default function ComposerScreen() {
           reuse: t('composer.actionReuse'),
           turnVideo: t('composer.actionTurnVideo'),
           prompt: t('prompt.label'),
+          copyPrompt: t('composer.copyPrompt'),
+          copied: t('composer.copied'),
           model: t('model.label'),
           type: t('composer.fieldType'),
           typeImage: t('composer.image'),

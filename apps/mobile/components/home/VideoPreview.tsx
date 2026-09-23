@@ -70,7 +70,6 @@ export function VideoPreview({
   style,
   cardId,
 }: VideoPreviewProps) {
-  const hasSlot = useVideoSlot(cardId);
   const isFocused = useIsFocused();
   const [appActive, setAppActive] = useState<boolean>(
     AppState.currentState === 'active',
@@ -83,8 +82,15 @@ export function VideoPreview({
     return () => sub.remove();
   }, []);
 
+  // A card claims a slot only while it could actually play. `useIsFocused`
+  // is false for a tab screen sitting under a modal (it checks parent
+  // navigators too), so the home feed lets go of its slots the moment
+  // Create opens on top and takes them back when the modal closes.
+  const canPlay = isFocused && appActive;
+  const hasSlot = useVideoSlot(cardId, canPlay);
+
   // Only spin up a native decoder when we hold a slot AND are on screen.
-  const shouldPlay = hasSlot && isFocused && appActive;
+  const shouldPlay = hasSlot && canPlay;
 
   // Poster crossfade. Starts fully visible; the live player fades the
   // poster out once its first frame paints. Whenever we tear the player

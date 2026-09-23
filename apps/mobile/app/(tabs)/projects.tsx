@@ -1,5 +1,7 @@
 import { Badge, Box, Button, Card, HStack, Skeleton, Stack, Text, useTheme } from '@clickfy/ui';
+import { useAuth } from '@clerk/expo';
 import type { UserProject } from '@clickfy/sdk';
+import * as Sentry from '@sentry/react-native';
 import { FlashList } from '@shopify/flash-list';
 import {
   useInfiniteQuery,
@@ -10,7 +12,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, RefreshControl, View } from 'react-native';
 import ReanimatedSwipeable, {
@@ -24,8 +26,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/components/shared/ErrorState';
 import { Icon } from '@/components/ui/Icon';
 import { setGenerationOutputs } from '@/lib/generation-cache';
+import { outputThumbnailUrl, thumbnailUrl } from '@/lib/image-url';
 import { PROJECTS_QUERY } from '@/lib/query-config';
 import { getSDK } from '@/lib/sdk';
 import { useRefreshOnFocus } from '@/lib/use-refresh-on-focus';
@@ -51,6 +55,21 @@ export default function ProjectsScreen() {
   const { t } = useTranslation('projects');
   const sdk = getSDK();
   const qc = useQueryClient();
+  // Never fire before Clerk has a session to sign the request with: an
+  // early unauthenticated fetch fails, and that failure used to render
+  // as "no projects yet" until a manual refresh.
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const authReady = authLoaded && !!isSignedIn;
+
+  // Breadcrumbs for the "tab renders blank" report (TestFlight 1.0.1(7)):
+  // no error reaches Sentry when it happens, so the next occurrence
+  // needs a trail of what mounted and when.
+  useEffect(() => {
+    Sentry.addBreadcrumb({ category: 'screen', message: 'projects mount', level: 'info' });
+    return () => {
+      Sentry.addBreadcrumb({ category: 'screen', message: 'projects unmount', level: 'info' });
+    };
+  }, []);
 
   // Track the most-recently-opened swipeable so opening a new one
   // closes the previous one. Mirrors iOS Mail's "only one row at
@@ -67,6 +86,7 @@ export default function ProjectsScreen() {
       sdk.library.listProjects({ limit: 30, cursor: pageParam }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: authReady,
     ...PROJECTS_QUERY,
   });
 
@@ -171,15 +191,26 @@ export default function ProjectsScreen() {
           </Text>
         </Stack>
       </Box>
-      {projectsQuery.isLoading ? (
+      {projectsQuery.isLoading || !authReady ? (
         // First-paint skeleton state — small fixed count, no need for
         // virtualization. Lives outside the FlashList so the list's
         // own ListEmptyComponent path stays reserved for the real
-        // "no projects" case.
+        // "no projects" case. Also shown while the query waits on auth
+        // (a disabled query is `pending` but not `loading` in v5).
         <View style={{ padding: 20, gap: 12 }}>
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} height={86} radius={18} />
           ))}
+        </View>
+      ) : projectsQuery.isError && items.length === 0 ? (
+        // Nothing cached to show — say so, with a way back. Once a page
+        // is cached a failed refetch keeps the list and stays quiet.
+        <View style={{ padding: 20 }}>
+          <ErrorState
+            title={t('loadError')}
+            onRetry={() => void projectsQuery.refetch()}
+            retrying={projectsQuery.isFetching}
+          />
         </View>
       ) : (
         <FlashList
@@ -287,7 +318,15 @@ function ProjectRow({
               }}
             >
               <Image
-                source={project.outputs[0]?.url ?? project.templateCoverImage ?? undefined}
+                // Row-sized derivative of the first output (grid use only —
+                // the result screen opens the original); template covers
+                // go through the browse-media resizer as elsewhere.
+                source={
+                  outputThumbnailUrl(project.outputs[0]?.url, { width: 56 }) ??
+                  thumbnailUrl(project.templateCoverImage || undefined, { width: 56 })
+                }
+                recyclingKey={project.id}
+                cachePolicy="memory-disk"
                 style={{ width: '100%', height: '100%' }}
                 contentFit="cover"
                 transition={150}

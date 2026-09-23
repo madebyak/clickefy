@@ -143,6 +143,10 @@
     "viewPlans": "عرض الخطط",
     "queuedLabel": "في قائمة الانتظار",
     "generatingLabel": "جارٍ الإنشاء…",
-    "dismiss": "إغلاق"
+    "dismiss": "إغلاق",
+    "copyPrompt": "نسخ النص",
+    "copied": "تم النسخ",
+    "loadError": "تعذّر تحميل هذا المشروع",
+    "drawerLoadError": "تعذّر تحميل مشاريعك"
   }
 }

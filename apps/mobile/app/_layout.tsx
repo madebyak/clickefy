@@ -23,7 +23,7 @@ import { router, Stack, ThemeProvider as NavThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { ErrorBoundary } from 'react-error-boundary';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -201,6 +201,16 @@ function RootLayout() {
       } else if (data.type === 'job_failed' && typeof data.jobId === 'string') {
         router.push(`/result/${data.jobId}`);
       }
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Foreground/background transitions on the Sentry trail. The blank
+  // Projects tab was reported right after switching back from another
+  // app, and a screen that fails to redraw leaves no error of its own.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      Sentry.addBreadcrumb({ category: 'app.lifecycle', message: `appstate ${state}`, level: 'info' });
     });
     return () => sub.remove();
   }, []);

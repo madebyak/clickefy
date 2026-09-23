@@ -33,6 +33,7 @@ import {
   Camera,
   Check,
   Clock,
+  Copy,
   Diamond,
   DotsThree,
   DownloadSimple,
@@ -111,6 +112,7 @@ export type IconName =
   | 'arrowRight'
   | 'arrowExternal'
   | 'refresh'
+  | 'copy'
   // Auth / branding
   | 'apple'
   | 'envelope'
@@ -198,6 +200,7 @@ const ICONS: Record<IconName, PhosphorIcon> = {
   arrowLeft: ArrowLeft,
   arrowRight: ArrowRight,
   arrowExternal: ArrowSquareOut,
+  copy: Copy,
   refresh: ArrowsClockwise,
   apple: AppleLogo,
   envelope: Envelope,

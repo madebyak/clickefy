@@ -11,18 +11,21 @@
  * original in R2 is never touched.
  *
  * ────────────────────────────────────────────────────────────────────
- * HARD SAFETY RULE — never transform paid generation outputs.
+ * HARD SAFETY RULE — paid generation outputs are only ever REDUCED for
+ * grid previews, never for viewing or saving.
  *
- * User generation results live under `/v1/outputs/...` and MUST always
- * be delivered at their ORIGINAL dimensions and quality (users pay for
- * them). This helper only ever rewrites a strict allow-list of
+ * User generation results live under `/v1/outputs/...`. The expanded
+ * viewer and every download MUST deliver the ORIGINAL file (dimensions,
+ * quality, ratio — users pay for it). Grid cells, covers and thumbnails
+ * may request a device-sized derivative through `outputThumbnailUrl`,
+ * which is the ONLY path that touches an output and accepts image
+ * formats alone. `thumbnailUrl` keeps its original allow-list of
  * admin-curated browse media:
  *     /v1/uploads/templates/   (covers, galleries, video posters)
  *     /v1/uploads/categories/  (category icons)
  *     /v1/uploads/banners/     (home banners + posters)
- * Anything else — outputs, user input uploads, foreign CDNs, malformed
- * URLs — is returned unchanged. There is intentionally no code path here
- * that can resize an output.
+ * Anything else — user input uploads, foreign CDNs, malformed URLs — is
+ * returned unchanged by both.
  * ────────────────────────────────────────────────────────────────────
  *
  * Mechanism: Cloudflare's `/cdn-cgi/image/<opts>/<source-path>` endpoint
@@ -77,21 +80,51 @@ export function thumbnailUrl(
   opts: ThumbnailOptions,
 ): string | undefined {
   if (!src) return src ?? undefined;
-  if (!API_HOST) return src;
-
-  let parsed: URL;
-  try {
-    parsed = new URL(src);
-  } catch {
-    return src;
-  }
-
-  // Only our own origin, and only admin browse-media prefixes.
-  if (parsed.host !== API_HOST) return src;
+  const parsed = ownOrigin(src);
+  if (!parsed) return src;
   if (!TRANSFORMABLE_PREFIXES.some((p) => parsed.pathname.startsWith(p))) {
     return src;
   }
+  return transformed(parsed, opts);
+}
 
+/** Generation outputs are served from here (see apps/api routes/outputs.ts). */
+const OUTPUTS_PREFIX = '/v1/outputs/';
+/** Cloudflare can only transform raster images; a video key passes through. */
+const OUTPUT_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|avif|gif)$/i;
+
+/**
+ * A grid-sized derivative of a generated IMAGE output — for masonry
+ * cells, project covers and row thumbnails only. The expanded viewer
+ * and Save to Photos must keep using the asset's own `url`.
+ *
+ * Non-image outputs (video files) and anything off our origin come back
+ * untouched, so a caller can pass whatever the asset row holds.
+ */
+export function outputThumbnailUrl(
+  src: string | undefined | null,
+  opts: ThumbnailOptions,
+): string | undefined {
+  if (!src) return src ?? undefined;
+  const parsed = ownOrigin(src);
+  if (!parsed) return src;
+  if (!parsed.pathname.startsWith(OUTPUTS_PREFIX)) return src;
+  if (!OUTPUT_IMAGE_EXTENSIONS.test(parsed.pathname)) return src;
+  return transformed(parsed, opts);
+}
+
+/** Parses `src` and returns it only when it points at our own API host. */
+function ownOrigin(src: string): URL | null {
+  if (!API_HOST) return null;
+  try {
+    const parsed = new URL(src);
+    return parsed.host === API_HOST ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function transformed(parsed: URL, opts: ThumbnailOptions): string {
   const dpr = Math.min(PixelRatio.get() || 1, 3);
   const px = Math.min(
     MAX_DEVICE_WIDTH,

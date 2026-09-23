@@ -19,8 +19,7 @@
  * double-spending the budget.
  */
 
-import { useEffect } from 'react';
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 
 /**
  * Max number of preview videos allowed to decode at once across the whole
@@ -94,8 +93,14 @@ function subscribe(listener: () => void): () => void {
  * and is always considered active (used by one-off players like the banner
  * and the template-detail hero, where there's only ever a single instance
  * on screen).
+ *
+ * `wanted` scopes the claim to when the card could actually play. A card
+ * on a blurred screen (the home feed under the Create modal, an inactive
+ * tab) must not sit on a slot it can't use: the budget is app-wide, so
+ * four idle feed cards would otherwise starve every video on the screen
+ * in front. Flipping `wanted` false releases the slot; true re-queues it.
  */
-export function useVideoSlot(id: string | undefined): boolean {
+export function useVideoSlot(id: string | undefined, wanted = true): boolean {
   const isActive = useSyncExternalStore(
     subscribe,
     () => (id ? active.has(id) : true),
@@ -103,10 +108,10 @@ export function useVideoSlot(id: string | undefined): boolean {
   );
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !wanted) return;
     acquireSlot(id);
     return () => releaseSlot(id);
-  }, [id]);
+  }, [id, wanted]);
 
   return id ? isActive : true;
 }

@@ -33,6 +33,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ErrorState } from '@/components/shared/ErrorState';
 import { Icon } from '@/components/ui/Icon';
 
 export interface DrawerProjectRef {
@@ -65,6 +66,8 @@ interface RecentsDrawerProps {
   emptyLabel: string;
   folders: DrawerFolder[];
   recents: DrawerRecentRef[];
+  /** The projects fetch failed — shown in place of the lists, with Retry. */
+  error?: { message: string; onRetry: () => void; retrying: boolean } | null;
   /** The project currently open in the composer, for the active row tint. */
   activeProjectId: string | null;
   onNewSession: () => void;
@@ -81,6 +84,7 @@ export function RecentsDrawer({
   emptyLabel,
   folders,
   recents,
+  error = null,
   activeProjectId,
   onNewSession,
   onOpenProject,
@@ -189,81 +193,94 @@ export function RecentsDrawer({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-            {/* ── Folders (accordion — expand in place, never navigate) ── */}
-            <SectionLabel text={projectsLabel} />
-            <Stack gap="xs" style={{ marginBottom: 18 }}>
-              {folders.map((folder) => {
-                const open = expanded[folder.id] === true;
-                return (
-                  <View key={folder.id}>
-                    <Pressable
-                      onPress={() => setExpanded((prev) => ({ ...prev, [folder.id]: !open }))}
-                      haptic="light"
-                      pressedOpacity={0.9}
-                      accessibilityRole="button"
-                      accessibilityState={{ expanded: open }}
-                    >
-                      <HStack align="center" gap="md" style={{ padding: 8, borderRadius: 14 }}>
-                        <View
-                          style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 10,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: colors.surface,
-                          }}
-                        >
-                          <Icon name="projects" size={15} color={colors.inkMuted} />
-                        </View>
-                        <Text variant="bodySemi" color="ink" numberOfLines={1} style={{ flex: 1 }}>
-                          {folder.name}
-                        </Text>
-                        <Icon
-                          name={open ? 'chevronDown' : 'chevronRight'}
-                          size={13}
-                          color={colors.inkSubtle}
-                        />
-                      </HStack>
-                    </Pressable>
-
-                    {open
-                      ? folder.projects.map((p) => (
-                          <ProjectRow
-                            key={p.id}
-                            name={p.name}
-                            caption={p.countLabel}
-                            coverUri={p.coverUri}
-                            active={p.id === activeProjectId}
-                            indent
-                            onPress={() => pick(p.id)}
-                          />
-                        ))
-                      : null}
-                  </View>
-                );
-              })}
-            </Stack>
-
-            {/* ── Recent projects ── */}
-            <SectionLabel text={recentsLabel} />
-            {recents.length === 0 ? (
-              <Text variant="caption" color="inkMuted" style={{ paddingHorizontal: 8, paddingVertical: 16 }}>
-                {emptyLabel}
-              </Text>
+            {/* A failed fetch is an error, never an empty history: the
+                card replaces both lists until Retry brings them back. */}
+            {error ? (
+              <ErrorState
+                title={error.message}
+                onRetry={error.onRetry}
+                retrying={error.retrying}
+                style={{ marginHorizontal: 4 }}
+              />
             ) : (
-              <Stack gap="xs">
-                {recents.map((r) => (
-                  <ProjectRow
-                    key={r.id}
-                    name={r.name}
-                    caption={r.when}
-                    coverUri={r.coverUri}
-                    active={r.id === activeProjectId}
-                    onPress={() => pick(r.id)}
-                  />
-                ))}
-              </Stack>
+              <>
+                {/* ── Folders (accordion — expand in place, never navigate) ── */}
+                <SectionLabel text={projectsLabel} />
+                <Stack gap="xs" style={{ marginBottom: 18 }}>
+                  {folders.map((folder) => {
+                    const open = expanded[folder.id] === true;
+                    return (
+                      <View key={folder.id}>
+                        <Pressable
+                          onPress={() => setExpanded((prev) => ({ ...prev, [folder.id]: !open }))}
+                          haptic="light"
+                          pressedOpacity={0.9}
+                          accessibilityRole="button"
+                          accessibilityState={{ expanded: open }}
+                        >
+                          <HStack align="center" gap="md" style={{ padding: 8, borderRadius: 14 }}>
+                            <View
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 10,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: colors.surface,
+                              }}
+                            >
+                              <Icon name="projects" size={15} color={colors.inkMuted} />
+                            </View>
+                            <Text variant="bodySemi" color="ink" numberOfLines={1} style={{ flex: 1 }}>
+                              {folder.name}
+                            </Text>
+                            <Icon
+                              name={open ? 'chevronDown' : 'chevronRight'}
+                              size={13}
+                              color={colors.inkSubtle}
+                            />
+                          </HStack>
+                        </Pressable>
+
+                        {open
+                          ? folder.projects.map((p) => (
+                              <ProjectRow
+                                key={p.id}
+                                name={p.name}
+                                caption={p.countLabel}
+                                coverUri={p.coverUri}
+                                active={p.id === activeProjectId}
+                                indent
+                                onPress={() => pick(p.id)}
+                              />
+                            ))
+                          : null}
+                      </View>
+                    );
+                  })}
+                </Stack>
+
+                {/* ── Recent projects ── */}
+                <SectionLabel text={recentsLabel} />
+                {recents.length === 0 ? (
+                  <Text variant="caption" color="inkMuted" style={{ paddingHorizontal: 8, paddingVertical: 16 }}>
+                    {emptyLabel}
+                  </Text>
+                ) : (
+                  <Stack gap="xs">
+                    {recents.map((r) => (
+                      <ProjectRow
+                        key={r.id}
+                        name={r.name}
+                        caption={r.when}
+                        coverUri={r.coverUri}
+                        active={r.id === activeProjectId}
+                        onPress={() => pick(r.id)}
+                      />
+                    ))}
+                  </Stack>
+                )}
+              </>
             )}
           </ScrollView>
         </Animated.View>

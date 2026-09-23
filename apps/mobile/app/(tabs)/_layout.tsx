@@ -1,4 +1,5 @@
 import { useTheme } from '@clickfy/ui';
+import * as Sentry from '@sentry/react-native';
 import { Redirect, router, Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
@@ -85,6 +86,17 @@ export default function TabLayout() {
         // are left at defaults; animation is the only visual change so the
         // tab bar itself never moves under the user. iOS-style 220 ms.
         animation: 'fade',
+      }}
+      // Which tab took focus, and when — context for the "tab renders
+      // blank" report, which reaches Sentry with no error of its own.
+      screenListeners={{
+        focus: (e) => {
+          Sentry.addBreadcrumb({
+            category: 'navigation',
+            message: `tab focus ${e.target?.split('-')[0] ?? 'unknown'}`,
+            level: 'info',
+          });
+        },
       }}
     >
       <Tabs.Screen

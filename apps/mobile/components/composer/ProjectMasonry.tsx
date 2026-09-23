@@ -16,10 +16,16 @@
  * Ready cells carry ↓ save and ⋯ details in the corner.
  */
 
-import { Pressable, Text, useTheme } from '@clickfy/ui';
+import { Pressable, Skeleton, Text, useTheme } from '@clickfy/ui';
 import { Image } from 'expo-image';
 import { useEffect, useMemo } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -30,7 +36,9 @@ import Animated, {
 
 import { LogoMark } from '@/components/brand/Logo';
 import { VideoPreview } from '@/components/home/VideoPreview';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { Icon } from '@/components/ui/Icon';
+import { outputThumbnailUrl } from '@/lib/image-url';
 import { MODE_TINT } from './mode-colors';
 import type { ComposerMode } from './sheets';
 
@@ -62,7 +70,15 @@ export interface MasonryLabels {
   dismiss: string;
   emptyTitle: string;
   emptyBody: string;
+  loadError: string;
 }
+
+/** Grid gutters: 16 each side, 10 between the two columns. */
+const GRID_SIDE = 16;
+const GRID_GAP = 10;
+
+/** Skeleton shapes while a project's assets load — varied like real work. */
+const LOADING_RATIOS = ['3:4', '1:1', '4:5', '16:9', '1:1', '3:4'];
 
 function aspectValue(ratio: string): number {
   const [w, h] = ratio.split(':').map(Number);
@@ -72,6 +88,8 @@ function aspectValue(ratio: string): number {
 export function ProjectMasonry({
   cells,
   labels,
+  loading = false,
+  error = null,
   onOpenCell,
   onCellMenu,
   onCellDownload,
@@ -79,11 +97,18 @@ export function ProjectMasonry({
 }: {
   cells: MasonryCell[];
   labels: MasonryLabels;
+  /** The open project's assets are still on their first fetch. */
+  loading?: boolean;
+  /** That fetch failed; `onRetry` re-runs it. */
+  error?: { onRetry: () => void; retrying: boolean } | null;
   onOpenCell: (cell: MasonryCell) => void;
   onCellMenu: (cell: MasonryCell) => void;
   onCellDownload: (cell: MasonryCell) => void;
   onDismissFailed: (cell: MasonryCell) => void;
 }) {
+  const { width: screenWidth } = useWindowDimensions();
+  const cellWidth = (screenWidth - GRID_SIDE * 2 - GRID_GAP) / 2;
+
   // Balance by accumulated height so neither column runs long.
   const [colA, colB] = useMemo(() => {
     const a: MasonryCell[] = [];
@@ -103,10 +128,33 @@ export function ProjectMasonry({
     return [a, b];
   }, [cells]);
 
-  // The empty state rides INSIDE the scroll surface (not a bare View):
-  // that's what makes a tap anywhere in an empty project dismiss the
-  // keyboard exactly like a tap between cells does.
+  // The empty, loading and error states all ride INSIDE the scroll
+  // surface (not a bare View): that's what makes a tap anywhere in an
+  // empty project dismiss the keyboard exactly like a tap between cells
+  // does. Session cells (a generation just submitted) always win over
+  // the placeholder states, so a failed refetch never hides live work.
   if (cells.length === 0) {
+    if (loading) {
+      return (
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.grid}
+        >
+          <View style={styles.column}>
+            {LOADING_RATIOS.filter((_, i) => i % 2 === 0).map((ratio, i) => (
+              <Skeleton key={i} height={cellWidth / aspectValue(ratio)} radius={16} />
+            ))}
+          </View>
+          <View style={styles.column}>
+            {LOADING_RATIOS.filter((_, i) => i % 2 === 1).map((ratio, i) => (
+              <Skeleton key={i} height={cellWidth / aspectValue(ratio)} radius={16} />
+            ))}
+          </View>
+        </ScrollView>
+      );
+    }
     return (
       <ScrollView
         style={{ flex: 1 }}
@@ -114,20 +162,31 @@ export function ProjectMasonry({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ flexGrow: 1 }}
       >
-        <View style={styles.emptyWrap}>
-          <LogoMark size={44} />
-          <Text
-            variant="display"
-            color="ink"
-            align="center"
-            style={{ fontSize: 24, lineHeight: 31, letterSpacing: 0, maxWidth: 300, marginTop: 16 }}
-          >
-            {labels.emptyTitle}
-          </Text>
-          <Text variant="caption" color="inkMuted" align="center" style={{ maxWidth: 260, marginTop: 6 }}>
-            {labels.emptyBody}
-          </Text>
-        </View>
+        {error ? (
+          <View style={styles.emptyWrap}>
+            <ErrorState
+              title={labels.loadError}
+              onRetry={error.onRetry}
+              retrying={error.retrying}
+              style={{ alignSelf: 'stretch' }}
+            />
+          </View>
+        ) : (
+          <View style={styles.emptyWrap}>
+            <LogoMark size={44} />
+            <Text
+              variant="display"
+              color="ink"
+              align="center"
+              style={{ fontSize: 24, lineHeight: 31, letterSpacing: 0, maxWidth: 300, marginTop: 16 }}
+            >
+              {labels.emptyTitle}
+            </Text>
+            <Text variant="caption" color="inkMuted" align="center" style={{ maxWidth: 260, marginTop: 6 }}>
+              {labels.emptyBody}
+            </Text>
+          </View>
+        )}
       </ScrollView>
     );
   }
@@ -137,6 +196,7 @@ export function ProjectMasonry({
       key={cell.id}
       cell={cell}
       labels={labels}
+      thumbWidth={cellWidth}
       onOpen={() => onOpenCell(cell)}
       onMenu={() => onCellMenu(cell)}
       onDownload={() => onCellDownload(cell)}
@@ -152,16 +212,10 @@ export function ProjectMasonry({
       // grid only dismisses it (no cell action fires), and starting a
       // scroll drags it away too.
       keyboardDismissMode="on-drag"
-      contentContainerStyle={{
-        flexDirection: 'row',
-        gap: 10,
-        paddingHorizontal: 16,
-        paddingTop: 8,
-        paddingBottom: 16,
-      }}
+      contentContainerStyle={styles.grid}
     >
-      <View style={{ flex: 1, gap: 10 }}>{colA.map(renderCell)}</View>
-      <View style={{ flex: 1, gap: 10 }}>{colB.map(renderCell)}</View>
+      <View style={styles.column}>{colA.map(renderCell)}</View>
+      <View style={styles.column}>{colB.map(renderCell)}</View>
     </ScrollView>
   );
 }
@@ -171,6 +225,7 @@ export function ProjectMasonry({
 function Cell({
   cell,
   labels,
+  thumbWidth,
   onOpen,
   onMenu,
   onDownload,
@@ -178,6 +233,8 @@ function Cell({
 }: {
   cell: MasonryCell;
   labels: MasonryLabels;
+  /** Layout width of the cell in dp — sizes the grid derivative requested. */
+  thumbWidth: number;
   onOpen: () => void;
   onMenu: () => void;
   onDownload: () => void;
@@ -233,8 +290,16 @@ function Cell({
                 style={StyleSheet.absoluteFill}
               />
             ) : cell.uri ? (
+              // Grid derivative only — the viewer and Save to Photos read
+              // the untouched original off the asset row.
               <Image
-                source={cell.uri}
+                source={
+                  typeof cell.uri === 'string'
+                    ? outputThumbnailUrl(cell.uri, { width: thumbWidth })
+                    : cell.uri
+                }
+                recyclingKey={cell.id}
+                cachePolicy="memory-disk"
                 contentFit="cover"
                 style={{ width: '100%', height: '100%' }}
                 transition={150}
@@ -324,6 +389,17 @@ function PendingSkeleton({ cell, labels }: { cell: MasonryCell; labels: MasonryL
 // ─── Styles ─────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  grid: {
+    flexDirection: 'row',
+    gap: GRID_GAP,
+    paddingHorizontal: GRID_SIDE,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  column: {
+    flex: 1,
+    gap: GRID_GAP,
+  },
   emptyWrap: {
     flex: 1,
     alignItems: 'center',

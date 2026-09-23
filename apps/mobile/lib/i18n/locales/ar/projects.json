@@ -30,5 +30,12 @@
     "create": "إنشاء",
     "template": "قالب",
     "tool": "أداة"
-  }
+  },
+  "searchPlaceholder": "ابحث في المشاريع",
+  "filterAll": "الكل",
+  "viewList": "عرض القائمة",
+  "viewGrid": "عرض الشبكة",
+  "noMatchesTitle": "لا توجد مشاريع مطابقة",
+  "noMatchesDescription": "جرّب اسمًا آخر أو امسح الفلتر.",
+  "clearFilters": "مسح"
 }

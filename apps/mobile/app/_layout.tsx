@@ -15,7 +15,8 @@ import {
 // direct `@react-navigation/*` import at bundle time — the provider and the
 // Theme type both come from the router now.
 import type { Theme as NavTheme } from 'expo-router/react-navigation';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, useQueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { ThemeProvider, useTheme } from '@clickfy/ui';
 import { useFonts } from 'expo-font';
 import { requireOptionalNativeModule } from 'expo-modules-core';
@@ -34,6 +35,7 @@ import { LocaleSwitchOverlay } from '@/components/settings/LocaleSwitchOverlay';
 import { ToastProvider } from '@/components/shared/Toast';
 import { Splash } from '@/components/Splash';
 import { clearTrackedJobs, hydrateTrackedJobs, setJobSettledListener } from '@/lib/job-tracker';
+import { PERSIST_MAX_AGE_MS, persistOptions } from '@/lib/query-persist';
 import { usePushRegistration } from '@/lib/use-push-registration';
 import {
   configureRevenueCat,
@@ -172,7 +174,10 @@ function RootLayout() {
         defaultOptions: {
           queries: {
             staleTime: 60_000,
-            gcTime: 10 * 60_000,
+            // At least the persisted cache's maxAge: an entry collected
+            // from memory sooner than that would be written back to disk
+            // as absent — see lib/query-persist.ts.
+            gcTime: PERSIST_MAX_AGE_MS,
             retry: 1,
             // React Native has no real "window focus" event, and screen
             // re-focus refresh is handled deliberately (and throttled) by
@@ -233,7 +238,7 @@ function RootLayout() {
       <PushRegistration />
       <GestureHandlerRootView style={{ flex: 1, direction: locale === 'ar' ? 'rtl' : 'ltr' }}>
         <SafeAreaProvider>
-          <QueryClientProvider client={queryClient}>
+          <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
             <RevenueCatBridge />
             <JobTrackerBridge />
             <ThemeProvider defaultMode="system" defaultAccentKey="green" locale={locale}>
@@ -348,7 +353,7 @@ function RootLayout() {
               </ToastProvider>
               </ThemedShell>
             </ThemeProvider>
-          </QueryClientProvider>
+          </PersistQueryClientProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     </ClerkProvider>

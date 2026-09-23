@@ -30,5 +30,12 @@
     "create": "Create",
     "template": "Template",
     "tool": "Tool"
-  }
+  },
+  "searchPlaceholder": "Search projects",
+  "filterAll": "All",
+  "viewList": "List view",
+  "viewGrid": "Grid view",
+  "noMatchesTitle": "No projects match",
+  "noMatchesDescription": "Try another name or clear the filter.",
+  "clearFilters": "Clear"
 }

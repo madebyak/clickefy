@@ -201,7 +201,10 @@ projectsRoute.get('/', ...readChain, async (c) => {
   // client opens the project — a template-born project that still holds
   // only template runs opens as that run's result; anything else opens
   // in the composer.
-  const runs = new Map<string, { jobCount: number; nonTemplate: number; latestJobId: string }>();
+  const runs = new Map<
+    string,
+    { jobCount: number; nonTemplate: number; activeCount: number; latestJobId: string }
+  >();
   const covers = new Map<
     string,
     {
@@ -224,11 +227,13 @@ projectsRoute.get('/', ...readChain, async (c) => {
       project_id: string;
       job_count: number;
       non_template: number;
+      active_count: number;
       latest_job_id: string;
     }>(dsql`
       SELECT project_id,
              count(*)::int AS job_count,
              (count(*) FILTER (WHERE origin <> 'template'))::int AS non_template,
+             (count(*) FILTER (WHERE status IN ('queued', 'processing')))::int AS active_count,
              (array_agg(id ORDER BY created_at DESC, id DESC))[1] AS latest_job_id
       FROM jobs
       WHERE project_id IN (${dsql.join(
@@ -244,6 +249,7 @@ projectsRoute.get('/', ...readChain, async (c) => {
       runs.set(r.project_id, {
         jobCount: r.job_count,
         nonTemplate: r.non_template,
+        activeCount: r.active_count,
         latestJobId: r.latest_job_id,
       });
     }
@@ -312,6 +318,10 @@ projectsRoute.get('/', ...readChain, async (c) => {
           origin: p.origin,
           originTemplateId: p.originTemplateId,
           jobCount: run?.jobCount ?? 0,
+          // Runs still queued or processing — the sidebar's "something is
+          // generating in here" signal, and what a client reconciles its
+          // own pending tiles against.
+          activeJobCount: run?.activeCount ?? 0,
           latestJobId: run?.latestJobId ?? null,
           opensAs: openStrategy(p.origin, run),
           assetCount: counts.get(p.id) ?? 0,
@@ -367,6 +377,7 @@ projectsRoute.post('/', ...writeChain, zValidator('json', createProjectSchema), 
         origin: row!.origin,
         originTemplateId: row!.originTemplateId,
         jobCount: 0,
+        activeJobCount: 0,
         latestJobId: null,
         opensAs: 'composer' as const,
         assetCount: 0,
@@ -387,7 +398,7 @@ projectsRoute.post('/', ...writeChain, zValidator('json', createProjectSchema), 
  */
 function openStrategy(
   origin: 'create' | 'template' | 'tool',
-  run: { jobCount: number; nonTemplate: number; latestJobId: string } | undefined,
+  run: { jobCount: number; nonTemplate: number } | undefined,
 ): 'result' | 'composer' {
   return origin === 'template' && run && run.jobCount > 0 && run.nonTemplate === 0
     ? 'result'

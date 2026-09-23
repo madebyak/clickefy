@@ -23,7 +23,14 @@
 import { HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { I18nManager, Modal, ScrollView, View, useWindowDimensions } from 'react-native';
+import {
+  ActivityIndicator,
+  I18nManager,
+  Modal,
+  ScrollView,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, {
   Easing,
   runOnJS,
@@ -43,6 +50,8 @@ export interface DrawerProjectRef {
   coverUri?: string | number;
   /** ThumbHash of the cover — paints before (or instead of) the bytes. */
   coverThumbhash?: string;
+  /** A run is in flight inside — the row shows a live indicator. */
+  generating?: boolean;
 }
 
 export interface DrawerFolder {
@@ -58,6 +67,7 @@ export interface DrawerRecentRef {
   when: string;
   coverUri?: string | number;
   coverThumbhash?: string;
+  generating?: boolean;
 }
 
 interface RecentsDrawerProps {
@@ -253,6 +263,7 @@ export function RecentsDrawer({
                                 caption={p.countLabel}
                                 coverUri={p.coverUri}
                                 coverThumbhash={p.coverThumbhash}
+                                generating={p.generating}
                                 active={p.id === activeProjectId}
                                 indent
                                 onPress={() => pick(p.id)}
@@ -279,6 +290,7 @@ export function RecentsDrawer({
                         caption={r.when}
                         coverUri={r.coverUri}
                         coverThumbhash={r.coverThumbhash}
+                        generating={r.generating}
                         active={r.id === activeProjectId}
                         onPress={() => pick(r.id)}
                       />
@@ -299,6 +311,7 @@ function ProjectRow({
   caption,
   coverUri,
   coverThumbhash,
+  generating,
   active,
   indent,
   onPress,
@@ -307,6 +320,7 @@ function ProjectRow({
   caption: string;
   coverUri?: string | number;
   coverThumbhash?: string;
+  generating?: boolean;
   active: boolean;
   indent?: boolean;
   onPress: () => void;
@@ -356,6 +370,11 @@ function ProjectRow({
             {caption}
           </Text>
         </Stack>
+        {generating ? (
+          // A run is generating inside — the same cue the Projects tab
+          // shows, so a user who left mid-generation can find it.
+          <ActivityIndicator size="small" color={accent.solid} />
+        ) : null}
       </HStack>
     </Pressable>
   );

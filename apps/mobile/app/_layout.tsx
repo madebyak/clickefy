@@ -33,6 +33,7 @@ import { ErrorFallback } from '@/components/ErrorFallback';
 import { LocaleSwitchOverlay } from '@/components/settings/LocaleSwitchOverlay';
 import { ToastProvider } from '@/components/shared/Toast';
 import { Splash } from '@/components/Splash';
+import { clearTrackedJobs, hydrateTrackedJobs, setJobSettledListener } from '@/lib/job-tracker';
 import { usePushRegistration } from '@/lib/use-push-registration';
 import {
   configureRevenueCat,
@@ -234,6 +235,7 @@ function RootLayout() {
         <SafeAreaProvider>
           <QueryClientProvider client={queryClient}>
             <RevenueCatBridge />
+            <JobTrackerBridge />
             <ThemeProvider defaultMode="system" defaultAccentKey="green" locale={locale}>
               <ThemedShell>
               <ToastProvider>
@@ -374,6 +376,37 @@ function SdkBridge() {
     // just hand them our adapter so the SDK reads it lazily.
     attachTokenGetter(async () => (await getToken()) ?? null);
   }, [getToken]);
+  return null;
+}
+
+/**
+ * Ties the app-wide job tracker (`lib/job-tracker.ts`) to React Query
+ * and to the session: a run that settles refetches the project it
+ * filed into, the project lists and the balance; sign-in reconciles
+ * the record with the server's active runs; sign-out forgets them.
+ * UI-less. Mounted inside `QueryClientProvider`.
+ */
+function JobTrackerBridge() {
+  const { isAuthed } = useSession();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setJobSettledListener((job) => {
+      void queryClient.invalidateQueries({ queryKey: ['project-assets', job.projectId] });
+      void queryClient.invalidateQueries({ queryKey: ['studio-projects'] });
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      // Ready: the balance already moved at submit; failed: the server
+      // may have refunded an infra failure. Quiet refresh either way.
+      void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+    });
+    return () => setJobSettledListener(null);
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (isAuthed) void hydrateTrackedJobs().catch(() => undefined);
+    else clearTrackedJobs();
+  }, [isAuthed]);
+
   return null;
 }
 

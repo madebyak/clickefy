@@ -884,19 +884,25 @@ jobsRoute.get(
     // columns we serialise). We sort by createdAt DESC + id DESC so
     // pagination is total-ordered and stable across same-millisecond
     // inserts.
+    // `?status=active` narrows to runs still in flight — what a client
+    // needs to rebuild its "generating…" tiles after a reload or a cold
+    // start, without paging through finished history.
+    const activeOnly = c.req.query('status') === 'active';
+
     const rows = await c.var.db.query.jobs.findMany({
-      where: cursorTs && cursorId
-        ? and(
-            eq(jobs.userId, userRow.id),
-            // Either strictly older, or same timestamp but lower id.
-            // Drizzle doesn't have a clean "row-tuple comparison" so we
-            // build the OR inline.
-            or(
+      where: and(
+        eq(jobs.userId, userRow.id),
+        activeOnly ? inArray(jobs.status, ['queued', 'processing']) : undefined,
+        // Either strictly older, or same timestamp but lower id.
+        // Drizzle doesn't have a clean "row-tuple comparison" so we
+        // build the OR inline.
+        cursorTs && cursorId
+          ? or(
               lt(jobs.createdAt, cursorTs),
               and(eq(jobs.createdAt, cursorTs), lt(jobs.id, cursorId)),
-            ),
-          )
-        : eq(jobs.userId, userRow.id),
+            )
+          : undefined,
+      ),
       orderBy: [desc(jobs.createdAt), desc(jobs.id)],
       limit: limit + 1, // request one extra so we know if there's a next page
       columns: {
@@ -1055,6 +1061,51 @@ jobsRoute.get(
   },
 );
 
+// ─── GET /v1/jobs/status?ids=a,b,c ──────────────────────────────────
+//
+// The batched form of `GET /v1/jobs/:id`, same payload per job, for a
+// client tracking several runs at once. N in-flight runs polled one by
+// one cost N requests per tick against the same read budget as the
+// project and asset lists; one request per tick keeps that budget for
+// the screens. Ids the caller does not own are simply absent from the
+// answer (never a 404 for the batch), which is also how a deleted run
+// tells the client to stop asking. Registered above `/:id` so the
+// literal segment wins the match.
+const STATUS_BATCH_MAX = 20;
+
+jobsRoute.get(
+  '/status',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  withCurrentUser(),
+  async (c) => {
+    const userRow = c.var.user!;
+    const ids = Array.from(
+      new Set(
+        (c.req.query('ids') ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => isUuid(s)),
+      ),
+    ).slice(0, STATUS_BATCH_MAX);
+
+    if (ids.length === 0) {
+      c.header('Cache-Control', 'no-store');
+      return c.json({ data: [] });
+    }
+
+    const rows = await c.var.db.query.jobs.findMany({
+      where: and(eq(jobs.userId, userRow.id), inArray(jobs.id, ids)),
+      columns: JOB_STATUS_COLUMNS,
+    });
+
+    const origin = new URL(c.req.url).origin;
+    const data = await serializeJobStatuses(c.var.db, origin, rows);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ data });
+  },
+);
+
 // ─── GET /v1/jobs/:id ───────────────────────────────────────────────
 //
 // Polled by the mobile app's `generating` screen ~once per second
@@ -1099,19 +1150,7 @@ jobsRoute.get(
 
     const job = await c.var.db.query.jobs.findFirst({
       where: and(eq(jobs.id, jobId), eq(jobs.userId, userRow.id)),
-      columns: {
-        id: true,
-        templateId: true,
-        projectId: true,
-        origin: true,
-        status: true,
-        progress: true,
-        result: true,
-        error: true,
-        createdAt: true,
-        startedAt: true,
-        completedAt: true,
-      },
+      columns: JOB_STATUS_COLUMNS,
     });
 
     if (!job) {
@@ -1121,19 +1160,46 @@ jobsRoute.get(
       );
     }
 
-    // Materialize output URLs only when there are results to show.
-    // `result` is JSONB so it's typed as the persisted shape — we
-    // map images first, videos second. Each is tagged with its
-    // media kind so mobile picks the right player. The Worker's
-    // own host name comes from the request URL so we don't have
-    // to thread an env-var in just for this.
     const origin = new URL(c.req.url).origin;
-    // Mirror the list endpoint's output shape: surface stored dimensions
-    // and the convenience `aspectRatio` so the mobile result hero can lay
-    // the asset out at its real ratio instead of guessing 4:5 vs 9:16.
+    const [data] = await serializeJobStatuses(c.var.db, origin, [job]);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ data });
+  },
+);
+
+/** The columns `GET /v1/jobs/:id` and `/status` read — one list, so they cannot drift. */
+const JOB_STATUS_COLUMNS = {
+  id: true,
+  templateId: true,
+  projectId: true,
+  origin: true,
+  status: true,
+  progress: true,
+  result: true,
+  error: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+} as const;
+
+type JobStatusRow = Pick<typeof jobs.$inferSelect, keyof typeof JOB_STATUS_COLUMNS>;
+
+/**
+ * The status payload for one or more jobs. Output URLs are materialised
+ * only for completed runs — images first, then videos, each tagged with
+ * its media kind and, where known, real dimensions and renditions.
+ */
+async function serializeJobStatuses(db: Db, origin: string, rows: JobStatusRow[]) {
+  const completed = rows.filter((j) => j.status === 'completed' && j.result);
+  const filed = await filedRenditions(
+    db,
+    origin,
+    completed.map((j) => j.id),
+  );
+
+  return rows.map((job) => {
     const outputs: JobOutputWire[] = [];
     if (job.status === 'completed' && job.result) {
-      const filed = await filedRenditions(c.var.db, origin, [job.id]);
       const images = job.result.images ?? [];
       images.forEach((img, idx) => {
         outputs.push({
@@ -1161,28 +1227,25 @@ jobsRoute.get(
       });
     }
 
-    c.header('Cache-Control', 'no-store');
-    return c.json({
-      data: {
-        jobId: job.id,
-        // Surfaced so a result screen opened cold (push deep-link, no
-        // template id in the route) can still offer Regenerate / Tweak.
-        templateId: job.templateId,
-        // Where the outputs are filed (null for runs made before mobile
-        // filed template runs) and how the run was born.
-        projectId: job.projectId,
-        origin: job.origin,
-        status: job.status,
-        progress: job.progress ?? null,
-        outputs: outputs.length > 0 ? outputs : undefined,
-        error: job.error ?? undefined,
-        createdAt: job.createdAt.toISOString(),
-        startedAt: job.startedAt?.toISOString() ?? null,
-        completedAt: job.completedAt?.toISOString() ?? null,
-      },
-    });
-  },
-);
+    return {
+      jobId: job.id,
+      // Surfaced so a result screen opened cold (push deep-link, no
+      // template id in the route) can still offer Regenerate / Tweak.
+      templateId: job.templateId,
+      // Where the outputs are filed (null for runs made before mobile
+      // filed template runs) and how the run was born.
+      projectId: job.projectId,
+      origin: job.origin,
+      status: job.status,
+      progress: job.progress ?? null,
+      outputs: outputs.length > 0 ? outputs : undefined,
+      error: job.error ?? undefined,
+      createdAt: job.createdAt.toISOString(),
+      startedAt: job.startedAt?.toISOString() ?? null,
+      completedAt: job.completedAt?.toISOString() ?? null,
+    };
+  });
+}
 
 // ─── DELETE /v1/jobs/:id ────────────────────────────────────────────
 //

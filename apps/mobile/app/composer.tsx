@@ -63,6 +63,13 @@ import { useToast } from '@/components/shared/Toast';
 import { hasAiConsent, setAiConsent } from '@/lib/ai-consent';
 import { downloadOutput } from '@/lib/download';
 import { outputThumbnailUrl } from '@/lib/image-url';
+import {
+  hydrateTrackedJobs,
+  trackJob,
+  untrackJobs,
+  useTrackedJobs,
+  type TrackedJob,
+} from '@/lib/job-tracker';
 import { useRelativeTime } from '@/lib/relative-time';
 import { getSDK } from '@/lib/sdk';
 import { ME_QUERY_KEY, useSession } from '@/lib/use-session';
@@ -76,28 +83,14 @@ import type { UploadedMedia } from '@/components/use-template/InputField';
 type SheetName = 'mode' | 'model' | 'ratio' | 'quality' | 'duration' | 'attach' | null;
 
 /** One in-flight or finished generation from THIS session. */
-interface Artifact {
-  id: string;
-  status: 'generating' | 'ready' | 'failed';
-  kind: ComposerMode;
-  prompt: string;
-  aspectRatio: string;
-  /** The original output — viewer and Save to Photos use this. */
-  uri?: string;
-  /** Video poster frame (grid still). */
-  posterUri?: string;
-  /** Muted grid-autoplay clip; the grid falls back to `uri` without it. */
-  previewUri?: string;
-  thumbhash?: string;
-  projectId?: string;
-  modelName?: string;
-  qualityLabel?: string;
-  durationSeconds?: number;
-  errorMessage?: string;
-  pendingStatus?: 'queued' | 'processing';
-  stageLabel?: string;
-  stageProgress?: number;
-}
+/**
+ * A generation shown as a session card: the app-wide tracker's record
+ * (see lib/job-tracker.ts — it outlives this screen, which is what keeps
+ * a tile alive across navigation). Its first output, once ready, is the
+ * card's media: the original for the viewer and Save to Photos, the
+ * poster/preview/thumbhash renditions for the grid.
+ */
+type Artifact = TrackedJob;
 
 /** One attachment in the dock: preview + its persisted upload (null while in flight). */
 interface ComposerAttachment {
@@ -204,7 +197,7 @@ export default function ComposerScreen() {
   const [soundChoice, setSoundChoice] = useState<boolean | null>(null);
   const [prompt, setPrompt] = useState('');
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const trackedJobs = useTrackedJobs();
   const [sheet, setSheetState] = useState<SheetName>(null);
   // Opening any sheet retires the keyboard first — a sheet sliding up
   // under an open keyboard reads as two stacked surfaces fighting.
@@ -244,18 +237,27 @@ export default function ComposerScreen() {
   // generate (never named client-side — the server auto-titles it from
   // the prompt, matching web). Reset by "New session".
   const sessionProjectRef = useRef<string | null>(null);
+  // The ref guards two rapid generates from creating two projects; the
+  // state mirror is what the render reads to scope the session's cards.
+  const [sessionProjectId, setSessionProjectId] = useState<string | null>(null);
   // One idempotency key per submission attempt-sequence: a retry after
   // a timeout re-sends the SAME key so the server dedupes instead of
   // charging twice. Rotated only after a confirmed success.
   const submitKeyRef = useRef(idempotencyKey());
-  // Live pollers, so leaving the screen stops the traffic.
-  const unsubsRef = useRef(new Map<string, () => void>());
+
+  // The cards this screen shows: the tracker's runs for the context in
+  // front of the user — the open project, or the fresh session's own
+  // project once its first generate created one. Runs from other
+  // projects stay in the tracker (the drawer marks them) but off this
+  // surface, ChatGPT-style. Reconcile with the server on open so runs
+  // started elsewhere, or before a restart, show their tiles too.
+  const scopeProjectId = openProjectId ?? sessionProjectId;
+  const artifacts = useMemo(
+    () => (scopeProjectId ? trackedJobs.filter((j) => j.projectId === scopeProjectId) : []),
+    [trackedJobs, scopeProjectId],
+  );
   useEffect(() => {
-    const unsubs = unsubsRef.current;
-    return () => {
-      for (const stop of unsubs.values()) stop();
-      unsubs.clear();
-    };
+    void hydrateTrackedJobs().catch(() => undefined);
   }, []);
 
   // ── Projects (drawer + open-project content) ─────────────────────
@@ -274,6 +276,18 @@ export default function ComposerScreen() {
 
   const relTime = useRelativeTime();
 
+  // Which projects have work in flight — the server's count for runs
+  // started anywhere, plus the tracker's for what this device just
+  // submitted (ahead of the next list refetch).
+  const generatingProjects = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of projectsQuery.data?.projects ?? []) {
+      if ((p.activeJobCount ?? 0) > 0) set.add(p.id);
+    }
+    for (const j of trackedJobs) if (j.status === 'generating') set.add(j.projectId);
+    return set;
+  }, [projectsQuery.data, trackedJobs]);
+
   const drawerFolders = useMemo<DrawerFolder[]>(() => {
     const data = projectsQuery.data;
     if (!data) return [];
@@ -286,10 +300,11 @@ export default function ComposerScreen() {
           id: p.id,
           name: p.name,
           countLabel: t('composer.items', { count: p.assetCount }),
+          generating: generatingProjects.has(p.id),
           ...coverThumb(p.cover),
         })),
     }));
-  }, [projectsQuery.data, t]);
+  }, [projectsQuery.data, generatingProjects, t]);
 
   // "Recent" = the server's updated_at ordering, folder-filed or not —
   // the flat "pick up where I left off" list.
@@ -300,9 +315,10 @@ export default function ComposerScreen() {
       id: p.id,
       name: p.name,
       when: relTime(p.updatedAt),
+      generating: generatingProjects.has(p.id),
       ...coverThumb(p.cover),
     }));
-  }, [projectsQuery.data, relTime]);
+  }, [projectsQuery.data, generatingProjects, relTime]);
 
   const openProjectName = useMemo(
     () => projectsQuery.data?.projects.find((p) => p.id === openProjectId)?.name ?? null,
@@ -450,7 +466,8 @@ export default function ComposerScreen() {
   ];
 
   // ── Generation ─────────────────────────────────────────────────────
-  const generatingCount = artifacts.filter((a) => a.status === 'generating').length;
+  // App-wide, not per project: the cap protects the shared read budget.
+  const generatingCount = trackedJobs.filter((a) => a.status === 'generating').length;
   const promptRequired = (model?.maxPromptChars ?? 2500) !== 0;
   const canGenerate =
     !!model &&
@@ -458,64 +475,6 @@ export default function ComposerScreen() {
     !uploadsInFlight &&
     (!promptRequired || prompt.trim().length > 0) &&
     (!model.requiresStartFrame || (useFrames && attachments[0]?.media != null));
-
-  const trackJob = useCallback(
-    (jobId: string, projectId: string) => {
-      const stop = sdk.generation.subscribe(jobId, (update) => {
-        if (update.status === 'completed') {
-          unsubsRef.current.get(jobId)?.();
-          unsubsRef.current.delete(jobId);
-          const out = update.outputs?.[0];
-          setArtifacts((prev) =>
-            prev.map((a) =>
-              a.id === jobId
-                ? {
-                    ...a,
-                    status: 'ready',
-                    uri: out?.url,
-                    posterUri: out?.posterUrl ?? undefined,
-                    previewUri: out?.previewUrl ?? undefined,
-                    thumbhash: out?.thumbhash ?? undefined,
-                  }
-                : a,
-            ),
-          );
-          // The project grid's truth is the assets table, not job
-          // outputs — refetch so the open masonry swaps the pending
-          // tile for the real asset row.
-          void qc.invalidateQueries({ queryKey: ['project-assets', projectId] });
-          void qc.invalidateQueries({ queryKey: ['studio-projects'] });
-          void qc.invalidateQueries({ queryKey: ME_QUERY_KEY });
-        } else if (update.status === 'queued' || update.status === 'processing') {
-          setArtifacts((prev) =>
-            prev.map((a) =>
-              a.id === jobId
-                ? {
-                    ...a,
-                    pendingStatus: update.status as 'queued' | 'processing',
-                    stageLabel: update.stageLabel,
-                    stageProgress: update.stageProgress,
-                  }
-                : a,
-            ),
-          );
-        } else if (update.status === 'failed') {
-          unsubsRef.current.get(jobId)?.();
-          unsubsRef.current.delete(jobId);
-          setArtifacts((prev) =>
-            prev.map((a) =>
-              a.id === jobId ? { ...a, status: 'failed', errorMessage: update.error } : a,
-            ),
-          );
-          // Infra failures refund server-side; refresh quietly, promise
-          // nothing.
-          void qc.invalidateQueries({ queryKey: ME_QUERY_KEY });
-        }
-      });
-      unsubsRef.current.set(jobId, stop);
-    },
-    [sdk, qc],
-  );
 
   const runGeneration = async () => {
     if (!model || !canGenerate) return;
@@ -531,6 +490,7 @@ export default function ComposerScreen() {
       if (!projectId) {
         const project = await sdk.projects.create({ folderId: null });
         sessionProjectRef.current = project.id;
+        setSessionProjectId(project.id);
         projectId = project.id;
         void qc.invalidateQueries({ queryKey: ['studio-projects'] });
       }
@@ -560,22 +520,18 @@ export default function ComposerScreen() {
 
       const cardRatio =
         !effRatio || effRatio === 'Auto' ? (mode === 'video' ? '16:9' : '1:1') : effRatio;
-      setArtifacts((prev) => [
-        ...prev,
-        {
-          id: res.jobId,
-          status: 'generating',
-          pendingStatus: 'queued',
-          kind: mode,
-          prompt: prompt.trim(),
-          aspectRatio: cardRatio,
-          projectId,
-          modelName: model.name,
-          qualityLabel: model.tiers?.find((x) => x.mode === effTier)?.label,
-          durationSeconds: model.kind === 'video' ? effDuration : undefined,
-        },
-      ]);
-      trackJob(res.jobId, projectId);
+      // Into the app-wide tracker: the tile appears now and keeps
+      // polling wherever the user goes next.
+      trackJob({
+        jobId: res.jobId,
+        projectId,
+        kind: mode,
+        prompt: prompt.trim(),
+        aspectRatio: cardRatio,
+        modelName: model.name,
+        qualityLabel: model.tiers?.find((x) => x.mode === effTier)?.label,
+        durationSeconds: model.kind === 'video' ? effDuration : undefined,
+      });
       setPrompt('');
       // Attachments deliberately survive (web parity) — iterate on the
       // same references without re-picking.
@@ -621,20 +577,25 @@ export default function ComposerScreen() {
   };
 
   // ── Asset viewer / details ─────────────────────────────────────────
-  const artifactInfo = (a: Artifact): AssetInfo => ({
-    id: a.id,
-    kind: a.kind,
-    ratio: a.aspectRatio,
-    uri: a.uri ?? '',
-    prompt: a.prompt,
-    modelName: a.modelName ?? '',
-    when: t('composer.justNow'),
-    quality: a.qualityLabel,
-    durationSeconds: a.durationSeconds,
-  });
+  const artifactInfo = (a: Artifact): AssetInfo => {
+    const out = a.outputs?.[0];
+    return {
+      id: a.jobId,
+      kind: a.kind,
+      ratio: a.aspectRatio,
+      uri: out?.url ?? '',
+      posterUri: out?.posterUrl ?? undefined,
+      thumbhash: out?.thumbhash ?? undefined,
+      prompt: a.prompt,
+      modelName: a.modelName ?? '',
+      when: t('common:time.justNow'),
+      quality: a.qualityLabel,
+      durationSeconds: a.durationSeconds,
+    };
+  };
 
   const cellInfo = (cell: MasonryCell): AssetInfo | null => {
-    const art = artifacts.find((a) => a.id === cell.id);
+    const art = artifacts.find((a) => a.jobId === cell.id);
     if (art) return artifactInfo(art);
     const asset = assetsQuery.data?.items.find((a) => a.id === cell.id);
     if (!asset) return null;
@@ -659,7 +620,7 @@ export default function ComposerScreen() {
 
   /** ⋯ — pull real provenance off the job record, like web's info panel. */
   const openDetails = async (base: AssetInfo) => {
-    const art = artifacts.find((a) => a.id === base.id);
+    const art = artifacts.find((a) => a.jobId === base.id);
     if (art || !openProjectId) {
       setDetailsAsset(base);
       return;
@@ -789,26 +750,37 @@ export default function ComposerScreen() {
 
   // ── Content cells: ONE surface. Session work leads (newest first),
   // then — with a project open — its settled assets. ──────────────────
-  const artifactCell = (a: Artifact): MasonryCell => ({
-    id: a.id,
-    kind: a.kind,
-    ratio: a.aspectRatio,
-    uri: a.kind === 'video' ? a.posterUri : a.uri,
-    thumbhash: a.thumbhash,
-    videoUrl: a.kind === 'video' && a.status === 'ready' ? (a.previewUri ?? a.uri) : undefined,
-    pending: a.status === 'generating',
-    pendingStatus: a.pendingStatus,
-    stageLabel: a.stageLabel,
-    stageProgress: a.stageProgress,
-    failed: a.status === 'failed',
-    errorMessage: a.errorMessage,
-  });
+  const artifactCell = (a: Artifact): MasonryCell => {
+    const out = a.outputs?.[0];
+    return {
+      id: a.jobId,
+      kind: a.kind,
+      ratio: a.aspectRatio,
+      uri: a.kind === 'video' ? (out?.posterUrl ?? undefined) : out?.url,
+      thumbhash: out?.thumbhash ?? undefined,
+      videoUrl:
+        a.kind === 'video' && a.status === 'ready' ? (out?.previewUrl ?? out?.url) : undefined,
+      pending: a.status === 'generating',
+      pendingStatus: a.pendingStatus,
+      stageLabel: a.stageLabel,
+      stageProgress: a.stageProgress,
+      failed: a.status === 'failed',
+      errorMessage: a.errorMessage,
+    };
+  };
+
+  // A ready run whose asset row has arrived is the grid's now — let the
+  // tracker forget it (a failed run stays until dismissed).
+  useEffect(() => {
+    const filed = new Set((assetsQuery.data?.items ?? []).map((a) => a.jobId));
+    const absorbed = artifacts
+      .filter((a) => a.status === 'ready' && filed.has(a.jobId))
+      .map((a) => a.jobId);
+    if (absorbed.length > 0) untrackJobs(absorbed);
+  }, [artifacts, assetsQuery.data]);
 
   const masonryCells: MasonryCell[] = useMemo(() => {
-    const sessionScope = openProjectId
-      ? artifacts.filter((a) => a.projectId === openProjectId)
-      : artifacts;
-    const sessionCells = sessionScope.slice().reverse().map(artifactCell);
+    const sessionCells = artifacts.slice().reverse().map(artifactCell);
     if (!openProjectId) return sessionCells;
     const settled = (assetsQuery.data?.items ?? []).map<MasonryCell>((asset) => ({
       id: asset.id,
@@ -889,9 +861,7 @@ export default function ComposerScreen() {
             const info = cellInfo(cell);
             if (info) void saveAsset(info);
           }}
-          onDismissFailed={(cell) =>
-            setArtifacts((prev) => prev.filter((a) => a.id !== cell.id))
-          }
+          onDismissFailed={(cell) => untrackJobs([cell.id])}
         />
 
         <View style={{ gap: 10, paddingBottom: keyboardUp ? 8 : insets.bottom + 10, paddingTop: 4 }}>
@@ -1014,15 +984,14 @@ export default function ComposerScreen() {
         onNewSession={() => {
           setOpenProjectId(null);
           sessionProjectRef.current = null;
-          setArtifacts([]);
+          setSessionProjectId(null);
           setPrompt('');
           setAttachments([]);
         }}
         onOpenProject={(projectId) => {
+          // The tracker keeps every run; the surface just changes scope
+          // to this project's — its own in-flight tiles come with it.
           setOpenProjectId(projectId);
-          // A freshly opened project shows its own media; session cards
-          // belong to the previous context.
-          setArtifacts([]);
           setAttachments([]);
         }}
         onClose={() => setDrawer(false)}

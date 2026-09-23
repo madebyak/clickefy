@@ -147,6 +147,15 @@ export interface GenerationClient {
   getJob(jobId: string): Promise<GenerationProgress>;
 
   /**
+   * One-shot status of several jobs in a single request (`GET
+   * /v1/jobs/status?ids=`), the same data `getJob` returns per job. Ids
+   * the caller does not own — or that were deleted — are absent from
+   * the result rather than an error, so a tracker can drop them.
+   * At most 20 ids per call.
+   */
+  getJobs(jobIds: string[]): Promise<GenerationProgress[]>;
+
+  /**
    * File a run into a project of its own so it can open in Create.
    * Idempotent: a run that already has a project returns that project.
    * Hits `POST /v1/jobs/:id/project`.
@@ -357,7 +366,12 @@ export interface LibraryClient {
    * Backed by `GET /v1/jobs`. Items embed enough template info that
    * the caller can render them without a second round-trip.
    */
-  listProjects(opts?: { limit?: number; cursor?: string | null }): Promise<{
+  listProjects(opts?: {
+    limit?: number;
+    cursor?: string | null;
+    /** 'active' narrows to runs still queued or processing. */
+    status?: 'active';
+  }): Promise<{
     items: UserProject[];
     nextCursor: string | null;
   }>;
@@ -489,6 +503,8 @@ export interface StudioProject {
   originTemplateId?: string | null;
   /** Runs filed into the project (any status). */
   jobCount?: number;
+  /** Runs still queued or processing — "something is generating in here". */
+  activeJobCount?: number;
   /** The newest run, or null when nothing has been filed yet. */
   latestJobId?: string | null;
   /**

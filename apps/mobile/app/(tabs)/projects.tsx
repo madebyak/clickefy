@@ -14,7 +14,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, RefreshControl, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, View } from 'react-native';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -289,7 +289,7 @@ function ProjectRow({
   onRequestDelete: () => void;
   registerOpenRow: (row: SwipeableMethods | null) => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, accent } = useTheme();
   const { t } = useTranslation('projects');
   const relTime = useRelativeTime();
   const swipeableRef = useRef<SwipeableMethods>(null);
@@ -356,7 +356,13 @@ function ProjectRow({
                 </Text>
               </HStack>
             </Stack>
-            <Icon name="chevronRight" size={16} color={colors.inkSubtle} weight="bold" />
+            {(project.activeJobCount ?? 0) > 0 ? (
+              // Something is generating inside — the chevron gives way to
+              // a live indicator, the same cue the composer's drawer shows.
+              <ActivityIndicator size="small" color={accent.solid} />
+            ) : (
+              <Icon name="chevronRight" size={16} color={colors.inkSubtle} weight="bold" />
+            )}
           </HStack>
         </Card>
       </Pressable>

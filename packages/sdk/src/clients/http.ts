@@ -796,6 +796,15 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         return mapJobStatusToProgress(json.data);
       },
 
+      async getJobs(jobIds) {
+        if (jobIds.length === 0) return [];
+        const json = await get<ApiEnvelope<JobStatusWire[]>>(
+          `/v1/jobs/status?ids=${encodeURIComponent(jobIds.slice(0, 20).join(','))}`,
+          { auth: true },
+        );
+        return json.data.map(mapJobStatusToProgress);
+      },
+
       async fileIntoProject(jobId) {
         return mutateJson<{ projectId: string; created: boolean }>(
           'POST',
@@ -812,7 +821,9 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
       // output URLs, so the response maps straight onto `UserProject[]`.
       // `whenLabel` is formatted client-side from `createdAt` so it
       // stays fresh without refetching.
-      async listProjects(opts: { limit?: number; cursor?: string | null } = {}) {
+      async listProjects(
+        opts: { limit?: number; cursor?: string | null; status?: 'active' } = {},
+      ) {
         const headers: Record<string, string> = { Accept: 'application/json' };
         if (getToken) {
           const token = await getToken();
@@ -821,6 +832,7 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         const params = new URLSearchParams();
         if (opts.limit) params.set('limit', String(opts.limit));
         if (opts.cursor) params.set('cursor', opts.cursor);
+        if (opts.status) params.set('status', opts.status);
         const qs = params.toString();
         const url = `${baseUrl}/v1/jobs${qs ? `?${qs}` : ''}`;
         const res = await fetch(url, { headers });

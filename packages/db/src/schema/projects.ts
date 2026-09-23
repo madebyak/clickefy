@@ -18,6 +18,7 @@ import { sql } from 'drizzle-orm';
 import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { folders } from './folders';
+import type { JobOrigin } from './json-types';
 import { users } from './users';
 
 export const projects = pgTable(
@@ -44,6 +45,15 @@ export const projects = pgTable(
      * relation — only the column.
      */
     coverAssetId: uuid('cover_asset_id'),
+    /**
+     * How the project was born (0039): the origin of its FIRST job,
+     * adopted by `adoptProjectOrigin` in the API when that job is filed.
+     * A project the composer created stays 'create' even if a template
+     * run lands in it later — the label is about birth, not contents.
+     */
+    origin: text('origin').$type<JobOrigin>().default('create').notNull(),
+    /** The template that first job ran, when `origin = 'template'`. No FK: templates are never hard-deleted. */
+    originTemplateId: uuid('origin_template_id'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),

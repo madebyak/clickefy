@@ -9,7 +9,7 @@ import {
 } from '@clickfy/ui';
 import { useUser } from '@clerk/expo';
 import { JobSubmissionError, type JobInputValue } from '@clickfy/sdk';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
@@ -55,6 +55,7 @@ export default function UseTemplateScreen() {
   const { colors, accent } = useTheme();
   const { t: tr } = useTranslation('template');
   const sdk = getSDK();
+  const qc = useQueryClient();
   // Stable Clerk id — used to key the one-time AI-data-sharing consent.
   const { user: clerkUser } = useUser();
   const consentUserId = clerkUser?.id ?? '';
@@ -136,16 +137,29 @@ export default function UseTemplateScreen() {
         }
       }
 
-      const result = await sdk.generation.submit({
-        templateId: t.id,
-        inputs,
-        options: t.userCanChooseAspectRatio ? { aspectRatio: aspect } : undefined,
-        // Stable per-attempt key: a retry after a timeout/double-tap
-        // re-sends the SAME key so the server dedupes instead of
-        // charging twice. Rotated only after a confirmed success.
-        idempotencyKey: submitKeyRef.current,
-      });
+      // Every run gets a project of its own, like the studio: the server
+      // names it after the template and labels it template-born when
+      // this job lands as its first. A rejected submit (credits, 422)
+      // must not leave an empty project behind, so it is removed again.
+      const project = await sdk.projects.create({});
+      let result;
+      try {
+        result = await sdk.generation.submit({
+          templateId: t.id,
+          inputs,
+          options: t.userCanChooseAspectRatio ? { aspectRatio: aspect } : undefined,
+          // Stable per-attempt key: a retry after a timeout/double-tap
+          // re-sends the SAME key so the server dedupes instead of
+          // charging twice. Rotated only after a confirmed success.
+          idempotencyKey: submitKeyRef.current,
+          projectId: project.id,
+        });
+      } catch (err) {
+        void sdk.projects.delete(project.id).catch(() => undefined);
+        throw err;
+      }
       submitKeyRef.current = idempotencyKey();
+      void qc.invalidateQueries({ queryKey: ['studio-projects'] });
 
       router.replace({
         pathname: '/generating',

@@ -145,6 +145,13 @@ export interface GenerationClient {
    * unknown / not-owned job id).
    */
   getJob(jobId: string): Promise<GenerationProgress>;
+
+  /**
+   * File a run into a project of its own so it can open in Create.
+   * Idempotent: a run that already has a project returns that project.
+   * Hits `POST /v1/jobs/:id/project`.
+   */
+  fileIntoProject(jobId: string): Promise<{ projectId: string; created: boolean }>;
 }
 
 /**
@@ -476,6 +483,20 @@ export interface StudioProject {
   id: string;
   name: string;
   folderId: string | null;
+  /** How the project was born — the origin of its first run. Absent on older API builds. */
+  origin?: 'create' | 'template' | 'tool';
+  /** The template that first run used, for template-born projects. */
+  originTemplateId?: string | null;
+  /** Runs filed into the project (any status). */
+  jobCount?: number;
+  /** The newest run, or null when nothing has been filed yet. */
+  latestJobId?: string | null;
+  /**
+   * How to open it: 'result' = a template-born project that still holds
+   * only template runs (show the newest run's result screen);
+   * 'composer' = everything else. Absent on older API builds.
+   */
+  opensAs?: 'result' | 'composer';
   assetCount: number;
   cover: StudioProjectCover | null;
   createdAt: string;
@@ -569,7 +590,13 @@ export interface FavoriteAssetsResponse {
  * to the caller server-side.
  */
 export interface ProjectsClient {
-  list(opts?: { limit?: number; cursor?: string }): Promise<ProjectsListResponse>;
+  list(opts?: {
+    limit?: number;
+    cursor?: string;
+    /** Case-insensitive name search. */
+    q?: string;
+    origin?: 'create' | 'template' | 'tool';
+  }): Promise<ProjectsListResponse>;
   create(input?: { name?: string; folderId?: string | null }): Promise<StudioProject>;
   update(
     projectId: string,

@@ -12,7 +12,7 @@
   },
   "deleteConfirm": {
     "title": "Delete this project?",
-    "message": "It will be removed from your history. Generated images stay accessible through any direct links you’ve already shared.",
+    "message": "This deletes the project and everything generated inside it. Generated files stay accessible through any direct links you’ve already shared.",
     "cancel": "Cancel",
     "confirm": "Delete"
   },
@@ -25,5 +25,10 @@
     "description": "Generate your first image from a template and it’ll show up here.",
     "cta": "Browse templates"
   },
-  "loadError": "Couldn't load your projects"
+  "loadError": "Couldn't load your projects",
+  "origin": {
+    "create": "Create",
+    "template": "Template",
+    "tool": "Tool"
+  }
 }

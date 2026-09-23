@@ -1,6 +1,6 @@
-import { Badge, Box, Button, Card, HStack, Skeleton, Stack, Text, useTheme } from '@clickfy/ui';
+import { Box, Button, Card, HStack, Skeleton, Stack, Text, useTheme } from '@clickfy/ui';
 import { useAuth } from '@clerk/expo';
-import type { UserProject } from '@clickfy/sdk';
+import type { StudioProject } from '@clickfy/sdk';
 import * as Sentry from '@sentry/react-native';
 import { FlashList } from '@shopify/flash-list';
 import {
@@ -28,25 +28,28 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/components/shared/ErrorState';
 import { Icon } from '@/components/ui/Icon';
-import { setGenerationOutputs } from '@/lib/generation-cache';
-import { outputThumbnailUrl, thumbnailUrl } from '@/lib/image-url';
+import { outputThumbnailUrl } from '@/lib/image-url';
 import { PROJECTS_QUERY } from '@/lib/query-config';
+import { useRelativeTime } from '@/lib/relative-time';
 import { getSDK } from '@/lib/sdk';
 import { useRefreshOnFocus } from '@/lib/use-refresh-on-focus';
 
 /**
- * Projects — the user's generation history.
+ * Projects — the same list the web studio's sidebar shows: ONE row per
+ * project, labelled by how it was born (Create / Template / Tool), with
+ * its cover and how much it holds. Generations made in Create and
+ * template runs land in the same list, because both file into projects.
+ *
+ * Tap behaviour comes from the server's `opensAs`:
+ *   • 'result'   → a template-born project still holding only template
+ *                  runs: the newest run's result screen (Regenerate /
+ *                  Tweak / Open in Create live there).
+ *   • 'composer' → everything else opens in Create with the project loaded.
  *
  * Each row is wrapped in `ReanimatedSwipeable`. Pulling right→left
- * reveals a tonal delete action sized to match the row height. The
- * mutation is optimistic: we strip the row from the cache before
- * the network round-trip and roll back if the DELETE fails.
- *
- * Tap behaviour:
- *   • status === 'ready'      → result screen (cache pre-warmed)
- *   • status === 'queued'/'processing' → live `generating` screen
- *   • status === 'failed'     → also `generating`, which renders
- *     the retry CTA based on the error.
+ * reveals a tonal delete action; the delete removes the WHOLE project
+ * (every run and asset in it) after a confirm, optimistically, rolling
+ * back if the DELETE fails.
  */
 export default function ProjectsScreen() {
   const insets = useSafeAreaInsets();
@@ -76,14 +79,12 @@ export default function ProjectsScreen() {
   // a time" behaviour — without it the UI feels chaotic.
   const openRowRef = useRef<SwipeableMethods | null>(null);
 
-  // Cursor-paginated: the server caps a page at 50 and hands back a
-  // `nextCursor`; scrolling near the end pulls the next page, so the
-  // whole history is reachable instead of silently stopping at the
-  // first page.
+  // Cursor-paginated over `updated_at DESC`; scrolling near the end
+  // pulls the next page, so the whole list is reachable.
   const projectsQuery = useInfiniteQuery({
     queryKey: ['projects'],
     queryFn: ({ pageParam }) =>
-      sdk.library.listProjects({ limit: 30, cursor: pageParam }),
+      sdk.projects.list({ limit: 30, cursor: pageParam ?? undefined }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled: authReady,
@@ -96,23 +97,23 @@ export default function ProjectsScreen() {
   // "force me a fresh copy" gesture.
   useRefreshOnFocus(projectsQuery.refetch);
 
-  type ProjectsPage = { items: UserProject[]; nextCursor: string | null };
+  type ProjectsPage = Awaited<ReturnType<typeof sdk.projects.list>>;
   type ProjectsData = InfiniteData<ProjectsPage, string | null>;
 
   const deleteMutation = useMutation({
-    mutationFn: (jobId: string) => sdk.library.deleteProject(jobId),
-    onMutate: async (jobId) => {
+    mutationFn: (projectId: string) => sdk.projects.delete(projectId),
+    onMutate: async (projectId) => {
       await qc.cancelQueries({ queryKey: ['projects'] });
       const previous = qc.getQueryData<ProjectsData>(['projects']);
       // Optimistic remove across every loaded page; cursors are left
-      // alone (they key off createdAt|id of rows that still exist).
+      // alone (they key off updatedAt|id of rows that still exist).
       qc.setQueryData<ProjectsData>(['projects'], (old) =>
         old
           ? {
               ...old,
               pages: old.pages.map((page) => ({
                 ...page,
-                items: page.items.filter((p) => p.id !== jobId),
+                projects: page.projects.filter((p) => p.id !== projectId),
               })),
             }
           : old,
@@ -120,45 +121,40 @@ export default function ProjectsScreen() {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       return { previous };
     },
-    onError: (_err, _jobId, ctx) => {
+    onError: (_err, _projectId, ctx) => {
       // Roll back — the network call failed but the user already
       // saw the row vanish. Restoring keeps the list honest.
       if (ctx?.previous) qc.setQueryData(['projects'], ctx.previous);
       Alert.alert(t('error.title'), t('error.message'));
     },
     onSettled: () => {
-      // The list mutation interacts with credit_ledger FKs server-side
-      // (ON DELETE SET NULL). A background refetch keeps us aligned
-      // even if the optimistic update drifted.
       void qc.invalidateQueries({ queryKey: ['projects'] });
+      // The composer's drawer reads the same projects through its own key.
+      void qc.invalidateQueries({ queryKey: ['studio-projects'] });
     },
   });
 
   const items = useMemo(
-    () => projectsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    () => projectsQuery.data?.pages.flatMap((page) => page.projects) ?? [],
     [projectsQuery.data],
   );
 
   const handleOpenProject = useCallback(
-    (p: UserProject) => {
-      if (p.status === 'ready') {
-        setGenerationOutputs(p.id, p.outputs);
+    (p: StudioProject) => {
+      if (p.opensAs === 'result' && p.latestJobId) {
         router.push({
           pathname: '/result/[jobId]',
-          params: { jobId: p.id, templateId: p.templateId },
+          params: { jobId: p.latestJobId, templateId: p.originTemplateId ?? '' },
         });
       } else {
-        router.push({
-          pathname: '/generating',
-          params: { jobId: p.id, templateId: p.templateId },
-        });
+        router.push({ pathname: '/composer', params: { projectId: p.id } });
       }
     },
     [router],
   );
 
   const handleConfirmDelete = useCallback(
-    (p: UserProject) => {
+    (p: StudioProject) => {
       Alert.alert(
         t('deleteConfirm.title'),
         t('deleteConfirm.message'),
@@ -275,20 +271,30 @@ function ItemGap() {
 
 // ─── Row ────────────────────────────────────────────────────────────
 
+/** Row thumb: an image cover resized for the slot; a video cover's poster frame. */
+function coverStill(cover: StudioProject['cover']): string | undefined {
+  if (!cover) return undefined;
+  const still = cover.kind === 'video' ? cover.posterUrl : cover.url;
+  return still ? outputThumbnailUrl(still, { width: 56 }) : undefined;
+}
+
 function ProjectRow({
   project,
   onOpen,
   onRequestDelete,
   registerOpenRow,
 }: {
-  project: UserProject;
+  project: StudioProject;
   onOpen: () => void;
   onRequestDelete: () => void;
   registerOpenRow: (row: SwipeableMethods | null) => void;
 }) {
-  const { colors, accent } = useTheme();
+  const { colors } = useTheme();
   const { t } = useTranslation('projects');
+  const relTime = useRelativeTime();
   const swipeableRef = useRef<SwipeableMethods>(null);
+  const still = coverStill(project.cover);
+  const thumbhash = project.cover?.thumbhash ?? undefined;
 
   return (
     <ReanimatedSwipeable
@@ -315,69 +321,39 @@ function ProjectRow({
                 borderRadius: 14,
                 overflow: 'hidden',
                 backgroundColor: colors.surfaceMuted,
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
-              <Image
-                // Row-sized derivative of the first output (grid use only —
-                // the result screen opens the original): a video shows its
-                // poster frame, an image its own thumb; template covers go
-                // through the browse-media resizer as elsewhere.
-                source={
-                  outputThumbnailUrl(rowStill(project.outputs[0]), { width: 56 }) ??
-                  thumbnailUrl(project.templateCoverImage || undefined, { width: 56 })
-                }
-                placeholder={
-                  project.outputs[0]?.thumbhash
-                    ? { thumbhash: project.outputs[0].thumbhash }
-                    : undefined
-                }
-                placeholderContentFit="cover"
-                recyclingKey={project.id}
-                cachePolicy="memory-disk"
-                style={{ width: '100%', height: '100%' }}
-                contentFit="cover"
-                transition={150}
-              />
+              {still || thumbhash ? (
+                <Image
+                  source={still}
+                  placeholder={thumbhash ? { thumbhash } : undefined}
+                  placeholderContentFit="cover"
+                  recyclingKey={project.id}
+                  cachePolicy="memory-disk"
+                  style={{ width: '100%', height: '100%' }}
+                  contentFit="cover"
+                  transition={150}
+                />
+              ) : (
+                <Icon name="sparkle" size={18} color={colors.inkMuted} />
+              )}
             </View>
             <Stack gap="xs" style={{ flex: 1 }}>
               <Text variant="subhead" color="ink" weight="600" numberOfLines={1}>
-                {project.title}
+                {project.name}
               </Text>
               <HStack align="center" gap="xs">
-                {project.source === 'user' ? (
-                  <>
-                    <View
-                      style={{
-                        paddingHorizontal: 7,
-                        paddingVertical: 2,
-                        borderRadius: 7,
-                        backgroundColor: accent.soft,
-                      }}
-                    >
-                      <Text
-                        color={accent.deep}
-                        weight="700"
-                        transform="uppercase"
-                        style={{ fontSize: 10, letterSpacing: 0.4 }}
-                      >
-                        {t('customBadge')}
-                      </Text>
-                    </View>
-                    <Dot color={colors.inkSubtle} />
-                  </>
-                ) : null}
+                <OriginBadge origin={project.origin} />
+                <Dot color={colors.inkSubtle} />
                 <Text variant="caption" color="inkMuted">
-                  {project.whenLabel}
+                  {relTime(project.updatedAt)}
                 </Text>
-                {project.status === 'ready' ? (
-                  <>
-                    <Dot color={colors.inkSubtle} />
-                    <Text variant="caption" color="inkMuted">
-                      {t('outputs', { count: project.count })}
-                    </Text>
-                  </>
-                ) : null}
-                {project.status !== 'ready' ? <StatusBadge status={project.status} /> : null}
+                <Dot color={colors.inkSubtle} />
+                <Text variant="caption" color="inkMuted">
+                  {t('outputs', { count: project.assetCount })}
+                </Text>
               </HStack>
             </Stack>
             <Icon name="chevronRight" size={16} color={colors.inkSubtle} weight="bold" />
@@ -385,6 +361,32 @@ function ProjectRow({
         </Card>
       </Pressable>
     </ReanimatedSwipeable>
+  );
+}
+
+/** How the project was born. Create rides the brand accent; the rest stay tonal. */
+function OriginBadge({ origin = 'create' }: { origin: StudioProject['origin'] }) {
+  const { colors, accent } = useTheme();
+  const { t } = useTranslation('projects');
+  const brand = origin === 'create';
+  return (
+    <View
+      style={{
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+        borderRadius: 7,
+        backgroundColor: brand ? accent.soft : colors.surfaceMuted,
+      }}
+    >
+      <Text
+        color={brand ? accent.deep : colors.inkMuted}
+        weight="700"
+        transform="uppercase"
+        style={{ fontSize: 10, letterSpacing: 0.4 }}
+      >
+        {t(`origin.${origin}`)}
+      </Text>
+    </View>
   );
 }
 
@@ -460,21 +462,8 @@ function DeleteAction({
 
 // ─── Small helpers ──────────────────────────────────────────────────
 
-/** The still an output can show in a row: the image itself, or a video's poster. */
-function rowStill(output: UserProject['outputs'][number] | undefined): string | undefined {
-  if (!output) return undefined;
-  return output.kind === 'video' ? (output.posterUrl ?? undefined) : output.url;
-}
-
 function Dot({ color }: { color: string }) {
   return <View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: color }} />;
-}
-
-function StatusBadge({ status }: { status: 'queued' | 'processing' | 'failed' }) {
-  const { t } = useTranslation('projects');
-  const tone = status === 'failed' ? 'danger' : 'neutral';
-  const label = t(`status.${status}`);
-  return <Badge label={label} tone={tone as 'danger' | 'neutral'} />;
 }
 
 function EmptyState() {

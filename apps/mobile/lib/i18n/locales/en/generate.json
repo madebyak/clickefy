@@ -37,5 +37,9 @@
     "learnMore": "How your data is used",
     "agree": "Agree & Continue",
     "cancel": "Not now"
-  }
+  },
+  "openInCreate": "Open in Create",
+  "turnIntoVideo": "Turn into video",
+  "openInCreateFailedTitle": "Couldn't open in Create",
+  "openInCreateFailedMessage": "Check your connection and try again."
 }

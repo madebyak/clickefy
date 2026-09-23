@@ -30,6 +30,7 @@ export type {
   TemplateOutput,
   TemplateStats,
   JobInputValue,
+  JobOrigin,
   JobProgress,
   JobResult,
   JobError,

@@ -26,7 +26,7 @@ import { useAuth, useUser } from '@clerk/expo';
 import { JobSubmissionError, type CreateGenerationInput, type GenModel } from '@clickfy/sdk';
 import { resolveCreditCost } from '@clickfy/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, View } from 'react-native';
@@ -63,6 +63,7 @@ import { useToast } from '@/components/shared/Toast';
 import { hasAiConsent, setAiConsent } from '@/lib/ai-consent';
 import { downloadOutput } from '@/lib/download';
 import { outputThumbnailUrl } from '@/lib/image-url';
+import { useRelativeTime } from '@/lib/relative-time';
 import { getSDK } from '@/lib/sdk';
 import { ME_QUERY_KEY, useSession } from '@/lib/use-session';
 import {
@@ -158,7 +159,15 @@ export default function ComposerScreen() {
   const authReady = authLoaded && !!isSignedIn;
   const { pickFromSource } = useImageUpload();
 
-  const [mode, setMode] = useState<ComposerMode>('image');
+  // ── Entry params (Projects tab / result screen) ────────────────────
+  // `projectId` opens that project; `mode=video` + `attachUrl` is
+  // "Turn into video": the image rides along as the clip's start frame
+  // with an empty prompt, exactly like the in-composer action. The
+  // composer is pushed fresh for every entry, so these seed initial
+  // state rather than being reapplied.
+  const params = useLocalSearchParams<{ projectId?: string; mode?: string; attachUrl?: string }>();
+
+  const [mode, setMode] = useState<ComposerMode>(params.mode === 'video' ? 'video' : 'image');
 
   // ── Roster (same query + rules as web / the old tab) ─────────────
   const modelsQuery = useQuery({
@@ -227,7 +236,7 @@ export default function ComposerScreen() {
   // The ChatGPT-style context: null = fresh session (chat feed); an id
   // = that project is open, its media fills the content area and new
   // generations file into it.
-  const [openProjectId, setOpenProjectId] = useState<string | null>(null);
+  const [openProjectId, setOpenProjectId] = useState<string | null>(params.projectId ?? null);
   const [viewerAsset, setViewerAsset] = useState<AssetInfo | null>(null);
   const [detailsAsset, setDetailsAsset] = useState<AssetInfo | null>(null);
 
@@ -263,17 +272,7 @@ export default function ComposerScreen() {
     staleTime: 15_000,
   });
 
-  const relTime = useCallback(
-    (iso: string): string => {
-      const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
-      if (mins < 1) return t('composer.justNow');
-      if (mins < 60) return t('composer.minutesAgo', { count: mins });
-      const hours = Math.round(mins / 60);
-      if (hours < 24) return t('composer.hoursAgo', { count: hours });
-      return t('composer.daysAgo', { count: Math.round(hours / 24) });
-    },
-    [t],
-  );
+  const relTime = useRelativeTime();
 
   const drawerFolders = useMemo<DrawerFolder[]>(() => {
     const data = projectsQuery.data;
@@ -435,6 +434,15 @@ export default function ComposerScreen() {
     },
     [toast, t],
   );
+
+  // "Turn into video" arrives with the source image's URL: re-upload it
+  // as the start frame once, on mount (see the entry-params note above).
+  const attachedEntryRef = useRef(false);
+  useEffect(() => {
+    if (attachedEntryRef.current || !params.attachUrl) return;
+    attachedEntryRef.current = true;
+    void attachFromUrl(params.attachUrl, 2, true);
+  }, [params.attachUrl, attachFromUrl]);
 
   const attachActions: AttachAction[] = [
     { id: 'camera', icon: 'camera', label: t('composer.attachCamera') },

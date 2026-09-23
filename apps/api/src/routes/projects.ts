@@ -29,7 +29,7 @@
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, inArray, sql as dsql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, sql as dsql } from 'drizzle-orm';
 
 import { favoriteAssets, folders, jobs, projectAssets, projects, templates } from '@clickfy/db';
 
@@ -150,6 +150,15 @@ projectsRoute.get('/', ...readChain, async (c) => {
   const limitRaw = Number(c.req.query('limit') ?? '50');
   const limit = Math.min(100, Math.max(1, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 50));
   const keyset = parseKeysetCursor(c.req.query('cursor'));
+  // Optional narrowing for the mobile Projects list: a name search and
+  // an origin filter. Both apply before the cursor, so a page of a
+  // filtered list stays consistent while scrolling.
+  const q = (c.req.query('q') ?? '').trim().slice(0, 120);
+  const originFilter = c.req.query('origin');
+  const originClause =
+    originFilter === 'create' || originFilter === 'template' || originFilter === 'tool'
+      ? eq(projects.origin, originFilter)
+      : undefined;
 
   const folderRows = await c.var.db
     .select()
@@ -166,12 +175,14 @@ projectsRoute.get('/', ...readChain, async (c) => {
     })
     .from(projects)
     .where(
-      keyset
-        ? and(
-            eq(projects.userId, user.id),
-            dsql`(${projects.updatedAt} < ${keyset.ts}::timestamptz OR (${projects.updatedAt} = ${keyset.ts}::timestamptz AND ${projects.id} < ${keyset.id}))`,
-          )
-        : eq(projects.userId, user.id),
+      and(
+        eq(projects.userId, user.id),
+        q ? ilike(projects.name, `%${escapeLike(q)}%`) : undefined,
+        originClause,
+        keyset
+          ? dsql`(${projects.updatedAt} < ${keyset.ts}::timestamptz OR (${projects.updatedAt} = ${keyset.ts}::timestamptz AND ${projects.id} < ${keyset.id}))`
+          : undefined,
+      ),
     )
     .orderBy(desc(projects.updatedAt), desc(projects.id))
     .limit(limit + 1);
@@ -185,6 +196,12 @@ projectsRoute.get('/', ...readChain, async (c) => {
 
   const ids = page.map((p) => p.id);
   const counts = new Map<string, number>();
+  // Per project: how many runs it holds, whether any is NOT a template
+  // run, and the newest run. Together with `origin` they decide how a
+  // client opens the project — a template-born project that still holds
+  // only template runs opens as that run's result; anything else opens
+  // in the composer.
+  const runs = new Map<string, { jobCount: number; nonTemplate: number; latestJobId: string }>();
   const covers = new Map<
     string,
     {
@@ -202,6 +219,34 @@ projectsRoute.get('/', ...readChain, async (c) => {
       .where(inArray(projectAssets.projectId, ids))
       .groupBy(projectAssets.projectId);
     for (const r of countRows) counts.set(r.projectId, r.n);
+
+    const runRows = await c.var.db.execute<{
+      project_id: string;
+      job_count: number;
+      non_template: number;
+      latest_job_id: string;
+    }>(dsql`
+      SELECT project_id,
+             count(*)::int AS job_count,
+             (count(*) FILTER (WHERE origin <> 'template'))::int AS non_template,
+             (array_agg(id ORDER BY created_at DESC, id DESC))[1] AS latest_job_id
+      FROM jobs
+      WHERE project_id IN (${dsql.join(
+        ids.map((id) => dsql`${id}::uuid`),
+        dsql`, `,
+      )})
+      GROUP BY project_id
+    `);
+    const runList = Array.isArray(runRows)
+      ? runRows
+      : ((runRows as { rows?: typeof runRows.rows }).rows ?? []);
+    for (const r of runList) {
+      runs.set(r.project_id, {
+        jobCount: r.job_count,
+        nonTemplate: r.non_template,
+        latestJobId: r.latest_job_id,
+      });
+    }
 
     // Cover per project: the user's pinned asset when there is one,
     // otherwise the newest — which is how this behaved before pinning
@@ -259,10 +304,16 @@ projectsRoute.get('/', ...readChain, async (c) => {
       })),
       projects: page.map((p) => {
         const cover = covers.get(p.id) ?? null;
+        const run = runs.get(p.id);
         return {
           id: p.id,
           name: p.name,
           folderId: p.folderId,
+          origin: p.origin,
+          originTemplateId: p.originTemplateId,
+          jobCount: run?.jobCount ?? 0,
+          latestJobId: run?.latestJobId ?? null,
+          opensAs: openStrategy(p.origin, run),
           assetCount: counts.get(p.id) ?? 0,
           cover: cover
             ? {
@@ -313,6 +364,11 @@ projectsRoute.post('/', ...writeChain, zValidator('json', createProjectSchema), 
         id: row!.id,
         name: row!.name,
         folderId: row!.folderId,
+        origin: row!.origin,
+        originTemplateId: row!.originTemplateId,
+        jobCount: 0,
+        latestJobId: null,
+        opensAs: 'composer' as const,
         assetCount: 0,
         cover: null,
         createdAt: row!.createdAt.toISOString(),
@@ -322,6 +378,26 @@ projectsRoute.post('/', ...writeChain, zValidator('json', createProjectSchema), 
     201,
   );
 });
+
+/**
+ * How a client opens a project. A template-born project that still holds
+ * only template runs is "that template run": it opens on the newest run's
+ * result screen. Anything else — composer-born, tool-born, or a template
+ * project the user has since generated inside — opens in the composer.
+ */
+function openStrategy(
+  origin: 'create' | 'template' | 'tool',
+  run: { jobCount: number; nonTemplate: number; latestJobId: string } | undefined,
+): 'result' | 'composer' {
+  return origin === 'template' && run && run.jobCount > 0 && run.nonTemplate === 0
+    ? 'result'
+    : 'composer';
+}
+
+/** Escape LIKE metacharacters so a search for "100%" means the literal text. */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
 
 // ─── GET /v1/projects/:id/assets/:assetId ───────────────────────────
 //
@@ -535,6 +611,8 @@ projectsRoute.patch('/:id', ...writeChain, zValidator('json', updateProjectSchem
       id: row.id,
       name: row.name,
       folderId: row.folderId,
+      origin: row.origin,
+      originTemplateId: row.originTemplateId,
       updatedAt: row.updatedAt.toISOString(),
     },
   });

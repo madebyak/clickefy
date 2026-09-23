@@ -11,5 +11,14 @@
   "modal": {
     "title": "هذه نافذة منبثقة",
     "close": "إغلاق"
+  },
+  "time": {
+    "justNow": "الآن",
+    "minutesAgo_one": "قبل دقيقة",
+    "minutesAgo_other": "قبل {{count}} دقيقة",
+    "hoursAgo_one": "قبل ساعة",
+    "hoursAgo_other": "قبل {{count}} ساعات",
+    "daysAgo_one": "قبل يوم",
+    "daysAgo_other": "قبل {{count}} أيام"
   }
 }

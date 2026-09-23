@@ -53,7 +53,8 @@ import { DEFAULT_PROJECT_NAME, titleFromPrompt } from '../lib/project-title';
 import { createJobSchema, createUserJobSchema, type JobInputValueParsed } from '../lib/job-schemas';
 import { validateCreateSubmission, validateJobSubmission } from '../lib/job-validation';
 import { createJobAtomically, createUserJobAtomically, isCreditRace } from '../lib/job-create';
-import { getCreateModelDef, isCreateEligible } from '../lib/create-models';
+import { getCreateModelDef, isCreateEligible, isToolOnlyModel } from '../lib/create-models';
+import { adoptProjectOrigin } from '../lib/project-origin';
 import { dispatchJob } from '../lib/dispatch-job';
 import { resolveOwnMediaUrl } from '../lib/template-dto';
 import { renditionUrls, type RenditionUrls } from '../lib/renditions';
@@ -310,6 +311,20 @@ jobsRoute.post(
       );
     }
 
+    // A project whose first job this is becomes a template-born project
+    // and takes the template's title while still on the default name.
+    // After the commit, cosmetic by contract (see adoptProjectOrigin).
+    if (body.projectId) {
+      await adoptProjectOrigin(c.var.db, {
+        projectId: body.projectId,
+        userId: user.id,
+        jobId: result.jobId,
+        origin: 'template',
+        templateId: template.id,
+        templateTitle: template.title,
+      });
+    }
+
     // ── Hand the job off to Trigger.dev ─────────────────────────
     // We've already debited credits, so on dispatch failure we
     // CANNOT just 500 the client — that would charge them for a
@@ -411,6 +426,10 @@ jobsRoute.post(
         404,
       );
     }
+    // The stored label (jobs.origin): a studio tool request, an upscale,
+    // or a tool-only model is a tool run; everything else is a create.
+    const jobOrigin: 'create' | 'tool' =
+      body.tool || body.upscale || isToolOnlyModel(modelKey) ? 'tool' : 'create';
     const caps = findCapabilities(modelKey);
     const def = getCreateModelDef(modelKey);
     if (!caps || !def || !isCreateEligible(modelKey)) {
@@ -690,6 +709,7 @@ jobsRoute.post(
         options,
         idempotencyKey,
         projectId: body.projectId ?? null,
+        origin: jobOrigin,
       });
     } catch (err) {
       // Same idempotency-conflict handling as the template path: the
@@ -768,6 +788,17 @@ jobsRoute.post(
         // Cosmetic: never fail a paid generation over a title.
         console.error('project auto-title failed:', err);
       }
+    }
+
+    // A tool run that starts a project makes it tool-born. Create runs
+    // leave the project's default 'create' alone.
+    if (body.projectId && jobOrigin === 'tool') {
+      await adoptProjectOrigin(c.var.db, {
+        projectId: body.projectId,
+        userId: user.id,
+        jobId: result.jobId,
+        origin: 'tool',
+      });
     }
 
     // ── Dispatch to Trigger.dev (same path as the template flow) ───
@@ -876,6 +907,7 @@ jobsRoute.get(
         createdAt: true,
         // Create-flow provenance + fields for the "Custom" badge / title.
         source: true,
+        origin: true,
         modelKey: true,
         inputs: true,
         // Web-studio project the job files into (null for mobile jobs).
@@ -994,6 +1026,7 @@ jobsRoute.get(
         title,
         // Provenance — drives the mobile "Custom" badge.
         source: isUserJob ? ('user' as const) : ('template' as const),
+        origin: j.origin,
         projectId: j.projectId,
         createdAt: j.createdAt.toISOString(),
         whenLabel: '', // formatted by the SDK on the client
@@ -1069,6 +1102,8 @@ jobsRoute.get(
       columns: {
         id: true,
         templateId: true,
+        projectId: true,
+        origin: true,
         status: true,
         progress: true,
         result: true,
@@ -1133,6 +1168,10 @@ jobsRoute.get(
         // Surfaced so a result screen opened cold (push deep-link, no
         // template id in the route) can still offer Regenerate / Tweak.
         templateId: job.templateId,
+        // Where the outputs are filed (null for runs made before mobile
+        // filed template runs) and how the run was born.
+        projectId: job.projectId,
+        origin: job.origin,
         status: job.status,
         progress: job.progress ?? null,
         outputs: outputs.length > 0 ? outputs : undefined,
@@ -1192,6 +1231,126 @@ jobsRoute.delete(
     return c.body(null, 204);
   },
 );
+
+// ─── POST /v1/jobs/:id/project ──────────────────────────────────────
+//
+// File a run that has no project into one of its own. Runs made on
+// mobile before template runs were filed (and the studio's "unfiled"
+// rows) have nowhere to open in Create; this gives them a project
+// born from the job — template-titled for a template run — and, when
+// the job is already complete, its outputs as project assets exactly
+// as the worker would have filed them. Idempotent: a job that already
+// has a project returns it untouched.
+jobsRoute.post(
+  '/:id/project',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_WRITE, byClerkUserId),
+  withCurrentUser(),
+  async (c) => {
+    const jobId = c.req.param('id');
+    if (!isUuid(jobId)) {
+      return c.json({ error: { code: 'invalid_job_id', message: 'Job id is malformed.' } }, 400);
+    }
+    const user = c.var.user!;
+
+    const job = await c.var.db.query.jobs.findFirst({
+      where: and(eq(jobs.id, jobId), eq(jobs.userId, user.id)),
+      columns: {
+        id: true,
+        projectId: true,
+        origin: true,
+        templateId: true,
+        status: true,
+        result: true,
+        inputs: true,
+      },
+      with: { template: { columns: { title: true } } },
+    });
+    if (!job) {
+      return c.json({ error: { code: 'job_not_found', message: 'Job not found.' } }, 404);
+    }
+    if (job.projectId) {
+      return c.json({ data: { projectId: job.projectId, created: false } });
+    }
+
+    const promptInput = job.inputs?.[CREATE_PROMPT_KEY];
+    const promptTitle =
+      promptInput?.kind === 'text' ? titleFromPrompt(promptInput.value ?? '') : null;
+    const name =
+      job.origin === 'template'
+        ? (job.template?.title ?? DEFAULT_PROJECT_NAME)
+        : (promptTitle ?? DEFAULT_PROJECT_NAME);
+
+    const [project] = await c.var.db
+      .insert(projects)
+      .values({
+        userId: user.id,
+        name,
+        folderId: null,
+        origin: job.origin,
+        originTemplateId: job.origin === 'template' ? job.templateId : null,
+      })
+      .returning();
+
+    await c.var.db
+      .update(jobs)
+      .set({ projectId: project!.id })
+      .where(and(eq(jobs.id, job.id), eq(jobs.userId, user.id)));
+
+    // A finished run brings its outputs along, in the worker's own
+    // shape (images first, then videos; renditions as stored). A run
+    // still in flight is filed by the worker itself on completion.
+    if (job.status === 'completed' && job.result) {
+      const rows = assetRowsFromResult(job.result, {
+        projectId: project!.id,
+        userId: user.id,
+        jobId: job.id,
+      });
+      if (rows.length > 0) {
+        await c.var.db.insert(projectAssets).values(rows).onConflictDoNothing();
+      }
+    }
+
+    return c.json({ data: { projectId: project!.id, created: true } }, 201);
+  },
+);
+
+/**
+ * `project_assets` rows for a completed job's outputs — the same mapping
+ * `generate-job.ts` applies at completion, for runs filed after the fact.
+ * A poster key equal to the video's own key (rows from before migration
+ * 0038) is stored as null rather than copied.
+ */
+function assetRowsFromResult(
+  result: NonNullable<typeof jobs.$inferSelect.result>,
+  ids: { projectId: string; userId: string; jobId: string },
+) {
+  const images = result.images ?? [];
+  const videos = result.videos ?? [];
+  return [
+    ...images.map((img, i) => ({
+      ...ids,
+      outputIndex: i,
+      kind: 'image' as const,
+      r2Key: img.r2Key,
+      width: img.width || null,
+      height: img.height || null,
+      thumbhash: img.thumbhash ?? null,
+    })),
+    ...videos.map((vid, i) => ({
+      ...ids,
+      outputIndex: images.length + i,
+      kind: 'video' as const,
+      r2Key: vid.streamId,
+      width: vid.width ?? null,
+      height: vid.height ?? null,
+      durationSec: vid.durationSec || null,
+      posterR2Key: vid.posterR2Key && vid.posterR2Key !== vid.streamId ? vid.posterR2Key : null,
+      previewR2Key: vid.previewR2Key ?? null,
+      thumbhash: vid.thumbhash ?? null,
+    })),
+  ];
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** One output as the jobs endpoints serialise it (mirrored by the SDK's `JobOutput`). */

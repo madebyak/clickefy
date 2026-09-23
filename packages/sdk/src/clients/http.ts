@@ -71,6 +71,8 @@ interface JobStatusWire {
   jobId: string;
   /** Template the job was generated from. Optional for legacy rows. */
   templateId?: string;
+  projectId?: string | null;
+  origin?: 'create' | 'template' | 'tool';
   status: 'queued' | 'processing' | 'completed' | 'failed';
   progress: JobProgressWire | null;
   /**
@@ -173,6 +175,8 @@ function mapJobStatusToProgress(data: JobStatusWire): GenerationProgress {
   return {
     jobId: data.jobId,
     templateId: data.templateId,
+    projectId: data.projectId,
+    origin: data.origin,
     status: data.status,
     stageProgress:
       data.status === 'completed' ? 1 : data.status === 'queued' ? 0 : 0.5,
@@ -791,6 +795,13 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         const json = (await res.json()) as { data: JobStatusWire };
         return mapJobStatusToProgress(json.data);
       },
+
+      async fileIntoProject(jobId) {
+        return mutateJson<{ projectId: string; created: boolean }>(
+          'POST',
+          `/v1/jobs/${jobId}/project`,
+        );
+      },
     },
     library: {
       // ─── Projects tab ───────────────────────────────────────────────
@@ -965,6 +976,8 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
         const params = new URLSearchParams();
         if (opts?.limit) params.set('limit', String(opts.limit));
         if (opts?.cursor) params.set('cursor', opts.cursor);
+        if (opts?.q) params.set('q', opts.q);
+        if (opts?.origin) params.set('origin', opts.origin);
         const qs = params.size > 0 ? `?${params}` : '';
         const json = await get<ApiEnvelope<ProjectsListResponse>>(`/v1/projects${qs}`, {
           auth: true,

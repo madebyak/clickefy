@@ -45,5 +45,9 @@
     "learnMore": "كيف تُستخدم بياناتك",
     "agree": "أوافق وأتابع",
     "cancel": "ليس الآن"
-  }
+  },
+  "openInCreate": "فتح في الإنشاء",
+  "turnIntoVideo": "تحويل إلى فيديو",
+  "openInCreateFailedTitle": "تعذّر الفتح في الإنشاء",
+  "openInCreateFailedMessage": "تحقّق من اتصالك وحاول مرة أخرى."
 }

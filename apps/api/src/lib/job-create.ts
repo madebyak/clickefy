@@ -288,6 +288,7 @@ export async function createJobAtomically(
       new_job AS (
         INSERT INTO jobs (
           user_id, template_id, template_version_id, project_id,
+          origin,
           status, inputs, options, idempotency_key
         )
         SELECT
@@ -295,6 +296,7 @@ export async function createJobAtomically(
           ${args.templateId}::uuid,
           version_lookup.id,
           ${args.projectId ?? null}::uuid,
+          'template',
           'queued',
           ${inputsJson}::jsonb,
           ${optionsJson}::jsonb,
@@ -328,6 +330,8 @@ export interface CreateUserJobInput {
   options: { aspectRatio?: string; duration?: number };
   idempotencyKey: string | null;
   projectId?: string | null;
+  /** 'tool' for a studio tool run (camera angle, storyboard, upscaler), else 'create'. */
+  origin: 'create' | 'tool';
 }
 
 /**
@@ -360,12 +364,12 @@ export async function createUserJobAtomically(
       new_job AS (
         INSERT INTO jobs (
           user_id, template_id, template_version_id, project_id,
-          source, model_key, cost_credits,
+          source, origin, model_key, cost_credits,
           status, inputs, options, idempotency_key
         )
         SELECT
           ${args.userId}::uuid, NULL, NULL, ${args.projectId ?? null}::uuid,
-          'user', ${args.modelKey}, ${cost}::int,
+          'user', ${args.origin}, ${args.modelKey}, ${cost}::int,
           'queued', ${inputsJson}::jsonb, ${optionsJson}::jsonb, ${args.idempotencyKey}
         FROM user_debit
         RETURNING id

@@ -160,6 +160,8 @@ export interface UserProject {
   title: string;
   /** Provenance — `'user'` drives the Projects "Custom" badge. */
   source: 'user' | 'template';
+  /** How the run was born: composer, template run, or studio tool. */
+  origin: 'create' | 'template' | 'tool';
   /**
    * Web-studio project the job files its outputs into; null for mobile
    * jobs (flat history). The studio uses it to rebuild in-flight
@@ -642,6 +644,10 @@ export interface GenerationProgress {
    * Optional because legacy `/v1/jobs/:id` responses predate the field.
    */
   templateId?: string;
+  /** Project the outputs are filed into; null for runs made before mobile filed them. */
+  projectId?: string | null;
+  /** How the run was born. */
+  origin?: 'create' | 'template' | 'tool';
   status: 'queued' | 'processing' | 'completed' | 'failed';
   /** 0–1 within the active stage */
   stageProgress: number;

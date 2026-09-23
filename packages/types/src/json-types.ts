@@ -24,6 +24,15 @@
  * is served via Cloudflare Images, `cdnUrl` carries the full delivery
  * URL with transformations baked in (e.g. `…?width=600&format=auto`).
  */
+/**
+ * How a generation (and, by its first job, a project) was born:
+ *   create   — the prompt-first composer
+ *   template — a template run
+ *   tool     — a studio tool (camera angle, storyboard, upscaler)
+ * Stored on `jobs.origin` / `projects.origin`; labels the Projects list.
+ */
+export type JobOrigin = 'create' | 'template' | 'tool';
+
 export interface MediaRef {
   /** Object key under our R2 bucket. */
   r2Key: string;

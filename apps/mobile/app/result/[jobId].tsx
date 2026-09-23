@@ -31,7 +31,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, ScrollView, Share, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/shared/ScreenHeader';
@@ -144,6 +144,27 @@ export default function ResultScreen() {
       await Share.share({ url: hero.url, message: tr('shareMessage') });
     } catch {
       // user dismissed
+    }
+  };
+
+  // "Open in Create" / "Turn into video": the run continues in the
+  // composer as a project. Runs made before mobile filed template runs
+  // have no project yet — the server creates one on the spot (with the
+  // finished outputs as assets), and answers with the existing one
+  // otherwise, so this is safe to call every time.
+  const [opening, setOpening] = useState(false);
+  const openInCreate = async (extra?: { mode: 'video'; attachUrl: string }) => {
+    if (!jobId || opening) return;
+    setOpening(true);
+    try {
+      const { projectId } = await sdk.generation.fileIntoProject(jobId);
+      router.push({ pathname: '/composer', params: { projectId, ...(extra ?? {}) } });
+    } catch {
+      // This screen is a fullScreenModal: a root toast would render
+      // behind it, so the failure is a native alert.
+      Alert.alert(tr('openInCreateFailedTitle'), tr('openInCreateFailedMessage'));
+    } finally {
+      setOpening(false);
     }
   };
 
@@ -370,6 +391,30 @@ export default function ResultScreen() {
             >
               {tr('tweakInputs')}
             </Button>
+
+            <Button
+              variant="ghost"
+              size="md"
+              full
+              loading={opening}
+              leading={<Icon name="create" size={16} color={colors.ink} />}
+              onPress={() => void openInCreate()}
+            >
+              {tr('openInCreate')}
+            </Button>
+
+            {hero?.kind === 'image' ? (
+              <Button
+                variant="ghost"
+                size="md"
+                full
+                loading={opening}
+                leading={<Icon name="video" size={16} color={colors.ink} />}
+                onPress={() => void openInCreate({ mode: 'video', attachUrl: hero.url })}
+              >
+                {tr('turnIntoVideo')}
+              </Button>
+            ) : null}
           </Stack>
         </Box>
       </ScrollView>

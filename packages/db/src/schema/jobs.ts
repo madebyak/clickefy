@@ -21,6 +21,7 @@ import { jobStatusEnum } from './enums';
 import type {
   JobError,
   JobInputValue,
+  JobOrigin,
   JobProgress,
   JobResult,
 } from './json-types';
@@ -57,6 +58,11 @@ export const jobs = pgTable(
     // generation; 'user' = a prompt-first "create" generation. Drives the
     // worker branch, the Projects "Custom" badge, and catalog filtering.
     source: text('source').$type<'template' | 'user'>().default('template').notNull(),
+    // The user-facing label (0039): create | template | tool. `source`
+    // only knows template-vs-user; a tool run is a user job whose
+    // `options.tool` / `options.upscale` or tool-only model says so, and
+    // that judgement is made once, at insert, rather than by every reader.
+    origin: text('origin').$type<JobOrigin>().default('create').notNull(),
     // Set only for source='user' jobs: the model the user picked and the
     // flat credit cost debited (create pricing is per-model, not per-template).
     modelKey: text('model_key'),

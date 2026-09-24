@@ -439,6 +439,20 @@ export interface ModelCapabilities {
   supportsOmniTaskType?: boolean;
 
   /**
+   * Seedance Draft mode: a cheap preview first, then the final video
+   * generated FROM that preview's provider task id.
+   *
+   * The draft is a normal task with `draft: true`, served and billed at
+   * `tier` only. The final sends nothing but the draft's task id and a
+   * resolution, served and billed at `finalTier` only — BytePlus reuses
+   * the draft's prompt, references, ratio, duration and audio setting,
+   * and rejects the request if any of them is sent again. A draft's id
+   * stops working `validDays` after it was created. Absent = no draft
+   * mode.
+   */
+  draft?: { tier: string; finalTier: string; validDays: number };
+
+  /**
    * Seedance: reference VIDEO input budget (`role: reference_video`).
    *
    * Verbatim from the BytePlus API reference + per-family tutorials
@@ -1262,6 +1276,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // concrete ratio alongside a frame is rejected — after the debit.
     framesRatioAdaptiveOnly: true,
     supportsOmniTaskType: true,
+    // 2.5 only in this line — the 2.0 series has no Draft mode.
+    draft: { tier: '480p', finalTier: '1080p', validDays: 7 },
     modes: {
       values: SEEDANCE_RESOLUTIONS_25,
       default: '720p',

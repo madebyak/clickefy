@@ -550,6 +550,20 @@ export interface StudioAsset {
    * Re-use rather than say details are unavailable.
    */
   fromLibrary?: boolean;
+  /**
+   * A draft preview (Seedance Draft mode). Until `expiresAt` the final
+   * can be made from it — `createGenerate({ modelKey, prompt: '',
+   * fromDraftJobId: jobId })` —
+   * at `finalTier` for `finalCostCredits`. Absent on every other asset.
+   */
+  draft?: {
+    modelKey: string;
+    expiresAt: string;
+    finalTier: string;
+    finalCostCredits: number;
+    /** The final already queued or made from this draft, if any. */
+    finalJobId: string | null;
+  };
 }
 
 /**

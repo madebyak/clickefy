@@ -11,6 +11,9 @@
 import { describe, expect, it } from 'vitest';
 import { resolveCreditCost } from '@clickfy/types';
 
+import { getCapabilities } from './capabilities';
+import { draftFinalCost } from './draft';
+
 describe('resolveCreditCost', () => {
   it('uses the base price when the model has no tiers', () => {
     expect(resolveCreditCost({ baseCredits: 40 })).toBe(40);
@@ -211,5 +214,88 @@ describe('resolveCreditCost', () => {
       ).toBe(112);
       expect(resolveCreditCost({ ...klingOmni, mode: 'pro' })).toBe(112);
     });
+  });
+});
+
+describe('draftFinalCost — Seedance 2.5 Draft mode', () => {
+  // The catalogue's live 2.5 rates (packages/db/pricing/catalogue-2026-09.json).
+  const price = {
+    costCredits: 18,
+    tierPricing: {
+      '480p': 8,
+      '480p_videoin': 5,
+      '720p': 18,
+      '720p_videoin': 11,
+      '1080p': 43,
+      '1080p_videoin': 26,
+    },
+  };
+  const caps = getCapabilities('dreamina-seedance-2-5-260628');
+
+  // BytePlus bills the final as a normal 1080p generation of the draft's
+  // own length, so the figure must equal a direct 1080p submission.
+  it('prices the final as the same video at 1080p', () => {
+    for (const duration of [5, 10, 30]) {
+      expect(draftFinalCost({ caps, price, options: { draft: true, duration } })).toBe(
+        resolveCreditCost({
+          baseCredits: price.costCredits,
+          tierPricing: price.tierPricing,
+          mode: '1080p',
+          duration,
+          defaultDuration: 5,
+        }),
+      );
+    }
+    expect(draftFinalCost({ caps, price, options: { draft: true, duration: 5 } })).toBe(43);
+  });
+
+  it('carries the draft reference video into the final price', () => {
+    const withClip = draftFinalCost({
+      caps,
+      price,
+      options: { draft: true, duration: 5, inputVideoSeconds: 8 },
+    });
+    expect(withClip).toBe(
+      resolveCreditCost({
+        baseCredits: price.costCredits,
+        tierPricing: price.tierPricing,
+        mode: '1080p',
+        duration: 5,
+        defaultDuration: 5,
+        inputVideoSeconds: 8,
+        inputVideoFactor: caps.inputVideoDurationFactor,
+      }),
+    );
+    expect(withClip).toBeGreaterThan(26);
+  });
+
+  it('an edit draft bills its final on the source clip length', () => {
+    expect(
+      draftFinalCost({
+        caps,
+        price,
+        options: { draft: true, task: 'edit', duration: -1, inputVideoSeconds: 9.2 },
+      }),
+    ).toBe(
+      resolveCreditCost({
+        baseCredits: price.costCredits,
+        tierPricing: price.tierPricing,
+        mode: '1080p',
+        duration: 10,
+        defaultDuration: 5,
+        inputVideoSeconds: 9.2,
+        inputVideoFactor: caps.inputVideoDurationFactor,
+      }),
+    );
+  });
+
+  it('is 0 on a model without Draft mode', () => {
+    expect(
+      draftFinalCost({
+        caps: getCapabilities('dreamina-seedance-2-0-260128'),
+        price,
+        options: { draft: true, duration: 5 },
+      }),
+    ).toBe(0);
   });
 });

@@ -84,6 +84,19 @@ export type Asset = {
    */
   fromLibrary: boolean;
   /**
+   * A Draft-mode preview (Seedance 2.5) and what making its final takes:
+   * the draft's job and model, until when, at what tier and price — and
+   * the final already requested from it, if any.
+   */
+  draft?: {
+    jobId: string;
+    modelKey: string;
+    expiresAt: string;
+    finalTier: string;
+    finalCostCredits: number;
+    finalJobId: string | null;
+  };
+  /**
    * Which project the asset lives in. Only set on the Favorites grid,
    * which is cross-project and has to label each tile; inside a project
    * it would be the same string on every tile, so it is left off.
@@ -222,6 +235,7 @@ const toAsset = (a: StudioAsset): Asset => ({
   height: a.height ?? undefined,
   favorited: a.isFavorited,
   fromLibrary: a.fromLibrary ?? false,
+  draft: a.draft && a.jobId ? { jobId: a.jobId, ...a.draft } : undefined,
 });
 
 const toFavoriteAsset = (a: FavoriteAsset): Asset => ({

@@ -187,6 +187,21 @@ function referenceRoleFor(part: ImagePart): 'reference_image' | 'reference_video
  * behaviour for I2V flows.
  */
 function buildBody(request: SeedanceCompiledRequest): Record<string, unknown> {
+  // Final from a Draft: the draft's task id is the whole input. BytePlus
+  // reuses the draft's prompt, media, ratio, duration, audio and task
+  // type, and rejects a request that restates any of them.
+  if (request.draftTaskId) {
+    const body: Record<string, unknown> = {
+      model: request.model,
+      content: [{ type: 'draft_task', draft_task: { id: request.draftTaskId } }],
+    };
+    if (request.resolution) body.resolution = request.resolution;
+    if (typeof request.returnLastFrame === 'boolean') {
+      body.return_last_frame = request.returnLastFrame;
+    }
+    return body;
+  }
+
   const content: Record<string, unknown>[] = [
     { type: 'text', text: request.prompt },
   ];
@@ -213,6 +228,7 @@ function buildBody(request: SeedanceCompiledRequest): Record<string, unknown> {
   if (request.omniReferenceTaskType) {
     body.omni_reference_task_type = request.omniReferenceTaskType;
   }
+  if (request.draft) body.draft = true;
   if (typeof request.generateAudio === 'boolean') {
     body.generate_audio = request.generateAudio;
   }

@@ -241,6 +241,14 @@ export interface SeedanceCompiledRequest {
    * to a synchronous rejection at submit.
    */
   omniReferenceTaskType?: 'auto' | 'reference' | 'edit' | 'extend';
+  /** Draft mode: a low-resolution preview whose task id can make the final. */
+  draft?: boolean;
+  /**
+   * Final-from-draft: the draft's task id. When set the adapter sends ONLY
+   * this, `resolution` and the output-side fields BytePlus lets a final
+   * restate — the prompt, media, ratio, duration and audio are the draft's.
+   */
+  draftTaskId?: string;
   /** Generate native audio (sfx, ambient, lip-sync if a face is present). */
   generateAudio?: boolean;
   /** Return the final video frame as a still in the result payload. */

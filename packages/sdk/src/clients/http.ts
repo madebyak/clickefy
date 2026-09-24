@@ -633,6 +633,8 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
               sound: input.sound,
               quality: input.quality,
               task: input.task,
+              draft: input.draft,
+              fromDraftJobId: input.fromDraftJobId,
               tool: input.tool,
               upscale: input.upscale,
               // The composer has been sending `shots` since multi-shot

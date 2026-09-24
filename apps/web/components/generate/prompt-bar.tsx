@@ -25,6 +25,7 @@ import {
   PencilSimpleLine,
   FastForward,
   FilmSlate,
+  Scribble,
 } from "@phosphor-icons/react";
 import {
   danglingReferenceTokens,
@@ -53,7 +54,8 @@ import {
   type AttachableAsset,
   type PromptAttachment,
 } from "@/components/studio/studio-context";
-import { Menu } from "@/components/ui/menu";
+import { Menu, MenuSeparator } from "@/components/ui/menu";
+import { Badge } from "@/components/ui/badge";
 import { MyAssetsModal } from "@/components/media/my-assets-modal";
 import { DrawModal } from "@/components/generate/draw-modal";
 import { modelLogo } from "@/lib/model-logos";
@@ -272,6 +274,9 @@ function Dropdown({
     </Menu>
   );
 }
+
+/** A colored tag inside a menu row ("Draft", "New"), sized to sit on the text line. */
+const menuLabelCls = "rounded-md px-1.5 py-0 text-[10px] font-semibold leading-4";
 
 function MenuLabel({ children }: { children: ReactNode }) {
   return <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{children}</p>;
@@ -687,6 +692,9 @@ export function PromptBar({
   // The roster is the authority on which keys are valid for a model.
   const [tier, setTier] = useState<string | null>(null);
   const [sound, setSound] = useState(false);
+  // Draft mode (Seedance 2.5): a cheap preview at the model's draft tier;
+  // the full-quality final is made from the finished draft's tile.
+  const [draft, setDraft] = useState(false);
   const [count, setCount] = useState(1);
   const [drawOpen, setDrawOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -765,6 +773,8 @@ export function PromptBar({
     // cannot carry audio (`soundGated`) keep the toggle inert until the
     // user picks one that can, at which point it lights up on its own.
     setSound(!!model.supportsSound);
+    // A draft is one model's feature; a new model starts at full quality.
+    setDraft(false);
     // Snap to the mode this model actually supports. Models offering both
     // ("seedance") open in References: it is the richer, more common
     // input — images, clips and audio that steer the result — while
@@ -865,10 +875,17 @@ export function PromptBar({
   const typedPlaceholder = useTypewriterPlaceholder(examples, animate);
 
   const selectedTier = model?.tiers?.find((x) => x.mode === tier) ?? null;
+  // A draft is served — and billed — at the model's draft tier whatever
+  // the quality picker says; the server pins it the same way.
+  const draftOn = draft && !!model?.draft;
+  const billedTier = draftOn ? model!.draft!.tier : tier;
+  const draftTier = model?.draft ? model.tiers?.find((x) => x.mode === model.draft!.tier) : undefined;
+  const draftTierLabel = draftTier?.label ?? model?.draft?.tier ?? "";
+  const draftTierCost = draftTier?.costCredits;
   // Native audio that can't play at the selected tier (Kling 2.6 is
   // 1080p-only): the server drops the audio rather than upgrading the
   // billed resolution, so the toggle is gated instead of lying.
-  const soundGated = !!model?.soundRequiresTier && tier !== model.soundRequiresTier;
+  const soundGated = !!model?.soundRequiresTier && billedTier !== model.soundRequiresTier;
   const soundTierLabel =
     model?.tiers?.find((x) => x.mode === model.soundRequiresTier)?.label ??
     model?.soundRequiresTier ??
@@ -1061,7 +1078,7 @@ export function PromptBar({
               ]),
             )
           : null,
-        mode: tier,
+        mode: billedTier,
         sound: sound && !soundGated,
         duration:
           attachMode === "edit" && isTask
@@ -1477,7 +1494,9 @@ export function PromptBar({
             model.kind === "video" && attachMode !== "edit"
               ? (duration ?? undefined)
               : undefined,
-          quality: tier ?? undefined,
+          // A draft's tier is the server's to pin, not the picker's.
+          quality: draftOn ? undefined : (tier ?? undefined),
+          draft: draftOn || undefined,
           sound: model.supportsSound ? sound && !soundGated : undefined,
           task: isTask ? (attachMode as "edit" | "extend") : undefined,
           references: frames ? undefined : media,
@@ -2112,26 +2131,66 @@ export function PromptBar({
             </Dropdown>
             )}
 
-            {/* quality tier (models that price per tier) */}
+            {/* quality tier (models that price per tier). Draft mode lives
+                here too, as its own row: a draft IS a quality choice — one
+                fixed tier — so a single-select list says "this OR 1080p"
+                without a second control that has to hide this one. */}
             {model?.tiers && model.tiers.length > 0 && (
               <Dropdown
-                panelClassName="min-w-52"
+                panelClassName={model.draft ? "w-72" : "min-w-52"}
                 trigger={({ toggle }) => (
                   <Pill onClick={toggle} className={pillCls}>
-                    <Diamond weight="fill" className="size-3.5 text-accent-turquoise" />
-                    {selectedTier?.label ?? tier}
+                    {draftOn ? (
+                      <Scribble weight="bold" className="size-3.5 text-brand-purple" />
+                    ) : (
+                      <Diamond weight="fill" className="size-3.5 text-accent-turquoise" />
+                    )}
+                    {draftOn
+                      ? t("draftOn", { tier: draftTierLabel })
+                      : (selectedTier?.label ?? tier)}
                   </Pill>
                 )}
               >
                 {({ close }) => (
                   <>
                     <MenuLabel>{t("quality")}</MenuLabel>
+                    {model.draft && (
+                      <>
+                        <MenuItem
+                          selected={draftOn}
+                          onClick={() => {
+                            setDraft(true);
+                            close();
+                          }}
+                        >
+                          <span className="flex min-w-0 flex-col items-start gap-0.5 text-start">
+                            <span className="flex items-center gap-1.5">
+                              {draftTierLabel}
+                              <Badge variant="purple" className={menuLabelCls}>
+                                {t("draft")}
+                              </Badge>
+                              <Badge variant="green" className={menuLabelCls}>
+                                {t("newBadge")}
+                              </Badge>
+                            </span>
+                            <span className="text-[11px] leading-snug text-muted-foreground">
+                              {t("draftHint", { finalTier: model.draft.finalTier })}
+                            </span>
+                          </span>
+                          <span className="ms-auto self-start text-xs tabular-nums text-muted-foreground">
+                            {draftTierCost}
+                          </span>
+                        </MenuItem>
+                        <MenuSeparator />
+                      </>
+                    )}
                     {model.tiers!.map((q) => (
                       <MenuItem
                         key={q.mode}
-                        selected={q.mode === tier}
+                        selected={!draftOn && q.mode === tier}
                         onClick={() => {
                           setTier(q.mode);
+                          setDraft(false);
                           close();
                         }}
                       >

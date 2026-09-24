@@ -429,6 +429,17 @@ export interface SeedanceStageConfig {
    * the task shape at submit instead of failing an already-paid job.
    */
   omniReferenceTaskType?: 'reference' | 'edit' | 'extend';
+  /**
+   * Draft mode (models with a `draft` capability): submit this stage as
+   * a low-resolution preview. The compiler pins the draft tier.
+   */
+  draft?: boolean;
+  /**
+   * Generate the FINAL video from a finished draft — this is the draft's
+   * provider task id. Every other generation setting is ignored: BytePlus
+   * reuses the draft's own and rejects a request that repeats them.
+   */
+  draftTaskId?: string;
   /** Other Seedance config keys (resolution, audio, etc.) live alongside. */
   [otherConfigKey: string]: unknown;
 }
@@ -469,6 +480,13 @@ export interface JobResult {
   videos: StreamRef[];
   durationMs: number;
   costCredits: number;
+  /**
+   * The provider's own task id for the job's (last) async stage. A
+   * Seedance Draft's final video is generated from this id, and it is
+   * the id the provider's console and support know the task by. Absent
+   * on synchronous providers and on rows written before it existed.
+   */
+  providerTaskId?: string;
 }
 
 export interface JobError {

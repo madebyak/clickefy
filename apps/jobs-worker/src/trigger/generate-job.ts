@@ -193,6 +193,10 @@ export const generateJob = task({
         mode?: string;
         // Omni sub-task (Seedance 2.5 edit/extend).
         task?: 'edit' | 'extend';
+        // Seedance Draft mode: a 480p preview, or the final generated
+        // from a finished draft's provider task id.
+        draft?: boolean;
+        draftTaskId?: string;
         // Kling multi-shot storyboard.
         shots?: Array<{ seconds: number; text: string }>;
         // Studio tool request (Camera Angle / Storyboard) — the
@@ -226,6 +230,8 @@ export const generateJob = task({
           referenceCount: refKeys.length,
           referenceKinds,
           task: opts.task,
+          draft: opts.draft,
+          draftTaskId: opts.draftTaskId,
           shots: opts.shots,
           tool: opts.tool,
           upscale: opts.upscale,
@@ -335,6 +341,10 @@ export const generateJob = task({
     }> = [];
 
     const providerEnv = buildProviderEnv();
+    // The provider's id for the last async stage, kept on the result: a
+    // Seedance Draft's final is generated from it, and nothing else
+    // records which provider task produced an output.
+    let providerTaskId: string | undefined;
 
     for (let i = 0; i < stages.length; i++) {
       const stage = stages[i]!;
@@ -397,6 +407,7 @@ export const generateJob = task({
         // poll endpoint, so we pass a sentinel value the dispatcher
         // ignores.
         const pendingProvider = result.provider;
+        providerTaskId = result.taskId;
         const variant = pendingProvider === 'kling' ? result.variant : 'image2video';
         const api2 = pendingProvider === 'kling' ? result.api2 === true : false;
         try {
@@ -581,6 +592,7 @@ export const generateJob = task({
       videos,
       durationMs,
       costCredits: jobCostCredits,
+      ...(providerTaskId ? { providerTaskId } : {}),
     };
 
     // Gated on `status = 'processing'`: if the stuck-job sweeper already

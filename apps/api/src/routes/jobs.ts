@@ -42,6 +42,7 @@ import {
   CREATE_PROMPT_KEY,
   CREATE_START_FRAME_KEY,
   createReferenceKey,
+  draftFinalCost,
   findCapabilities,
   TOOL_MODELS,
 } from '@clickfy/providers';
@@ -55,6 +56,7 @@ import { validateCreateSubmission, validateJobSubmission } from '../lib/job-vali
 import { createJobAtomically, createUserJobAtomically, isCreditRace } from '../lib/job-create';
 import { getCreateModelDef, isCreateEligible, isToolOnlyModel } from '../lib/create-models';
 import { adoptProjectOrigin } from '../lib/project-origin';
+import { loadDraftForFinal, type DraftSource } from '../lib/draft-final';
 import { dispatchJob } from '../lib/dispatch-job';
 import { resolveOwnMediaUrl } from '../lib/template-dto';
 import { renditionUrls, type RenditionUrls } from '../lib/renditions';
@@ -439,6 +441,42 @@ jobsRoute.post(
       );
     }
 
+    // ── Draft mode ─────────────────────────────────────────────────
+    // `draft` asks for a preview at the draft tier; `fromDraftJobId`
+    // makes the final from one. A final carries nothing of its own — the
+    // provider reuses the draft's prompt, media and settings — so it is
+    // priced from the draft's recorded options, not from this body.
+    if ((body.draft || body.fromDraftJobId) && !caps.draft) {
+      return c.json(
+        { error: { code: 'draft_not_supported', message: 'This model has no draft mode.' } },
+        422,
+      );
+    }
+    if (body.draft && body.fromDraftJobId) {
+      return c.json(
+        {
+          error: {
+            code: 'invalid_draft_request',
+            message: 'A request is either a draft or a final, not both.',
+          },
+        },
+        422,
+      );
+    }
+    let draftSource: DraftSource | undefined;
+    if (body.fromDraftJobId && caps.draft) {
+      const loaded = await loadDraftForFinal(c.var.db, {
+        userId: user.id,
+        draftJobId: body.fromDraftJobId,
+        modelKey,
+        validDays: caps.draft.validDays,
+      });
+      if ('error' in loaded) {
+        return c.json({ error: loaded.error }, loaded.status);
+      }
+      draftSource = loaded.ok;
+    }
+
     // ── Price (per-tier when the model has quality modes) ──────────
     const priceRows = await c.var.db
       .select({
@@ -466,6 +504,10 @@ jobsRoute.post(
       // The tool's tier is a product decision (max fidelity), not a
       // user knob — a client-sent quality on a tool job is ignored.
       mode = TOOL_MODELS[body.tool.kind].quality;
+    } else if (caps.draft && (body.draft || draftSource)) {
+      // Each half of draft mode is served at exactly one tier (anything
+      // else is rejected upstream), so the tier is not the client's pick.
+      mode = draftSource ? caps.draft.finalTier : caps.draft.tier;
     } else if (caps.modes) {
       if (body.quality && !caps.modes.values.includes(body.quality)) {
         return c.json(
@@ -537,30 +579,34 @@ jobsRoute.post(
     const allowedAspectRatios = aspectRatiosFor(caps);
     const allowedDurations =
       caps.kind === 'video' && caps.duration ? [...caps.duration.values] : [];
-    const validation = await validateCreateSubmission(body, {
-      userId: user.id,
-      uploadsBucket: uploads,
-      model: {
-        modelKey,
-        kind: caps.kind,
-        maxImagesTotal: caps.maxImagesTotal,
-        maxPromptChars: caps.maxPromptChars,
-        allowedAspectRatios,
-        allowedDurations,
-        bareStartFrameDurations: caps.bareStartFrameDurations,
-        requiresStartFrame: def.requiresStartFrame,
-        acceptsStartEndImage: caps.acceptsStartEndImage ?? false,
-        referenceVideo: caps.referenceVideo,
-        referenceAudio: caps.referenceAudio,
-        audioRefRequiresVisual: caps.audioRefRequiresVisual,
-        supportsVideoTasks:
-          caps.supportsOmniTaskType === true && caps.referenceVideo !== undefined,
-        framesAndReferencesExclusive: caps.provider === 'seedance' && caps.kind === 'video',
-        maxReferences: caps.maxReferences,
-        acceptedImageMimes: caps.acceptedImageMimes,
-        multiShot: caps.multiShot,
-      },
-    });
+    // A final has nothing of its own to validate — no prompt, no media.
+    // The draft's were validated, probed and charged for when it was made.
+    const validation = draftSource
+      ? { ok: { inputVideoSeconds: draftSource.options.inputVideoSeconds ?? 0 } }
+      : await validateCreateSubmission(body, {
+          userId: user.id,
+          uploadsBucket: uploads,
+          model: {
+            modelKey,
+            kind: caps.kind,
+            maxImagesTotal: caps.maxImagesTotal,
+            maxPromptChars: caps.maxPromptChars,
+            allowedAspectRatios,
+            allowedDurations,
+            bareStartFrameDurations: caps.bareStartFrameDurations,
+            requiresStartFrame: def.requiresStartFrame,
+            acceptsStartEndImage: caps.acceptsStartEndImage ?? false,
+            referenceVideo: caps.referenceVideo,
+            referenceAudio: caps.referenceAudio,
+            audioRefRequiresVisual: caps.audioRefRequiresVisual,
+            supportsVideoTasks:
+              caps.supportsOmniTaskType === true && caps.referenceVideo !== undefined,
+            framesAndReferencesExclusive: caps.provider === 'seedance' && caps.kind === 'video',
+            maxReferences: caps.maxReferences,
+            acceptedImageMimes: caps.acceptedImageMimes,
+            multiShot: caps.multiShot,
+          },
+        });
     if ('error' in validation) {
       return c.json({ error: validation.error }, 422);
     }
@@ -590,16 +636,24 @@ jobsRoute.post(
         : typeof body.duration === 'number'
           ? body.duration
           : refDuration;
-    const cost = resolveCreditCost({
-      baseCredits: priceRow.costCredits,
-      tierPricing: priceRow.tierPricing ?? null,
-      mode: priceKey,
-      sound: soundServed,
-      duration: billedDuration,
-      defaultDuration: refDuration,
-      inputVideoSeconds,
-      inputVideoFactor: caps.inputVideoDurationFactor,
-    });
+    // A final bills the DRAFT's settings at the final tier — the same
+    // helper prices the tile's "Make final" figure.
+    const cost = draftSource
+      ? draftFinalCost({
+          caps,
+          price: { costCredits: priceRow.costCredits, tierPricing: priceRow.tierPricing ?? null },
+          options: draftSource.options,
+        })
+      : resolveCreditCost({
+          baseCredits: priceRow.costCredits,
+          tierPricing: priceRow.tierPricing ?? null,
+          mode: priceKey,
+          sound: soundServed,
+          duration: billedDuration,
+          defaultDuration: refDuration,
+          inputVideoSeconds,
+          inputVideoFactor: caps.inputVideoDurationFactor,
+        });
     if (cost <= 0) {
       return c.json(
         { error: { code: 'model_unpriced', message: 'That model is not available right now.' } },
@@ -644,14 +698,24 @@ jobsRoute.post(
     }
 
     // ── Assemble jobs.inputs with canonical create field keys ──────
+    // A final records the draft's prompt, for its details and Re-use. The
+    // draft's media are NOT copied: the provider already has them, and
+    // the worker would otherwise pull every clip back out of R2 for a
+    // request that never sends them.
+    const draftPrompt = draftSource?.promptInput;
     const inputs: Record<string, JobInputValueParsed> = {
-      [CREATE_PROMPT_KEY]: { kind: 'text', value: body.prompt },
+      [CREATE_PROMPT_KEY]: {
+        kind: 'text',
+        value: draftSource ? (draftPrompt?.kind === 'text' ? draftPrompt.value : '') : body.prompt,
+      },
     };
-    if (body.startFrame) inputs[CREATE_START_FRAME_KEY] = body.startFrame;
-    if (body.endFrame) inputs[CREATE_END_FRAME_KEY] = body.endFrame;
-    body.references.forEach((ref, i) => {
-      inputs[createReferenceKey(i)] = ref;
-    });
+    if (!draftSource) {
+      if (body.startFrame) inputs[CREATE_START_FRAME_KEY] = body.startFrame;
+      if (body.endFrame) inputs[CREATE_END_FRAME_KEY] = body.endFrame;
+      body.references.forEach((ref, i) => {
+        inputs[createReferenceKey(i)] = ref;
+      });
+    }
 
     // Storyboard sheets get their shape from the grid, not the client:
     // square grids stay square, wide grids go landscape.
@@ -696,6 +760,22 @@ jobsRoute.post(
        * the number any margin report has to start from.
        */
       sourceSeconds: caps.billsSourceDuration ? billedDuration : undefined,
+      // Draft mode. A draft records its probed input-video length so the
+      // final can be priced without probing again; a final records the
+      // draft it came from and the provider id it is generated from, and
+      // carries the draft's settings in place of its own empty body's.
+      ...(body.draft && caps.draft ? { draft: true, inputVideoSeconds } : {}),
+      ...(draftSource
+        ? {
+            aspectRatio: draftSource.options.aspectRatio,
+            duration: draftSource.options.duration,
+            sound: draftSource.options.sound,
+            task: draftSource.options.task,
+            inputVideoSeconds: draftSource.options.inputVideoSeconds,
+            fromDraftJobId: draftSource.jobId,
+            draftTaskId: draftSource.providerTaskId,
+          }
+        : {}),
     };
 
     // ── Atomic debit + insert (isolated create CTE) ────────────────

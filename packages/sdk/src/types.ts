@@ -485,6 +485,11 @@ export interface GenModel {
    */
   supportsVideoTasks?: boolean;
   /**
+   * Draft mode: a preview at `tier`, then the final from it at
+   * `finalTier` within `validDays`. Absent = no draft mode.
+   */
+  draft?: { tier: string; finalTier: string; validDays: number };
+  /**
    * Kling 3 Omni / O1: reference images are accepted alongside or instead
    * of frames — the composer offers a Frames ⇄ References switch.
    */
@@ -565,6 +570,17 @@ export interface CreateGenerationInput {
    * `extend` continues/stitches the attached clip(s).
    */
   task?: 'edit' | 'extend';
+  /**
+   * Draft mode (models with `draft`): generate a preview at the model's
+   * draft tier; the quality tier is the server's, not `quality`.
+   */
+  draft?: boolean;
+  /**
+   * Make the final from a finished draft job. The provider reuses the
+   * draft's prompt, media and settings, so send `prompt: ''` and nothing
+   * else but `modelKey` (and `projectId`).
+   */
+  fromDraftJobId?: string;
   startFrame?: Extract<JobInputValue, { kind: 'image' }>;
   endFrame?: Extract<JobInputValue, { kind: 'image' }>;
   /**
@@ -614,6 +630,14 @@ export type JobSubmissionErrorCode =
   | 'insufficient_credits'
   | 'unauthenticated'
   | 'r2_not_configured'
+  // Draft mode (`POST /v1/jobs/create` with `draft` / `fromDraftJobId`).
+  | 'draft_not_supported'
+  | 'draft_not_found'
+  | 'not_a_draft'
+  | 'draft_not_ready'
+  | 'draft_unavailable'
+  | 'draft_expired'
+  | 'draft_already_finalized'
   | 'network_error';
 
 export class JobSubmissionError extends Error {

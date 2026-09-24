@@ -1902,6 +1902,34 @@ function compileSeedance(
   const { stage, capabilities } = ctx;
   const cfg = stage.config as import('@clickfy/types').SeedanceStageConfig;
 
+  // ── Final from a Draft ───────────────────────────────────────────
+  // BytePlus regenerates the draft at the final tier from its task id
+  // alone. The prompt, media, ratio, duration, audio and task type are
+  // the draft's, and a request that restates ANY of them is rejected —
+  // even with identical values — so none of the normal path below runs.
+  const draftTaskId =
+    typeof cfg.draftTaskId === 'string' && cfg.draftTaskId.length > 0 ? cfg.draftTaskId : undefined;
+  if (draftTaskId && capabilities.draft) {
+    return {
+      request: {
+        provider: 'seedance',
+        model: apiModelFor(stage, capabilities),
+        prompt: '',
+        draftTaskId,
+        resolution: capabilities.draft.finalTier as SeedanceCompiledRequest['resolution'],
+        returnLastFrame:
+          typeof stage.config.returnLastFrame === 'boolean' ? stage.config.returnLastFrame : undefined,
+      },
+      warnings,
+    };
+  }
+  if (draftTaskId) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `${stage.model} has no Draft mode; the draft task id is ignored and the stage runs as a normal generation.`,
+    });
+  }
+
   // ── Pick generation mode ─────────────────────────────────────────
   let mode: 'first_last_frame' | 'reference';
   if (cfg.seedanceMode === 'first_last_frame' || cfg.seedanceMode === 'reference') {
@@ -2172,6 +2200,28 @@ function compileSeedance(
     resolution = cfgResolution as SeedanceCompiledRequest['resolution'];
   }
 
+  // Draft mode serves ONE tier, and any other resolution alongside
+  // `draft: true` is rejected at submit. The create route bills drafts at
+  // that tier; pin it here too so no caller can pair a draft with a tier
+  // the provider refuses.
+  let draft: boolean | undefined;
+  if (cfg.draft === true && capabilities.draft) {
+    const draftTier = capabilities.draft.tier as SeedanceCompiledRequest['resolution'];
+    if (resolution && resolution !== draftTier) {
+      warnings.push({
+        code: 'config_clamped',
+        message: `${stage.model} drafts are ${draftTier} only; "${resolution}" cannot be applied.`,
+      });
+    }
+    resolution = draftTier;
+    draft = true;
+  } else if (cfg.draft === true) {
+    warnings.push({
+      code: 'config_clamped',
+      message: `${stage.model} has no Draft mode; generating a normal video.`,
+    });
+  }
+
   let duration: number | undefined;
   if (typeof stage.config.duration === 'number') {
     duration = stage.config.duration;
@@ -2263,6 +2313,7 @@ function compileSeedance(
     duration,
     resolution,
     omniReferenceTaskType,
+    draft,
     generateAudio,
     returnLastFrame,
     cameraFixed,

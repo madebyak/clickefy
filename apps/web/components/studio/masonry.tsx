@@ -14,6 +14,7 @@ import {
   Images,
   Info,
   Play,
+  Sparkle,
   Trash,
   VideoCamera,
   X,
@@ -184,6 +185,46 @@ function OverlayButton({
  * favorite the user can only see by hovering isn't a favorite they can
  * find. Everything else in the overlay appears on hover.
  */
+/**
+ * "Make final" on a Draft-mode tile. Once the draft's window has passed,
+ * or a final is already queued or made from it, the row stays — inert,
+ * saying why — rather than the action silently disappearing.
+ */
+function MakeFinalItem({
+  draft,
+  busy,
+  onMakeFinal,
+}: {
+  draft: NonNullable<Asset["draft"]>;
+  busy: boolean;
+  onMakeFinal: () => void;
+}) {
+  const t = useTranslations("studio");
+  const made = draft.finalJobId != null;
+  const expired = Date.parse(draft.expiresAt) <= Date.now();
+  if (made || expired) {
+    return (
+      <div className="flex w-full items-center gap-2.5 px-2 py-2 text-sm text-muted-foreground">
+        <Sparkle className="size-4" />
+        {made ? t("finalMade") : t("draftExpired")}
+      </div>
+    );
+  }
+  return (
+    <MenuItem onClick={onMakeFinal}>
+      {busy ? (
+        <CircleNotch className="size-4 animate-spin text-muted-foreground" />
+      ) : (
+        <Sparkle weight="fill" className="size-4 text-accent-turquoise" />
+      )}
+      {t("makeFinal", { tier: draft.finalTier })}
+      <span className="ms-auto text-xs tabular-nums text-muted-foreground">
+        {draft.finalCostCredits}
+      </span>
+    </MenuItem>
+  );
+}
+
 export function Masonry({
   assets,
   onAssetClick,
@@ -193,6 +234,8 @@ export function Masonry({
   onToggleFavorite,
   onAssetDelete,
   onTurnToVideo,
+  onMakeFinal,
+  finalizingAssetId,
   showProjectName = false,
   exitingIds,
   gridSize = DEFAULT_GRID_SIZE,
@@ -223,6 +266,13 @@ export function Masonry({
    * video mode with this image as the start frame.
    */
   onTurnToVideo?: (asset: Asset) => void;
+  /**
+   * Make the full-quality final from a Draft-mode tile (`asset.draft`).
+   * Absent hides the item.
+   */
+  onMakeFinal?: (asset: Asset) => void;
+  /** Asset id whose final request is in flight, if any. */
+  finalizingAssetId?: string | null;
   /** Cross-project grids (Favorites) label each tile with its project. */
   showProjectName?: boolean;
   /**
@@ -335,6 +385,7 @@ export function Masonry({
             {(a.type === "video" || (showProjectName && a.projectName)) && (
               <span className="pointer-events-none absolute start-2 bottom-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-md bg-black/55 px-1.5 py-1 text-[10px] font-medium text-white opacity-100 backdrop-blur transition-opacity group-hover:opacity-0">
                 {a.type === "video" && <Play weight="fill" className="size-3 shrink-0" />}
+                {a.draft && <span className="shrink-0">{t("draftBadge")}</span>}
                 {showProjectName && a.projectName && (
                   <span className="truncate">{a.projectName}</span>
                 )}
@@ -466,6 +517,16 @@ export function Masonry({
                         <ArrowsOutSimple className="size-4 text-muted-foreground" />
                         {t("upscaleVideo")}
                       </MenuItem>
+                    )}
+                    {onMakeFinal && a.draft && (
+                      <MakeFinalItem
+                        draft={a.draft}
+                        busy={finalizingAssetId === a.id}
+                        onMakeFinal={() => {
+                          onMakeFinal(a);
+                          close();
+                        }}
+                      />
                     )}
                     {onAssetInfo && (
                       <MenuItem

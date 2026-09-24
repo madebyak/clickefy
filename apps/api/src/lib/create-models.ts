@@ -345,6 +345,12 @@ export interface CreateModelDTO {
    */
   supportsVideoTasks?: boolean;
   /**
+   * Draft mode: submit with `draft: true` for a preview at `tier`, then
+   * `fromDraftJobId` for the final at `finalTier`, within `validDays` of
+   * the draft. Absent = the model has no draft mode.
+   */
+  draft?: { tier: string; finalTier: string; validDays: number };
+  /**
    * The model accepts reference images (`maxReferences > 0`) alongside
    * or instead of start/end frames — Kling 3 Omni and Kling O1. The web
    * composer offers a Frames ⇄ References switch when this is true;
@@ -453,6 +459,7 @@ export function buildCreateModelDTO(
       caps.supportsOmniTaskType === true && caps.referenceVideo !== undefined
         ? true
         : undefined,
+    draft: caps.draft ? { ...caps.draft } : undefined,
     supportsReferenceMode:
       def.attachments === 'frames' && caps.maxReferences > 0 ? true : undefined,
     maxReferences: caps.maxReferences,

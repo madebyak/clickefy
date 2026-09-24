@@ -626,6 +626,85 @@ describe('buildCreateStage — Seedance 2.5 frame/ratio constraint', () => {
   });
 });
 
+describe('buildCreateStage — Seedance 2.5 Draft mode', () => {
+  it('a draft is sent with draft=true at 480p, whatever tier the stage carried', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'a paper boat on a pond',
+      aspectRatio: '16:9',
+      duration: 5,
+      mode: '1080p',
+      draft: true,
+    });
+    const { request, warnings } = run(built, {});
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.draft).toBe(true);
+    expect(sd.resolution).toBe('480p');
+    expect(sd.ratio).toBe('16:9');
+    expect(sd.duration).toBe(5);
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
+  });
+
+  it('a draft with a start frame keeps the frame and the adaptive ratio', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'the fox turns its head',
+      mode: '480p',
+      hasStartFrame: true,
+      draft: true,
+    });
+    const { request } = run(built, { [CREATE_START_FRAME_KEY]: img('uploads/start.png') });
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.draft).toBe(true);
+    expect(sd.startImage).toBeDefined();
+    expect(sd.ratio).toBe('adaptive');
+  });
+
+  // BytePlus rejects a final that restates ANY reused field, even with
+  // the draft's own value ("generate_audio is not supported for
+  // draft_task", live-probed 2026-09-24). So the final carries nothing
+  // but the id and the tier.
+  it('a final carries only the draft task id and 1080p', () => {
+    const built = buildCreateStage({
+      modelKey: 'dreamina-seedance-2-5-260628',
+      prompt: 'a paper boat on a pond',
+      aspectRatio: '16:9',
+      duration: 5,
+      sound: false,
+      mode: '1080p',
+      draftTaskId: 'cgt-draft-1',
+    });
+    const { request, warnings } = run(built, {});
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.draftTaskId).toBe('cgt-draft-1');
+    expect(sd.resolution).toBe('1080p');
+    expect(sd.draft).toBeUndefined();
+    expect(sd.generateAudio).toBeUndefined();
+    expect(sd.ratio).toBeUndefined();
+    expect(sd.duration).toBeUndefined();
+    expect(sd.omniReferenceTaskType).toBeUndefined();
+    expect(sd.startImage).toBeUndefined();
+    expect(sd.referenceImages).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
+
+  it('models without Draft mode never receive either field', () => {
+    for (const draftInput of [{ draft: true }, { draftTaskId: 'cgt-draft-1' }]) {
+      const built = buildCreateStage({
+        modelKey: 'dreamina-seedance-2-0-260128',
+        prompt: 'a paper boat on a pond',
+        mode: '720p',
+        ...draftInput,
+      });
+      const { request } = run(built, {});
+      const sd = request as SeedanceCompiledRequest;
+      expect(sd.draft).toBeUndefined();
+      expect(sd.draftTaskId).toBeUndefined();
+      expect(sd.resolution).toBe('720p');
+    }
+  });
+});
+
 describe('buildCreateStage — Seedream is an image model on the seedance tag', () => {
   it('gets image config, not a video stage', () => {
     const built = buildCreateStage({

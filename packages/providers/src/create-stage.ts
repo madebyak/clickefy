@@ -117,6 +117,17 @@ export interface BuildCreateStageInput {
    */
   task?: 'edit' | 'extend';
   /**
+   * Seedance Draft mode (models with a `draft` capability): generate a
+   * low-resolution preview whose task id can later make the final.
+   */
+  draft?: boolean;
+  /**
+   * Generate the final video from a finished draft's provider task id.
+   * Everything else on this input is ignored by the compiler — the
+   * provider reuses the draft's own prompt, media and settings.
+   */
+  draftTaskId?: string;
+  /**
    * Kling 3.0 family multi-shot storyboard. Each shot is a duration in
    * seconds plus its own prompt; the compiler emits Kling's grammar and
    * flips `settings.multi_shot` where the endpoint has it. Ignored (with
@@ -270,6 +281,10 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
     // toggle silently did nothing here. Always explicit: the ModelArk
     // default is TRUE and audio is billed.
     if (caps.supportsSound) seedance.generateAudio = input.sound === true;
+    if (caps.draft) {
+      if (input.draftTaskId) seedance.draftTaskId = input.draftTaskId;
+      else if (input.draft) seedance.draft = true;
+    }
     if (refCount > 0) {
       // Reference mode — bind each attachment to a user_input slot with
       // its actual media kind, so the compiler enforces the right

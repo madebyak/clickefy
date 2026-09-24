@@ -155,6 +155,13 @@ export const createUserJobSchema = z.object({
   // video per the prompt; `extend` continues/stitches it. Validated
   // against the model's `supportsOmniTaskType` + video budget.
   task: z.enum(['edit', 'extend']).optional(),
+  // Seedance Draft mode (models with a `draft` capability): `draft`
+  // submits a low-resolution preview at the model's draft tier;
+  // `fromDraftJobId` makes the final from one of the caller's finished
+  // drafts, at the final tier, reusing everything the draft was made
+  // with — so a final carries no prompt, attachments or settings.
+  draft: z.boolean().optional(),
+  fromDraftJobId: z.string().uuid().optional(),
   startFrame: jobInputImageSchema.optional(),
   endFrame: jobInputImageSchema.optional(),
   // References: images everywhere; video and audio clips on Seedance

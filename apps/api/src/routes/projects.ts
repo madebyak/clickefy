@@ -35,6 +35,7 @@ import { favoriteAssets, folders, jobs, projectAssets, projects, templates } fro
 
 import { assetUrl } from '../lib/asset-url';
 import { renditionUrls } from '../lib/renditions';
+import { draftAssetInfos } from '../lib/draft-final';
 
 import type { JobInputValue } from '@clickfy/types';
 import {
@@ -43,6 +44,7 @@ import {
   CREATE_END_FRAME_KEY,
   createReferenceKey,
   findCapabilities,
+  type DraftJobOptions,
 } from '@clickfy/providers';
 import type { AppEnv } from '../types';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
@@ -680,6 +682,14 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
       // an index probe per row; without it every heart renders empty on
       // load and only corrects itself after a toggle.
       favorited: dsql<boolean>`${favoriteAssets.assetId} IS NOT NULL`,
+      // Draft-mode outputs only — null on every other asset. What the
+      // tile needs to offer "Make final": the draft's model, settings and
+      // age, and any final already queued or made from it (a second one
+      // would charge again for the same video).
+      draftModelKey: dsql<string | null>`CASE WHEN ${jobs.options}->>'draft' = 'true' THEN ${jobs.modelKey} END`,
+      draftOptions: dsql<DraftJobOptions | string | null>`CASE WHEN ${jobs.options}->>'draft' = 'true' THEN ${jobs.options} END`,
+      draftCreatedAt: dsql<string | null>`CASE WHEN ${jobs.options}->>'draft' = 'true' THEN ${jobs.createdAt}::text END`,
+      draftFinalJobId: dsql<string | null>`CASE WHEN ${jobs.options}->>'draft' = 'true' THEN (SELECT f.id::text FROM jobs f WHERE f.user_id = ${user.id} AND f.options->>'fromDraftJobId' = ${jobs.id}::text AND f.status IN ('queued', 'processing', 'completed') LIMIT 1) END`,
     })
     .from(projectAssets)
     .leftJoin(
@@ -689,6 +699,7 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
         eq(favoriteAssets.userId, user.id),
       ),
     )
+    .leftJoin(jobs, eq(jobs.id, projectAssets.jobId))
     .where(
       keyset
         ? and(
@@ -705,6 +716,25 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
   const nextCursor = hasMore
     ? `${pageRows[pageRows.length - 1]!.cursorTs}|${pageRows[pageRows.length - 1]!.row.id}`
     : null;
+
+  const drafts = await draftAssetInfos(
+    c.var.db,
+    pageRows.flatMap((r) =>
+      r.draftModelKey && r.draftOptions && r.draftCreatedAt
+        ? [
+            {
+              assetId: r.row.id,
+              modelKey: r.draftModelKey,
+              createdAt: new Date(r.draftCreatedAt),
+              options: (typeof r.draftOptions === 'string'
+                ? JSON.parse(r.draftOptions)
+                : r.draftOptions) as DraftJobOptions,
+              finalJobId: r.draftFinalJobId,
+            },
+          ]
+        : [],
+    ),
+  );
 
   c.header('Cache-Control', 'private, max-age=5');
   return c.json({
@@ -725,6 +755,7 @@ projectsRoute.get('/:id/assets', ...readChain, async (c) => {
         // this to label the tile and to hide Re-use, which has no meaning
         // without a prompt behind it.
         fromLibrary: a.libraryAssetId != null,
+        draft: drafts.get(a.id),
       })),
       nextCursor,
     },

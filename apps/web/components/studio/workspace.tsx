@@ -33,6 +33,7 @@ import { SelectionBar } from "@/components/studio/selection-bar";
 import { PromptBar } from "@/components/generate/prompt-bar";
 import { useTimeLabel } from "@/lib/time-label";
 import { isJobErrorReason, type JobErrorReason } from "@clickfy/types";
+import { JobSubmissionError } from "@clickfy/sdk";
 
 const GRID_SIZE_STORAGE_KEY = "clickefy:studio:gridSize";
 
@@ -165,6 +166,8 @@ function ProjectView({
   onToggleFavorite,
   onAssetDelete,
   onTurnToVideo,
+  onMakeFinal,
+  finalizingAssetId,
   reusingAssetId,
   gridSize,
   selectedIds,
@@ -180,6 +183,8 @@ function ProjectView({
   onToggleFavorite: (a: Asset) => void;
   onAssetDelete: (a: Asset) => void;
   onTurnToVideo: (a: Asset) => void;
+  onMakeFinal: (a: Asset) => void;
+  finalizingAssetId: string | null;
   reusingAssetId: string | null;
   gridSize: GridSize;
   selectedIds: string[];
@@ -216,6 +221,8 @@ function ProjectView({
         onToggleFavorite={onToggleFavorite}
         onAssetDelete={onAssetDelete}
         onTurnToVideo={onTurnToVideo}
+        onMakeFinal={onMakeFinal}
+        finalizingAssetId={finalizingAssetId}
         reusingAssetId={reusingAssetId}
         gridSize={gridSize}
         selectedIds={selectedIds}
@@ -241,6 +248,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
     setAssetsFavorite,
     deleteAssets,
     startImageToVideo,
+    startGeneration,
   } = useStudio();
 
   const [filter, setFilter] = useState<CanvasFilter>("all");
@@ -264,6 +272,39 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
   const handleTurnToVideo = useCallback(
     (a: Asset) => startImageToVideo(a.src),
     [startImageToVideo],
+  );
+
+  // Make the full-quality final from a Draft-mode tile. The final carries
+  // no prompt or media of its own — the provider reuses the draft's — so
+  // the request is just the draft's job and model; it files into this
+  // project and shows as a pending tile like any other generation.
+  const [finalizingAssetId, setFinalizingAssetId] = useState<string | null>(null);
+  const handleMakeFinal = useCallback(
+    async (a: Asset) => {
+      if (!a.draft || finalizingAssetId) return;
+      setFinalizingAssetId(a.id);
+      try {
+        await startGeneration({
+          kind: "video",
+          count: 1,
+          input: { modelKey: a.draft.modelKey, prompt: "", fromDraftJobId: a.draft.jobId },
+        });
+        toast.success(t("finalStarted"));
+      } catch (err) {
+        if (err instanceof JobSubmissionError && err.code === "insufficient_credits") {
+          toast.error(t("finalInsufficientCredits"));
+        } else if (err instanceof JobSubmissionError && err.code === "draft_already_finalized") {
+          toast.info(t("finalAlreadyRequested"));
+        } else if (err instanceof JobSubmissionError && err.code === "draft_expired") {
+          toast.error(t("draftExpired"));
+        } else {
+          toast.error(t("finalFailed"));
+        }
+      } finally {
+        setFinalizingAssetId(null);
+      }
+    },
+    [finalizingAssetId, startGeneration, t],
   );
 
   // Which asset the details slide-over is showing, if any.
@@ -412,6 +453,8 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
               onToggleFavorite={toggleFavorite}
               onAssetDelete={handleDelete}
               onTurnToVideo={handleTurnToVideo}
+              onMakeFinal={handleMakeFinal}
+              finalizingAssetId={finalizingAssetId}
               reusingAssetId={reusingAssetId}
               gridSize={gridSize}
               selectedIds={selectedAssetIds}

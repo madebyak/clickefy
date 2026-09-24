@@ -49,7 +49,9 @@ import { cn } from "@/lib/utils";
 /** A clip handed to the tool from an existing tile. */
 export type ToolVideo = { id: string; src: string };
 
-const ACCEPTED_TYPES = ["video/mp4", "video/quicktime", "video/webm"];
+// What the API's upload gate accepts — and nothing it does not. WebM was
+// listed here once; the dialog let it through and the API refused it.
+const ACCEPTED_TYPES = ["video/mp4", "video/quicktime", "video/x-m4v"];
 const MAX_MB = 200;
 /** Mirrors `referenceVideo.maxClipSeconds` on the model. */
 const MAX_SECONDS = 60;

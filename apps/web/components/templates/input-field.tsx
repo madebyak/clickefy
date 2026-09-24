@@ -146,7 +146,7 @@ export function InputField({
       const accept =
         field.type === "image"
           ? (field.acceptedFormats?.join(",") ?? "image/jpeg,image/png,image/webp")
-          : "video/mp4,video/quicktime,video/webm";
+          : "video/mp4,video/quicktime,video/x-m4v";
       return (
         <div>
           {label}

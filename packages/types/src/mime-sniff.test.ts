@@ -36,7 +36,23 @@ describe('detectMimeFromBytes', () => {
   });
 });
 
+describe('detectMimeFromBytes — wider ISOBMFF family', () => {
+  const ftyp = (brand: string) =>
+    bytes('00 00 00 18 66 74 79 70 ' + [...brand].map((c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ') + ' 00 00 00 00');
+  it('reads Android 3GP, Flash-era and Sony brands as MP4', () => {
+    for (const b of ['3gp4', '3gp5', '3gp6', 'mp4v', 'f4v ', 'XAVC', 'iso4', 'M4V ']) {
+      expect(detectMimeFromBytes(ftyp(b)), b).toBe('video/mp4');
+    }
+  });
+  it('does not report the audio-only M4A brand as video', () => {
+    expect(detectMimeFromBytes(ftyp('M4A '))).toBe(null);
+  });
+});
+
 describe('mimesAgree', () => {
+  it('accepts a .m4v declared by Safari as video/x-m4v', () => {
+    expect(mimesAgree('video/mp4', 'video/x-m4v')).toBe(true);
+  });
   it('accepts a QuickTime-branded clip declared as MP4 (the new2.mp4 case)', () => {
     expect(mimesAgree('video/quicktime', 'video/mp4')).toBe(true);
     expect(mimesAgree('video/mp4', 'video/quicktime')).toBe(true);

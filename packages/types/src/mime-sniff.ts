@@ -33,7 +33,8 @@
  *
  * ISOBMFF brands we accept (offset 8..12 ASCII):
  *   - `heic`, `heix`, `mif1`, `msf1`, `heim`, `heis`       → image/heic
- *   - `mp42`, `mp41`, `isom`, `iso2`, `dash`, …            → video/mp4
+ *   - `mp42`, `mp41`, `isom`, `iso2`…`iso6`, `dash`, `avc1`,
+ *     `M4V `, `3gp4`…`3gp6`, `mp4v`, `f4v `, `XAVC`         → video/mp4
  *   - `qt  `                                                → video/quicktime
  *
  * MP4 and QuickTime are the SAME container family (ISOBMFF); only the
@@ -104,17 +105,36 @@ export function detectMimeFromBytes(bytes: Uint8Array): string | null {
     // MP4-family brands. There are many in the wild; this list covers
     // every brand we've seen come out of an iPhone camera, Android
     // camera, or recent video editor. Adding to it is safe — false
-    // positives just mean we accept the file.
+    // positives just mean we accept the file, and every provider we
+    // send video to decodes the whole ISOBMFF family alike.
+    //
+    //   isom/iso2..iso6/mp41/mp42/avc1  ISO base media, the common ones
+    //   dash                            fragmented MP4 from an encoder
+    //   M4V                             Apple's video-with-metadata .m4v
+    //   3gp4/3gp5/3gp6                  older Android and feature phones
+    //   mp4v / f4v                      Flash-era encoders still in use
+    //   XAVC                            Sony cameras (an MP4 profile)
+    //
+    // NOT here on purpose: `M4A ` is the AUDIO twin of M4V and must
+    // not be reported as video.
     if (
       brand === 'mp42' ||
       brand === 'mp41' ||
       brand === 'isom' ||
       brand === 'iso2' ||
+      brand === 'iso3' ||
+      brand === 'iso4' ||
       brand === 'iso5' ||
       brand === 'iso6' ||
       brand === 'dash' ||
       brand === 'avc1' ||
-      brand === 'M4V '
+      brand === 'M4V ' ||
+      brand === '3gp4' ||
+      brand === '3gp5' ||
+      brand === '3gp6' ||
+      brand === 'mp4v' ||
+      brand === 'f4v ' ||
+      brand === 'XAVC'
     ) {
       return 'video/mp4';
     }
@@ -152,7 +172,9 @@ export function mimesAgree(a: string, b: string): boolean {
     // send video to reads both identically. Rejecting the pair turned
     // away real customers' clips (2026-09-24, `new2.mp4`: brand `qt  `,
     // H.264 854x480 + AAC) that other tools accepted without comment.
-    new Set(['video/mp4', 'video/quicktime']),
+    // `video/x-m4v` is what Safari and Finder declare for a `.m4v`,
+    // whose bytes are plain MP4 (brand `M4V `).
+    new Set(['video/mp4', 'video/quicktime', 'video/x-m4v']),
   ];
   return aliasSets.some((set) => set.has(a) && set.has(b));
 }

@@ -105,6 +105,11 @@ const USER_ALLOWED_IMAGE_MIME = new Set([
 const USER_ALLOWED_VIDEO_MIME = new Set([
   'video/mp4',
   'video/quicktime',
+  // Safari/Finder's name for a `.m4v`; the bytes are MP4 and the
+  // sniffer + `mimesAgree` treat it as such. WebM is deliberately NOT
+  // here: Kling refuses it and fal documents nothing, so offering it
+  // would only move the failure from the picker to the provider.
+  'video/x-m4v',
 ]);
 // Seedance reference-audio formats (wav/mp3). BytePlus caps audio clips
 // at 15MB; enforcing it at upload beats a rejected job later.
@@ -155,6 +160,7 @@ const EXT_BY_MIME: Record<string, string> = {
   'image/heif': 'heif',
   'video/mp4': 'mp4',
   'video/quicktime': 'mov',
+  'video/x-m4v': 'm4v',
   'audio/mpeg': 'mp3',
   'audio/mp3': 'mp3',
   'audio/wav': 'wav',

@@ -177,10 +177,13 @@ async function main() {
         SELECT ${USER_ID}::uuid, nl.amount_granted, 'subscription_grant'::credit_reason,
                b.new_balance, 'subscription', nl.id,
                'Repair: Ultimate upgrade on 23 Sep was granted at the Creator allowance',
+               -- Every parameter cast: Postgres cannot infer the type of a
+               -- bare parameter inside jsonb_build_object and rejects the
+               -- whole statement before running any of it.
                jsonb_build_object(
                  'repair', true, 'tier', 'ultimate', 'interval', 'month',
-                 'invoiceId', ${BROKEN_INVOICE}, 'priceId', ${ULTIMATE_PRICE},
-                 'allowance', ${ULTIMATE_ALLOWANCE}, 'grantedInError', ${GRANTED_IN_ERROR}
+                 'invoiceId', ${BROKEN_INVOICE}::text, 'priceId', ${ULTIMATE_PRICE}::text,
+                 'allowance', ${ULTIMATE_ALLOWANCE}::int, 'grantedInError', ${GRANTED_IN_ERROR}::int
                )
         FROM new_lot nl, bumped b
         RETURNING id

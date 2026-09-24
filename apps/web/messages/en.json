@@ -154,7 +154,18 @@
     "invoiceStatus_uncollectible": "Unpaid",
     "topupBlurb": "Buy extra credits any time without changing your plan. They last 6 months.",
     "topupNeedsPlan": "Credit packs are available on any paid plan.",
-    "buyCredits": "Buy credits"
+    "buyCredits": "Buy credits",
+    "confirmUpgradeTitle": "Upgrade to {plan}?",
+    "confirmUpgradeBody": "You'll be charged {price} today. You keep every credit you already have, and {credits} more are added right away. Your plan will renew on {date}.",
+    "confirmUpgradeCta": "Upgrade — pay {price}",
+    "confirmDowngradeTitle": "Downgrade to {plan}?",
+    "confirmDowngradeBody": "Nothing changes today. On {date} you'll be charged {price} and receive {credits} credits for the new period. You can undo this any time before then.",
+    "confirmDowngradeBodyNoDate": "Nothing changes today. At the end of your current period you'll be charged {price} and receive {credits} credits. You can undo this any time before then.",
+    "confirmDowngradeCta": "Schedule downgrade",
+    "notNow": "Not now",
+    "changing": "Working…",
+    "paymentFailed": "Your card was declined: {message}",
+    "yearlyContactUs": "Changes to a yearly plan are handled by our team — contact us and we’ll sort it out."
   },
   "pricing": {
     "heading": "Simple, credit-based pricing",
@@ -243,7 +254,8 @@
     "topupNeedsPlan": "Credit packs are available on any paid plan. Subscribe first.",
     "topupFootnote": "One-time purchase, not a subscription. Credits are added instantly and are non-refundable. They last 6 months, and the clock pauses if your plan lapses — so you never lose time you couldn't spend. Top-up credits are used after your monthly plan credits.",
     "faqRefundQ": "Can I get a refund?",
-    "faqRefundA": "A plan can be refunded within 7 days, as long as none of that period's credits have been used — once a generation runs we've already paid the model provider for it. Credit top-ups are non-refundable, because the credits are delivered and spendable the moment you buy them."
+    "faqRefundA": "A plan can be refunded within 7 days, as long as none of that period's credits have been used — once a generation runs we've already paid the model provider for it. Credit top-ups are non-refundable, because the credits are delivered and spendable the moment you buy them.",
+    "contactToChange": "Contact us to change plan"
   },
   "footer": {
     "create": "Create",

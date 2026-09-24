@@ -29,7 +29,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 
-import type { UserEntitlement } from '@clickfy/types';
+import { isSelfServePlanChange, type PlanInterval, type UserEntitlement } from '@clickfy/types';
 
 import {
   creditPacks,
@@ -262,6 +262,14 @@ billingRoute.get(
               tier: user!.entitlement,
               platform: user!.subscriptionPlatform ?? null,
               productId: user!.subscriptionProductId ?? null,
+              /**
+               * Monthly or yearly, so the pricing page can route a yearly
+               * subscriber to support instead of offering a change the API
+               * will refuse. Null for a comp (no storefront product).
+               */
+              interval:
+                rows.find((p) => productsByPlan.get(p.id)?.[user!.subscriptionPlatform ?? ''] === user!.subscriptionProductId)
+                  ?.interval ?? null,
               expiresAt: user!.subscriptionExpiresAt?.toISOString() ?? null,
             }
           : null,
@@ -844,9 +852,10 @@ const changePlanSchema = z.object({ planId: z.string().uuid() }).strict();
 /**
  * `POST /v1/billing/change-plan` — move between tiers.
  *
- * Upgrades charge and take effect now; downgrades are booked for the
- * period end. `lib/stripe-subscription.ts` explains why those are not
- * symmetrical.
+ * Upgrades charge the FULL new price now, keep every unspent credit and
+ * restart the billing cycle today; downgrades are booked for the period
+ * end. `lib/stripe-subscription.ts` explains why those are not
+ * symmetrical. Yearly plans are not changed here at all.
  */
 billingRoute.post(
   '/change-plan',
@@ -912,12 +921,55 @@ billingRoute.post(
       );
     }
 
-    const result = await changePlan(stripe, sub, {
-      newPriceId: product.storeProductId,
-      fromTier: user.entitlement,
-      toTier: plan.tier as UserEntitlement,
-      userId: user.id,
-    });
+    // Only monthly → monthly is self-serve. A yearly plan is twelve
+    // prepaid allowances, and changing it mid-year means either handing
+    // over the undelivered ones at once or inventing a proration — a
+    // decision for a person, not this handler, until a rule exists.
+    const currentPrice = currentPriceId(sub);
+    const currentPlan = currentPrice ? (await planByPriceId(c.var.db)).get(currentPrice) : undefined;
+    const fromInterval = (currentPlan?.interval as PlanInterval | undefined) ?? null;
+    if (!isSelfServePlanChange(fromInterval, plan.interval as PlanInterval)) {
+      return c.json(
+        {
+          error: {
+            code: 'plan_change_needs_support',
+            message:
+              'Changes to or from a yearly plan are handled by our team. Contact us and we will sort it out.',
+            details: { fromInterval, toInterval: plan.interval },
+          },
+        },
+        409,
+      );
+    }
+
+    let result;
+    try {
+      result = await changePlan(stripe, sub, {
+        newPriceId: product.storeProductId,
+        fromTier: user.entitlement,
+        toTier: plan.tier as UserEntitlement,
+        userId: user.id,
+      });
+    } catch (err) {
+      // An upgrade charges the full new price on the spot. A declined
+      // card comes back from Stripe as a card error, the subscription is
+      // left exactly as it was (`error_if_incomplete`), and the customer
+      // should hear what the bank said rather than "something went wrong".
+      const e = err as { type?: string; code?: string; statusCode?: number; message?: string };
+      if (e?.type === 'StripeCardError' || e?.statusCode === 402) {
+        return c.json(
+          {
+            error: {
+              code: 'payment_failed',
+              message: e.message ?? 'Your card was declined.',
+              details: { declineCode: e.code ?? null },
+            },
+          },
+          402,
+        );
+      }
+      throw err;
+    }
 
     // The entitlement and the credits both follow from the webhook, not
     // from here: an upgrade's invoice grants them, and a downgrade grants
@@ -971,6 +1023,13 @@ billingRoute.post(
     if (!sub) {
       return c.json({ error: { code: 'no_stripe_subscription', message: 'Nothing to cancel.' } }, 409);
     }
+
+    // Stripe refuses `cancel_at_period_end` while a schedule is attached
+    // — and one stays attached for a whole period after a downgrade
+    // lands, not only while it is pending. Cancelling supersedes any
+    // booked change, so releasing first is the right outcome as well as
+    // the only one Stripe allows.
+    await cancelPendingChange(stripe, sub);
 
     const updated = await stripe.subscriptions.update(sub.id, {
       cancel_at_period_end: true,

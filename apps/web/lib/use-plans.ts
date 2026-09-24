@@ -39,6 +39,8 @@ export interface CurrentSubscription {
   tier: string;
   platform: BillingPlatform | null;
   productId: string | null;
+  /** Monthly or yearly. Null for a comp, which has no storefront product. */
+  interval: PlanInterval | null;
   expiresAt: string | null;
 }
 

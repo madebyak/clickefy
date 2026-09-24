@@ -31,6 +31,7 @@ import { planDirection, type UserEntitlement } from "@clickfy/types";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { PlanChangeDialog } from "@/components/billing/plan-change-dialog";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import { useBillingActions } from "@/lib/use-billing-actions";
 import {
@@ -136,13 +137,27 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
   const t = useTranslations("pricing");
   const [interval, setInterval] = useState<PlanInterval>("month");
   const { data, isLoading } = usePlans();
-  const { startCheckout, pendingPlanId } = useBillingActions();
+  const { startCheckout, pendingPlanId, planToConfirm, confirmPlanChange, dismissPlanChange } =
+    useBillingActions();
 
   const { canBuy, managedOn } = purchaseState(data?.current ?? null);
   const byTier = new Map<string, CataloguePlan>();
   for (const p of data?.plans ?? []) {
     if (p.interval === interval) byTier.set(p.tier, p);
   }
+
+  // Only monthly → monthly is self-serve. A yearly subscriber changing
+  // anything, or a monthly subscriber moving to yearly, is routed to
+  // support — the API refuses it too, but a "Contact us" button says so
+  // before the click rather than after.
+  const subscribedOnWeb = !!data?.current && data.current.platform === "stripe";
+  const needsSupport = subscribedOnWeb && (data!.current!.interval !== "month" || interval !== "month");
+
+  const confirming = planToConfirm ? (data?.plans ?? []).find((p) => p.id === planToConfirm) : null;
+  const confirmingDirection =
+    confirming && data?.current
+      ? planDirection(data.current.tier as UserEntitlement, confirming.tier as UserEntitlement)
+      : null;
 
   return (
     <section
@@ -336,6 +351,17 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
                 >
                   &nbsp;
                 </span>
+              ) : needsSupport ? (
+                <Link
+                  href="/contact"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "w-full justify-between",
+                  )}
+                >
+                  {t("contactToChange")}
+                  <ArrowUpRight className="size-4 rtl:-scale-x-100" />
+                </Link>
               ) : sellable ? (
                 <button
                   type="button"
@@ -385,6 +411,16 @@ export function PricingSection({ embedded = false }: { embedded?: boolean } = {}
           );
         })}
       </div>
+
+      {confirming && (confirmingDirection === "upgrade" || confirmingDirection === "downgrade") && (
+        <PlanChangeDialog
+          plan={confirming}
+          direction={confirmingDirection}
+          pending={pendingPlanId === confirming.id}
+          onConfirm={() => void confirmPlanChange()}
+          onClose={dismissPlanChange}
+        />
+      )}
 
       {/* The questions people actually ask before paying — especially why
           the app costs more, which is better answered than left to guess.

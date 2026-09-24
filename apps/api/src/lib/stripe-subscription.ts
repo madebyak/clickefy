@@ -9,10 +9,19 @@
  *
  * ─── THE TWO DIRECTIONS ARE NOT SYMMETRICAL ─────────────────────────
  *
- * An UPGRADE happens immediately. Stripe prorates the remainder of the
- * period, charges the difference, and emits an invoice — which our
- * webhook turns into the new allowance plus whatever was left of the old
- * one. The customer asked for more and pays for more, now.
+ * An UPGRADE happens immediately, at FULL PRICE, and restarts the billing
+ * cycle today. No proration: the customer bought credits, keeps every one
+ * of them, and buys the new plan's credits on top — a rule the founder
+ * set on 2026-09-23 so that nobody is ever charged for a credit they do
+ * not receive, and so Stripe never decides our credit arithmetic. The
+ * unused days of the old plan are simply over; the next charge is one
+ * full period from today, and the old renewal date is gone.
+ *
+ * Stripe does this with `billing_cycle_anchor: 'now'` and
+ * `proration_behavior: 'none'`. Verified against a sandbox test clock
+ * (2026-09-24): one invoice, one line, the full new price, a fresh period
+ * starting at the moment of the upgrade, and a clean single-line renewal
+ * a period later.
  *
  * A DOWNGRADE waits for the period end. They have already paid for this
  * month at the higher tier, so taking the tier away immediately would be
@@ -22,6 +31,21 @@
  * refunded in between, and the ordinary renewal invoice at the boundary
  * grants the smaller allowance through the same path as any other
  * renewal.
+ *
+ * ─── A SCHEDULE MUST BE RELEASED BEFORE ANYTHING ELSE ────────────────
+ *
+ * While a schedule is attached, Stripe REFUSES `cancel_at_period_end` on
+ * the subscription — and, worse, ACCEPTS a direct price/anchor update and
+ * then applies the schedule's phases on top of it, which in the sandbox
+ * produced an un-invoiced free period followed by a renewal with a
+ * proration line. Both seen on 2026-09-24. So every mutation here starts
+ * by releasing any schedule. Releasing leaves the subscription exactly as
+ * it is today; the booked change is simply forgotten, which is the rule
+ * for "upgrade while a downgrade is pending" anyway.
+ *
+ * The schedule also stays attached for the whole phase AFTER a downgrade
+ * lands (Stripe releases it only when the last phase ends), so "no
+ * pending change" does not mean "no schedule".
  *
  * Direction comes from the TIER LADDER, never from the amount. A yearly
  * Basic costs more than a monthly Ultimate, so comparing prices would
@@ -140,13 +164,18 @@ export async function changePlan(
   if (!item) throw new Error(`subscription ${sub.id} has no items`);
 
   if (direction === 'upgrade') {
-    // Immediate, prorated, and invoiced right away. `always_invoice` is
-    // what makes the credits arrive now: without it the proration sits as
-    // a line item on the NEXT invoice, and the customer who just paid to
-    // upgrade would wait a month for what they bought.
+    // Anything booked for the period end is superseded by moving up now.
+    // It must also go first: see the header for what Stripe does to a
+    // direct update while a schedule is attached.
+    await cancelPendingChange(stripe, sub);
+
+    // Full price, today, new cycle from today. `error_if_incomplete`
+    // means a declined card leaves the subscription exactly as it was
+    // rather than half-moved and unpaid.
     await stripe.subscriptions.update(sub.id, {
       items: [{ id: item.id, price: input.newPriceId }],
-      proration_behavior: 'always_invoice',
+      proration_behavior: 'none',
+      billing_cycle_anchor: 'now',
       payment_behavior: 'error_if_incomplete',
       metadata: { clickefy_user_id: input.userId, clickefy_tier: input.toTier },
     });
@@ -189,7 +218,13 @@ export async function changePlan(
   return { direction, chargedNow: false, effectiveAt: periodEnd };
 }
 
-/** Undo a booked downgrade, leaving the subscription as it is today. */
+/**
+ * Release any attached schedule, leaving the subscription as it is today.
+ *
+ * Undoes a booked downgrade — and is the mandatory first step of every
+ * other mutation (upgrade, cancel), because Stripe will not cancel a
+ * scheduled subscription and will mis-apply a direct update to one.
+ */
 export async function cancelPendingChange(stripe: Stripe, sub: Stripe.Subscription): Promise<boolean> {
   const scheduleId = typeof sub.schedule === 'string' ? sub.schedule : sub.schedule?.id;
   if (!scheduleId) return false;

@@ -20,11 +20,11 @@
  * HOW A REFRESH IS DECIDED
  *   A subscriber is due when their newest subscription lot is older than
  *   30 days and their subscription has not expired. Monthly subscribers
- *   are normally topped up by their own renewal webhook well before that,
- *   so in practice this only fires for annual plans — but it is written
- *   against the DATA rather than the interval, so a missed or delayed
- *   monthly webhook is quietly repaired too. That is a useful property to
- *   have for free.
+ *   are EXCLUDED: their renewal invoice grants the next period and their
+ *   lot expires at the real period end, so a refresh here could only ever
+ *   fire on the morning of a 31-day month's renewal day and double-grant.
+ *   Yearly plans and comps (no storefront product behind them) are the
+ *   only consumers.
  *
  * SAFETY
  *   - Use-it-or-lose-it is preserved: the previous lot is closed before
@@ -80,6 +80,20 @@ export const refreshSubscriptionCredits = schedules.task({
         -- Still inside a paid period. A lapsed subscriber is handled by
         -- the expiry path, not topped up here.
         AND (u.subscription_expires_at IS NULL OR u.subscription_expires_at > now())
+        -- MONTHLY plans are fed by their own renewal invoice and their
+        -- lot expires at the real period end. In a 31-day month the
+        -- newest lot is "older than 30 days" on the morning of renewal
+        -- day, and refreshing it then handed out an allowance that the
+        -- renewal wiped hours later — a free window to spend twice. Only
+        -- yearly plans and comps (no storefront product) are refreshed
+        -- here.
+        AND NOT EXISTS (
+          SELECT 1
+          FROM plan_products pp
+          JOIN plans p ON p.id = pp.plan_id
+          WHERE pp.store_product_id = u.subscription_product_id
+            AND p.interval = 'month'
+        )
       GROUP BY u.id, u.entitlement, u.subscription_product_id
       HAVING MAX(cl.created_at) IS NULL
           OR MAX(cl.created_at) < now() - (${REFRESH_WINDOW_DAYS} || ' days')::interval

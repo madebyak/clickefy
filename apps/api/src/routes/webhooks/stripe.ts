@@ -40,11 +40,19 @@
  */
 
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type Stripe from 'stripe';
 
 import { creditPacks, planProducts, plans, stripeEvents, users } from '@clickfy/db';
-import { evaluateSubscriptionRefund } from '@clickfy/types';
+import {
+  decideRollover,
+  evaluateSubscriptionRefund,
+  resolveInvoicePriceId,
+  resolvePeriodEnd,
+  subscriptionLotExpiry,
+  type PlanInterval,
+  type UserEntitlement,
+} from '@clickfy/types';
 
 import {
   DUNNING_GRACE_HOURS,
@@ -55,12 +63,13 @@ import {
 
 import {
   TOPUP_LIFETIME_MS,
-  closeSubscriptionLots,
   grantCredits,
   resumeTopupClocks,
   revokeCredits,
+  rolloverSubscriptionLots,
 } from '../../lib/credit-grants';
 import { makeStripe, verifyStripeEvent } from '../../lib/stripe-client';
+import { currentPriceId } from '../../lib/stripe-subscription';
 import { endSubscriptionAccess } from '../../lib/subscription-lifecycle';
 import type { AppEnv } from '../../types';
 
@@ -286,12 +295,25 @@ stripeWebhookRoute.post('/', async (c) => {
 /**
  * `invoice.paid` — the grant. Fires on first payment and every renewal.
  *
- * Resolves the plan from the PRICE on the invoice line, because that is
- * the only thing that survives a plan change: the subscription's metadata
- * still names whatever was bought originally.
+ * WHICH PLAN: the subscription's CURRENT price, read from Stripe, with
+ * the invoice's largest positive line as the fallback. Never `lines[0]`:
+ * on a proration invoice Stripe puts the negative "unused time on the
+ * old plan" line first, and reading it granted a customer who had just
+ * paid for Ultimate the Creator allowance (2026-09-23).
  *
- * Credits carry forward on every invoice EXCEPT a renewal — see the
- * use-it-or-lose-it block below.
+ * CARRY OR WIPE: decided by the tier ladder, from our own ledger — see
+ * `decideRollover` for why neither `billing_reason` nor
+ * `users.entitlement` can be trusted for this.
+ *
+ *   upgrade   → keep every unspent credit, add the new allowance
+ *   renewal   → wipe, fresh allowance
+ *   downgrade → wipe, the smaller allowance
+ *
+ * EXPIRY: a monthly lot lives until the real period end on the invoice;
+ * a yearly lot lives 30 days and the refresh task takes it from there.
+ *
+ * Close + grant is ONE statement (`rolloverSubscriptionLots`), so a retry
+ * after a partial failure cannot lose the carried balance.
  */
 async function applyInvoicePaid(
   c: { var: AppEnv['Variables']; env: AppEnv['Bindings'] },
@@ -301,13 +323,35 @@ async function applyInvoicePaid(
 ): Promise<string | undefined> {
   const invoice = event.data.object as Stripe.Invoice;
 
-  // Zero-amount invoices (a 100% coupon, a proration credit) still arrive
-  // here. They are legitimate, so they still grant.
-  const line = invoice.lines?.data?.[0];
-  const priceId =
-    (line?.pricing?.price_details?.price as string | undefined) ??
-    ((line as unknown as { price?: { id?: string } })?.price?.id ?? undefined);
+  // Every line, in a shape the policy can read. Both price fields are
+  // accepted: `pricing.price_details.price` is current, `price.id` is
+  // what an older API version or a fixture carries.
+  const lines = (invoice.lines?.data ?? []).map((line) => ({
+    amount: typeof line.amount === 'number' ? line.amount : 0,
+    priceId:
+      (line.pricing?.price_details?.price as string | undefined) ??
+      ((line as unknown as { price?: { id?: string } }).price?.id ?? null),
+    periodEnd: typeof line.period?.end === 'number' ? line.period.end : null,
+  }));
 
+  // The subscription is the truth about which plan is being paid for. A
+  // failed read falls back to the invoice's own lines rather than
+  // failing the grant — Stripe would retry, but the customer has paid.
+  const subscriptionId = invoiceSubscriptionId(invoice as unknown as Record<string, unknown>);
+  let subscriptionPriceId: string | null = null;
+  if (subscriptionId) {
+    try {
+      subscriptionPriceId = currentPriceId(await stripe.subscriptions.retrieve(subscriptionId));
+    } catch (err) {
+      console.warn('[stripe webhook] could not read subscription for invoice', {
+        subscriptionId,
+        invoiceId: invoice.id,
+        err: String(err),
+      });
+    }
+  }
+
+  const priceId = resolveInvoicePriceId(lines, subscriptionPriceId);
   if (!priceId) return 'no price on invoice — nothing to grant';
 
   const product = await c.var.db.query.planProducts.findFirst({
@@ -321,63 +365,62 @@ async function applyInvoicePaid(
   }
   const plan = await c.var.db.query.plans.findFirst({ where: eq(plans.id, product.planId) });
   if (!plan) throw new Error(`plan_products row points at a missing plan (${product.planId})`);
+  const interval = plan.interval as PlanInterval;
+  const tier = plan.tier as UserEntitlement;
 
-  // THE LINE ITEM's period, not the invoice's.
-  //
-  // `invoice.period_end` is the period the INVOICE covers, and on the
-  // first invoice of a subscription that is the instant it was created —
-  // so using it set every new subscriber's renewal date to roughly "now".
-  // Verified against real invoices: period_end 2026-08-24 09:50 against a
-  // line period ending 2026-09-24 09:50, a month apart.
-  //
-  // It never broke access (entitlement gates that, not this date) but it
-  // is what Settings renders as "Renews on", and showing a paying
-  // customer a date in the past is its own kind of broken.
-  const linePeriodEnd = line?.period?.end ?? null;
-  const periodEnd = linePeriodEnd
-    ? new Date(linePeriodEnd * 1000)
-    : invoice.period_end
-      ? new Date(invoice.period_end * 1000)
-      : null;
-  // Credits are per 30 DAYS even on a yearly plan — a yearly subscriber is
-  // topped up by `refresh-subscription-credits`, not handed a year at once.
-  const creditsExpireAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  // The period from the line that carries THIS price. A proration
+  // invoice's negative line belongs to the old plan and must not set the
+  // renewal date; `invoice.period_end` is worse still — on a first
+  // invoice it is the instant the subscription was created.
+  const periodEndSec = resolvePeriodEnd(lines, priceId);
+  const periodEnd = periodEndSec ? new Date(periodEndSec * 1000) : null;
 
-  // ── Use-it-or-lose-it, but ONLY at a renewal ──────────────────────
-  //
-  // Credits do not roll over from one period to the next: that is the
-  // deal, and `subscription_cycle` is Stripe's word for "the period
-  // turned over". Every OTHER invoice — an upgrade, a downgrade taking
-  // effect, a first subscription — is a mid-period event, and wiping
-  // someone's balance at one of those destroys credits they have already
-  // paid for.
-  //
-  // It used to wipe on all of them. Someone upgrading from Basic to
-  // Creator on day ten, holding 100 unspent credits, received 390 and
-  // lost the 100. They now receive 490, on one lot expiring 30 days from
-  // the upgrade — the balance carries, and the clock restarts with the
-  // plan.
-  //
-  // The lots are closed either way, so a user always has exactly one
-  // subscription lot with one expiry date. What changes is whether the
-  // closed amount is handed back.
-  const billingReason = invoice.billing_reason ?? null;
-  const isRenewal = billingReason === 'subscription_cycle';
-  const closed = await closeSubscriptionLots(
-    c.var.db,
+  // The tier of the customer's most recent subscription grant, from our
+  // ledger. `users.entitlement` may already have been advanced by the
+  // `customer.subscription.updated` that races this event.
+  const prev = await c.var.db.execute<{ tier: string | null }>(sql`
+    SELECT metadata->>'tier' AS tier
+    FROM credit_ledger
+    WHERE user_id = ${userId}::uuid AND reason = 'subscription_grant'
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+  const prevRows = Array.isArray(prev) ? prev : ((prev as { rows?: unknown[] }).rows ?? []);
+  const previousTier = ((prevRows[0] as { tier?: string | null } | undefined)?.tier ??
+    null) as UserEntitlement | null;
+
+  const decision = decideRollover(previousTier, tier);
+  const expiresAt = subscriptionLotExpiry(interval, periodEnd);
+
+  // Credits FIRST, then the user row. If the second write fails, Stripe's
+  // retry finds the lot already issued (a no-op) and completes the row;
+  // the other way round a failure would leave a tier with no credits
+  // behind it until the retry landed.
+  const rolled = await rolloverSubscriptionLots(c.var.db, {
     userId,
-    isRenewal
-      ? `Stripe ${plan.tier}/${plan.interval} renewal`
-      : `Stripe ${plan.tier}/${plan.interval} — balance carried to the new period`,
-  );
-  const carried = isRenewal ? 0 : closed;
-  const forfeited = isRenewal ? closed : 0;
-  const granted = plan.creditsPerPeriod + carried;
+    allowance: plan.creditsPerPeriod,
+    carry: decision === 'carry',
+    expiresAt,
+    sourcePlatform: 'stripe',
+    // The invoice id makes a redelivery a no-op at the database level.
+    sourceRef: invoice.id,
+    note: `Stripe ${plan.tier}/${plan.interval}`,
+    metadata: {
+      priceId,
+      tier: plan.tier,
+      interval: plan.interval,
+      invoiceId: invoice.id,
+      billingReason: invoice.billing_reason ?? null,
+      allowance: plan.creditsPerPeriod,
+      previousTier,
+      decision,
+    },
+  });
 
   await c.var.db
     .update(users)
     .set({
-      entitlement: plan.tier as typeof users.$inferSelect.entitlement,
+      entitlement: tier as typeof users.$inferSelect.entitlement,
       subscriptionPlatform: 'stripe',
       subscriptionProductId: priceId,
       subscriptionRenewsAt: periodEnd,
@@ -385,35 +428,12 @@ async function applyInvoicePaid(
     })
     .where(eq(users.id, userId));
 
-  await grantCredits(c.var.db, {
-    userId,
-    class: 'subscription',
-    kind: 'subscription',
-    amount: granted,
-    expiresAt: creditsExpireAt,
-    reason: 'subscription_grant',
-    sourcePlatform: 'stripe',
-    // The invoice id makes a redelivery a no-op at the database level.
-    sourceRef: invoice.id,
-    note: carried > 0
-      ? `Stripe ${plan.tier}/${plan.interval} (${plan.creditsPerPeriod} + ${carried} carried)`
-      : `Stripe ${plan.tier}/${plan.interval}`,
-    metadata: {
-      priceId,
-      tier: plan.tier,
-      interval: plan.interval,
-      invoiceId: invoice.id,
-      billingReason,
-      allowance: plan.creditsPerPeriod,
-      carried,
-    },
-  });
-
   const resumed = await resumeTopupClocks(c.var.db, userId);
 
-  const notes: string[] = [`granted ${granted} (${plan.tier})`];
-  if (carried > 0) notes.push(`carried ${carried} forward (${billingReason})`);
-  if (forfeited > 0) notes.push(`forfeited ${forfeited} unspent`);
+  if (!rolled) return `already granted for ${invoice.id} (replay)`;
+  const notes: string[] = [`granted ${rolled.granted} (${plan.tier}, ${decision})`];
+  if (rolled.carried > 0) notes.push(`carried ${rolled.carried} forward`);
+  if (rolled.forfeited > 0) notes.push(`forfeited ${rolled.forfeited} unspent`);
   if (resumed > 0) notes.push(`resumed ${resumed} topup clock(s)`);
   return notes.join('; ');
 }

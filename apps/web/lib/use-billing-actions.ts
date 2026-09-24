@@ -28,7 +28,9 @@ type BillingErrorCode =
   | "no_stripe_customer"
   | "topup_requires_subscription"
   | "pack_not_purchasable"
-  | "already_subscribed";
+  | "already_subscribed"
+  | "plan_change_needs_support"
+  | "payment_failed";
 
 type PostResult<T> =
   | { ok: true; data: T }
@@ -65,6 +67,13 @@ export function useBillingActions() {
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
   const [pendingPackId, setPendingPackId] = useState<string | null>(null);
   const [portalPending, setPortalPending] = useState(false);
+  /**
+   * A plan change waiting for the customer to confirm it. Set when a
+   * subscriber clicks a plan card; the pricing page renders the dialog.
+   * An upgrade charges the full new price the moment it is confirmed, so
+   * the one click that used to do it silently now says the amount first.
+   */
+  const [planToConfirm, setPlanToConfirm] = useState<string | null>(null);
 
   /**
    * Send the user to Stripe Checkout for one plan.
@@ -105,7 +114,14 @@ export function useBillingActions() {
         // would do.
         if (result.code === ("already_subscribed" satisfies BillingErrorCode)) {
           const action = (result.details as { action?: string } | undefined)?.action;
-          await (action === "resume" ? resumeSubscription() : changePlan(planId));
+          if (action === "resume") {
+            await resumeSubscription();
+          } else {
+            // Not straight to the API: an upgrade is a charge, and a
+            // downgrade is a booking. Both deserve a sentence and a
+            // button before they happen.
+            setPlanToConfirm(planId);
+          }
           return;
         }
         // They pay through a store, and sending them to Stripe would bill
@@ -151,7 +167,15 @@ export function useBillingActions() {
       tier: string;
     }>("/v1/billing/change-plan", token, { planId });
     if (!result.ok) {
-      toast.error(result.message);
+      // A declined card on an upgrade: the plan is untouched, and the
+      // bank's reason is more useful than a generic failure.
+      toast.error(
+        result.code === ("payment_failed" satisfies BillingErrorCode)
+          ? tb("paymentFailed", { message: result.message })
+          : result.code === ("plan_change_needs_support" satisfies BillingErrorCode)
+            ? tb("yearlyContactUs")
+            : result.message,
+      );
       return;
     }
     await refreshBilling();
@@ -238,6 +262,20 @@ export function useBillingActions() {
   }
 
   return {
+    planToConfirm,
+    /** The customer read the sentence and pressed the button. */
+    confirmPlanChange: async () => {
+      const planId = planToConfirm;
+      if (!planId) return;
+      setPendingPlanId(planId);
+      try {
+        await changePlan(planId);
+      } finally {
+        setPendingPlanId(null);
+        setPlanToConfirm(null);
+      }
+    },
+    dismissPlanChange: () => setPlanToConfirm(null),
     startCheckout,
     changePlan,
     resumeSubscription,

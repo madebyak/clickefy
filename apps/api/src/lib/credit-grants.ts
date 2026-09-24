@@ -264,6 +264,145 @@ export async function resumeTopupClocks(db: Db, userId: string): Promise<number>
   return rows.length;
 }
 
+export interface RolloverInput {
+  userId: string;
+  /** The plan's allowance for the new period. */
+  allowance: number;
+  /**
+   * Keep the unspent balance (an upgrade) or forfeit it (a renewal, or a
+   * downgrade landing). Decided by `decideRollover` in @clickfy/types.
+   */
+  carry: boolean;
+  expiresAt: Date;
+  sourcePlatform: string;
+  /** The invoice id — what makes a redelivery a no-op. */
+  sourceRef: string;
+  note: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RolloverResult {
+  /** Credits on the new lot: the allowance plus whatever was carried. */
+  granted: number;
+  carried: number;
+  forfeited: number;
+  newBalance: number;
+}
+
+/**
+ * Turn the subscription wallet over to a new period — close the old
+ * lots, open one new lot, move the projection, write the ledger — in ONE
+ * statement.
+ *
+ * WHY ONE STATEMENT
+ *   The previous shape was `closeSubscriptionLots` then `grantCredits`:
+ *   two statements. If the second failed after the first committed, a
+ *   Stripe retry found the old lots already closed, carried nothing, and
+ *   the customer's unspent credits were gone with no row to say so. Here
+ *   the close is gated on the new lot actually being inserted, so a
+ *   replay (same `source_ref`, insert conflicts) touches nothing at all.
+ *
+ * THE LEDGER ALWAYS BALANCES
+ *   Even when carrying, the old lots are zeroed and the carried amount is
+ *   re-issued on the new lot, so the ledger records `-unspent` (labelled
+ *   carried) and `+allowance+unspent`. The sum is `+allowance`, which is
+ *   exactly what the balance moved by — `verify-credit-integrity` check 3
+ *   depends on that holding.
+ *
+ * Returns null on a replay.
+ */
+export async function rolloverSubscriptionLots(
+  db: Db,
+  input: RolloverInput,
+): Promise<RolloverResult | null> {
+  if (input.allowance <= 0) return null;
+  const meta = JSON.stringify(input.metadata ?? {});
+  const carry = input.carry;
+
+  const result = await db.execute<{ granted: number; unspent: number; new_balance: number }>(sql`
+    WITH
+      outstanding AS (
+        SELECT COALESCE(SUM(amount_remaining), 0)::int AS unspent
+        FROM credit_lots
+        WHERE user_id = ${input.userId}::uuid
+          AND class = 'subscription'
+          AND amount_remaining > 0
+      ),
+      new_lot AS (
+        INSERT INTO credit_lots (
+          user_id, class, kind, amount_granted, amount_remaining,
+          expires_at, source_platform, source_ref
+        )
+        SELECT
+          ${input.userId}::uuid, 'subscription', 'subscription',
+          ${input.allowance}::int + CASE WHEN ${carry}::boolean THEN o.unspent ELSE 0 END,
+          ${input.allowance}::int + CASE WHEN ${carry}::boolean THEN o.unspent ELSE 0 END,
+          ${input.expiresAt.toISOString()}::timestamptz,
+          ${input.sourcePlatform}, ${input.sourceRef}
+        FROM outstanding o
+        -- A redelivered invoice carries the same source_ref and loses
+        -- here, which leaves every CTE below with nothing to do.
+        ON CONFLICT (user_id, kind, source_ref) WHERE source_ref IS NOT NULL
+        DO NOTHING
+        RETURNING id, amount_granted
+      ),
+      -- Gated on new_lot: a replay must not zero the CURRENT period. The
+      -- new lot is invisible here (data-modifying CTEs do not see each
+      -- other's rows), so only the previous lots are closed.
+      closed AS (
+        UPDATE credit_lots
+        SET amount_remaining = 0
+        WHERE user_id = ${input.userId}::uuid
+          AND class = 'subscription'
+          AND amount_remaining > 0
+          AND EXISTS (SELECT 1 FROM new_lot)
+        RETURNING id
+      ),
+      bumped AS (
+        UPDATE users u
+        SET subscription_credits = nl.amount_granted,
+            credits_balance      = u.credits_balance - o.unspent + nl.amount_granted
+        FROM outstanding o, new_lot nl
+        WHERE u.id = ${input.userId}::uuid
+        RETURNING u.credits_balance AS new_balance
+      ),
+      close_entry AS (
+        INSERT INTO credit_ledger (user_id, delta, reason, balance_after, bucket, note, metadata)
+        SELECT ${input.userId}::uuid, -o.unspent, 'subscription_reset'::credit_reason,
+               b.new_balance - nl.amount_granted, 'subscription',
+               -- Both branches cast: Postgres cannot infer the type of a
+               -- bare parameter inside CASE and refuses the statement.
+               CASE WHEN ${carry}::boolean
+                    THEN ${input.note + ' — carried into the new period'}::text
+                    ELSE ${input.note}::text END,
+               jsonb_build_object('carried', ${carry}::boolean, 'sourceRef', ${input.sourceRef}::text)
+        FROM outstanding o, bumped b, new_lot nl
+        WHERE o.unspent > 0
+        RETURNING id
+      ),
+      grant_entry AS (
+        INSERT INTO credit_ledger (user_id, delta, reason, balance_after, bucket, lot_id, note, metadata)
+        SELECT ${input.userId}::uuid, nl.amount_granted, 'subscription_grant'::credit_reason,
+               b.new_balance, 'subscription', nl.id, ${input.note},
+               ${meta}::jsonb || jsonb_build_object('carried', CASE WHEN ${carry}::boolean THEN o.unspent ELSE 0 END)
+        FROM new_lot nl, bumped b, outstanding o
+        RETURNING id
+      )
+    SELECT nl.amount_granted AS granted, o.unspent, b.new_balance
+    FROM new_lot nl, outstanding o, bumped b
+  `);
+
+  const rows = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? []);
+  if (rows.length === 0) return null;
+  const row = rows[0] as { granted: number; unspent: number; new_balance: number };
+  return {
+    granted: row.granted,
+    carried: carry ? row.unspent : 0,
+    forfeited: carry ? 0 : row.unspent,
+    newBalance: row.new_balance,
+  };
+}
+
 /**
  * Close out a user's subscription lots — the use-it-or-lose-it reset that
  * runs on renewal, plan change and expiry. Zeroes the lots, drops the

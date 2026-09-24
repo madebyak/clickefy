@@ -174,17 +174,11 @@ function OverlayButton({
   );
 }
 
-/**
- * Pinterest-style masonry of typed assets (images + auto-looping videos).
- * Tiles have hover actions (favorite / info / download); a plain tile
- * click opens the lightbox and is handled here. onAssetClick attaches
- * the asset to the prompt (the "Add as reference" action); onAssetInfo
- * opens the details panel.
- *
- * The heart is the one control that stays visible when it is ON — a
- * favorite the user can only see by hovering isn't a favorite they can
- * find. Everything else in the overlay appears on hover.
- */
+/** A final can still be made: none queued or made yet, and inside the draft's window. */
+function canMakeFinal(draft: NonNullable<Asset["draft"]>): boolean {
+  return draft.finalJobId == null && Date.parse(draft.expiresAt) > Date.now();
+}
+
 /**
  * "Make final" on a Draft-mode tile. Once the draft's window has passed,
  * or a final is already queued or made from it, the row stays — inert,
@@ -200,13 +194,11 @@ function MakeFinalItem({
   onMakeFinal: () => void;
 }) {
   const t = useTranslations("studio");
-  const made = draft.finalJobId != null;
-  const expired = Date.parse(draft.expiresAt) <= Date.now();
-  if (made || expired) {
+  if (!canMakeFinal(draft)) {
     return (
       <div className="flex w-full items-center gap-2.5 px-2 py-2 text-sm text-muted-foreground">
         <Sparkle className="size-4" />
-        {made ? t("finalMade") : t("draftExpired")}
+        {draft.finalJobId != null ? t("finalMade") : t("draftExpired")}
       </div>
     );
   }
@@ -225,6 +217,17 @@ function MakeFinalItem({
   );
 }
 
+/**
+ * Pinterest-style masonry of typed assets (images + auto-looping videos).
+ * Tiles have hover actions (favorite / info / download); a plain tile
+ * click opens the lightbox and is handled here. onAssetClick attaches
+ * the asset to the prompt (the "Add as reference" action); onAssetInfo
+ * opens the details panel.
+ *
+ * The heart is the one control that stays visible when it is ON — a
+ * favorite the user can only see by hovering isn't a favorite they can
+ * find. Everything else in the overlay appears on hover.
+ */
 export function Masonry({
   assets,
   onAssetClick,
@@ -592,7 +595,7 @@ export function Masonry({
 
             {/* Desktop bottom shortcuts share a row to avoid overlapping
                 on narrow tiles. Mobile actions live in the ⋯ menu. */}
-            {(onAssetClick || onAssetReuse) && (
+            {(onAssetClick || onAssetReuse || (onMakeFinal && a.draft)) && (
               <div className="asset-hover-actions absolute inset-x-2 bottom-2 flex items-center gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                 {onAssetClick && (
                   <button
@@ -634,6 +637,38 @@ export function Masonry({
                     )}
                     {!compactTiles && (
                       <span className="hidden truncate sm:inline">{t("reuseShort")}</span>
+                    )}
+                  </button>
+                )}
+                {/* The ⋯ menu's "Make final", one hover away. Only while a
+                    final can still be made — the menu row is where an
+                    expired or already-finalised draft says why. */}
+                {onMakeFinal && a.draft && canMakeFinal(a.draft) && (
+                  <button
+                    type="button"
+                    aria-label={t("makeFinal", { tier: a.draft.finalTier })}
+                    disabled={finalizingAssetId === a.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMakeFinal(a);
+                    }}
+                    className={cn(
+                      "inline-flex h-9 min-w-0 items-center gap-1.5 rounded-lg bg-black/70 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85 disabled:opacity-60",
+                      compactTiles ? "size-8 justify-center" : "px-2.5",
+                    )}
+                  >
+                    {finalizingAssetId === a.id ? (
+                      <CircleNotch className="size-3.5 shrink-0 animate-spin" />
+                    ) : (
+                      <Sparkle weight="fill" className="size-3.5 shrink-0 text-accent-turquoise" />
+                    )}
+                    {!compactTiles && (
+                      <span className="hidden truncate sm:inline">
+                        {t("makeFinal", { tier: a.draft.finalTier })}
+                        <span className="ms-1.5 tabular-nums text-white/60">
+                          {a.draft.finalCostCredits}
+                        </span>
+                      </span>
                     )}
                   </button>
                 )}

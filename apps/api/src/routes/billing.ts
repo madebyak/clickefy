@@ -841,7 +841,7 @@ billingRoute.get(
  * Pack charges before it have only a receipt; pack charges after it have
  * an invoice as well, and must not be listed twice.
  */
-const PACK_INVOICES_SINCE = Date.UTC(2026, 8, 25, 10, 30, 0);
+const PACK_INVOICES_SINCE = Date.UTC(2026, 8, 25, 10, 10, 0); // first deploy went live ~10:05Z; no pack sold between
 
 /**
  * `GET /v1/billing/invoices` — the receipts.

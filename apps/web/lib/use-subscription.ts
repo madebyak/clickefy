@@ -43,8 +43,9 @@ export interface LiveSubscription {
   planId: string | null;
   creditsPerPeriod: number | null;
   currentPeriodEnd: string | null;
-  /** Cancelled: access runs to `currentPeriodEnd`, then stops. */
+  /** Cancelled — here or in Stripe's portal: access runs to `endsAt`, then stops. */
   cancelAtPeriodEnd: boolean;
+  endsAt: string | null;
   /** A downgrade already booked for the period end. */
   pendingChange: PendingPlanChange | null;
 }
@@ -60,8 +61,11 @@ export interface SubscriptionResponse {
 
 export interface Invoice {
   id: string;
+  /** A Stripe invoice (PDF), or a receipt for a pack bought before packs had invoices. */
+  kind: "invoice" | "receipt";
   number: string | null;
   status: string;
+  description: string | null;
   amountPaid: number;
   amountDue: number;
   currency: string;

@@ -37,6 +37,7 @@ export async function endSubscriptionAccess(
       subscriptionProductId: null,
       subscriptionRenewsAt: null,
       subscriptionExpiresAt: null,
+      subscriptionCancelsAt: null,
     })
     .where(eq(users.id, userId));
 

@@ -65,6 +65,15 @@ export interface Bindings {
    * are DIFFERENT values — a local secret will reject live deliveries.
    */
   STRIPE_WEBHOOK_SECRET?: string;
+  /**
+   * Resend API key for transactional email (plan cancelled / resumed).
+   * Optional: without it `lib/email.ts` logs and skips, and nothing
+   * about billing changes. Set once the sending domain is verified:
+   *   pnpm --filter @clickfy/api exec wrangler secret put RESEND_API_KEY
+   */
+  RESEND_API_KEY?: string;
+  /** Sender, e.g. `Clickefy <billing@clickefy.ai>`. Defaults in `lib/email.ts`. */
+  EMAIL_FROM?: string;
   /** DeepSeek API key for admin EN→AR content translation. */
   DEEPSEEK_API_KEY?: string;
   /**

@@ -70,7 +70,9 @@ export default function BillingPage() {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
 
   const sub = subQuery.data?.subscription ?? null;
-  const invoicesQuery = useInvoices(!!subQuery.data?.platform);
+  // Not gated on the plan: a comped or lapsed account can still have
+  // bought credit packs, and those receipts belong to them.
+  const invoicesQuery = useInvoices(!!user);
   const invoices = invoicesQuery.data ?? [];
 
   const date = (iso: string | null | undefined) =>
@@ -146,7 +148,7 @@ export default function BillingPage() {
                 {subQuery.isLoading
                   ? t("loading")
                   : sub?.cancelAtPeriodEnd
-                    ? t("endsOn", { date: date(sub.currentPeriodEnd) ?? "—" })
+                    ? t("endsOn", { date: date(sub.endsAt ?? sub.currentPeriodEnd) ?? "—" })
                     : sub?.pendingChange
                       ? t("pendingChange", {
                           tier: sub.pendingChange.tier ?? "",
@@ -260,8 +262,8 @@ export default function BillingPage() {
           </Section>
         )}
 
-        {/* ── Invoices ─────────────────────────────────────────── */}
-        {isStripe && (
+        {/* ── Invoices & receipts ──────────────────────────────── */}
+        {(isStripe || invoices.length > 0) && (
           <Section title={t("invoicesSection")}>
             {invoicesQuery.isLoading ? (
               <div className="h-16 animate-pulse rounded-lg bg-surface-1" />
@@ -276,12 +278,13 @@ export default function BillingPage() {
                         {date(inv.createdAt)}
                         {inv.number && <span className="ms-2 text-xs text-muted-foreground">{inv.number}</span>}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="truncate text-xs text-muted-foreground">
                         {money(inv.amountPaid || inv.amountDue, inv.currency)} ·{" "}
                         {t(`invoiceStatus_${inv.status}` as never)}
+                        {inv.description && <> · {inv.description}</>}
                       </p>
                     </div>
-                    {inv.pdfUrl && (
+                    {inv.pdfUrl ? (
                       <a
                         href={inv.pdfUrl}
                         target="_blank"
@@ -291,7 +294,18 @@ export default function BillingPage() {
                       >
                         <DownloadSimple className="size-4" />
                       </a>
-                    )}
+                    ) : inv.hostedUrl ? (
+                      // A receipt: Stripe hosts a printable page, no PDF.
+                      <a
+                        href={inv.hostedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "shrink-0")}
+                        aria-label={t("viewReceipt")}
+                      >
+                        <ArrowSquareOut className="size-4 rtl:-scale-x-100" />
+                      </a>
+                    ) : null}
                   </li>
                 ))}
               </ul>

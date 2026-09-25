@@ -89,6 +89,8 @@ function toMeResponse(row: typeof users.$inferSelect): MeResponse {
     topupSpendable: row.entitlement !== 'free',
     subscriptionRenewsAt: row.subscriptionRenewsAt?.toISOString() ?? null,
     subscriptionExpiresAt: row.subscriptionExpiresAt?.toISOString() ?? null,
+    /** Set when a cancellation is booked: access ends here, no further charge. */
+    subscriptionCancelsAt: row.subscriptionCancelsAt?.toISOString() ?? null,
     // WHERE the subscription lives. Neither Apple nor Stripe can see the
     // other's, so this is the only way a client knows whether it may sell
     // an upgrade itself or must send the user back to the other platform.

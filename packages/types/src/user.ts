@@ -211,6 +211,10 @@ export interface MeResponse {
   topupSpendable: boolean;
   subscriptionRenewsAt: string | null;
   subscriptionExpiresAt: string | null;
+  /** Set once a cancellation is booked (here or in Stripe's portal): access
+   *  ends at this instant and nothing more is charged. Null while the plan
+   *  continues. */
+  subscriptionCancelsAt: string | null;
   /**
    * WHERE the subscription lives: 'stripe' | 'app_store' | 'play_store',
    * or null when there isn't one.

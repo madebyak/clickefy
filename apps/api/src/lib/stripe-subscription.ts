@@ -54,7 +54,7 @@
 
 import type Stripe from 'stripe';
 
-import { planDirection, type UserEntitlement } from '@clickfy/types';
+import { planDirection, subscriptionEndsAt as endsAtFromFields, type UserEntitlement } from '@clickfy/types';
 
 /**
  * Statuses that mean "this person has a subscription".
@@ -99,6 +99,22 @@ export function currentPriceId(sub: Stripe.Subscription): string | null {
 export function currentPeriodEnd(sub: Stripe.Subscription): Date | null {
   const end = sub.items?.data?.[0]?.current_period_end;
   return typeof end === 'number' ? new Date(end * 1000) : null;
+}
+
+/**
+ * When the subscription is booked to end, or null while it continues.
+ *
+ * Reads BOTH of Stripe's spellings — `cancel_at` (what the Customer
+ * Portal writes on the API version we pin) and `cancel_at_period_end`
+ * (what our own cancel route writes). Reading only the flag showed four
+ * portal-cancelled subscriptions as "Renews on …" on 2026-09-24.
+ */
+export function subscriptionEndsAt(sub: Stripe.Subscription): Date | null {
+  return endsAtFromFields({
+    cancelAt: sub.cancel_at,
+    cancelAtPeriodEnd: sub.cancel_at_period_end,
+    periodEnd: sub.items?.data?.[0]?.current_period_end,
+  });
 }
 
 /**

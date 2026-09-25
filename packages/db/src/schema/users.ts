@@ -84,6 +84,10 @@ export const users = pgTable(
     stripeCustomerId: text('stripe_customer_id'),
     subscriptionRenewsAt: timestamp('subscription_renews_at', { withTimezone: true }),
     subscriptionExpiresAt: timestamp('subscription_expires_at', { withTimezone: true }),
+    /** When a booked cancellation takes effect; null while the plan
+     *  continues. Mirrored from Stripe's `cancel_at` / `cancel_at_period_end`
+     *  by the webhook (migration 0040). */
+    subscriptionCancelsAt: timestamp('subscription_cancels_at', { withTimezone: true }),
 
     // ── Per-user preferences (appearance, notifications, …) ──────────
     // Stored as JSONB so we can keep adding toggles (`tipsAndTutorials`,

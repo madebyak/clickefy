@@ -51,6 +51,7 @@ import {
   currentPriceId,
   findLiveSubscription,
   pendingPriceChange,
+  subscriptionEndsAt,
 } from '../lib/stripe-subscription';
 import type { AppEnv } from '../types';
 
@@ -413,19 +414,23 @@ billingRoute.post(
       const existing = await findLiveSubscription(stripeForCheck, user.stripeCustomerId);
       if (existing) {
         const currentPrice = currentPriceId(existing);
+        // Either of Stripe's two cancellation spellings — see
+        // `subscriptionEndsAt`. A plan cancelled in the portal is "ending"
+        // exactly as much as one cancelled here.
+        const ending = subscriptionEndsAt(existing) != null;
         return c.json(
           {
             error: {
               code: 'already_subscribed',
-              message: existing.cancel_at_period_end
+              message: ending
                 ? 'Your plan is set to end. Resume it instead of subscribing again.'
                 : 'You already have a subscription. Change your plan instead.',
               details: {
                 subscriptionId: existing.id,
                 currentPriceId: currentPrice,
-                cancelAtPeriodEnd: existing.cancel_at_period_end,
+                cancelAtPeriodEnd: ending,
                 /** What the client should do: resume, or change plan. */
-                action: existing.cancel_at_period_end ? 'resume' : 'change_plan',
+                action: ending ? 'resume' : 'change_plan',
               },
             },
           },
@@ -651,11 +656,33 @@ billingRoute.post(
         customer: customerId,
         line_items: [{ price: product.storeProductId, quantity: 1 }],
         client_reference_id: user.id,
+        // A one-time payment produces a charge and a receipt but NO
+        // invoice unless asked. Customers — and their accountants — look
+        // for invoices, and the billing page lists invoices; without this
+        // every credit pack was invisible there (reported 2026-09-25).
+        // Stripe issues the invoice after payment; `invoice.paid` then
+        // fires for it, and the webhook ignores invoices with no
+        // subscription, so the grant still comes from the checkout event.
+        invoice_creation: {
+          enabled: true,
+          invoice_data: {
+            description: `Clickefy — ${pack.displayName}`,
+            metadata: {
+              clickefy_user_id: user.id,
+              clickefy_pack_id: pack.id,
+              clickefy_kind: 'topup',
+            },
+          },
+        },
         // The webhook grants from the PACK ROW, looked up by this id — it
         // never trusts a credit amount carried in metadata. Amounts in
         // metadata are a copy of the truth, and a copy can be stale if a
         // pack is re-credited between checkout and payment.
         payment_intent_data: {
+          // What the Stripe dashboard shows in its Description column.
+          // Unset, it falls back to the PaymentIntent id, which reads as
+          // "pi_3UJB2Z…" next to a customer's name.
+          description: `Clickefy — ${pack.displayName}`,
           metadata: {
             clickefy_user_id: user.id,
             clickefy_pack_id: pack.id,
@@ -754,6 +781,7 @@ billingRoute.get(
     const plan = priceId ? byPrice.get(priceId) : undefined;
     const pending = await pendingPriceChange(stripe, sub);
     const pendingPlan = pending ? byPrice.get(pending.priceId) : undefined;
+    const endsAt = subscriptionEndsAt(sub);
 
     // The card, for "Visa ending 4242". Expanded off the subscription's
     // default method, falling back to the customer's.
@@ -789,8 +817,9 @@ billingRoute.get(
           planId: plan?.planId ?? null,
           creditsPerPeriod: plan?.credits ?? null,
           currentPeriodEnd: currentPeriodEnd(sub)?.toISOString() ?? null,
-          /** True once cancelled: access runs to `currentPeriodEnd`, then stops. */
-          cancelAtPeriodEnd: sub.cancel_at_period_end,
+          /** True once cancelled — here OR in Stripe's portal: access runs to `endsAt`, then stops. */
+          cancelAtPeriodEnd: endsAt != null,
+          endsAt: endsAt?.toISOString() ?? null,
           /** A downgrade already booked for the period end. */
           pendingChange: pending
             ? {
@@ -806,6 +835,13 @@ billingRoute.get(
     });
   },
 );
+
+/**
+ * The moment the top-up checkout started asking Stripe for an invoice.
+ * Pack charges before it have only a receipt; pack charges after it have
+ * an invoice as well, and must not be listed twice.
+ */
+const PACK_INVOICES_SINCE = Date.UTC(2026, 8, 25, 10, 30, 0);
 
 /**
  * `GET /v1/billing/invoices` — the receipts.
@@ -825,23 +861,64 @@ billingRoute.get(
       return c.json({ data: { invoices: [] } });
     }
     const stripe = makeStripe(c.env.STRIPE_SECRET_KEY);
-    const list = await stripe.invoices.list({ customer: user.stripeCustomerId, limit: 24 });
+    const [list, charges] = await Promise.all([
+      stripe.invoices.list({ customer: user.stripeCustomerId, limit: 24 }),
+      // Credit packs sold before `PACK_INVOICES_SINCE` were one-time
+      // payments with no invoice: Stripe holds a charge and a numbered
+      // receipt, and nothing can be made for them after the fact. Listing
+      // those receipts is the only way a customer sees that purchase in
+      // their own account. Packs sold since then have an invoice and are
+      // covered by the list above, so nothing shows twice.
+      stripe.charges.list({ customer: user.stripeCustomerId, limit: 50 }),
+    ]);
+
+    const invoices = list.data
+      // A draft invoice is not a receipt of anything yet.
+      .filter((i) => i.status !== 'draft')
+      .map((i) => ({
+        id: i.id,
+        kind: 'invoice' as const,
+        number: i.number,
+        status: i.status,
+        description: i.lines?.data?.[0]?.description ?? i.description ?? null,
+        amountPaid: i.amount_paid,
+        amountDue: i.amount_due,
+        currency: i.currency,
+        createdAt: new Date(i.created * 1000).toISOString(),
+        pdfUrl: i.invoice_pdf,
+        hostedUrl: i.hosted_invoice_url,
+      }));
+
+    const receipts = charges.data
+      .filter(
+        (ch) =>
+          ch.paid &&
+          ch.status === 'succeeded' &&
+          // A pack, by the metadata the top-up route writes on its
+          // PaymentIntent (charges inherit it). Subscription charges are
+          // always covered by an invoice and carry no such marker. The
+          // Charge object no longer links to its invoice on this API
+          // version, so the era decides instead of the link.
+          ch.metadata?.clickefy_kind === 'topup' &&
+          ch.created * 1000 < PACK_INVOICES_SINCE,
+      )
+      .map((ch) => ({
+        id: ch.id,
+        kind: 'receipt' as const,
+        number: ch.receipt_number,
+        status: ch.refunded ? 'refunded' : ch.amount_refunded > 0 ? 'partially_refunded' : 'paid',
+        description: ch.description ?? null,
+        amountPaid: ch.amount - ch.amount_refunded,
+        amountDue: 0,
+        currency: ch.currency,
+        createdAt: new Date(ch.created * 1000).toISOString(),
+        pdfUrl: null,
+        hostedUrl: ch.receipt_url,
+      }));
+
     return c.json({
       data: {
-        invoices: list.data
-          // A draft invoice is not a receipt of anything yet.
-          .filter((i) => i.status !== 'draft')
-          .map((i) => ({
-            id: i.id,
-            number: i.number,
-            status: i.status,
-            amountPaid: i.amount_paid,
-            amountDue: i.amount_due,
-            currency: i.currency,
-            createdAt: new Date(i.created * 1000).toISOString(),
-            pdfUrl: i.invoice_pdf,
-            hostedUrl: i.hosted_invoice_url,
-          })),
+        invoices: [...invoices, ...receipts].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
       },
     });
   },
@@ -1073,8 +1150,12 @@ billingRoute.post(
     }
 
     const releasedChange = await cancelPendingChange(stripe, sub);
-    const updated = sub.cancel_at_period_end
-      ? await stripe.subscriptions.update(sub.id, { cancel_at_period_end: false })
+    // Clear BOTH spellings. The portal books a cancellation as
+    // `cancel_at`; our own route as `cancel_at_period_end`. Clearing only
+    // the flag left a portal cancellation in place — the plan looked
+    // resumed and still ended.
+    const updated = subscriptionEndsAt(sub)
+      ? await stripe.subscriptions.update(sub.id, { cancel_at: '' })
       : sub;
 
     return c.json({

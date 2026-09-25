@@ -15,6 +15,8 @@
  *                                    payment and on every renewal.
  *   customer.subscription.updated  → plan change; also carries the status
  *                                    transitions (past_due, unpaid…)
+ *                                    and cancellations booked for the
+ *                                    period end (mirrored + emailed)
  *   customer.subscription.deleted  → revoke
  *   invoice.payment_failed         → recorded only. Stripe's Smart Retries
  *                                    run first; revoking on the first
@@ -45,6 +47,7 @@ import type Stripe from 'stripe';
 
 import { creditPacks, planProducts, plans, stripeEvents, users } from '@clickfy/db';
 import {
+  cancellationTransition,
   decideRollover,
   evaluateSubscriptionRefund,
   resolveInvoicePriceId,
@@ -68,8 +71,10 @@ import {
   revokeCredits,
   rolloverSubscriptionLots,
 } from '../../lib/credit-grants';
+import { planEndingEmail, planResumedEmail } from '../../lib/billing-emails';
+import { sendEmail } from '../../lib/email';
 import { makeStripe, verifyStripeEvent } from '../../lib/stripe-client';
-import { currentPriceId } from '../../lib/stripe-subscription';
+import { currentPriceId, subscriptionEndsAt } from '../../lib/stripe-subscription';
 import { endSubscriptionAccess } from '../../lib/subscription-lifecycle';
 import type { AppEnv } from '../../types';
 
@@ -258,7 +263,11 @@ stripeWebhookRoute.post('/', async (c) => {
         note = await applyInvoicePaid(c, stripe, userRow.id, event);
         break;
       case 'customer.subscription.updated':
-        note = await applySubscriptionUpdated(c, userRow.id, event);
+        note = await applySubscriptionUpdated(
+          c,
+          { id: userRow.id, email: userRow.email, name: userRow.name ?? null, locale: userRow.locale },
+          event,
+        );
         break;
       case 'customer.subscription.deleted':
         note = await applySubscriptionDeleted(c, userRow.id);
@@ -338,6 +347,14 @@ async function applyInvoicePaid(
   // failed read falls back to the invoice's own lines rather than
   // failing the grant — Stripe would retry, but the customer has paid.
   const subscriptionId = invoiceSubscriptionId(invoice as unknown as Record<string, unknown>);
+  if (!subscriptionId) {
+    // A one-time invoice: since 2026-09-25 the credit-pack checkout asks
+    // Stripe for an invoice, and Stripe reports it paid here. The pack's
+    // credits come from `checkout.session.completed`; the pack price is
+    // not a plan price, and looking it up below would throw and have
+    // Stripe retry a paid, already-granted purchase for three days.
+    return 'one-time invoice (no subscription) — credits come from checkout.session.completed';
+  }
   let subscriptionPriceId: string | null = null;
   if (subscriptionId) {
     try {
@@ -445,11 +462,12 @@ async function applyInvoicePaid(
  * this only tracks state. Acting on both would grant twice.
  */
 async function applySubscriptionUpdated(
-  c: { var: AppEnv['Variables'] },
-  userId: string,
+  c: { var: AppEnv['Variables']; env: AppEnv['Bindings'] },
+  user: { id: string; email: string; name: string | null; locale: string },
   event: Stripe.Event,
 ): Promise<string | undefined> {
   const sub = event.data.object as Stripe.Subscription;
+  const userId = user.id;
 
   // `unpaid` and `canceled` mean access ends. `past_due` does NOT — Stripe
   // is still retrying and the customer usually recovers.
@@ -463,28 +481,66 @@ async function applySubscriptionUpdated(
     ? new Date(item.current_period_end * 1000)
     : null;
 
-  if (priceId) {
-    const product = await c.var.db.query.planProducts.findFirst({
-      where: eq(planProducts.storeProductId, priceId),
-    });
-    if (product) {
-      const plan = await c.var.db.query.plans.findFirst({ where: eq(plans.id, product.planId) });
-      if (plan) {
-        await c.var.db
-          .update(users)
-          .set({
-            entitlement: plan.tier as typeof users.$inferSelect.entitlement,
-            subscriptionPlatform: 'stripe',
-            subscriptionProductId: priceId,
-            subscriptionRenewsAt: periodEnd,
-            subscriptionExpiresAt: periodEnd,
-          })
-          .where(eq(users.id, userId));
-        return `status ${sub.status}, now on ${plan.tier}/${plan.interval}`;
-      }
-    }
+  // A cancellation booked for the period end, in either of Stripe's two
+  // spellings. Mirrored on the row so every surface can say "Ends on …"
+  // without a live Stripe read — and so a cancellation made in Stripe's
+  // portal, which we otherwise never hear about, is not invisible.
+  const endsAt = subscriptionEndsAt(sub);
+  const transition = cancellationTransition(
+    event.data.previous_attributes as Record<string, unknown> | undefined,
+    endsAt,
+  );
+
+  const notes: string[] = [];
+  let tier: string | null = null;
+  const product = priceId
+    ? await c.var.db.query.planProducts.findFirst({ where: eq(planProducts.storeProductId, priceId) })
+    : undefined;
+  const plan = product
+    ? await c.var.db.query.plans.findFirst({ where: eq(plans.id, product.planId) })
+    : undefined;
+
+  if (plan && priceId) {
+    tier = plan.tier;
+    await c.var.db
+      .update(users)
+      .set({
+        entitlement: plan.tier as typeof users.$inferSelect.entitlement,
+        subscriptionPlatform: 'stripe',
+        subscriptionProductId: priceId,
+        subscriptionRenewsAt: periodEnd,
+        subscriptionExpiresAt: periodEnd,
+        subscriptionCancelsAt: endsAt,
+      })
+      .where(eq(users.id, userId));
+    notes.push(`status ${sub.status}, now on ${plan.tier}/${plan.interval}`);
+  } else {
+    // Unknown price: leave the plan columns alone, still mirror the date.
+    await c.var.db
+      .update(users)
+      .set({ subscriptionCancelsAt: endsAt })
+      .where(eq(users.id, userId));
+    notes.push(`status ${sub.status}`);
   }
-  return `status ${sub.status}`;
+  if (endsAt) notes.push(`ends ${endsAt.toISOString()}`);
+
+  // Tell the customer. Stripe emails receipts and failed payments but
+  // never a cancellation, and someone who cancelled by accident should
+  // find out now rather than on renewal day. Sending is best-effort: a
+  // failed email is noted, never thrown — Stripe would retry the whole
+  // event, and a broken email provider must not stall billing.
+  if (transition) {
+    const billingUrl = `${(c.env.WEB_APP_URL ?? 'https://clickefy.ai').replace(/\/+$/, '')}/billing`;
+    const to = { email: user.email, name: user.name, locale: user.locale };
+    const message =
+      transition === 'scheduled' && endsAt
+        ? planEndingEmail({ to, tier: tier ?? 'plan', endsAt, billingUrl })
+        : planResumedEmail({ to, tier: tier ?? 'plan', renewsAt: periodEnd, billingUrl });
+    const outcome = await sendEmail(c.env, message);
+    notes.push(`email ${transition}: ${outcome}`);
+  }
+
+  return notes.join('; ');
 }
 
 /**

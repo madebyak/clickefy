@@ -43,7 +43,7 @@
           }
         ]
       },
-      "buildNumber": "8"
+      "buildNumber": "9"
     },
     "android": {
       "package": "ai.clickefy.app",

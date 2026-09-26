@@ -74,6 +74,5 @@ export function usePushRegistration(): void {
     // Intentionally only depending on the user identity. Re-subscribing
     // on `getToken` changes is what caused the original storm, and
     // the ref above keeps the closure correct without that dep.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn, userId]);
 }

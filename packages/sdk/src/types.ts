@@ -62,11 +62,8 @@ export interface CatalogTemplate {
   coverImage: string;
   /**
    * Optional auto-playing preview clip (4–8s, muted, looped) shown by the
-   * mobile app instead of the static cover. Accepts:
-   *   - a remote URL (`https://…/clip.mp4`), or
-   *   - a symbolic local key the mobile app resolves through its local
-   *     asset map (e.g. `local:spin`).
-   * Image-kind templates leave this undefined.
+   * mobile app instead of the static cover — a remote URL
+   * (`https://…/clip.mp4`). Image-kind templates leave this undefined.
    */
   previewVideo?: string;
   /**
@@ -332,7 +329,7 @@ export interface JobSubmission {
    * original job without re-charging credits.
    */
   idempotencyKey?: string;
-  /** Web-studio project to file the outputs into (omitted on mobile). */
+  /** Project to file the outputs into. Web and mobile both send it. */
   projectId?: string;
 }
 
@@ -607,7 +604,7 @@ export interface CreateGenerationInput {
     bitDepth?: 8 | 10 | 12;
   };
   idempotencyKey?: string;
-  /** Web-studio project to file the outputs into (omitted on mobile). */
+  /** Project to file the outputs into. Web and mobile both send it. */
   projectId?: string;
 }
 

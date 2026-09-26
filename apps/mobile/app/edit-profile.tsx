@@ -27,7 +27,7 @@ import {
 } from '@clickfy/ui';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,11 +49,12 @@ export default function EditProfileScreen() {
 
   // Keep the form in sync if the upstream query refreshes (e.g. webhook
   // pushes a new value mid-edit). Only re-seeds when the user hasn't
-  // started editing.
-  useEffect(() => {
+  // started editing. Done during render when the upstream name changes.
+  const [seededName, setSeededName] = useState(user?.name);
+  if (user?.name !== seededName) {
+    setSeededName(user?.name);
     if (user?.name && !name) setName(user.name);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.name]);
+  }
 
   const isDirty = name.trim() !== (user?.name ?? '');
   const isSaving = updateProfile.isPending;

@@ -1,11 +1,13 @@
 // Learn more https://docs.expo.dev/guides/monorepos/
-const { getDefaultConfig } = require('expo/metro-config');
+// Sentry's wrapper over Expo's default config: it stamps each bundle with
+// a debug ID so uploaded source maps match the crash reports.
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 const path = require('path');
 
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '../..');
 
-const config = getDefaultConfig(projectRoot);
+const config = getSentryExpoConfig(projectRoot);
 
 // 1. Watch the entire monorepo so changes to packages/* trigger reloads.
 config.watchFolders = [workspaceRoot];

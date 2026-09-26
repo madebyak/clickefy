@@ -123,7 +123,7 @@ export interface ChoreographStep {
  *
  * Returns a cancel function. Safe to call multiple times.
  */
-export function choreograph(steps: ReadonlyArray<ChoreographStep>): () => void {
+export function choreograph(steps: readonly ChoreographStep[]): () => void {
   if (steps.length === 0) return () => {};
 
   // Reduce-motion collapse: single tick at the end of the sequence.

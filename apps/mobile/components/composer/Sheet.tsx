@@ -13,7 +13,7 @@
  */
 
 import { Pressable, Text, useTheme } from '@clickfy/ui';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
 import { Modal, ScrollView, View } from 'react-native';
 import Animated, {
   Easing,
@@ -53,12 +53,14 @@ export function Sheet({ visible, onClose, onDismissed, title, children, maxHeigh
   const [mounted, setMounted] = useState(visible);
   const backdrop = useSharedValue(0);
   const translateY = useSharedValue(SLIDE_DISTANCE);
-  const finishExit = () => {
+  // An Effect Event: reads the latest `onDismissed` without becoming an
+  // effect dependency, which would restart the animation on every render.
+  const finishExit = useEffectEvent(() => {
     setMounted(false);
     // A beat for the native dismissal to settle before anything new
     // presents (picker/camera).
     if (onDismissed) setTimeout(onDismissed, 80);
-  };
+  });
 
   // React's sanctioned "adjust state during render" pattern — mounting
   // must happen before the enter animation, and doing it here (not in

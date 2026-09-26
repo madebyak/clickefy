@@ -115,12 +115,22 @@ export default function HomeScreen() {
   const { categoryId: deepLinkCategoryId } = useLocalSearchParams<{
     categoryId?: string;
   }>();
-  useEffect(() => {
-    if (!deepLinkCategoryId) return;
-    const cats = categoriesQuery.data;
-    if (!cats || cats.length === 0) return; // wait for the list
-
-    const target = cats.find((c) => c.id === deepLinkCategoryId);
+  // Seeded during render, once per deep link — React's pattern for state
+  // that follows an input, rather than an effect that paints the old
+  // selection first and then corrects it. `appliedDeepLink` resets when
+  // the param is stripped, so the same banner works a second time.
+  const [appliedDeepLink, setAppliedDeepLink] = useState<string | null>(null);
+  const deepLinkCats = categoriesQuery.data;
+  if (!deepLinkCategoryId && appliedDeepLink !== null) {
+    setAppliedDeepLink(null);
+  } else if (
+    deepLinkCategoryId &&
+    deepLinkCategoryId !== appliedDeepLink &&
+    deepLinkCats &&
+    deepLinkCats.length > 0 // wait for the list
+  ) {
+    setAppliedDeepLink(deepLinkCategoryId);
+    const target = deepLinkCats.find((c) => c.id === deepLinkCategoryId);
     if (!target) {
       // Unknown id (e.g. category got deleted after the banner was
       // authored). Reset to "All" so the user sees something useful
@@ -136,10 +146,14 @@ export default function HomeScreen() {
       setActiveCat(target.id);
       setActiveSubcategoryId(null);
     }
-    // Strip the param so a subsequent root tap in the rail isn't
-    // overridden by the stale deep-link on a re-render.
-    router.setParams({ categoryId: undefined });
-  }, [deepLinkCategoryId, categoriesQuery.data, router]);
+  }
+  // Strip the param once applied so a subsequent root tap in the rail
+  // isn't overridden by the stale deep-link on a re-render.
+  useEffect(() => {
+    if (deepLinkCategoryId && deepLinkCategoryId === appliedDeepLink) {
+      router.setParams({ categoryId: undefined });
+    }
+  }, [deepLinkCategoryId, appliedDeepLink, router]);
 
   // Sections + banners only matter on the "All" feed. When the user
   // taps a specific category we render a flat 2-column grid (see

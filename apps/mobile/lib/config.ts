@@ -1,23 +1,10 @@
 /**
- * Mobile-app config — values resolved at build time from `app.json` → `extra`.
+ * Mobile-app config — build-time values (`EXPO_PUBLIC_*` env vars, inlined
+ * by Expo) plus fixed constants. Read it via `config.fieldName`.
  *
  * Keep this module dependency-free (no React imports) so it can be read from
  * anywhere — including the SDK accessor at module scope.
- *
- * To add a new field:
- *   1. Add it under `expo.extra` in `app.json`
- *   2. Add a typed getter below
- *   3. Reference it via `config.fieldName` (do NOT use `Constants.expoConfig.extra` directly)
  */
-
-import Constants from 'expo-constants';
-
-type Extra = {
-  /** When true, the mock SDK accepts any 6-digit OTP and tells the UI to surface a "demo build" hint. */
-  demoMode?: boolean;
-};
-
-const extra: Extra = (Constants.expoConfig?.extra ?? {}) as Extra;
 
 // EXPO_PUBLIC_* vars are inlined into process.env at build time. The
 // API URL is REQUIRED — there is intentionally no production fallback,
@@ -36,12 +23,6 @@ if (!resolvedApiUrl) {
 }
 
 export const config = {
-  /**
-   * `true` when running a demo/preview build aimed at clients — auth flows
-   * become permissive so a reviewer can walk the app without a real inbox.
-   * Always `false` in production builds intended for end users.
-   */
-  demoMode: extra.demoMode ?? false,
   apiUrl: resolvedApiUrl,
   /**
    * Public marketing/web domain. Single source of truth for any
@@ -62,8 +43,3 @@ export const config = {
     androidKey: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY ?? null,
   },
 } as const;
-
-/** True for `__DEV__` (Metro/Expo Go) OR an explicit demo build. */
-export function isDemoEnvironment(): boolean {
-  return (typeof __DEV__ !== 'undefined' && __DEV__) || config.demoMode;
-}

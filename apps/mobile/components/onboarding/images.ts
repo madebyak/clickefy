@@ -9,9 +9,10 @@
  * Naming convention:
  *   slide-{n}-{role}.{ext}   e.g. `slide-1-center.png`, `slide-3-back.jpg`
  *
- * Note: one source image was excluded (`_unused-large-please-compress.png`,
- * 6.4 MB). Run it through https://squoosh.app/ or `imagemin` and rename to
- * one of the slots below if you want to use it.
+ * Unused source media (screen recordings, an uncompressed 6.4 MB still) is
+ * kept out of the app, in the local, untracked
+ * `docs/design-refs/mobile-onboarding-source/`. Compress a file before
+ * giving it one of the slots below.
  */
 
 import type { ImageSourcePropType } from 'react-native';

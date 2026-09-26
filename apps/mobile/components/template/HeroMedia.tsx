@@ -23,7 +23,7 @@ import {
 
 import { VideoPreview } from '@/components/home/VideoPreview';
 import { thumbnailUrl } from '@/lib/image-url';
-import { resolveLocalVideo } from '@/lib/local-videos';
+import { resolvePreviewVideo } from '@/lib/preview-video';
 
 export interface HeroMediaProps {
   template: CatalogTemplate;
@@ -57,7 +57,7 @@ export function HeroMedia({ template }: HeroMediaProps) {
   const { colors } = useTheme();
 
   const videoSource = useMemo(
-    () => resolveLocalVideo(template.previewVideo),
+    () => resolvePreviewVideo(template.previewVideo),
     [template.previewVideo],
   );
   const galleryImages = useMemo(

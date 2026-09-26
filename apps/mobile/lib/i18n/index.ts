@@ -24,7 +24,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { getLocales } from 'expo-localization';
-import i18n from 'i18next';
+// `use` / `changeLanguage` are the default instance's methods, bound in
+// its constructor — the same calls as `i18n.use` / `i18n.changeLanguage`.
+// `use` is aliased: lint (and readers) would take it for React's `use` hook.
+import i18n, { changeLanguage, use as registerI18nextModule } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { I18nManager } from 'react-native';
 import { reloadAppAsync } from 'expo';
@@ -93,7 +96,7 @@ let initialized = false;
 export async function initI18n(): Promise<UserLocale> {
   const locale = await resolveInitialLocale();
   if (!initialized) {
-    await i18n.use(initReactI18next).init({
+    await registerI18nextModule(initReactI18next).init({
       resources,
       lng: locale,
       fallbackLng: DEFAULT_LOCALE,
@@ -106,7 +109,7 @@ export async function initI18n(): Promise<UserLocale> {
     });
     initialized = true;
   } else if (i18n.language !== locale) {
-    await i18n.changeLanguage(locale);
+    await changeLanguage(locale);
   }
 
   await syncNativeDirection(locale);

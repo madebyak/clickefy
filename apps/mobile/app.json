@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "clickfy",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "ai.clickefy.app",
       "supportsTablet": false,
@@ -48,13 +47,13 @@
     },
     "android": {
       "package": "ai.clickefy.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0A0A10",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "pan"
     },
@@ -107,6 +106,9 @@
       [
         "@sentry/react-native/expo",
         {
+          "organization": "clickefy",
+          "project": "react-native",
+          "url": "https://de.sentry.io/",
           "disableAutoUpload": true
         }
       ],
@@ -135,7 +137,6 @@
         }
       ],
       "expo-localization",
-      "@sentry/react-native",
       "expo-font",
       "expo-image",
       "expo-status-bar",
@@ -147,7 +148,6 @@
     },
     "extra": {
       "supportsRTL": true,
-      "demoMode": false,
       "router": {},
       "eas": {
         "projectId": "9b1cf22e-a85b-4586-b0f5-0402bb9e6912"

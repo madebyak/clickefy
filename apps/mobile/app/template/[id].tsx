@@ -65,9 +65,13 @@ export default function TemplateDetailScreen() {
   // local mirror the heart would lag the tap by a network round
   // trip.
   const [favorited, setFavorited] = useState<boolean>(false);
-  useEffect(() => {
-    if (typeof t?.isFavorited === 'boolean') setFavorited(t.isFavorited);
-  }, [t?.isFavorited]);
+  // Re-mirror whenever the server value changes — during render, so the
+  // heart never paints a stale state for a frame.
+  const [mirroredFavorite, setMirroredFavorite] = useState<boolean | undefined>();
+  if (typeof t?.isFavorited === 'boolean' && t.isFavorited !== mirroredFavorite) {
+    setMirroredFavorite(t.isFavorited);
+    setFavorited(t.isFavorited);
+  }
 
   const favoriteMutation = useMutation({
     mutationFn: (next: boolean) => sdk.catalog.setFavorite(t!.id, next),

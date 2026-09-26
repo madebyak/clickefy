@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/ui/Icon';
-import { resolveLocalVideo } from '@/lib/local-videos';
+import { resolvePreviewVideo } from '@/lib/preview-video';
 import { thumbnailUrl } from '@/lib/image-url';
 import { VideoPreview } from '@/components/home/VideoPreview';
 
@@ -78,11 +78,10 @@ export function TemplateCard({
     [template.coverImage, coverWidth],
   );
 
-  // Resolve once per card-mount. `previewVideo` may be a local key
-  // (`local:spin`) or a remote URL; if it isn't recognised we fall
-  // back to the static cover image render path below.
+  // Resolve once per card-mount. `previewVideo` is a remote URL; if it
+  // isn't one we fall back to the static cover image render path below.
   const videoSource = useMemo(
-    () => resolveLocalVideo(template.previewVideo),
+    () => resolvePreviewVideo(template.previewVideo),
     [template.previewVideo],
   );
 

@@ -41,12 +41,17 @@
     "modeFrames": "Frames",
     "modeReferences": "References",
     "referencesHint": "Add up to {{count}} images to guide the result.",
-    "framesHint": "Set a start frame (and an optional end frame)."
+    "framesHint": "Set a start frame (and an optional end frame).",
+    "modeLabel": "Input"
   },
   "quality": {
     "label": "Quality",
     "tier_one": "{{label}} · {{count}} credit",
-    "tier_other": "{{label}} · {{count}} credits"
+    "tier_other": "{{label}} · {{count}} credits",
+    "draftValue": "Draft · {{tier}}",
+    "draftHint": "Preview first, then make the {{finalTier}} final",
+    "badgeDraft": "Draft",
+    "badgeNew": "New"
   },
   "sound": {
     "label": "Audio",
@@ -128,6 +133,12 @@
     "copyPrompt": "Copy prompt",
     "copied": "Copied",
     "loadError": "Couldn't load this project",
-    "drawerLoadError": "Couldn't load your projects"
+    "drawerLoadError": "Couldn't load your projects",
+    "draftBadge": "Draft",
+    "makeFinal": "Make final · {{tier}} · {{count}} cr",
+    "finalMade": "Final already made",
+    "draftExpired": "Draft expired — make a new one",
+    "finalStarted": "Making the final video",
+    "finalAlreadyRequested": "A final is already being made from this draft"
   }
 }

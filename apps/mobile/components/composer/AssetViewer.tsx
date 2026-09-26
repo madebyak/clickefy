@@ -2,15 +2,17 @@
  * AssetViewer — tap an artifact anywhere (masonry cell, feed card) and
  * it opens full-quality over a black stage: image contained at its
  * native ratio, close ✕ top-leading, ⋯ top-trailing for the details
- * drawer. Backdrop fades in place (no sliding chrome).
+ * drawer. Backdrop fades in place (no sliding chrome). A Draft-mode
+ * preview also gets "Make final" in the top bar — the details drawer
+ * carries the same action.
  */
 
-import { Pressable } from '@clickfy/ui';
+import { accents, Pressable, Text } from '@clickfy/ui';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   runOnJS,
@@ -21,23 +23,32 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/ui/Icon';
-import type { AssetInfo } from './asset-info';
+import { canMakeFinal, type AssetDraft, type AssetInfo } from './asset-info';
 
 export function AssetViewer({
   asset,
   closeLabel,
   detailsLabel,
   downloadLabel,
+  makeFinalLabel,
+  finalizing = false,
   onDetails,
   onDownload,
+  onMakeFinal,
   onClose,
 }: {
   asset: AssetInfo | null;
   closeLabel: string;
   detailsLabel: string;
   downloadLabel: string;
+  /** "Make final · 1080p · 43 cr" for this draft. */
+  makeFinalLabel: (draft: AssetDraft) => string;
+  /** A final request for this asset is in flight. */
+  finalizing?: boolean;
   onDetails: (asset: AssetInfo) => void;
   onDownload: (asset: AssetInfo) => void;
+  /** Absent hides the action. */
+  onMakeFinal?: (asset: AssetInfo) => void;
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -81,6 +92,26 @@ export function AssetViewer({
         <View style={[styles.topBar, { top: insets.top + 8 }]}>
           <StageButton icon="close" label={closeLabel} onPress={onClose} />
           <View style={{ flex: 1 }} />
+          {onMakeFinal && current.draft && canMakeFinal(current.draft) ? (
+            <Pressable
+              onPress={() => onMakeFinal(current)}
+              disabled={finalizing}
+              haptic="medium"
+              pressedOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={makeFinalLabel(current.draft)}
+              style={[styles.finalButton, { backgroundColor: accents.violet.solid, opacity: finalizing ? 0.7 : 1 }]}
+            >
+              {finalizing ? (
+                <ActivityIndicator size="small" color={accents.violet.ink} />
+              ) : (
+                <Icon name="sparkle" size={15} color={accents.violet.ink} weight="fill" />
+              )}
+              <Text variant="caption" weight="700" numberOfLines={1} style={{ color: accents.violet.ink, flexShrink: 1 }}>
+                {makeFinalLabel(current.draft)}
+              </Text>
+            </Pressable>
+          ) : null}
           <StageButton icon="download" label={downloadLabel} onPress={() => onDownload(current)} />
           <StageButton icon="more" label={detailsLabel} onPress={() => onDetails(current)} />
         </View>
@@ -231,6 +262,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  finalButton: {
+    height: 38,
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    borderRadius: 19,
   },
   stageButton: {
     width: 38,

@@ -5,6 +5,7 @@
  *
  *   Details                                  ✕
  *   [ thumb ]
+ *   [ Make final · 1080p ]     ← Draft-mode previews only
  *   [ Attach as reference ]
  *   [ Re-use ]
  *   [ Turn into video ]        ← images only
@@ -15,7 +16,7 @@
  * only the panel slides.
  */
 
-import { HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
+import { accents, HStack, Pressable, Stack, Text, useTheme } from '@clickfy/ui';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -33,10 +34,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { outputThumbnailUrl } from '@/lib/image-url';
 import { MODE_TINT } from './mode-colors';
-import type { AssetInfo } from './asset-info';
+import { canMakeFinal, type AssetDraft, type AssetInfo } from './asset-info';
 
 export interface AssetDetailsLabels {
   title: string;
+  /** "Make final · 1080p · 43 cr" for this draft. */
+  makeFinal: (draft: AssetDraft) => string;
+  finalMade: string;
+  draftExpired: string;
   attach: string;
   reuse: string;
   turnVideo: string;
@@ -60,6 +65,7 @@ export function AssetDetailsDrawer({
   onAttach,
   onReuse,
   onTurnVideo,
+  onMakeFinal,
   onClose,
 }: {
   asset: AssetInfo | null;
@@ -67,6 +73,8 @@ export function AssetDetailsDrawer({
   onAttach: (a: AssetInfo) => void;
   onReuse: (a: AssetInfo) => void;
   onTurnVideo: (a: AssetInfo) => void;
+  /** Absent hides the draft row. */
+  onMakeFinal?: (a: AssetInfo) => void;
   onClose: () => void;
 }) {
   const { colors } = useTheme();
@@ -192,6 +200,29 @@ export function AssetDetailsDrawer({
 
             {/* ── Actions ── */}
             <Stack gap="sm">
+              {/* A draft whose final can no longer be made keeps the row,
+                  inert and saying why, rather than losing the action. */}
+              {onMakeFinal && current.draft ? (
+                canMakeFinal(current.draft) ? (
+                  <ActionRow
+                    icon="sparkle"
+                    label={labels.makeFinal(current.draft)}
+                    tint={{ solid: accents.violet.solid, fg: accents.violet.ink }}
+                    onPress={act(onMakeFinal)}
+                  />
+                ) : (
+                  <HStack
+                    align="center"
+                    gap="md"
+                    style={{ paddingVertical: 13, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.surface }}
+                  >
+                    <Icon name="sparkle" size={17} color={colors.inkMuted} />
+                    <Text variant="bodySemi" color="inkMuted">
+                      {current.draft.finalJobId != null ? labels.finalMade : labels.draftExpired}
+                    </Text>
+                  </HStack>
+                )
+              ) : null}
               <ActionRow icon="imageStack" label={labels.attach} onPress={act(onAttach)} />
               <ActionRow icon="refresh" label={labels.reuse} onPress={act(onReuse)} />
               {current.kind === 'image' ? (

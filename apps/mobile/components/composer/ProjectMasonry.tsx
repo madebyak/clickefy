@@ -16,7 +16,7 @@
  * Ready cells carry ↓ save and ⋯ details in the corner.
  */
 
-import { Pressable, Skeleton, Text, useTheme } from '@clickfy/ui';
+import { accents, Pressable, Skeleton, Text, useTheme } from '@clickfy/ui';
 import { Image } from 'expo-image';
 import { useEffect, useMemo } from 'react';
 import {
@@ -65,6 +65,8 @@ export interface MasonryCell {
   stageProgress?: number;
   failed?: boolean;
   errorMessage?: string;
+  /** A short tag in the top corner — "Draft" on a Draft-mode preview. */
+  badge?: string;
 }
 
 export interface MasonryLabels {
@@ -325,6 +327,13 @@ function Cell({
                 <View style={[styles.modeDot, { backgroundColor: MODE_TINT.video.solid }]} />
               </View>
             ) : null}
+            {cell.badge ? (
+              <View style={[styles.tagBadge, { backgroundColor: accents.violet.solid }]}>
+                <Text variant="caption" weight="700" style={{ color: accents.violet.ink, fontSize: 10, lineHeight: 14 }}>
+                  {cell.badge}
+                </Text>
+              </View>
+            ) : null}
             {/* ↓ save + ⋯ details, stacked in the corner. */}
             <View style={styles.cornerActions}>
               <Pressable
@@ -435,6 +444,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  tagBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   modeDot: {
     width: 6,

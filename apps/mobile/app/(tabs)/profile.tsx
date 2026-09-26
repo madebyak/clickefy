@@ -106,7 +106,7 @@ export default function ProfileScreen() {
                   {session?.plan?.tier ?? 'Free'}
                 </Text>
               </Stack>
-              <Button variant="accent" size="sm" onPress={() => router.push('/paywall')}>
+              <Button variant="accent" size="sm" onPress={() => router.push('/buy-credits')}>
                 {t('plan.topUp')}
               </Button>
             </HStack>
@@ -309,7 +309,7 @@ export default function ProfileScreen() {
             <ProfileRow
               icon="credit"
               label={t('actions.buyCredits')}
-              onPress={() => router.push('/paywall')}
+              onPress={() => router.push('/buy-credits')}
             />
           </Stack>
         </Card>

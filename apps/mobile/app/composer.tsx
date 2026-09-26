@@ -21,7 +21,7 @@
  * infra failures on its own; we just refresh the balance).
  */
 
-import { useTheme } from '@clickfy/ui';
+import { accents, useTheme } from '@clickfy/ui';
 import { useAuth, useUser } from '@clerk/expo';
 import { JobSubmissionError, type CreateGenerationInput, type GenModel } from '@clickfy/sdk';
 import { resolveCreditCost } from '@clickfy/types';
@@ -56,7 +56,7 @@ import {
   RatioSheet,
   type ComposerMode,
 } from '@/components/composer/sheets';
-import type { AssetInfo } from '@/components/composer/asset-info';
+import type { AssetDraft, AssetInfo } from '@/components/composer/asset-info';
 import { MODE_TINT } from '@/components/composer/mode-colors';
 import { ModelLogo } from '@/components/create/ModelLogo';
 import { useToast } from '@/components/shared/Toast';
@@ -80,7 +80,7 @@ import {
 } from '@/lib/use-image-upload';
 import type { UploadedMedia } from '@/components/use-template/InputField';
 
-type SheetName = 'mode' | 'model' | 'ratio' | 'quality' | 'duration' | 'attach' | null;
+type SheetName = 'mode' | 'model' | 'ratio' | 'quality' | 'duration' | 'input' | 'attach' | null;
 
 /** One in-flight or finished generation from THIS session. */
 /**
@@ -91,6 +91,36 @@ type SheetName = 'mode' | 'model' | 'ratio' | 'quality' | 'duration' | 'attach' 
  * poster/preview/thumbhash renditions for the grid.
  */
 type Artifact = TrackedJob;
+
+/** The quality sheet's Draft-mode row — not a tier key any model uses. */
+const DRAFT_OPTION_ID = '__draft__';
+
+/**
+ * A submission's credit cost: the resolver the server bills with, over
+ * the model's tier map including its `${tier}_audio` keys.
+ */
+function creditCost(
+  model: GenModel,
+  opts: { mode: string | undefined; sound: boolean; duration: number | undefined },
+): number {
+  return resolveCreditCost({
+    baseCredits: model.costCredits,
+    tierPricing: model.tiers
+      ? Object.fromEntries(
+          model.tiers.flatMap((x) => [
+            [x.mode, x.costCredits] as [string, number],
+            ...(x.soundCostCredits != null
+              ? [[`${x.mode}_audio`, x.soundCostCredits] as [string, number]]
+              : []),
+          ]),
+        )
+      : null,
+    mode: opts.mode,
+    sound: opts.sound,
+    duration: model.kind === 'video' ? opts.duration : undefined,
+    defaultDuration: model.defaultDuration,
+  });
+}
 
 /** One attachment in the dock: preview + its persisted upload (null while in flight). */
 interface ComposerAttachment {
@@ -191,6 +221,14 @@ export default function ComposerScreen() {
   // ── Option state ──────────────────────────────────────────────────
   const [ratio, setRatio] = useState<string | undefined>(undefined);
   const [tier, setTier] = useState<string | undefined>(undefined);
+  // Draft mode (Seedance 2.5): a cheap preview; the final is made from it.
+  const [draft, setDraft] = useState(false);
+  // Frames ⇄ References on models that offer both; `null` = the model's
+  // default. "Turn into video" arrives wanting its image as the START
+  // frame, so it opens in Frames.
+  const [attachChoice, setAttachChoice] = useState<'frames' | 'references' | null>(
+    params.attachUrl ? 'frames' : null,
+  );
   const [duration, setDuration] = useState<number | undefined>(undefined);
   // Web parity: sound defaults ON for sound-capable models; `null`
   // means "no explicit choice yet" so the default derives per model.
@@ -343,11 +381,19 @@ export default function ComposerScreen() {
         : model.durations[0]
       : undefined;
 
+  // A draft is served — and billed — at the model's draft tier whatever
+  // the quality pick; the server pins it the same way.
+  const draftOn = draft && !!model?.draft;
+  const billedTier = draftOn ? model!.draft!.tier : effTier;
+  const draftTierLabel = model?.draft
+    ? (model.tiers?.find((x) => x.mode === model.draft!.tier)?.label ?? model.draft.tier)
+    : '';
+
   const sound = soundChoice ?? !!model?.supportsSound;
   // Native audio that can't play at the selected tier: the server drops
   // the audio rather than upgrading the billed resolution, so the price
   // follows suit.
-  const soundGated = !!model?.soundRequiresTier && effTier !== model.soundRequiresTier;
+  const soundGated = !!model?.soundRequiresTier && billedTier !== model.soundRequiresTier;
   const soundTierLabel =
     model?.tiers?.find((x) => x.mode === model.soundRequiresTier)?.label ??
     model?.soundRequiresTier ??
@@ -355,31 +401,23 @@ export default function ComposerScreen() {
 
   // The same resolver the server bills with — tier + clip length + the
   // `${tier}_audio` keys for native audio.
-  const cost = model
-    ? resolveCreditCost({
-        baseCredits: model.costCredits,
-        tierPricing: model.tiers
-          ? Object.fromEntries(
-              model.tiers.flatMap((x) => [
-                [x.mode, x.costCredits] as [string, number],
-                ...(x.soundCostCredits != null
-                  ? [[`${x.mode}_audio`, x.soundCostCredits] as [string, number]]
-                  : []),
-              ]),
-            )
-          : null,
-        mode: effTier,
-        sound: sound && !soundGated,
-        duration: model.kind === 'video' ? effDuration : undefined,
-        defaultDuration: model.defaultDuration,
-      })
-    : 0;
+  const soundServed = sound && !soundGated;
+  const cost = model ? creditCost(model, { mode: billedTier, sound: soundServed, duration: effDuration }) : 0;
   const promptCap = model?.maxPromptChars ?? 2500;
 
   // ── Attachment surfaces (frames vs references, per model) ─────────
-  // v1: Seedance's dual mode defaults to frames; the references toggle
-  // is a follow-up.
-  const useFrames = model?.attachments === 'frames' || model?.attachments === 'seedance';
+  // Web parity: Seedance and the Kling reference models let the user pick
+  // Frames ⇄ References and open in References — the richer input: images
+  // that steer style, subject and composition. Every other model has one
+  // fixed surface. The two cannot be mixed upstream.
+  const modeIsChoosable = model?.attachments === 'seedance' || model?.supportsReferenceMode === true;
+  const defaultAttach =
+    model?.attachments === 'frames' && !model.supportsReferenceMode ? 'frames' : 'references';
+  const useFrames = model
+    ? modeIsChoosable
+      ? (attachChoice ?? defaultAttach) === 'frames'
+      : model.attachments !== 'references'
+    : false;
   const attachmentCap = useFrames ? (model?.supportsEndFrame ? 2 : 1) : model?.maxImages ?? 6;
   const uploadsInFlight = attachments.some((a) => a.media === null);
 
@@ -388,6 +426,8 @@ export default function ComposerScreen() {
     // New model, fresh option state — its own defaults apply.
     setRatio(undefined);
     setTier(undefined);
+    setDraft(false);
+    setAttachChoice(null);
     setDuration(undefined);
     setSoundChoice(null);
     setAttachments([]);
@@ -397,6 +437,8 @@ export default function ComposerScreen() {
     setMode(m);
     setRatio(undefined);
     setTier(undefined);
+    setDraft(false);
+    setAttachChoice(null);
     setDuration(undefined);
     setSoundChoice(null);
     setAttachments([]);
@@ -505,7 +547,9 @@ export default function ComposerScreen() {
         // "Auto" (image-only) = omit the field; video is always explicit.
         aspectRatio: !effRatio || effRatio === 'Auto' ? undefined : effRatio,
         duration: model.kind === 'video' ? effDuration : undefined,
-        quality: model.tiers ? effTier : undefined,
+        // A draft's tier is the server's to pin, not the picker's.
+        quality: model.tiers && !draftOn ? effTier : undefined,
+        draft: draftOn || undefined,
         sound: model.supportsSound ? sound && !soundGated : undefined,
         startFrame: useFrames ? mediaRefs[0] : undefined,
         endFrame: useFrames && model.supportsEndFrame ? mediaRefs[1] : undefined,
@@ -529,8 +573,25 @@ export default function ComposerScreen() {
         prompt: prompt.trim(),
         aspectRatio: cardRatio,
         modelName: model.name,
-        qualityLabel: model.tiers?.find((x) => x.mode === effTier)?.label,
+        qualityLabel: draftOn
+          ? t('quality.draftValue', { tier: draftTierLabel })
+          : model.tiers?.find((x) => x.mode === effTier)?.label,
         durationSeconds: model.kind === 'video' ? effDuration : undefined,
+        draft:
+          draftOn && model.draft
+            ? {
+                modelKey: model.modelKey,
+                finalTier: model.draft.finalTier,
+                // The same terms at the final tier — shown on the draft's
+                // "Make final"; the server prices it again from the draft.
+                finalCostCredits: creditCost(model, {
+                  mode: model.draft.finalTier,
+                  sound: soundServed,
+                  duration: effDuration,
+                }),
+                validDays: model.draft.validDays,
+              }
+            : undefined,
       });
       setPrompt('');
       // Attachments deliberately survive (web parity) — iterate on the
@@ -541,14 +602,7 @@ export default function ComposerScreen() {
         // The SDK's code union is stale — branch on the string.
         const code = err.code as string;
         if (code === 'insufficient_credits' || code === 'topup_locked') {
-          Alert.alert(
-            t('errors.insufficientTitle'),
-            code === 'topup_locked' ? err.message : t('errors.insufficientMessage'),
-            [
-              { text: t('composer.notNow'), style: 'cancel' },
-              { text: t('composer.viewPlans'), onPress: () => router.push('/paywall') },
-            ],
-          );
+          alertInsufficientCredits(code, err.message);
         } else {
           // Validation refusals carry a human sentence — show it verbatim.
           Alert.alert(t('errors.genericTitle'), err.message);
@@ -564,17 +618,100 @@ export default function ComposerScreen() {
     }
   };
 
+  const alertInsufficientCredits = (code: string, message: string) => {
+    Alert.alert(
+      t('errors.insufficientTitle'),
+      code === 'topup_locked' ? message : t('errors.insufficientMessage'),
+      [
+        { text: t('composer.notNow'), style: 'cancel' },
+        { text: t('composer.viewPlans'), onPress: () => router.push('/paywall') },
+      ],
+    );
+  };
+
+  // Every generation — a prompt or a draft's final — goes through the
+  // AI-content consent first; the agreed action then runs.
+  const afterConsentRef = useRef<() => void>(() => undefined);
+  const withAiConsent = async (run: () => void) => {
+    if (await hasAiConsent(consentUserId)) {
+      run();
+      return;
+    }
+    afterConsentRef.current = run;
+    setShowConsent(true);
+  };
+
   const onGeneratePress = async () => {
     if (!canGenerate) return;
-    if (await hasAiConsent(consentUserId)) void runGeneration();
-    else setShowConsent(true);
+    await withAiConsent(() => void runGeneration());
   };
 
   const onConsentAgree = async () => {
     setShowConsent(false);
     await setAiConsent(consentUserId);
-    void runGeneration();
+    afterConsentRef.current();
   };
+
+  // ── Draft → final ──────────────────────────────────────────────────
+  // The provider re-renders the draft's own shot at the final tier from
+  // the draft's task id, so the request is only the draft's job and model.
+  // Finals asked for this session, draft job id → final job id, so a
+  // tile flips to "Final already made" before the next refetch.
+  const [finalsByDraft, setFinalsByDraft] = useState<Record<string, string>>({});
+  const [finalizingId, setFinalizingId] = useState<string | null>(null);
+  const runMakeFinal = async (a: AssetInfo) => {
+    const d = a.draft;
+    const projectId = scopeProjectId;
+    if (!d || !projectId || finalizingId) return;
+    if (generatingCount >= MAX_CONCURRENT_JOBS) {
+      toast.info(t('composer.tooManyRunning', { count: MAX_CONCURRENT_JOBS }));
+      return;
+    }
+    setFinalizingId(a.id);
+    try {
+      const res = await sdk.generation.createGenerate({
+        modelKey: d.modelKey,
+        prompt: '',
+        fromDraftJobId: d.jobId,
+        projectId,
+        // A fresh key per request: the server refuses a second final from
+        // one draft, so a retry can never charge twice.
+        idempotencyKey: idempotencyKey(),
+      });
+      setFinalsByDraft((prev) => ({ ...prev, [d.jobId]: res.jobId }));
+      setViewerAsset(null);
+      trackJob({
+        jobId: res.jobId,
+        projectId,
+        kind: 'video',
+        prompt: a.prompt,
+        aspectRatio: a.ratio,
+        modelName: a.modelName || undefined,
+        qualityLabel: d.finalTier,
+        durationSeconds: a.durationSeconds,
+      });
+      toast.success(t('composer.finalStarted'));
+      void qc.invalidateQueries({ queryKey: ME_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: ['project-assets', projectId] });
+    } catch (err) {
+      const code = err instanceof JobSubmissionError ? (err.code as string) : '';
+      if (code === 'insufficient_credits' || code === 'topup_locked') {
+        alertInsufficientCredits(code, (err as Error).message);
+      } else if (code === 'draft_already_finalized') {
+        toast.info(t('composer.finalAlreadyRequested'));
+      } else if (code === 'draft_expired') {
+        toast.error(t('composer.draftExpired'));
+      } else {
+        Alert.alert(
+          t('errors.genericTitle'),
+          err instanceof Error ? err.message : t('errors.genericMessage'),
+        );
+      }
+    } finally {
+      setFinalizingId(null);
+    }
+  };
+  const makeFinal = (a: AssetInfo) => void withAiConsent(() => void runMakeFinal(a));
 
   // ── Asset viewer / details ─────────────────────────────────────────
   const artifactInfo = (a: Artifact): AssetInfo => {
@@ -591,6 +728,20 @@ export default function ComposerScreen() {
       when: t('common:time.justNow'),
       quality: a.qualityLabel,
       durationSeconds: a.durationSeconds,
+      draft:
+        a.draft && a.status === 'ready'
+          ? {
+              jobId: a.jobId,
+              modelKey: a.draft.modelKey,
+              finalTier: a.draft.finalTier,
+              finalCostCredits: a.draft.finalCostCredits,
+              // The server's window from submission, less its hour of margin.
+              expiresAt: new Date(
+                (a.trackedAt ?? 0) + a.draft.validDays * 86_400_000 - 3_600_000,
+              ).toISOString(),
+              finalJobId: finalsByDraft[a.jobId] ?? null,
+            }
+          : undefined,
     };
   };
 
@@ -610,6 +761,14 @@ export default function ComposerScreen() {
       modelName: '',
       when: relTime(asset.createdAt),
       durationSeconds: asset.durationSec ?? undefined,
+      draft:
+        asset.draft && asset.jobId
+          ? {
+              jobId: asset.jobId,
+              ...asset.draft,
+              finalJobId: asset.draft.finalJobId ?? finalsByDraft[asset.jobId] ?? null,
+            }
+          : undefined,
     };
   };
 
@@ -663,8 +822,10 @@ export default function ComposerScreen() {
     setViewerAsset(null);
     if (typeof a.uri !== 'string') return;
     if (mode !== 'video') switchMode('video');
-    // The image rides along as the clip's start frame; the prompt
-    // clears so the user describes the MOTION (web behavior).
+    // The image rides along as the clip's start frame — Frames, even on a
+    // model that opens in References — and the prompt clears so the user
+    // describes the MOTION (web behavior).
+    setAttachChoice('frames');
     setPrompt('');
     void attachFromUrl(a.uri, 2, true);
   };
@@ -697,6 +858,16 @@ export default function ComposerScreen() {
           } satisfies PillSpec,
         ]
       : []),
+    ...(model && modeIsChoosable
+      ? [
+          {
+            id: 'input',
+            label: t('attachments.modeLabel'),
+            value: useFrames ? t('attachments.modeFrames') : t('attachments.modeReferences'),
+            onPress: () => setSheet('input'),
+          } satisfies PillSpec,
+        ]
+      : []),
     ...(model && ratios.length > 0
       ? [
           {
@@ -712,7 +883,9 @@ export default function ComposerScreen() {
           {
             id: 'quality',
             label: t('quality.label'),
-            value: model.tiers.find((x) => x.mode === effTier)?.label ?? effTier,
+            value: draftOn
+              ? t('quality.draftValue', { tier: draftTierLabel })
+              : (model.tiers.find((x) => x.mode === effTier)?.label ?? effTier),
             onPress: () => setSheet('quality'),
           } satisfies PillSpec,
         ]
@@ -779,8 +952,12 @@ export default function ComposerScreen() {
     if (absorbed.length > 0) untrackJobs(absorbed);
   }, [artifacts, assetsQuery.data]);
 
+  const draftBadge = t('composer.draftBadge');
   const masonryCells: MasonryCell[] = useMemo(() => {
-    const sessionCells = artifacts.slice().reverse().map(artifactCell);
+    const sessionCells = artifacts
+      .slice()
+      .reverse()
+      .map((a) => ({ ...artifactCell(a), badge: a.draft ? draftBadge : undefined }));
     if (!openProjectId) return sessionCells;
     const settled = (assetsQuery.data?.items ?? []).map<MasonryCell>((asset) => ({
       id: asset.id,
@@ -791,6 +968,7 @@ export default function ComposerScreen() {
       // The grid loops the light preview rendition; the original stays
       // for the viewer and the download (`cellInfo` reads `asset.url`).
       videoUrl: asset.kind === 'video' ? (asset.previewUrl ?? asset.url) : undefined,
+      badge: asset.draft ? draftBadge : undefined,
     }));
     // A completed artifact whose asset row already arrived would render
     // twice; the assets list wins.
@@ -798,7 +976,7 @@ export default function ComposerScreen() {
       (assetsQuery.data?.items ?? []).map((a) => a.jobId).filter(Boolean),
     );
     return [...sessionCells.filter((c) => !settledJobIds.has(c.id)), ...settled];
-  }, [openProjectId, artifacts, assetsQuery.data]);
+  }, [openProjectId, artifacts, assetsQuery.data, draftBadge]);
 
   const masonryLabels: MasonryLabels = {
     menu: t('composer.assetMenu'),
@@ -928,14 +1106,62 @@ export default function ComposerScreen() {
       <OptionsSheet
         visible={sheet === 'quality'}
         title={t('quality.label')}
-        options={(model?.tiers ?? []).map((x) => ({
-          id: x.mode,
-          label: x.label,
-          trailing: t('composer.credits', { count: x.costCredits }),
-        }))}
-        selectedId={effTier ?? null}
+        options={[
+          // Draft mode rides in the quality list: it IS a quality choice —
+          // one fixed tier — so single-select says "this OR 1080p".
+          ...(model?.draft
+            ? [
+                {
+                  id: DRAFT_OPTION_ID,
+                  label: draftTierLabel,
+                  subtitle: t('quality.draftHint', { finalTier: model.draft.finalTier }),
+                  trailing: t('composer.credits', {
+                    count: model.tiers?.find((x) => x.mode === model.draft!.tier)?.costCredits ?? 0,
+                  }),
+                  badges: [
+                    { text: t('quality.badgeDraft'), bg: accents.violet.solid, fg: accents.violet.ink },
+                    { text: t('quality.badgeNew'), bg: accents.green.solid, fg: accents.green.ink },
+                  ],
+                },
+              ]
+            : []),
+          ...(model?.tiers ?? []).map((x) => ({
+            id: x.mode,
+            label: x.label,
+            trailing: t('composer.credits', { count: x.costCredits }),
+          })),
+        ]}
+        selectedId={draftOn ? DRAFT_OPTION_ID : (effTier ?? null)}
         tint={MODE_TINT[mode]}
-        onSelect={setTier}
+        onSelect={(id) => {
+          if (id === DRAFT_OPTION_ID) {
+            setDraft(true);
+          } else {
+            setTier(id);
+            setDraft(false);
+          }
+        }}
+        onClose={() => setSheet(null)}
+      />
+      <OptionsSheet
+        visible={sheet === 'input'}
+        title={t('attachments.modeLabel')}
+        options={[
+          { id: 'frames', label: t('attachments.modeFrames'), subtitle: t('attachments.framesHint') },
+          {
+            id: 'references',
+            label: t('attachments.modeReferences'),
+            subtitle: t('attachments.referencesHint', { count: model?.maxImages ?? 0 }),
+          },
+        ]}
+        selectedId={useFrames ? 'frames' : 'references'}
+        tint={MODE_TINT[mode]}
+        onSelect={(id) => {
+          const next = id === 'frames' ? 'frames' : 'references';
+          // Exclusive upstream: what is attached belongs to the old mode.
+          if ((next === 'frames') !== useFrames) setAttachments([]);
+          setAttachChoice(next);
+        }}
         onClose={() => setSheet(null)}
       />
       <DurationSheet
@@ -1001,6 +1227,11 @@ export default function ComposerScreen() {
         closeLabel={t('composer.close')}
         detailsLabel={t('composer.assetMenu')}
         downloadLabel={t('composer.download')}
+        makeFinalLabel={(d: AssetDraft) =>
+          t('composer.makeFinal', { tier: d.finalTier, count: d.finalCostCredits })
+        }
+        finalizing={viewerAsset !== null && finalizingId === viewerAsset.id}
+        onMakeFinal={makeFinal}
         onDetails={(a) => {
           setViewerAsset(null);
           void openDetails(a);
@@ -1012,6 +1243,9 @@ export default function ComposerScreen() {
         asset={detailsAsset}
         labels={{
           title: t('composer.detailsTitle'),
+          makeFinal: (d) => t('composer.makeFinal', { tier: d.finalTier, count: d.finalCostCredits }),
+          finalMade: t('composer.finalMade'),
+          draftExpired: t('composer.draftExpired'),
           attach: t('composer.actionAttach'),
           reuse: t('composer.actionReuse'),
           turnVideo: t('composer.actionTurnVideo'),
@@ -1031,6 +1265,7 @@ export default function ComposerScreen() {
         onAttach={attachAsReference}
         onReuse={reuseAsset}
         onTurnVideo={turnIntoVideo}
+        onMakeFinal={makeFinal}
         onClose={() => setDetailsAsset(null)}
       />
       <AiConsentSheet

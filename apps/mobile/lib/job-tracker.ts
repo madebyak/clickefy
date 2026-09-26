@@ -45,6 +45,13 @@ export interface TrackedJob {
   modelName?: string;
   qualityLabel?: string;
   durationSeconds?: number;
+  /**
+   * Set on a Draft-mode run started here: what its final costs, so a
+   * fresh session (which has no asset list yet) can offer "Make final".
+   */
+  draft?: { modelKey: string; finalTier: string; finalCostCredits: number; validDays: number };
+  /** When `trackJob` started tracking this run (ms). */
+  trackedAt?: number;
   status: 'generating' | 'ready' | 'failed';
   pendingStatus?: 'queued' | 'processing';
   stageLabel?: string;
@@ -61,7 +68,14 @@ export interface TrackedJob {
 
 export type TrackJobInput = Omit<
   TrackedJob,
-  'status' | 'pendingStatus' | 'stageLabel' | 'stageProgress' | 'errorMessage' | 'outputs' | 'settledAt'
+  | 'status'
+  | 'pendingStatus'
+  | 'stageLabel'
+  | 'stageProgress'
+  | 'errorMessage'
+  | 'outputs'
+  | 'settledAt'
+  | 'trackedAt'
 >;
 
 /** Polling cadence: fast while things move, easing off while they don't. */
@@ -103,7 +117,7 @@ export function useTrackedJobs(): TrackedJob[] {
 /** Start tracking a run this device just submitted. */
 export function trackJob(input: TrackJobInput): void {
   if (jobs.has(input.jobId)) return;
-  jobs.set(input.jobId, { ...input, status: 'generating', pendingStatus: 'queued' });
+  jobs.set(input.jobId, { ...input, status: 'generating', pendingStatus: 'queued', trackedAt: Date.now() });
   publish();
   delay = POLL_MIN_MS;
   schedule(0);

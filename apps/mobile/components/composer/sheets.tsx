@@ -107,6 +107,8 @@ export interface SheetOption {
   trailing?: string;
   /** Leading visual (e.g. a provider logo). */
   leading?: React.ReactNode;
+  /** Small colored labels after the title ("Draft", "New"). */
+  badges?: readonly { text: string; bg: string; fg: string }[];
 }
 
 export function OptionsSheet({
@@ -169,9 +171,21 @@ export function OptionsSheet({
                   </View>
                 ) : null}
                 <Stack gap="xs" style={{ flex: 1 }}>
-                  <Text variant="bodySemi" style={fg ? { color: fg } : undefined} color={fg ? undefined : 'ink'}>
-                    {o.label}
-                  </Text>
+                  <HStack align="center" gap="xs" style={{ flexWrap: 'wrap' }}>
+                    <Text variant="bodySemi" style={fg ? { color: fg } : undefined} color={fg ? undefined : 'ink'}>
+                      {o.label}
+                    </Text>
+                    {o.badges?.map((b) => (
+                      <View
+                        key={b.text}
+                        style={{ borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: b.bg }}
+                      >
+                        <Text variant="caption" weight="700" style={{ color: b.fg, fontSize: 10, lineHeight: 15 }}>
+                          {b.text}
+                        </Text>
+                      </View>
+                    ))}
+                  </HStack>
                   {o.subtitle ? (
                     <Text
                       variant="caption"

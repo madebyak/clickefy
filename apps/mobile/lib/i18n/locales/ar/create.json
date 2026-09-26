@@ -45,7 +45,8 @@
     "modeFrames": "إطارات",
     "modeReferences": "مراجع",
     "referencesHint": "أضف حتى {{count}} صور لتوجيه النتيجة.",
-    "framesHint": "حدد إطارًا أول (وإطارًا أخير اختياري)."
+    "framesHint": "حدد إطارًا أول (وإطارًا أخير اختياري).",
+    "modeLabel": "المدخلات"
   },
   "quality": {
     "label": "الجودة",
@@ -54,7 +55,11 @@
     "tier_two": "{{label}} · رصيدان",
     "tier_few": "{{label}} · {{count}} أرصدة",
     "tier_many": "{{label}} · {{count}} رصيدًا",
-    "tier_other": "{{label}} · {{count}} رصيد"
+    "tier_other": "{{label}} · {{count}} رصيد",
+    "draftValue": "مسودة · {{tier}}",
+    "draftHint": "معاينة أولًا، ثم أنشئ النسخة النهائية بدقة {{finalTier}}",
+    "badgeDraft": "مسودة",
+    "badgeNew": "جديد"
   },
   "sound": {
     "label": "الصوت",
@@ -143,6 +148,12 @@
     "copyPrompt": "نسخ النص",
     "copied": "تم النسخ",
     "loadError": "تعذّر تحميل هذا المشروع",
-    "drawerLoadError": "تعذّر تحميل مشاريعك"
+    "drawerLoadError": "تعذّر تحميل مشاريعك",
+    "draftBadge": "مسودة",
+    "makeFinal": "إنشاء النسخة النهائية · {{tier}} · {{count}} نقطة",
+    "finalMade": "تم إنشاء النسخة النهائية",
+    "draftExpired": "انتهت صلاحية المسودة — أنشئ مسودة جديدة",
+    "finalStarted": "جارٍ إنشاء الفيديو النهائي",
+    "finalAlreadyRequested": "يجري إنشاء نسخة نهائية من هذه المسودة بالفعل"
   }
 }

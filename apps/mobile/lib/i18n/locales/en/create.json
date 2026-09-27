@@ -17,7 +17,9 @@
     "placeholder": "Describe what you want to create…"
   },
   "aspect": {
-    "label": "Aspect ratio"
+    "label": "Aspect ratio",
+    "fromFrame": "From start frame",
+    "fromFrameHint": "The video keeps the start frame's shape"
   },
   "duration": {
     "label": "Duration",
@@ -42,7 +44,9 @@
     "modeReferences": "References",
     "referencesHint": "Add up to {{count}} images to guide the result.",
     "framesHint": "Set a start frame (and an optional end frame).",
-    "modeLabel": "Input"
+    "modeLabel": "Input",
+    "imageTooSmall": "An image is too small — this model needs at least {{min}}px on each side",
+    "imageBadShape": "An image is too wide or too tall — this model takes shapes between 1:2.5 and 2.5:1"
   },
   "quality": {
     "label": "Quality",
@@ -75,7 +79,8 @@
     "genericMessage": "We couldn't start your generation. Please try again.",
     "insufficientTitle": "Not enough credits",
     "insufficientMessage": "You don't have enough credits for this generation.",
-    "promptTooLong": "Your prompt is too long for this model."
+    "promptTooLong": "Your prompt is too long for this model.",
+    "imageRejectedTitle": "Image not supported"
   },
   "composer": {
     "title": "Create",

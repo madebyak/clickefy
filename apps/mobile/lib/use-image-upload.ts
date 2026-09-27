@@ -114,6 +114,29 @@ export interface PickImagesOptions {
   multiple?: boolean;
   /** Cap on library multi-select (remaining slots). 0/undefined = no cap. */
   limit?: number;
+  /**
+   * The model's own limits on an input image (size, shape): why this one
+   * can't be used, or null. Checked against the picker's dimensions BEFORE
+   * upload; an image of unknown size passes and the provider decides.
+   */
+  accept?: (width: number, height: number) => string | null;
+}
+
+/** Drop the images `accept` refuses, explaining once for the lot. */
+function screenAssets(
+  assets: ImagePicker.ImagePickerAsset[],
+  accept: PickImagesOptions['accept'],
+  title: string,
+): ImagePicker.ImagePickerAsset[] {
+  if (!accept) return assets;
+  const reasons = new Set<string>();
+  const usable = assets.filter((a) => {
+    const why = a.width > 0 && a.height > 0 ? accept(a.width, a.height) : null;
+    if (why) reasons.add(why);
+    return why === null;
+  });
+  if (reasons.size > 0) Alert.alert(title, [...reasons].join('\n\n'));
+  return usable;
 }
 
 export function useImageUpload() {
@@ -195,7 +218,10 @@ export function useImageUpload() {
    * UI (the composer's attach sheet) instead of the iOS action sheet.
    */
   const pickFromSource = useCallback(
-    async (source: Source, { multiple = false, limit }: PickImagesOptions = {}): Promise<PickedUpload[]> => {
+    async (
+      source: Source,
+      { multiple = false, limit, accept }: PickImagesOptions = {},
+    ): Promise<PickedUpload[]> => {
       let assets: ImagePicker.ImagePickerAsset[] = [];
       if (source === 'camera') {
         const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -220,10 +246,11 @@ export function useImageUpload() {
         if (res.canceled) return [];
         assets = res.assets;
       }
-      if (assets.length === 0) return [];
-      const results = await Promise.all(assets.map(uploadAsset));
+      const usable = screenAssets(assets, accept, t('errors.imageRejectedTitle'));
+      if (usable.length === 0) return [];
+      const results = await Promise.all(usable.map(uploadAsset));
       const ok = results.filter((r): r is PickedUpload => r !== null);
-      if (ok.length === 0 && assets.length > 0) {
+      if (ok.length === 0) {
         Alert.alert(t('errors.genericTitle'), t('errors.genericMessage'));
       }
       return ok;

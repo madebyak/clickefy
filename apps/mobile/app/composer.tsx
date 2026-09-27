@@ -363,6 +363,22 @@ export default function ComposerScreen() {
     [projectsQuery.data, openProjectId],
   );
 
+  // ── Attachment surfaces (frames vs references, per model) ─────────
+  // Web parity: Seedance and the Kling reference models let the user pick
+  // Frames ⇄ References and open in References — the richer input: images
+  // that steer style, subject and composition. Every other model has one
+  // fixed surface. The two cannot be mixed upstream.
+  const modeIsChoosable = model?.attachments === 'seedance' || model?.supportsReferenceMode === true;
+  const defaultAttach =
+    model?.attachments === 'frames' && !model.supportsReferenceMode ? 'frames' : 'references';
+  const useFrames = model
+    ? modeIsChoosable
+      ? (attachChoice ?? defaultAttach) === 'frames'
+      : model.attachments !== 'references'
+    : false;
+  const attachmentCap = useFrames ? (model?.supportsEndFrame ? 2 : 1) : model?.maxImages ?? 6;
+  const uploadsInFlight = attachments.some((a) => a.media === null);
+
   // ── Effective option values (fall back to the model's defaults) ──
   // Web parity: "Auto" is an image-only affordance (omitted from the
   // payload at submit); video providers REQUIRE an explicit ratio.
@@ -374,12 +390,38 @@ export default function ComposerScreen() {
   const effTier = model?.tiers?.some((x) => x.mode === tier)
     ? tier
     : model?.defaultTier ?? model?.tiers?.[0]?.mode;
+  // Kling O1: a lone start frame narrows the legal lengths (5s/10s) —
+  // offer only those, as web does; the server refuses the rest.
+  const loneStartFrame = useFrames && attachments.length === 1;
+  const durationOptions =
+    model?.bareStartFrameDurations && loneStartFrame
+      ? model.durations.filter((d) => model.bareStartFrameDurations!.includes(d))
+      : (model?.durations ?? []);
   const effDuration =
-    model && model.durations.length > 0
-      ? duration && model.durations.includes(duration)
+    model && durationOptions.length > 0
+      ? duration && durationOptions.includes(duration)
         ? duration
-        : model.durations[0]
+        : durationOptions[0]
       : undefined;
+  // Kling and Seedance 2.5 keep a start frame's own shape, so a ratio
+  // pick is not applied — the pill says so instead of showing one.
+  const ratioFromFrame = !!model?.aspectLockedByStartFrame && useFrames && attachments.length > 0;
+  // The model's own input-image limits (Kling: ≥300px a side, within
+  // 1:2.5–2.5:1), checked before upload. The server does not check them,
+  // and the provider would fail a job that had already started.
+  const imageRules = model?.imageConstraints;
+  const acceptImage = imageRules
+    ? (w: number, h: number): string | null => {
+        if (w < imageRules.minEdge || h < imageRules.minEdge) {
+          return t('attachments.imageTooSmall', { min: imageRules.minEdge });
+        }
+        const shape = w / h;
+        if (shape < imageRules.minAspect || shape > imageRules.maxAspect) {
+          return t('attachments.imageBadShape');
+        }
+        return null;
+      }
+    : undefined;
 
   // A draft is served — and billed — at the model's draft tier whatever
   // the quality pick; the server pins it the same way.
@@ -405,21 +447,6 @@ export default function ComposerScreen() {
   const cost = model ? creditCost(model, { mode: billedTier, sound: soundServed, duration: effDuration }) : 0;
   const promptCap = model?.maxPromptChars ?? 2500;
 
-  // ── Attachment surfaces (frames vs references, per model) ─────────
-  // Web parity: Seedance and the Kling reference models let the user pick
-  // Frames ⇄ References and open in References — the richer input: images
-  // that steer style, subject and composition. Every other model has one
-  // fixed surface. The two cannot be mixed upstream.
-  const modeIsChoosable = model?.attachments === 'seedance' || model?.supportsReferenceMode === true;
-  const defaultAttach =
-    model?.attachments === 'frames' && !model.supportsReferenceMode ? 'frames' : 'references';
-  const useFrames = model
-    ? modeIsChoosable
-      ? (attachChoice ?? defaultAttach) === 'frames'
-      : model.attachments !== 'references'
-    : false;
-  const attachmentCap = useFrames ? (model?.supportsEndFrame ? 2 : 1) : model?.maxImages ?? 6;
-  const uploadsInFlight = attachments.some((a) => a.media === null);
 
   const selectModel = (key: string) => {
     setModelByMode((prev) => ({ ...prev, [mode]: key }));
@@ -467,6 +494,7 @@ export default function ComposerScreen() {
     const picked = await pickFromSource(source === 'camera' ? 'camera' : 'library', {
       multiple: !useFrames && remaining > 1,
       limit: remaining,
+      accept: acceptImage,
     });
     appendUploads(picked, attachmentCap);
   };
@@ -873,8 +901,10 @@ export default function ComposerScreen() {
           {
             id: 'ratio',
             label: t('aspect.label'),
-            value: effRatio,
-            onPress: () => setSheet('ratio'),
+            value: ratioFromFrame ? t('aspect.fromFrame') : effRatio,
+            onPress: ratioFromFrame
+              ? () => toast.info(t('aspect.fromFrameHint'))
+              : () => setSheet('ratio'),
           } satisfies PillSpec,
         ]
       : []),
@@ -1167,7 +1197,7 @@ export default function ComposerScreen() {
       <DurationSheet
         visible={sheet === 'duration'}
         title={t('duration.label')}
-        seconds={model?.durations ?? []}
+        seconds={durationOptions}
         value={effDuration}
         format={(s) => t('duration.seconds', { count: s })}
         tint={MODE_TINT[mode]}

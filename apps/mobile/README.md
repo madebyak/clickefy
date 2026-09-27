@@ -46,3 +46,8 @@ line in `.env`. The production profile auto-increments `ios.buildNumber` and
 folder out of the way before a production build: EAS otherwise bumps the
 number in the local Xcode project instead, and App Store Connect rejects the
 upload as a duplicate.
+
+EAS builds upload source maps and debug symbols to Sentry (org `clickefy`,
+project `react-native`, EU region) with the `SENTRY_AUTH_TOKEN` secret stored
+in the project's EAS environment variables. If that upload fails, the build
+fails — check the token before anything else.

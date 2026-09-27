@@ -108,8 +108,7 @@
         {
           "organization": "clickefy",
           "project": "react-native",
-          "url": "https://de.sentry.io/",
-          "disableAutoUpload": true
+          "url": "https://de.sentry.io/"
         }
       ],
       [

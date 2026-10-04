@@ -196,6 +196,47 @@ describe('executeKlingApi2 — request shape', () => {
     ]);
   });
 
+  it('sends the reference clip as a feature_video part bound to @video_1', async () => {
+    const { calls } = stubFetch(OK_CREATE);
+    await executeKlingApi2(
+      req({
+        variant: 'omni',
+        model: 'kling-3.0-omni',
+        prompt: 'Follow the camera move of @video_1.',
+        aspectRatio: undefined,
+        referenceVideo: {
+          index: 1, role: 'reference', roleTag: 'USER_INPUT', displayLabel: 'Reference 1',
+          mimeType: 'video/mp4', url: 'https://cdn/clip.mp4',
+        },
+      }),
+      ENV,
+    );
+    const body = calls[0]!.body;
+    expect(body.contents).toEqual([
+      { type: 'prompt', text: 'Follow the camera move of @video_1.' },
+      { type: 'feature_video', url: 'https://cdn/clip.mp4', id: 'video_1' },
+    ]);
+    // Required only "when there is no first frame or reference video" —
+    // with a clip and no pick, the field is left to the clip.
+    expect((body.settings as Record<string, unknown>).aspect_ratio).toBeUndefined();
+  });
+
+  it('refuses a video part without a URL instead of inlining the bytes', async () => {
+    stubFetch(OK_CREATE);
+    await expect(
+      executeKlingApi2(
+        req({
+          variant: 'omni',
+          referenceVideo: {
+            index: 1, role: 'reference', roleTag: 'USER_INPUT', displayLabel: '',
+            mimeType: 'video/mp4', bytes: new Uint8Array([1, 2, 3]),
+          },
+        }),
+        ENV,
+      ),
+    ).rejects.toThrow(/sent by URL only/);
+  });
+
   it('omits aspect_ratio when a first frame already implies the frame size', async () => {
     const withFrame = stubFetch(OK_CREATE);
     await executeKlingApi2(

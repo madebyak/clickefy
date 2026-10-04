@@ -493,6 +493,10 @@ export interface GenModel {
   supportsReferenceMode?: boolean;
   /** Reference-image budget; 0 = frames only. */
   maxReferences: number;
+  /** Kling 3 Omni / O1: the image budget once a video is attached (4). */
+  maxReferencesWithVideo?: number;
+  /** Kling 3 Omni / O1: native audio is off while a video reference is attached. */
+  soundExcludesVideo?: boolean;
   /** Kling 3.0 family multi-shot storyboard limits; absent = unsupported. */
   multiShot?: { maxShots: number; maxCharsPerShot: number; minShotSeconds: number; toggleable: boolean };
   /** Image formats the provider accepts, when narrower than our uploads. */

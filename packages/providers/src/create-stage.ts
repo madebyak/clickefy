@@ -28,8 +28,9 @@
  *     `referenceInputs` (both by field key), so the compiler never has to
  *     guess which image is a frame and which is a `refer_image` — with
  *     positional inference, two references would have become a start and
- *     an end frame. Everything is hydrated through `inputs`, the one path
- *     the worker already feeds.
+ *     an end frame. A video among the references becomes the endpoint's
+ *     one `feature_video`. Everything is hydrated through `inputs`, the
+ *     one path the worker already feeds.
  */
 
 import type {

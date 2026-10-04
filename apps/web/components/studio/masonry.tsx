@@ -5,6 +5,8 @@ import { useTranslations } from "next-intl";
 import {
   ArrowCounterClockwise,
   ArrowsOutSimple,
+  CaretLeft,
+  CaretRight,
   Check,
   CircleNotch,
   DotsThree,
@@ -302,10 +304,16 @@ export function Masonry({
   // hearting from inside it must reflect on reopen, and an asset deleted
   // (or filtered away) under it closes the view instead of showing a
   // ghost.
-  const liveLightbox = lightbox ? (assets.find((x) => x.id === lightbox.id) ?? null) : null;
+  const lightboxIndex = lightbox ? assets.findIndex((x) => x.id === lightbox.id) : -1;
+  const liveLightbox = lightboxIndex >= 0 ? assets[lightboxIndex]! : null;
   useEffect(() => {
     if (lightbox && !liveLightbox) setLightbox(null);
   }, [lightbox, liveLightbox]);
+  // Neighbours in grid order, so ←/→ in the expanded view walk the
+  // same sequence the eye just read. Undefined at either end.
+  const lightboxPrev = lightboxIndex > 0 ? assets[lightboxIndex - 1] : undefined;
+  const lightboxNext =
+    lightboxIndex >= 0 && lightboxIndex < assets.length - 1 ? assets[lightboxIndex + 1] : undefined;
 
   const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>();
   const gap = GAP_PX[gridSize];
@@ -694,6 +702,9 @@ export function Masonry({
       {liveLightbox && (
         <ExpandedAsset
           asset={liveLightbox}
+          position={{ index: lightboxIndex, total: assets.length }}
+          onPrev={lightboxPrev ? () => setLightbox(lightboxPrev) : undefined}
+          onNext={lightboxNext ? () => setLightbox(lightboxNext) : undefined}
           onClose={() => setLightbox(null)}
           onToggleFavorite={onToggleFavorite}
           onAssetReuse={onAssetReuse}
@@ -713,12 +724,20 @@ export function Masonry({
  */
 function ExpandedAsset({
   asset,
+  position,
+  onPrev,
+  onNext,
   onClose,
   onToggleFavorite,
   onAssetReuse,
   onTurnToVideo,
 }: {
   asset: Asset;
+  /** Where this asset sits in the grid, for the "3 / 12" readout. */
+  position: { index: number; total: number };
+  /** Step to the neighbouring asset; absent at the ends of the grid. */
+  onPrev?: () => void;
+  onNext?: () => void;
   onClose: () => void;
   onToggleFavorite?: (asset: Asset) => void;
   onAssetReuse?: (asset: Asset) => void;
@@ -731,10 +750,29 @@ function ExpandedAsset({
   useEffect(() => setLoaded(false), [asset.id]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      // Someone typing (the details panel has no inputs today, but a
+      // focused <video> uses the arrows to seek) keeps their keys.
+      const target = e.target as HTMLElement | null;
+      if (target && (target.closest("input, textarea, [contenteditable=true]") || target.tagName === "VIDEO")) return;
+      // Physical arrows follow the layout direction: the "previous" chevron
+      // sits at the start edge, which is the RIGHT edge in RTL.
+      const rtl = document.documentElement.dir === "rtl";
+      const toPrev = (e.key === "ArrowLeft") !== rtl;
+      const step = toPrev ? onPrev : onNext;
+      if (!step) return;
+      e.preventDefault();
+      step();
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, onPrev, onNext]);
 
   return (
     <div
@@ -750,6 +788,9 @@ function ExpandedAsset({
       >
         {asset.type === "video" ? (
           <video
+            // Remount per asset: a reused element keeps the old clip's
+            // playback state and may not autoplay the new source.
+            key={asset.id}
             src={asset.src}
             poster={asset.poster}
             controls
@@ -769,6 +810,7 @@ function ExpandedAsset({
             )}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
+              key={asset.id}
               src={asset.src}
               alt=""
               onLoad={() => setLoaded(true)}
@@ -780,12 +822,49 @@ function ExpandedAsset({
             />
           </>
         )}
+
+        {/* ← / → — the same steps the arrow keys take. Hidden at the ends
+            rather than disabled: a dead chevron on a one-asset grid is
+            noise, not information. */}
+        {onPrev && (
+          <button
+            type="button"
+            aria-label={t("previousAsset")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPrev();
+            }}
+            className="absolute start-3 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white/80 outline-none backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            <CaretLeft weight="bold" className="size-5 rtl:-scale-x-100" />
+          </button>
+        )}
+        {onNext && (
+          <button
+            type="button"
+            aria-label={t("nextAsset")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onNext();
+            }}
+            className="absolute end-3 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white/80 outline-none backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            <CaretRight weight="bold" className="size-5 rtl:-scale-x-100" />
+          </button>
+        )}
       </div>
 
       {/* Fixed details panel */}
       <aside className="flex max-h-[46vh] w-full shrink-0 flex-col border-t border-border bg-surface-1 md:max-h-none md:w-[380px] md:border-s md:border-t-0">
         <header className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold">{t("assetInfo")}</h2>
+          <h2 className="flex items-baseline gap-2 text-sm font-semibold">
+            {t("assetInfo")}
+            {position.total > 1 && (
+              <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                {position.index + 1}/{position.total}
+              </span>
+            )}
+          </h2>
           <button
             type="button"
             aria-label={t("close")}

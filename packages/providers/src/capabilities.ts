@@ -311,6 +311,23 @@ export interface ModelCapabilities {
   endFrameExcludesReferences?: boolean;
 
   /**
+   * Kling Omni / O1: the reference-image budget once a video is attached.
+   * Both endpoints document 7 images without a video and 4 with one
+   * ("With a reference video + multi-image elements: the total number of
+   * reference images and multi-image elements must not exceed 4").
+   * Absent = `maxReferences` applies regardless.
+   */
+  maxReferencesWithVideo?: number;
+
+  /**
+   * Kling Omni / O1: a reference video and native audio cannot share a
+   * request ("the audio parameter can only be off in this case"). The
+   * compiler drops the audio, the API bills none, and the composer
+   * gates the toggle while a clip is attached.
+   */
+  referenceVideoMutesAudio?: boolean;
+
+  /**
    * Kling only: route this model through the API 2.0 client
    * (`adapters/kling-api2.ts`) instead of the legacy one.
    *
@@ -453,14 +470,22 @@ export interface ModelCapabilities {
   draft?: { tier: string; finalTier: string; validDays: number };
 
   /**
-   * Seedance: reference VIDEO input budget (`role: reference_video`).
+   * Reference VIDEO input budget.
    *
-   * Verbatim from the BytePlus API reference + per-family tutorials
-   * (2026-08-30): 2.5 takes 0-10 clips, 2-30s each, ≤30s combined; the
-   * 2.0 family takes 0-3 clips, 2-15s each, ≤15s combined. mp4/mov,
-   * ≤200MB (our upload cap of 25MB binds first). Absent = the model
-   * does not accept reference video. Mutually exclusive with start/end
-   * frames — the existing Frames ⇄ References split already models that.
+   * Seedance (`role: reference_video`), verbatim from the BytePlus API
+   * reference + per-family tutorials (2026-08-30): 2.5 takes 0-10 clips,
+   * 2-30s each, ≤30s combined; the 2.0 family takes 0-3 clips, 2-15s
+   * each, ≤15s combined. mp4/mov, ≤200MB (our upload cap of 25MB binds
+   * first). Mutually exclusive with start/end frames — the existing
+   * Frames ⇄ References split already models that.
+   *
+   * Kling Omni / O1 (`feature_video` — a motion / camera / next-shot
+   * reference; the endpoints' `base_video` edit input is not wired), from
+   * kling.ai/document-api (2026-10-04): ONE clip, mp4/mov, ≤200MB,
+   * 24-60fps; 3-15.5s on 3.0 Omni, 3-10s on O1. Dimension rules
+   * (≥700px a side, O1 ≤2160px) are the provider's to enforce.
+   *
+   * Absent = the model does not accept reference video.
    */
   referenceVideo?: {
     max: number;
@@ -975,14 +1000,19 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     negativePrompt: false,
     refAddressing: 'at',
     // The omni endpoint caps `image_list` at 7 entries TOTAL (start/end
-    // frames included; drops to 4 when a reference video is attached —
-    // video refs not wired yet). Was 9 before the 2026 docs pass.
+    // frames included), 4 once a reference video is attached. Was 9
+    // before the 2026 docs pass.
     maxReferences: 7,
+    maxReferencesWithVideo: 4,
     maxSubjects: 2,
     maxImagesTotal: 7,
     acceptsStartEndImage: true,
-    // Shares the 7-image budget with reference images; drops to 4 once a
-    // reference video is involved, which we do not send yet.
+    // One reference clip (`feature_video`: motion / camera / next-shot),
+    // 3-15.5s per the 3.0 Omni page. With it the endpoint requires
+    // `multi_shot: true` and `audio: off`; the compiler pins both.
+    referenceVideo: { max: 1, maxTotalSeconds: 15.5, minClipSeconds: 3, maxClipSeconds: 15.5 },
+    referenceVideoMutesAudio: true,
+    // Shares the 7-image budget with reference images (4 with a video).
     maxElements: 7,
     elementsExcludeEndFrame: true,
     // Native audio via the `sound: on|off` request field.
@@ -1000,7 +1030,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // 3.0 family: "should not exceed 3072 characters" (2500 recommended).
     maxPromptChars: 3072,
     notes:
-      'Unified text-to-video + image-to-video + multi-reference with optional native audio. Modes std (720p) / pro (1080p) / 4k. Prompt addresses references as @image_1, @image_2, …',
+      'Unified text-to-video + image-to-video + multi-reference with optional native audio. One reference video (feature_video, 3-15.5s). Modes std (720p) / pro (1080p) / 4k. Prompt addresses references as @image_1, @image_2, @video_1.',
   },
 
   // ── Kling v3 (base) ─────────────────────────────────────────────────
@@ -1122,12 +1152,17 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     // See the kling-v2-6 note — API 2.0 has no negative_prompt field.
     negativePrompt: false,
     refAddressing: 'at',
-    // Reference images ride the same 7-image budget as Omni; Elements
-    // are library entities and not wired yet.
+    // Reference images ride the same 7-image budget as Omni (4 with a
+    // video); Elements are library entities and not wired yet.
     maxReferences: 7,
+    maxReferencesWithVideo: 4,
     maxSubjects: 2,
     maxImagesTotal: 7,
     acceptsStartEndImage: true,
+    // One reference clip (`feature_video`), 3-10s. O1 has no `multi_shot`
+    // field; the docs' feature_video example runs with `audio: off`.
+    referenceVideo: { max: 1, maxTotalSeconds: 10, minClipSeconds: 3, maxClipSeconds: 10 },
+    referenceVideoMutesAudio: true,
     maxElements: 7,
     elementsExcludeEndFrame: true,
     // "When using both the first and last frames, no additional

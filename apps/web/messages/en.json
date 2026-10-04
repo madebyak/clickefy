@@ -308,6 +308,7 @@
     "addReference": "Add reference",
     "fewer": "Fewer",
     "more": "More",
+    "promptCount": "{count} of {max} characters",
     "removeAttachment": "Remove attachment",
     "image": "Image",
     "video": "Video",
@@ -399,7 +400,10 @@
     "shotLonger": "Longer shot",
     "shotsSameCost": "Multi-shot costs the same as a single shot of the same length.",
     "modeReferencesAll": "References",
-    "modeReferencesAllHint": "Images, video clips and audio that guide the result"
+    "modeReferencesAllHint": "Images, video clips and audio that guide the result",
+    "modeReferencesVideoHint": "Images and a video clip that guide the result",
+    "maxImagesWithVideo": "With a video attached, this model takes up to {max} images",
+    "soundOffWithVideo": "Sound is off while a video reference is attached"
   },
   "account": {
     "availableCredits": "Available credits",
@@ -452,6 +456,8 @@
     "projectHint": "Click any asset to attach it to your prompt. Everything created here stays in this project.",
     "assets": "{count, plural, =0 {No assets} one {# asset} other {# assets}}",
     "assetsUpdated": "{count, plural, one {# asset} other {# assets}} · updated {time}",
+    "previousAsset": "Previous",
+    "nextAsset": "Next",
     "expand": "Expand",
     "download": "Download",
     "useAsset": "Use asset",

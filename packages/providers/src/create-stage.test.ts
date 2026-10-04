@@ -120,6 +120,90 @@ describe('buildCreateStage — Kling', () => {
     expect(k.duration).toBe(10);
   });
 
+  it('Omni: a video among the references becomes the one feature_video, audio off, multi-shot on', () => {
+    const built = buildCreateStage({
+      modelKey: 'kling-v3-omni',
+      prompt: 'Match the camera move of @Video1, keep the look of @Image1',
+      aspectRatio: '16:9',
+      duration: 5,
+      sound: true,
+      referenceCount: 2,
+      referenceKinds: ['image', 'video'],
+    });
+    expect(built.stage.config.referenceInputs).toEqual(['ref_0', 'ref_1']);
+
+    const { request, warnings } = run(built, {
+      [createReferenceKey(0)]: img('look'),
+      [createReferenceKey(1)]: vid('move'),
+    });
+    const k = request as KlingCompiledRequest;
+    expect(k.variant).toBe('omni');
+    // Per-kind tokens: the image is image_1 even though it is ref_0's
+    // neighbour, the clip is video_1.
+    expect(k.prompt).toBe('Match the camera move of @video_1, keep the look of @image_1');
+    expect(k.referenceImages?.map((r) => r.r2Key)).toEqual(['look']);
+    expect(k.referenceVideo?.r2Key).toBe('move');
+    expect(k.referenceVideo?.index).toBe(1);
+    expect(k.referenceVideo?.url).toBe('https://cdn.example/move');
+    // Kling: "the audio parameter can only be off" and multi_shot
+    // "can only be true" alongside a feature video.
+    expect(k.soundEnabled).toBeUndefined();
+    expect(k.multiShot).toBe(true);
+    expect(warnings.map((w) => w.message)).toEqual([
+      expect.stringContaining('cannot generate audio alongside a reference video'),
+    ]);
+  });
+
+  it('O1: a reference video lifts the bare-start-frame duration collapse and sends no multi_shot', () => {
+    const built = buildCreateStage({
+      modelKey: 'kling-o1',
+      prompt: 'the next shot after @Video1',
+      duration: 7,
+      referenceCount: 1,
+      referenceKinds: ['video'],
+    });
+    const { request, warnings } = run(built, { [createReferenceKey(0)]: vid('clip') });
+    const k = request as KlingCompiledRequest;
+    expect(k.referenceVideo?.r2Key).toBe('clip');
+    expect(k.duration).toBe(7);
+    expect(k.multiShot).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
+
+  it('Omni: the image budget drops to 4 once a video is attached', () => {
+    const kinds = ['video', 'image', 'image', 'image', 'image', 'image'] as const;
+    const built = buildCreateStage({
+      modelKey: 'kling-v3-omni',
+      prompt: 'collage',
+      referenceCount: kinds.length,
+      referenceKinds: [...kinds],
+    });
+    const values = Object.fromEntries(
+      kinds.map((kind, i) => [createReferenceKey(i), kind === 'video' ? vid(`v${i}`) : img(`i${i}`)]),
+    );
+    const { request, warnings } = run(built, values);
+    const k = request as KlingCompiledRequest;
+    expect(k.referenceVideo).toBeDefined();
+    expect(k.referenceImages).toHaveLength(4);
+    expect(warnings.map((w) => w.message)).toEqual([
+      expect.stringContaining('at most 4 reference images alongside a video'),
+    ]);
+  });
+
+  it('3.0 (non-omni): a reference video is dropped with a warning, never sent', () => {
+    const built = buildCreateStage({
+      modelKey: 'kling-v3',
+      prompt: 'copy this move',
+      referenceCount: 1,
+      referenceKinds: ['video'],
+    });
+    const { request, warnings } = run(built, { [createReferenceKey(0)]: vid('clip') });
+    const k = request as KlingCompiledRequest;
+    expect(k.referenceVideo).toBeUndefined();
+    expect(k.referenceImages).toBeUndefined();
+    expect(warnings.some((w) => w.code === 'reference_dropped')).toBe(true);
+  });
+
   it('Omni: text-only produces no frames', () => {
     const built = buildCreateStage({
       modelKey: 'kling-v3-omni',

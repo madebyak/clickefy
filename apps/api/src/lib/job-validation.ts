@@ -340,6 +340,8 @@ export interface CreateValidationContext {
      * the create flow may request an `edit` / `extend` task.
      */
     supportsVideoTasks?: boolean;
+    /** Reference-image budget once a video is attached (Kling: 7 → 4). */
+    maxReferencesWithVideo?: number;
     /**
      * Seedance: BytePlus forbids start/end frames and omni references
      * in one request. Enforced as a 422 rather than the old silent
@@ -502,6 +504,18 @@ export async function validateCreateSubmission(
       code: 'too_many_references',
       message: `This model accepts at most ${model.maxReferences} reference image(s).`,
       details: { max: model.maxReferences, actual: imageRefs.length },
+    });
+  }
+  // Kling Omni / O1: the image budget shrinks once a video is attached.
+  if (
+    model.maxReferencesWithVideo !== undefined &&
+    videoRefs.length > 0 &&
+    imageRefs.length > model.maxReferencesWithVideo
+  ) {
+    return fail({
+      code: 'too_many_references',
+      message: `With a video attached, this model accepts at most ${model.maxReferencesWithVideo} reference image(s).`,
+      details: { max: model.maxReferencesWithVideo, actual: imageRefs.length },
     });
   }
   // Provider image formats (Kling: jpeg/png only). A WebP start frame is

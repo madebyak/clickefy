@@ -999,6 +999,7 @@ function compileKling(
   // the template stage, and the create flow's explicit `referenceInputs`
   // (user uploads bound by field key).
   const refs: ImagePart[] = [];
+  let referenceVideo: KlingCompiledRequest['referenceVideo'];
   const referenceCount = stage.references.length + (referenceInputs?.length ?? 0);
   if (!isOmni && referenceCount > 0) {
     warnings.push({
@@ -1015,16 +1016,54 @@ function compileKling(
       message: `${stage.model} cannot combine reference images with a first+last frame pair; ${referenceCount} reference(s) dropped. Remove the last frame to use them.`,
     });
   } else if (isOmni) {
+    // The one reference clip the omni endpoints take (`feature_video`).
+    // Bound first so the image budget below already knows whether it
+    // shrinks (7 → 4 with a video).
+    const videoInputs = (referenceInputs ?? []).filter((k) => ctx.inputValues[k]?.kind === 'video');
+    const videoBudget = capabilities.referenceVideo?.max ?? 0;
+    if (videoInputs.length > videoBudget) {
+      warnings.push({
+        code: 'config_clamped',
+        message:
+          videoBudget === 0
+            ? `${stage.model} does not accept a reference video; ${videoInputs.length} dropped.`
+            : `${stage.model} accepts one video; ${videoInputs.length - videoBudget} dropped.`,
+      });
+    }
+    for (const fieldKey of videoInputs.slice(0, videoBudget)) {
+      const v = ctx.inputValues[fieldKey];
+      if (v?.kind !== 'video') continue;
+      const field = ctx.templateInputs.find((f) => f.fieldKey === fieldKey);
+      referenceVideo = {
+        // Per-kind position, matching the `@video_1` the prompt uses.
+        index: 1,
+        role: 'reference',
+        roleTag: 'USER_INPUT',
+        displayLabel: field?.label || fieldKey,
+        mimeType: v.mimeType,
+        bytes: v.bytes,
+        r2Key: v.r2Key,
+        url: v.url,
+      };
+    }
+    const maxRefs =
+      referenceVideo && capabilities.maxReferencesWithVideo !== undefined
+        ? Math.min(capabilities.maxReferences, capabilities.maxReferencesWithVideo)
+        : capabilities.maxReferences;
+
     let refIndex = subjects.length;
     for (const fieldKey of referenceInputs ?? []) {
-      if (refs.length >= capabilities.maxReferences) {
+      const v = ctx.inputValues[fieldKey];
+      if (v?.kind === 'video') continue; // bound above
+      if (refs.length >= maxRefs) {
         warnings.push({
           code: 'config_clamped',
-          message: `${stage.model} accepts at most ${capabilities.maxReferences} references; "${fieldKey}" dropped.`,
+          message: referenceVideo
+            ? `${stage.model} accepts at most ${maxRefs} reference images alongside a video; "${fieldKey}" dropped.`
+            : `${stage.model} accepts at most ${maxRefs} references; "${fieldKey}" dropped.`,
         });
         break;
       }
-      const v = ctx.inputValues[fieldKey];
       if (!v || v.kind !== 'image') {
         warnings.push({
           code: 'unknown_variable',
@@ -1047,10 +1086,10 @@ function compileKling(
       });
     }
     for (const ref of stage.references) {
-      if (refs.length >= capabilities.maxReferences) {
+      if (refs.length >= maxRefs) {
         warnings.push({
           code: 'config_clamped',
-          message: `Kling Omni accepts at most ${capabilities.maxReferences} references; "${ref.key}" dropped.`,
+          message: `Kling Omni accepts at most ${maxRefs} references; "${ref.key}" dropped.`,
         });
         break;
       }
@@ -1137,6 +1176,7 @@ function compileKling(
     !bare.includes(duration) &&
     subjects.length === 1 &&
     refs.length === 0 &&
+    !referenceVideo &&
     configuredElements.length === 0
   ) {
     const clamped = [...bare].reverse().find((d) => d <= duration!) ?? bare[0]!;
@@ -1302,6 +1342,26 @@ function compileKling(
     }
   }
 
+  // ── Reference video constraints ────────────────────────────────
+  //
+  // Quoted from the 3.0 Omni page for `feature_video`: "Native audio
+  // generation is not supported and the audio parameter can only be
+  // off", and multi-shot "can only be true" (the docs' own example sends
+  // `multi_shot: true`). Both are hard rejects upstream — after the
+  // debit — so the offending setting is dropped here, loudly. O1 has no
+  // multi_shot field (`toggleable` undefined), so only the audio rule
+  // applies there.
+  if (referenceVideo) {
+    if (audioEnabled && capabilities.referenceVideoMutesAudio) {
+      warnings.push({
+        code: 'config_clamped',
+        message: `${stage.model} cannot generate audio alongside a reference video; audio was turned off.`,
+      });
+      audioEnabled = undefined;
+    }
+    if (capabilities.multiShot?.toggleable) multiShot = true;
+  }
+
   const variant: KlingCompiledRequest['variant'] = isOmni
     ? 'omni'
     : !subjects[0] && supportsTextToVideo
@@ -1338,6 +1398,7 @@ function compileKling(
     startImage: subjects[0],
     endImage: endFrame,
     referenceImages: refs.length > 0 ? refs : undefined,
+    referenceVideo,
   };
   return { request, warnings };
 }

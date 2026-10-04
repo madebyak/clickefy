@@ -192,6 +192,13 @@ export interface KlingCompiledRequest {
   /** Reference images (`refer_image`, omni endpoints only). */
   referenceImages?: ImagePart[];
   /**
+   * The one reference clip the omni endpoints take (`feature_video`:
+   * motion, camera, "the next shot"). The adapter gives it id `video_1`,
+   * which is what the prompt's `@video_1` token binds to. The part's
+   * `url` must be fetchable — a 200MB clip is not inlined as base64.
+   */
+  referenceVideo?: ImagePart;
+  /**
    * `settings.multi_shot`, on endpoints that expose it (3.0, 3.0 Omni).
    * `true` when the prompt was assembled from shots; `false` pins a
    * single continuous shot so a prompt that merely contains semicolons

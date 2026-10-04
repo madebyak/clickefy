@@ -359,6 +359,10 @@ export interface CreateModelDTO {
   supportsReferenceMode?: boolean;
   /** Reference-image budget (`refer_image`); 0 = frames only. */
   maxReferences: number;
+  /** Kling 3 Omni / O1: the image budget once a video is attached (4). */
+  maxReferencesWithVideo?: number;
+  /** Kling 3 Omni / O1: native audio is off while a video reference is attached. */
+  soundExcludesVideo?: boolean;
   /** Kling 3.0 family multi-shot storyboard limits; absent = unsupported. */
   multiShot?: { maxShots: number; maxCharsPerShot: number; minShotSeconds: number; toggleable: boolean };
   /** Image formats the provider accepts, when narrower than our uploads (Kling: jpeg/png). */
@@ -463,6 +467,8 @@ export function buildCreateModelDTO(
     supportsReferenceMode:
       def.attachments === 'frames' && caps.maxReferences > 0 ? true : undefined,
     maxReferences: caps.maxReferences,
+    maxReferencesWithVideo: caps.maxReferencesWithVideo,
+    soundExcludesVideo: caps.referenceVideoMutesAudio,
     multiShot: caps.multiShot ? { ...caps.multiShot } : undefined,
     acceptedImageMimes: caps.acceptedImageMimes ? [...caps.acceptedImageMimes] : undefined,
     imageConstraints: caps.imageConstraints ? { ...caps.imageConstraints } : undefined,

@@ -603,6 +603,7 @@ jobsRoute.post(
               caps.supportsOmniTaskType === true && caps.referenceVideo !== undefined,
             framesAndReferencesExclusive: caps.provider === 'seedance' && caps.kind === 'video',
             maxReferences: caps.maxReferences,
+            maxReferencesWithVideo: caps.maxReferencesWithVideo,
             acceptedImageMimes: caps.acceptedImageMimes,
             multiShot: caps.multiShot,
           },
@@ -620,7 +621,10 @@ jobsRoute.post(
     const soundServed =
       body.sound === true &&
       caps.supportsSound === true &&
-      !(caps.nativeAudioRequiresTier && mode !== caps.nativeAudioRequiresTier);
+      !(caps.nativeAudioRequiresTier && mode !== caps.nativeAudioRequiresTier) &&
+      // Kling Omni / O1 refuse native audio alongside a reference video;
+      // the compiler turns it off, so it is not served and not billed.
+      !(caps.referenceVideoMutesAudio && inputVideoSeconds > 0);
     // Edit tasks pin the output length to the source clip (duration -1
     // on the wire), so the billed output term IS the probed input
     // length, rounded up in the house's favour.

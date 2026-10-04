@@ -885,7 +885,12 @@ export function PromptBar({
   // Native audio that can't play at the selected tier (Kling 2.6 is
   // 1080p-only): the server drops the audio rather than upgrading the
   // billed resolution, so the toggle is gated instead of lying.
-  const soundGated = !!model?.soundRequiresTier && billedTier !== model.soundRequiresTier;
+  // Kling Omni / O1 refuse native audio alongside a reference video: the
+  // server turns it off (and bills none), so the toggle gates here too.
+  const soundMutedByVideo =
+    !!model?.soundExcludesVideo && attachments.some((a) => a.kind === "video");
+  const soundGated =
+    (!!model?.soundRequiresTier && billedTier !== model.soundRequiresTier) || soundMutedByVideo;
   const soundTierLabel =
     model?.tiers?.find((x) => x.mode === model.soundRequiresTier)?.label ??
     model?.soundRequiresTier ??
@@ -907,7 +912,17 @@ export function PromptBar({
   // names every kind it takes.
   const refsTakeClips = (model?.referenceVideo?.max ?? 0) > 0 || (model?.referenceAudio?.max ?? 0) > 0;
   const modeReferencesLabel = refsTakeClips ? "modeReferencesAll" : "modeReferences";
-  const modeReferencesHint = refsTakeClips ? "modeReferencesAllHint" : "modeReferencesHint";
+  const modeReferencesHint = refsTakeClips
+    ? maxAudioRefs > 0
+      ? "modeReferencesAllHint"
+      : "modeReferencesVideoHint"
+    : "modeReferencesHint";
+  // Kling Omni / O1: the image budget drops (7 → 4) once a clip is attached.
+  const imagesWithVideoCap = model?.maxReferencesWithVideo;
+  const effMaxImages =
+    imagesWithVideoCap !== undefined && attachments.some((a) => a.kind === "video")
+      ? Math.min(maxImages, imagesWithVideoCap)
+      : maxImages;
   // Image formats: the provider's own list when it is narrower than ours
   // (Kling: jpeg/png), otherwise everything the upload route takes.
   const acceptedImageTypes = model?.acceptedImageMimes ?? ACCEPTED_IMAGE_TYPES;
@@ -924,6 +939,8 @@ export function PromptBar({
   const effectivePrompt = storyboardActive
     ? shots.map((sh) => sh.text.trim()).filter(Boolean).join(" ")
     : prompt;
+  const promptLength = effectivePrompt.length;
+  const promptCap = model?.maxPromptChars ?? 0;
   const shotsComplete = !storyboardActive || shots.every((sh) => sh.text.trim().length > 0);
 
   // Seedance still reads the prompt when we declare a References task, and
@@ -1159,6 +1176,13 @@ export function PromptBar({
       0,
       maxAudioRefs - attachments.filter((a) => a.kind === "audio").length,
     );
+    // Kling Omni / O1: a clip shrinks the image budget (7 → 4). Tracked
+    // live so a drop of "video + five images" settles the same way the
+    // server would: the clip lands, the fifth image is refused.
+    let imagesNow = attachments.filter((a) => a.kind === "image").length;
+    let videoNow = attachments.some((a) => a.kind === "video");
+    const imageCapNow = () =>
+      imagesWithVideoCap !== undefined && videoNow ? Math.min(maxImages, imagesWithVideoCap) : maxImages;
     let dropped = false;
     const constraints = model.imageConstraints;
     // Sequential so the room counters stay exact; the per-image decode
@@ -1174,19 +1198,35 @@ export function PromptBar({
             toast.error(t("maxVideoRefs", { max: effMaxVideos }));
             continue;
           }
+          if (imagesWithVideoCap !== undefined && imagesNow > imagesWithVideoCap) {
+            toast.error(t("maxImagesWithVideo", { max: imagesWithVideoCap }));
+            continue;
+          }
           videoRoom -= 1;
+          videoNow = true;
         } else if (ACCEPTED_AUDIO_TYPES.includes(f.type)) {
           if (audioRoom <= 0) {
             toast.error(t("maxAudioRefs", { max: maxAudioRefs }));
             continue;
           }
           audioRoom -= 1;
-        } else if (constraints) {
-          const problem = await checkImageConstraints(f, constraints);
-          if (problem) {
-            toast.error(t(problem, { min: constraints.minEdge, name: f.name }));
+        } else {
+          if (imagesNow >= imageCapNow()) {
+            toast.error(
+              videoNow && imagesWithVideoCap !== undefined
+                ? t("maxImagesWithVideo", { max: imageCapNow() })
+                : t("maxAttachments", { max: maxImages }),
+            );
             continue;
           }
+          if (constraints) {
+            const problem = await checkImageConstraints(f, constraints);
+            if (problem) {
+              toast.error(t(problem, { min: constraints.minEdge, name: f.name }));
+              continue;
+            }
+          }
+          imagesNow += 1;
         }
         room -= 1;
         studio.attachFile(f);
@@ -1216,7 +1256,7 @@ export function PromptBar({
     ? model?.supportsEndFrame
       ? 2
       : 1
-    : maxImages + effMaxVideos + (isTask ? 0 : maxAudioRefs);
+    : effMaxImages + effMaxVideos + (isTask ? 0 : maxAudioRefs);
   // A start frame pins the output shape on these providers — the ratio
   // picker would be a control that does nothing, so it locks instead.
   const aspectLocked =
@@ -1544,32 +1584,47 @@ export function PromptBar({
         </div>
       )}
 
-      {/* image / video mode toggle */}
-      <div className={cn("inline-flex items-center gap-1 rounded-xl bg-surface-3 p-1", compact ? "mb-2" : "mb-3")}>
-        {(["image", "video"] as const).map((m) => {
-          const active = mode === m;
-          const Icon = m === "video" ? VideoCamera : ImageSquare;
-          return (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              aria-pressed={active}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-3",
-                compact ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-sm",
-                active
-                  ? m === "video"
-                    ? "bg-brand-purple text-white"
-                    : "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon weight={active ? "fill" : "regular"} className="size-4" />
-              {t(m)}
-            </button>
-          );
-        })}
+      {/* image / video mode toggle, with the prompt's character count
+          facing it across the row */}
+      <div className={cn("flex items-center justify-between gap-3", compact ? "mb-2" : "mb-3")}>
+        <div className="inline-flex items-center gap-1 rounded-xl bg-surface-3 p-1">
+          {(["image", "video"] as const).map((m) => {
+            const active = mode === m;
+            const Icon = m === "video" ? VideoCamera : ImageSquare;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                aria-pressed={active}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-3",
+                  compact ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-sm",
+                  active
+                    ? m === "video"
+                      ? "bg-brand-purple text-white"
+                      : "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon weight={active ? "fill" : "regular"} className="size-4" />
+                {t(m)}
+              </button>
+            );
+          })}
+        </div>
+        {/* A model that reads no prompt (cap 0) has nothing to count. */}
+        {promptCap > 0 && (
+          <span
+            aria-label={t("promptCount", { count: promptLength, max: promptCap })}
+            className={cn(
+              "shrink-0 text-[10px] tabular-nums",
+              promptLength >= promptCap ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {promptLength.toLocaleString("en-US")}/{promptCap.toLocaleString("en-US")}
+          </span>
+        )}
       </div>
 
       {/* ── image inputs ────────────────────────────────────────────
@@ -2289,7 +2344,11 @@ export function PromptBar({
                 active={sound && !soundGated}
                 onClick={() => {
                   if (soundGated) {
-                    toast.info(t("soundNeedsTier", { tier: soundTierLabel }));
+                    toast.info(
+                      soundMutedByVideo
+                        ? t("soundOffWithVideo")
+                        : t("soundNeedsTier", { tier: soundTierLabel }),
+                    );
                     return;
                   }
                   setSound((s) => !s);

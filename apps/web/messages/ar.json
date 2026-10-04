@@ -308,6 +308,7 @@
     "addReference": "إضافة مرجع",
     "fewer": "أقل",
     "more": "أكثر",
+    "promptCount": "{count} من {max} حرفًا",
     "removeAttachment": "إزالة المرفق",
     "image": "صورة",
     "video": "فيديو",
@@ -399,7 +400,10 @@
     "shotLonger": "لقطة أطول",
     "shotsSameCost": "تعدد اللقطات يكلّف نفس تكلفة لقطة واحدة بالمدة نفسها.",
     "modeReferencesAll": "المراجع",
-    "modeReferencesAllHint": "صور ومقاطع فيديو وصوت توجّه النتيجة"
+    "modeReferencesAllHint": "صور ومقاطع فيديو وصوت توجّه النتيجة",
+    "modeReferencesVideoHint": "صور ومقطع فيديو توجّه النتيجة",
+    "maxImagesWithVideo": "مع فيديو مرفق، يقبل هذا النموذج حتى {max} صور",
+    "soundOffWithVideo": "الصوت متوقف أثناء إرفاق فيديو مرجعي"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",
@@ -452,6 +456,8 @@
     "projectHint": "انقر على أي عنصر لإرفاقه بطلبك. كل ما يُنشأ هنا يبقى داخل هذا المشروع.",
     "assets": "{count, plural, =0 {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}",
     "assetsUpdated": "{count, plural, one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}} · حُدّث {time}",
+    "previousAsset": "السابق",
+    "nextAsset": "التالي",
     "expand": "تكبير",
     "download": "تنزيل",
     "useAsset": "استخدام العنصر",

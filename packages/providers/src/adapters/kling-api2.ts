@@ -115,7 +115,20 @@ function imageSource(part: ImagePart): string {
 type ContentPart =
   | { type: 'prompt'; text: string }
   | { type: 'first_frame' | 'last_frame' | 'refer_image'; url: string; id?: string }
+  | { type: 'feature_video'; url: string; id: string }
   | { type: 'element'; element_id: string; id: string };
+
+/**
+ * Video parts are URL-only. The docs accept "URL or Base64" here too,
+ * but a clip is up to 200MB and the request body is not the place for
+ * it — the executor always hands the worker a fetchable URL.
+ */
+function videoSource(part: ImagePart): string {
+  if (part.url) return part.url;
+  throw new Error(
+    `Kling API 2.0 adapter received a video part with no URL (role=${part.role}). Video is sent by URL only.`,
+  );
+}
 
 interface TaskEnvelope {
   code: number;
@@ -194,6 +207,15 @@ function buildContents(request: KlingCompiledRequest): ContentPart[] {
       id: `image_${ref.index}`,
     });
   }
+  // The one reference clip (motion / camera / next shot). `id` is what
+  // the prompt's `@video_1` binds to.
+  if (request.referenceVideo) {
+    contents.push({
+      type: 'feature_video',
+      url: videoSource(request.referenceVideo),
+      id: `video_${request.referenceVideo.index}`,
+    });
+  }
   // Library Elements. Unlike every other part these carry no bytes —
   // just the id Kling issued when the element was created. Their `id`
   // is the element's NAME, because that is the token the prompt uses
@@ -215,11 +237,13 @@ function buildSettings(request: KlingCompiledRequest): Record<string, unknown> {
   // implied by a first frame. Kling documents it as REQUIRED on the omni
   // endpoints when there is neither a first frame nor a reference video —
   // so an omni request with no ratio picked falls back to the documented
-  // default (16:9) rather than omitting a required field.
+  // default (16:9) rather than omitting a required field. With a video
+  // attached the field is optional: a picked ratio is still sent (the O1
+  // examples do exactly that), an unpicked one is left to the clip.
   if (!request.startImage) {
     if (request.aspectRatio) {
       settings.aspect_ratio = request.aspectRatio;
-    } else if (request.variant === 'omni') {
+    } else if (request.variant === 'omni' && !request.referenceVideo) {
       settings.aspect_ratio = '16:9';
     }
   }

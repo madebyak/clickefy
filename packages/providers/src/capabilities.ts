@@ -37,6 +37,8 @@ import {
   UPSCALE_TIERS,
 } from '@clickfy/types';
 
+import type { FalSpec } from './fal-spec';
+
 /** What the model produces. Drives which arm of `CompiledRequest` is built. */
 export type ModelKind = 'image' | 'video';
 
@@ -182,6 +184,15 @@ export interface ModelCapabilities {
 
   /** Quality preset (GPT Image 2). */
   quality?: { values: readonly string[]; default: string };
+
+  /**
+   * fal models only: the declarative request mapping that lets the
+   * generic fal compiler build this model's body, and the endpoint per
+   * task. A fal model WITHOUT this (the Video Upscaler) needs a compile
+   * branch of its own. Rows carrying it may live in the database rather
+   * than this file — see `registerDynamicCapabilities`.
+   */
+  fal?: FalSpec;
 
   /** Optional negative-prompt support (Kling). */
   negativePrompt?: boolean;
@@ -1640,7 +1651,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
  * caller surfaces a 4xx with a clear message instead of crashing later.
  */
 export function getCapabilities(modelKey: string): ModelCapabilities {
-  const cap = MODEL_CAPABILITIES[modelKey];
+  const cap = MODEL_CAPABILITIES[modelKey] ?? DYNAMIC_CAPABILITIES[modelKey];
   if (!cap) {
     throw new Error(
       `Unknown model "${modelKey}". Add it to MODEL_CAPABILITIES in @clickfy/providers/capabilities.ts.`,
@@ -1651,7 +1662,32 @@ export function getCapabilities(modelKey: string): ModelCapabilities {
 
 /** Optional accessor — returns `undefined` instead of throwing. */
 export function findCapabilities(modelKey: string): ModelCapabilities | undefined {
-  return MODEL_CAPABILITIES[modelKey];
+  return MODEL_CAPABILITIES[modelKey] ?? DYNAMIC_CAPABILITIES[modelKey];
+}
+
+// ─── Dynamic (database-driven) models ───────────────────────────────
+//
+// The code registry above is the type system and the source of truth
+// for every provider that needs bespoke compile logic. fal models that
+// carry a `fal` spec need none, so they can be rows in `provider_models`
+// instead: added, priced, enabled and retired from the admin panel with
+// no deploy. The API and the worker load those rows (validated) and
+// register them here; every lookup consults code first, then this map,
+// so a code entry always wins over a row with the same key.
+
+const DYNAMIC_CAPABILITIES: Record<string, ModelCapabilities> = {};
+
+/** Replace the dynamic set wholesale. Called by the loaders, never by compile code. */
+export function registerDynamicCapabilities(list: readonly ModelCapabilities[]): void {
+  for (const key of Object.keys(DYNAMIC_CAPABILITIES)) delete DYNAMIC_CAPABILITIES[key];
+  for (const cap of list) {
+    if (!MODEL_CAPABILITIES[cap.modelKey]) DYNAMIC_CAPABILITIES[cap.modelKey] = cap;
+  }
+}
+
+/** The dynamic models currently registered, in registration order. */
+export function listDynamicModels(): ModelCapabilities[] {
+  return Object.values(DYNAMIC_CAPABILITIES);
 }
 
 /** All currently-active models, filtered by provider. */
@@ -1669,7 +1705,7 @@ export function aspectRatiosFor(caps: ModelCapabilities): string[] {
 }
 
 export function listActiveModels(provider?: Provider): ModelCapabilities[] {
-  return Object.values(MODEL_CAPABILITIES).filter(
+  return [...Object.values(MODEL_CAPABILITIES), ...Object.values(DYNAMIC_CAPABILITIES)].filter(
     (m) => m.status !== 'deprecated' && (!provider || m.provider === provider),
   );
 }

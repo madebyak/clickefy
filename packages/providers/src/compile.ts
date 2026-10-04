@@ -53,7 +53,8 @@ import {
   UPSCALE_TIERS,
 } from '@clickfy/types';
 
-import type { ModelCapabilities } from './capabilities';
+import { aspectRatiosFor, type ModelCapabilities } from './capabilities';
+import { buildFalInput, pickFalEndpoint, type FalResolvedRequest, type FalSpec } from './fal-spec';
 import type {
   CompileContext,
   CompileResult,
@@ -520,7 +521,12 @@ function substituteTokens(args: {
  * not a change to the adapter.
  */
 function compileFal(ctx: CompileContext, warnings: CompileWarning[]): CompileResult {
-  const { capabilities, stage } = ctx;
+  const { capabilities } = ctx;
+  // Spec-driven models carry their endpoints in the spec, one per task.
+  if (capabilities.fal) {
+    return compileFalGeneric(ctx, capabilities.fal, warnings);
+  }
+
   const endpoint = capabilities.apiModelId;
   if (!endpoint) {
     throw new Error(
@@ -533,8 +539,141 @@ function compileFal(ctx: CompileContext, warnings: CompileWarning[]): CompileRes
   }
 
   throw new Error(
-    `No fal compiler for "${capabilities.modelKey}". Add a branch in compileFal().`,
+    `No fal compiler for "${capabilities.modelKey}". Give it a \`fal\` spec or add a branch in compileFal().`,
   );
+}
+
+/**
+ * The generic fal compiler — every fal model that carries a spec.
+ *
+ * Reads the same stage config the create flow writes for Seedance
+ * (`frameSlots`, `referenceSlots`, `aspectRatio`, `mode`, `duration`),
+ * resolves each slot to a fetchable URL, clamps every enum against the
+ * model's own lists (a stage can come from an old template snapshot, and
+ * an unknown value is a 422 from fal AFTER the user was debited), then
+ * hands the normalised request to the spec to spell the body.
+ */
+function compileFalGeneric(
+  ctx: CompileContext,
+  spec: FalSpec,
+  warnings: CompileWarning[],
+): CompileResult {
+  const { stage, capabilities } = ctx;
+  const cfg = (stage.config ?? {}) as {
+    aspectRatio?: string;
+    mode?: string;
+    duration?: number;
+    negativePrompt?: string;
+    numberOfOutputs?: number;
+    seed?: number;
+    frameSlots?: import('@clickfy/types').SeedanceFrameSlots;
+    referenceSlots?: Array<import('@clickfy/types').SeedanceReferenceSlot>;
+  };
+  const name = capabilities.displayName;
+
+  const clamp = <T extends string | number>(
+    value: T | undefined,
+    allowed: readonly T[] | undefined,
+    fallback: T | undefined,
+    field: string,
+  ): T | undefined => {
+    if (value === undefined) return fallback;
+    if (!allowed || allowed.includes(value)) return value;
+    warnings.push({
+      code: 'config_clamped',
+      message: `${name} does not offer ${field} "${value}"; using ${String(fallback)}.`,
+    });
+    return fallback;
+  };
+
+  // ── Media ──────────────────────────────────────────────────────────
+  const start = cfg.frameSlots?.firstFrame
+    ? resolveFrameSlot(cfg.frameSlots.firstFrame, ctx, 1, 'image', warnings, name)
+    : undefined;
+  const end = cfg.frameSlots?.lastFrame
+    ? resolveFrameSlot(cfg.frameSlots.lastFrame, ctx, 2, 'image', warnings, name)
+    : undefined;
+  const referenceImageUrls: string[] = [];
+  (cfg.referenceSlots ?? []).forEach((slot, i) => {
+    if (slot.assetKind !== 'image') {
+      warnings.push({
+        code: 'reference_dropped',
+        message: `${name} takes image references only; dropped a ${slot.assetKind}.`,
+      });
+      return;
+    }
+    const part = resolveFrameSlot(slot.source, ctx, i + 1, 'image', warnings, name);
+    if (part?.url) referenceImageUrls.push(part.url);
+    else if (part) {
+      warnings.push({
+        code: 'reference_dropped',
+        message: `${name} needs a fetchable URL for reference ${i + 1}; it resolved to none.`,
+      });
+    }
+  });
+  if (cfg.frameSlots?.firstFrame && start && !start.url) {
+    throw new Error(`${name} needs a fetchable URL for the start frame; it resolved to none.`);
+  }
+
+  // ── Settings, clamped to the model ─────────────────────────────────
+  const aspectRatio = clamp(
+    cfg.aspectRatio,
+    aspectRatiosFor(capabilities),
+    capabilities.sizing.mode === 'aspect' ? capabilities.sizing.values[0] : undefined,
+    'aspect ratio',
+  );
+  const mode = clamp(cfg.mode, capabilities.modes?.values, capabilities.modes?.default, 'tier');
+  const durationSeconds =
+    capabilities.kind === 'video'
+      ? clamp(cfg.duration, capabilities.duration?.values, capabilities.duration?.default, 'duration')
+      : undefined;
+  const numOutputs = Math.max(
+    capabilities.outputs.min,
+    Math.min(capabilities.outputs.max, cfg.numberOfOutputs ?? capabilities.outputs.default),
+  );
+
+  const resolved: FalResolvedRequest = {
+    prompt: stage.prompt,
+    negativePrompt: cfg.negativePrompt,
+    aspectRatio,
+    mode,
+    durationSeconds,
+    startImageUrl: start?.url,
+    endImageUrl: end?.url,
+    referenceImageUrls,
+    numOutputs: spec.input.numOutputs ? numOutputs : undefined,
+    seed: cfg.seed,
+  };
+
+  const chosen = pickFalEndpoint(spec, resolved);
+  if (!chosen) {
+    throw new Error(
+      `${name} cannot run this request: it needs ${spec.endpoints.image ? 'a start image' : 'references'} and none was attached.`,
+    );
+  }
+  if (chosen.promoteFirstReference) {
+    // No reference endpoint: the first reference becomes the start frame
+    // and the rest cannot be used. Say so rather than silently dropping.
+    resolved.startImageUrl = resolved.referenceImageUrls[0];
+    if (resolved.referenceImageUrls.length > 1) {
+      warnings.push({
+        code: 'reference_dropped',
+        message: `${name} takes one image; used the first reference and dropped ${resolved.referenceImageUrls.length - 1}.`,
+      });
+    }
+  }
+  if (chosen.task === 'image' && !resolved.startImageUrl) {
+    throw new Error(`${name} image task has no start frame URL.`);
+  }
+
+  return {
+    request: {
+      provider: 'fal',
+      endpoint: chosen.endpoint,
+      input: buildFalInput(spec, chosen.task, resolved),
+    },
+    warnings,
+  };
 }
 
 /**

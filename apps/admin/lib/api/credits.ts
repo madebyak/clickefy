@@ -50,12 +50,14 @@ export function fetchCreditsOverview(getToken: TokenGetter) {
 
 // ── Models ──────────────────────────────────────────────────────────
 
+export type ModelStatus = 'active' | 'preview' | 'deprecated';
+
 export interface ProviderModelRow {
   id: string;
-  provider: 'gemini' | 'kling' | 'veo' | 'seedance';
+  provider: 'gemini' | 'kling' | 'veo' | 'seedance' | 'openai' | 'fal';
   modelKey: string;
   displayName: string;
-  status: 'active' | 'preview' | 'deprecated';
+  status: ModelStatus;
   costCredits: number;
   /** Absolute credits per tier key; null for flat-priced models. */
   tierPricing: Record<string, number> | null;
@@ -63,19 +65,85 @@ export interface ProviderModelRow {
   updatedAt: string;
 }
 
+export interface ProviderModelDetail extends ProviderModelRow {
+  capabilities: Record<string, unknown>;
+}
+
 export function fetchModels(getToken: TokenGetter) {
   return apiFetch<ProviderModelRow[]>('/v1/admin/credits/models', { getToken });
 }
 
-export function updateModelCost(
-  id: string,
-  costCredits: number,
-  getToken: TokenGetter,
-) {
-  return apiFetch<ProviderModelRow & { templatesRecomputed: number }>(
+export function fetchModel(id: string, getToken: TokenGetter) {
+  return apiFetch<ProviderModelDetail>(`/v1/admin/credits/models/${id}`, { getToken });
+}
+
+export interface ModelUpdate {
+  costCredits?: number;
+  displayName?: string;
+  status?: ModelStatus;
+  costPerCallUsd?: number;
+  tierPricing?: Record<string, number> | null;
+  capabilities?: Record<string, unknown>;
+}
+
+export function updateModel(id: string, patch: ModelUpdate, getToken: TokenGetter) {
+  return apiFetch<ProviderModelDetail & { templatesRecomputed: number }>(
     `/v1/admin/credits/models/${id}`,
-    { method: 'PATCH', getToken, json: { costCredits } },
+    { method: 'PATCH', getToken, json: patch },
   );
+}
+
+/** Kept for the inline credits editor. */
+export function updateModelCost(id: string, costCredits: number, getToken: TokenGetter) {
+  return updateModel(id, { costCredits }, getToken);
+}
+
+export interface FalFieldSummary {
+  name: string;
+  type: string;
+  required: boolean;
+  enum?: unknown[];
+  default?: unknown;
+  description?: string;
+}
+
+export interface FalInspectResult {
+  endpointId: string;
+  title: string | null;
+  description: string | null;
+  kind: 'image' | 'video';
+  unitPrice: { price: number; unit: string; currency: string } | null;
+  inputFields: FalFieldSummary[];
+  outputFields: string[];
+  draft: Record<string, unknown>;
+  suggestedModelKey: string;
+  suggestedCredits: number | null;
+}
+
+export function inspectFalEndpoint(endpointId: string, getToken: TokenGetter) {
+  return apiFetch<FalInspectResult>('/v1/admin/credits/models/fal/inspect', {
+    method: 'POST',
+    getToken,
+    json: { endpointId },
+  });
+}
+
+export interface CreateFalModelInput {
+  modelKey: string;
+  displayName: string;
+  status: ModelStatus;
+  costPerCallUsd: number;
+  costCredits: number;
+  tierPricing?: Record<string, number> | null;
+  capabilities: Record<string, unknown>;
+}
+
+export function createFalModel(input: CreateFalModelInput, getToken: TokenGetter) {
+  return apiFetch<ProviderModelDetail>('/v1/admin/credits/models', {
+    method: 'POST',
+    getToken,
+    json: input,
+  });
 }
 
 // ── Credit packs ────────────────────────────────────────────────────

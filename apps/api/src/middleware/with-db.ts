@@ -14,6 +14,7 @@
 import { createDb } from '@clickfy/db';
 import { createMiddleware } from 'hono/factory';
 
+import { loadDynamicModels } from '../lib/dynamic-models';
 import type { AppEnv } from '../types';
 
 export function withDb() {
@@ -32,6 +33,10 @@ export function withDb() {
     }
     const db = createDb({ connectionString: c.env.DATABASE_URL, runtime: 'http' });
     c.set('db', db);
+    // Database-driven fal models join the capability registry here, so
+    // every route that looks a model up sees the admin's latest roster.
+    // Cached per isolate for a minute; never throws.
+    await loadDynamicModels(db);
     await next();
   });
 }

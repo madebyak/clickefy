@@ -117,11 +117,34 @@ export async function executeFal(
     method: 'POST',
     body: JSON.stringify(request.input),
   });
-  const requestId = (body as { request_id?: string }).request_id;
+  const { request_id: requestId, status_url: statusUrl } = body as {
+    request_id?: string;
+    status_url?: string;
+  };
   if (!requestId) {
     throw new Error(`fal accepted the request but returned no request_id: ${JSON.stringify(body).slice(0, 200)}`);
   }
-  return { status: 'pending', taskId: requestId, provider: 'fal', endpoint: request.endpoint };
+  // fal tells us where to poll. Prefer that over deriving it: newer ids
+  // (`wan/v2.6/image-to-video`, `alibaba/wan-3.0/text-to-video`) happen to
+  // follow the two-segment rule too, but the returned URL is the contract.
+  const fromStatus = statusUrl ? ownerPathFromStatusUrl(statusUrl) : undefined;
+  return {
+    status: 'pending',
+    taskId: requestId,
+    provider: 'fal',
+    endpoint: fromStatus ?? request.endpoint,
+  };
+}
+
+/** `https://queue.fal.run/alibaba/wan-3.0/requests/<id>/status` → `alibaba/wan-3.0`. */
+export function ownerPathFromStatusUrl(statusUrl: string): string | undefined {
+  try {
+    const path = new URL(statusUrl).pathname.replace(/^\/+/, '');
+    const idx = path.indexOf('/requests/');
+    return idx > 0 ? path.slice(0, idx) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export type FalPollResult =

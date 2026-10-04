@@ -74,6 +74,12 @@ export interface Bindings {
   RESEND_API_KEY?: string;
   /** Sender, e.g. `Clickefy <billing@clickefy.ai>`. Defaults in `lib/email.ts`. */
   EMAIL_FROM?: string;
+  /**
+   * fal.ai key, optional on the API: used only by the admin "inspect a
+   * fal endpoint" helper to read the published unit price. Generation
+   * itself runs on the jobs worker, which has its own FAL_KEY.
+   */
+  FAL_KEY?: string;
   /** DeepSeek API key for admin EN→AR content translation. */
   DEEPSEEK_API_KEY?: string;
   /**

@@ -13,7 +13,7 @@
  * Adding a model = one entry here (plus a priced `provider_models` row).
  */
 
-import { aspectRatiosFor, findCapabilities } from '@clickfy/providers';
+import { aspectRatiosFor, findCapabilities, listDynamicModels, type ModelCapabilities } from '@clickfy/providers';
 
 /**
  * How the mobile create screen renders image attachments for a model:
@@ -189,12 +189,49 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
 
 const DEF_BY_KEY = new Map(CREATE_MODEL_DEFS.map((d) => [d.modelKey, d]));
 
+/**
+ * A roster entry derived from a database-driven fal model.
+ *
+ * The static roster above is hand-written because each entry encodes a
+ * UI decision. A dynamic model has to make those decisions from its
+ * capabilities: image models take references; a video model with a
+ * reference endpoint gets the Frames ⇄ References toggle (the Seedance
+ * shape), one without gets frames only; a start frame is mandatory when
+ * the model has no prompt-only endpoint.
+ */
+function dynamicCreateDef(caps: ModelCapabilities): CreateModelDef | undefined {
+  const spec = caps.fal;
+  if (!spec || caps.provider !== 'fal') return undefined;
+  const isImage = caps.kind === 'image';
+  return {
+    modelKey: caps.modelKey,
+    name: caps.displayName,
+    attachments: isImage ? 'references' : spec.endpoints.reference ? 'seedance' : 'frames',
+    requiresStartFrame: !isImage && !spec.endpoints.text && !!spec.endpoints.image,
+    supportsEndFrame: !isImage && !!spec.input.endImageUrl,
+  };
+}
+
 export function getCreateModelDef(modelKey: string): CreateModelDef | undefined {
-  return DEF_BY_KEY.get(modelKey);
+  const fixed = DEF_BY_KEY.get(modelKey);
+  if (fixed) return fixed;
+  const caps = findCapabilities(modelKey);
+  return caps ? dynamicCreateDef(caps) : undefined;
 }
 
 export function isCreateEligible(modelKey: string): boolean {
-  return DEF_BY_KEY.has(modelKey);
+  return getCreateModelDef(modelKey) !== undefined;
+}
+
+/**
+ * Every roster entry, static first (display order) then the dynamic
+ * models in the order they were registered. `/v1/models` serves this.
+ */
+export function listCreateModelDefs(): CreateModelDef[] {
+  const dynamic = listDynamicModels()
+    .map(dynamicCreateDef)
+    .filter((d): d is CreateModelDef => d !== undefined && !DEF_BY_KEY.has(d.modelKey));
+  return [...CREATE_MODEL_DEFS, ...dynamic];
 }
 
 /**
@@ -391,7 +428,7 @@ export function buildCreateModelDTO(
   costCredits: number,
   tierPricing?: Record<string, number> | null,
 ): CreateModelDTO | null {
-  const def = DEF_BY_KEY.get(modelKey);
+  const def = getCreateModelDef(modelKey);
   const caps = findCapabilities(modelKey);
   if (!def || !caps) return null;
 

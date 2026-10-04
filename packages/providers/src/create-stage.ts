@@ -228,7 +228,40 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
   // same key) but is an IMAGE model on a completely different endpoint —
   // it has no duration, no frames and no reference slots. Branch on the
   // model kind, not the provider, or an image job gets a video's config.
-  if (provider === 'fal') {
+  if (provider === 'fal' && caps.fal) {
+    /**
+     * fal, spec-driven (Wan, FLUX, H3 Max …).
+     *
+     * Writes exactly the config the Seedance branch writes — frames by
+     * field key, references as typed slots, duration, and the shared
+     * aspect/mode set above — so `compileFalGeneric` resolves media
+     * through the same `resolveFrameSlot` plumbing. Whether the request
+     * becomes text-, image- or reference-to-video is decided at compile
+     * time from what is bound here.
+     */
+    if (typeof input.duration === 'number') config.duration = input.duration;
+    if (input.hasStartFrame || input.hasEndFrame) {
+      const frameSlots: SeedanceFrameSlots = {};
+      if (input.hasStartFrame) {
+        frameSlots.firstFrame = { kind: 'user_input', fieldKey: CREATE_START_FRAME_KEY };
+      }
+      if (input.hasEndFrame) {
+        frameSlots.lastFrame = { kind: 'user_input', fieldKey: CREATE_END_FRAME_KEY };
+      }
+      config.frameSlots = frameSlots;
+    }
+    if (refCount > 0) {
+      config.referenceSlots = Array.from(
+        { length: refCount },
+        (_, i): SeedanceReferenceSlot => ({
+          id: createReferenceKey(i),
+          assetKind: input.referenceKinds?.[i] ?? 'image',
+          source: { kind: 'user_input', fieldKey: createReferenceKey(i) },
+        }),
+      );
+    }
+    if (isImage) config.numberOfOutputs = 1;
+  } else if (provider === 'fal') {
     /**
      * fal — the Video Upscaler.
      *

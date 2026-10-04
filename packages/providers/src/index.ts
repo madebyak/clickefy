@@ -18,6 +18,8 @@ export {
   findCapabilities,
   getCapabilities,
   listActiveModels,
+  listDynamicModels,
+  registerDynamicCapabilities,
   type ModelCapabilities,
   type ModelKind,
   type ModelStatus,
@@ -26,6 +28,17 @@ export {
 } from './capabilities';
 
 export { compile, pixelSizeForAspect } from './compile';
+
+export {
+  buildFalInput,
+  isFalSpec,
+  pickFalEndpoint,
+  type FalEndpointSet,
+  type FalInputMap,
+  type FalResolvedRequest,
+  type FalSpec,
+  type FalTask,
+} from './fal-spec';
 
 export {
   buildCreateStage,

@@ -8,9 +8,14 @@
  *                                     burning templates, missing model
  *                                     prices)
  *   GET    /models                    list provider_models + cost_credits
- *   PATCH  /models/:id                set cost_credits; cascades a
- *                                     recompute to every template that
- *                                     references this (provider, model_key)
+ *   GET    /models/:id                one row, with capabilities
+ *   PATCH  /models/:id                price / name / status / tier pricing /
+ *                                     (fal) capabilities; a price change
+ *                                     cascades a recompute to every template
+ *                                     that references this (provider, model_key)
+ *   POST   /models                    create a database-driven fal model
+ *   POST   /models/fal/inspect        read fal's schema + price for an
+ *                                     endpoint id and propose a draft
  *
  *   GET    /packs                     list credit_packs
  *   POST   /packs                     create
@@ -37,6 +42,7 @@ import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { ASSIGNABLE_ENTITLEMENTS, PAID_TIERS } from '@clickfy/types';
+import { findCapabilities, listDynamicModels } from '@clickfy/providers';
 
 import {
   creditBroadcasts,
@@ -50,6 +56,9 @@ import {
 import { withAdmin, withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 import { recomputeTemplatesForModel } from '../lib/template-cost';
+import { falModelCapabilitiesSchema } from '../lib/fal-model-schema';
+import { invalidateDynamicModels } from '../lib/dynamic-models';
+import { inspectFalEndpoint } from '../lib/fal-inspect';
 import type { AppEnv } from '../types';
 
 export const adminCreditsRoute = new Hono<AppEnv>();
@@ -230,9 +239,27 @@ adminCreditsRoute.get('/models', async (c) => {
   return c.json({ data: rows });
 });
 
-const updateModelSchema = z.object({
-  costCredits: z.number().int().min(0).max(100000),
+adminCreditsRoute.get('/models/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const row = await c.var.db.query.providerModels.findFirst({ where: eq(providerModels.id, id) });
+  if (!row) return c.json({ error: { code: 'not_found', message: 'Model not found.' } }, 404);
+  return c.json({ data: row });
 });
+
+const tierPricingSchema = z.record(z.string().min(1), z.number().int().min(0).max(100000));
+
+const updateModelSchema = z
+  .object({
+    costCredits: z.number().int().min(0).max(100000).optional(),
+    displayName: z.string().min(1).max(80).optional(),
+    status: z.enum(['active', 'preview', 'deprecated']).optional(),
+    costPerCallUsd: z.number().min(0).max(1000).optional(),
+    /** Absolute credits per tier key; null clears to flat pricing. */
+    tierPricing: tierPricingSchema.nullable().optional(),
+    /** Database-driven fal models only. Validated against the fal schema. */
+    capabilities: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine((b) => Object.keys(b).length > 0, 'nothing to update');
 
 adminCreditsRoute.patch(
   '/models/:id',
@@ -240,36 +267,165 @@ adminCreditsRoute.patch(
   zValidator('json', updateModelSchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { costCredits } = c.req.valid('json');
+    const body = c.req.valid('json');
     const adminId = c.var.user?.id ?? null;
+
+    const existing = await c.var.db.query.providerModels.findFirst({ where: eq(providerModels.id, id) });
+    if (!existing) {
+      return c.json({ error: { code: 'not_found', message: 'Model not found.' } }, 404);
+    }
+
+    const set: Partial<typeof providerModels.$inferInsert> = {
+      updatedAt: new Date(),
+      updatedByAdminId: adminId,
+    };
+    if (body.costCredits !== undefined) set.costCredits = body.costCredits;
+    if (body.displayName !== undefined) set.displayName = body.displayName;
+    if (body.status !== undefined) set.status = body.status;
+    if (body.costPerCallUsd !== undefined) set.costPerCallUsd = body.costPerCallUsd.toFixed(4);
+    if (body.tierPricing !== undefined) set.tierPricing = body.tierPricing;
+
+    if (body.capabilities !== undefined) {
+      // Only a spec-driven fal row owns its capabilities; every other
+      // row's blob is a copy of the code registry and is not editable.
+      const isDynamic = existing.provider === 'fal' && 'fal' in (existing.capabilities ?? {});
+      if (!isDynamic) {
+        return c.json(
+          { error: { code: 'capabilities_readonly', message: 'Only database-driven fal models can have their capabilities edited.' } },
+          409,
+        );
+      }
+      const parsed = falModelCapabilitiesSchema.safeParse({
+        ...body.capabilities,
+        provider: 'fal',
+        modelKey: existing.modelKey,
+        displayName: body.displayName ?? existing.displayName,
+        status: body.status ?? existing.status,
+      });
+      if (!parsed.success) {
+        return c.json(
+          { error: { code: 'invalid_capabilities', message: 'Capabilities failed validation.', details: parsed.error.issues } },
+          422,
+        );
+      }
+      set.capabilities = parsed.data as Record<string, unknown>;
+    } else if (body.displayName !== undefined || body.status !== undefined) {
+      // Keep the blob's own copies of name/status in step for dynamic rows.
+      if (existing.provider === 'fal' && 'fal' in (existing.capabilities ?? {})) {
+        set.capabilities = {
+          ...existing.capabilities,
+          displayName: body.displayName ?? existing.displayName,
+          status: body.status ?? existing.status,
+        };
+      }
+    }
 
     const [updated] = await c.var.db
       .update(providerModels)
-      .set({
-        costCredits,
-        updatedAt: new Date(),
-        updatedByAdminId: adminId,
-      })
+      .set(set)
       .where(eq(providerModels.id, id))
       .returning();
-
     if (!updated) {
       return c.json({ error: { code: 'not_found', message: 'Model not found.' } }, 404);
     }
+    invalidateDynamicModels();
 
     // Cascade: every template whose pipeline references this model
     // gets its cost_credits recomputed against the new pricing. This
     // keeps the "auto-calculated template cost" promise honoured even
     // when admin changes prices long after a template was authored.
-    const touched = await recomputeTemplatesForModel(
-      c.var.db,
-      updated.provider,
-      updated.modelKey,
-    );
+    const touched =
+      body.costCredits !== undefined || body.tierPricing !== undefined
+        ? await recomputeTemplatesForModel(c.var.db, updated.provider, updated.modelKey)
+        : 0;
 
     return c.json({ data: { ...updated, templatesRecomputed: touched } });
   },
 );
+
+// ─── Database-driven fal models ──────────────────────────────────────
+//
+// A fal model is configuration: an endpoint per task, a field map, the
+// option lists, a price. `POST /models` creates one from that; the
+// registry picks it up on the next request (API) and the next job
+// (worker) with no deploy. `POST /models/fal/inspect` reads fal's own
+// OpenAPI schema and price for an endpoint and proposes a draft, so the
+// admin edits a filled-in form rather than writing JSON from memory.
+
+const createModelSchema = z.object({
+  modelKey: z.string().min(2).max(80).regex(/^[a-z0-9][a-z0-9-]*$/),
+  displayName: z.string().min(1).max(80),
+  status: z.enum(['active', 'preview', 'deprecated']).default('preview'),
+  costPerCallUsd: z.number().min(0).max(1000),
+  costCredits: z.number().int().min(0).max(100000).default(0),
+  tierPricing: tierPricingSchema.nullable().optional(),
+  capabilities: z.record(z.string(), z.unknown()),
+});
+
+adminCreditsRoute.post('/models', zValidator('json', createModelSchema), async (c) => {
+  const body = c.req.valid('json');
+  const adminId = c.var.user?.id ?? null;
+
+  const parsed = falModelCapabilitiesSchema.safeParse({
+    ...body.capabilities,
+    provider: 'fal',
+    modelKey: body.modelKey,
+    displayName: body.displayName,
+    status: body.status,
+  });
+  if (!parsed.success) {
+    return c.json(
+      { error: { code: 'invalid_capabilities', message: 'Capabilities failed validation.', details: parsed.error.issues } },
+      422,
+    );
+  }
+  // A code-registry key cannot be shadowed by a row.
+  if (findCapabilities(body.modelKey) && !listDynamicModels().some((m) => m.modelKey === body.modelKey)) {
+    return c.json(
+      { error: { code: 'model_key_taken', message: 'That model key belongs to a code-registry model.' } },
+      409,
+    );
+  }
+
+  const [row] = await c.var.db
+    .insert(providerModels)
+    .values({
+      provider: 'fal',
+      modelKey: body.modelKey,
+      displayName: body.displayName,
+      status: body.status,
+      capabilities: parsed.data as Record<string, unknown>,
+      costPerCallUsd: body.costPerCallUsd.toFixed(4),
+      costCredits: body.costCredits,
+      tierPricing: body.tierPricing ?? null,
+      updatedAt: new Date(),
+      updatedByAdminId: adminId,
+    })
+    .onConflictDoNothing({ target: [providerModels.provider, providerModels.modelKey] })
+    .returning();
+  if (!row) {
+    return c.json({ error: { code: 'model_exists', message: 'A model with that key already exists.' } }, 409);
+  }
+  invalidateDynamicModels();
+  return c.json({ data: row }, 201);
+});
+
+const inspectSchema = z.object({
+  endpointId: z.string().min(3).max(200).regex(/^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)+$/i),
+});
+
+adminCreditsRoute.post('/models/fal/inspect', zValidator('json', inspectSchema), async (c) => {
+  const { endpointId } = c.req.valid('json');
+  try {
+    const draft = await inspectFalEndpoint(endpointId, c.env.FAL_KEY);
+    return c.json({ data: draft });
+  } catch (err) {
+    return c.json(
+      { error: { code: 'inspect_failed', message: err instanceof Error ? err.message : 'Could not inspect that endpoint.' } },
+      502,
+    );
+  }
+});
 
 // ─── Credit packs (consumable IAPs) ─────────────────────────────────
 

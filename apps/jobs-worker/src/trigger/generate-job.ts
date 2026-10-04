@@ -71,6 +71,7 @@ import {
 
 import { env } from '../env';
 import { getDb } from '../lib/db';
+import { loadDynamicModels } from '../lib/dynamic-models';
 import { resolveJobInputs } from '../lib/input-resolver';
 import { reportStage, updateJobProgress } from '../lib/progress';
 import { pushUser } from '../lib/push';
@@ -120,6 +121,15 @@ export const generateJob = task({
     const db = getDb();
 
     logger.info('generate-job:start', { jobId });
+
+    // Database-driven fal models join the registry before any lookup.
+    // A failure here is logged, not fatal: code-registry models still run.
+    try {
+      const n = await loadDynamicModels();
+      if (n > 0) logger.info('generate-job:dynamic-models', { registered: n });
+    } catch (err) {
+      logger.warn('generate-job:dynamic-models failed', { err: String(err) });
+    }
 
     // ── Load the job row + its frozen template snapshot ──────────
     const jobRow = await db.query.jobs.findFirst({ where: eq(jobs.id, jobId) });

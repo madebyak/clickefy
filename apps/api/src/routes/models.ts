@@ -26,7 +26,7 @@ import { providerModels } from '@clickfy/db';
 import type { AppEnv } from '../types';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
-import { buildCreateModelDTO, CREATE_MODEL_DEFS } from '../lib/create-models';
+import { buildCreateModelDTO, listCreateModelDefs } from '../lib/create-models';
 
 export const modelsRoute = new Hono<AppEnv>();
 
@@ -39,7 +39,8 @@ modelsRoute.get(
   // auditable rule instead of a per-route judgement call.
   withCurrentUser(),
   async (c) => {
-    const rosterKeys = CREATE_MODEL_DEFS.map((d) => d.modelKey);
+    const defs = listCreateModelDefs();
+    const rosterKeys = defs.map((d) => d.modelKey);
 
     const rows = await c.var.db
       .select({
@@ -54,7 +55,7 @@ modelsRoute.get(
     const priceByKey = new Map(rows.map((r) => [r.modelKey, r]));
 
     // Preserve roster (display) order; drop unpriced / deprecated.
-    const models = CREATE_MODEL_DEFS.flatMap((def) => {
+    const models = defs.flatMap((def) => {
       const row = priceByKey.get(def.modelKey);
       if (!row || row.status === 'deprecated' || row.costCredits <= 0) return [];
       const dto = buildCreateModelDTO(def.modelKey, row.costCredits, row.tierPricing);

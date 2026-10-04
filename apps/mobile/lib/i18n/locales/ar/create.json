@@ -102,6 +102,7 @@
     "image": "صورة",
     "video": "فيديو",
     "modeTitle": "ماذا تريد أن تنشئ؟",
+    "promptCount": "{{count}} من {{max}} حرفًا",
     "placeholderImage": "صِف لقطتك…",
     "placeholderVideo": "صِف مقطعك…",
     "generate": "إنشاء · {{count}} نقطة",

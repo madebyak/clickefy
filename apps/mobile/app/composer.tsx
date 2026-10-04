@@ -21,7 +21,7 @@
  * infra failures on its own; we just refresh the balance).
  */
 
-import { accents, useTheme } from '@clickfy/ui';
+import { accents, Text, useTheme } from '@clickfy/ui';
 import { useAuth, useUser } from '@clerk/expo';
 import { JobSubmissionError, type CreateGenerationInput, type GenModel } from '@clickfy/sdk';
 import { resolveCreditCost } from '@clickfy/types';
@@ -1073,7 +1073,30 @@ export default function ComposerScreen() {
         />
 
         <View style={{ gap: 10, paddingBottom: keyboardUp ? 8 : insets.bottom + 10, paddingTop: 4 }}>
-          <OptionPillsRow pills={pills} />
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <OptionPillsRow pills={pills} />
+            </View>
+            {/* Shown once there is something to count, so an empty prompt
+                leaves the pills the full width. */}
+            {promptCap > 0 && prompt.length > 0 ? (
+              <Text
+                accessibilityLabel={t('composer.promptCount', {
+                  count: prompt.length,
+                  max: promptCap,
+                })}
+                style={{
+                  paddingEnd: 16,
+                  paddingStart: 6,
+                  fontSize: 10,
+                  fontVariant: ['tabular-nums'],
+                  color: prompt.length >= promptCap ? colors.danger : colors.inkMuted,
+                }}
+              >
+                {prompt.length.toLocaleString('en-US')}/{promptCap.toLocaleString('en-US')}
+              </Text>
+            ) : null}
+          </View>
           <PromptDock
             prompt={prompt}
             onPromptChange={setPrompt}

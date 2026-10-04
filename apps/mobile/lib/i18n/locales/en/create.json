@@ -90,6 +90,7 @@
     "image": "Image",
     "video": "Video",
     "modeTitle": "What are you creating?",
+    "promptCount": "{{count}} of {{max}} characters",
     "placeholderImage": "Describe your shot…",
     "placeholderVideo": "Describe your clip…",
     "generate": "Generate · {{count}} cr",

@@ -33,10 +33,18 @@ export function withDb() {
     }
     const db = createDb({ connectionString: c.env.DATABASE_URL, runtime: 'http' });
     c.set('db', db);
-    // Database-driven fal models join the capability registry here, so
-    // every route that looks a model up sees the admin's latest roster.
-    // Cached per isolate for a minute; never throws.
-    await loadDynamicModels(db);
+    // Database-driven fal models join the capability registry from here,
+    // refreshed in the BACKGROUND once a minute per isolate. Never awaited
+    // on this path: the upload proxy, the outputs proxy and every other
+    // route must not wait on a registry query (2026-10-04: a blocking
+    // await here coincided with upload reads from the worker hanging).
+    // Routes that need the registry call `ensureDynamicModels` themselves.
+    const load = loadDynamicModels(db).catch(() => undefined);
+    try {
+      c.executionCtx.waitUntil(load);
+    } catch {
+      // No execution context (tests) — the promise still runs.
+    }
     await next();
   });
 }

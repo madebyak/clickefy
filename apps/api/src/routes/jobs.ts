@@ -55,6 +55,7 @@ import { createJobSchema, createUserJobSchema, type JobInputValueParsed } from '
 import { validateCreateSubmission, validateJobSubmission } from '../lib/job-validation';
 import { createJobAtomically, createUserJobAtomically, isCreditRace } from '../lib/job-create';
 import { getCreateModelDef, isCreateEligible, isToolOnlyModel } from '../lib/create-models';
+import { ensureDynamicModels } from '../lib/dynamic-models';
 import { adoptProjectOrigin } from '../lib/project-origin';
 import { loadDraftForFinal, type DraftSource } from '../lib/draft-final';
 import { dispatchJob } from '../lib/dispatch-job';
@@ -422,6 +423,8 @@ jobsRoute.post(
     // choice is the server's, invisible to the user, and swappable
     // without a client change. Plain submissions must name one.
     const modelKey = body.tool ? TOOL_MODELS[body.tool.kind].modelKey : body.modelKey;
+    // Database-driven models must be registered before the lookups below.
+    await ensureDynamicModels(c.var.db);
     if (!modelKey) {
       return c.json(
         { error: { code: 'unknown_model', message: 'That model is not available.' } },

@@ -31,16 +31,35 @@ export async function readUploadObject(r2Key: string): Promise<{
   mimeType: string;
 }> {
   const url = `${baseUrl()}/v1/uploads/${r2Key}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(
-      `Worker read failed: GET ${url} -> ${res.status} ${res.statusText}`,
-    );
+  // Bounded and retried. Node's default is a 5-minute headers timeout
+  // with no retry, which on 2026-10-04 turned a transient proxy stall
+  // into 30 refunded jobs that reported "upload not found". A read that
+  // does not answer in a minute is retried twice before the job fails.
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
+      if (res.status === 404) {
+        throw new Error(`Worker read failed: GET ${url} -> 404 Not Found`);
+      }
+      if (!res.ok) {
+        throw new RetryableReadError(`Worker read failed: GET ${url} -> ${res.status} ${res.statusText}`);
+      }
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const mimeType = res.headers.get('content-type') ?? 'application/octet-stream';
+      return { bytes, mimeType };
+    } catch (err) {
+      lastErr = err;
+      // A real 404 is final; everything else (timeout, reset, 5xx) retries.
+      if (err instanceof Error && /-> 404 /.test(err.message)) throw err;
+      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 2_000));
+    }
   }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const mimeType = res.headers.get('content-type') ?? 'application/octet-stream';
-  return { bytes, mimeType };
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
+
+const READ_TIMEOUT_MS = 60_000;
+class RetryableReadError extends Error {}
 
 /**
  * Persist a generated artifact via the Worker's internal route

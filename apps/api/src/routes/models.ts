@@ -27,6 +27,7 @@ import type { AppEnv } from '../types';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
 import { buildCreateModelDTO, listCreateModelDefs } from '../lib/create-models';
+import { ensureDynamicModels } from '../lib/dynamic-models';
 
 export const modelsRoute = new Hono<AppEnv>();
 
@@ -39,6 +40,7 @@ modelsRoute.get(
   // auditable rule instead of a per-route judgement call.
   withCurrentUser(),
   async (c) => {
+    await ensureDynamicModels(c.var.db);
     const defs = listCreateModelDefs();
     const rosterKeys = defs.map((d) => d.modelKey);
 

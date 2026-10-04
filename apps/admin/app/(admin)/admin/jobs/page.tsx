@@ -16,13 +16,13 @@ import { toast } from 'sonner';
 
 import type { AnalyticsJobRow } from '@clickfy/types';
 
+import { JobDetailSheet } from '@/components/analytics/job-detail-sheet';
 import { RangePicker } from '@/components/analytics/range-picker';
 import { useDashboardFilters, type DashboardFilters } from '@/components/analytics/use-filters';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { downloadCsv, fetchAnalyticsJobs, jobsExportPath } from '@/lib/api/analytics';
@@ -210,107 +210,7 @@ function JobsTable() {
         )}
       </div>
 
-      <JobSheet job={selected} onClose={() => setSelected(null)} />
-    </div>
-  );
-}
-
-function JobSheet({ job, onClose }: { job: AnalyticsJobRow | null; onClose: () => void }) {
-  return (
-    <Sheet open={job != null} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-        {job && (
-          <>
-            <SheetHeader>
-              <SheetTitle>{job.modelName ?? job.modelKey ?? job.templateTitle ?? 'Job'}</SheetTitle>
-              <SheetDescription className="font-mono text-xs">{job.id}</SheetDescription>
-            </SheetHeader>
-            <div className="space-y-5 px-4 pb-6 text-sm">
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-                <Field label="User" value={job.user.email} />
-                <Field label="Created" value={dubaiDateTimeLabel(job.createdAt)} />
-                <Field label="Status" value={`${STATUS[job.status].label}${job.errorCode ? ` · ${job.errorCode}` : ''}`} />
-                <Field label="Completed" value={job.completedAt ? dubaiDateTimeLabel(job.completedAt) : '—'} />
-                <Field label="Origin" value={`${job.origin}${job.templateTitle ? ` · ${job.templateTitle}` : ''}`} />
-                <Field label="Provider" value={job.provider ?? '—'} />
-                <Field label="Mode" value={job.mode ?? '—'} />
-                <Field label="Duration" value={job.durationSeconds != null ? `${job.durationSeconds} s` : '—'} />
-              </dl>
-
-              <div className="rounded-lg border border-border">
-                <div className="grid grid-cols-3 divide-x divide-border text-center">
-                  <Stat label="Credit value" value={usd(job.creditValueUsd)} sub={`${job.paidCreditsNet} paid of ${job.creditsNet} net`} />
-                  <Stat label="Provider cost" value={usd(job.providerCostUsd)} sub={job.costBasis ?? 'unpriced'} />
-                  <Stat label="Profit" value={signedUsd(job.profitUsd)} sub={job.creditsRefunded ? `${job.creditsRefunded} credits refunded` : ' '} tone={job.profitUsd != null && job.profitUsd < 0 ? 'text-destructive' : 'text-primary-green'} />
-                </div>
-              </div>
-
-              <div>
-                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">How the cost was reached</h3>
-                {job.billedUnits && job.billedUnits.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Stage</TableHead>
-                        <TableHead>Model</TableHead>
-                        <TableHead>Mode</TableHead>
-                        <TableHead className="text-right">Units</TableHead>
-                        <TableHead className="text-right">Unit price</TableHead>
-                        <TableHead className="text-right">USD</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {job.billedUnits.map((u) => (
-                        <TableRow key={u.stage}>
-                          <TableCell>{u.stage}</TableCell>
-                          <TableCell className="font-mono text-xs">{u.model}</TableCell>
-                          <TableCell className="text-xs">{u.mode ?? '—'}</TableCell>
-                          <TableCell className="text-right tabular-nums text-xs">{int(u.quantity)} {u.unit}{u.quantity === 1 ? '' : 's'}</TableCell>
-                          <TableCell className="text-right tabular-nums text-xs">${u.unitPriceUsd}</TableCell>
-                          <TableCell className="text-right tabular-nums">{usd(u.usd)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No cost recorded for this job.</p>
-                )}
-                {job.billedUnits?.some((u) => u.note) && (
-                  <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                    {job.billedUnits.filter((u) => u.note).map((u) => <li key={u.stage}>Stage {u.stage}: {u.note}</li>)}
-                  </ul>
-                )}
-              </div>
-
-              {job.requestIds && job.requestIds.length > 0 && (
-                <div>
-                  <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Provider request ids</h3>
-                  <div className="space-y-0.5 font-mono text-xs">{job.requestIds.map((id) => <div key={id}>{id}</div>)}</div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="truncate text-sm" title={value}>{value}</dd>
-    </>
-  );
-}
-
-function Stat({ label, value, sub, tone = '' }: { label: string; value: string; sub: string; tone?: string }) {
-  return (
-    <div className="p-3">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={`mt-1 text-lg font-semibold tabular-nums ${tone}`}>{value}</div>
-      <div className="text-[10px] text-muted-foreground">{sub}</div>
+      <JobDetailSheet job={selected} getToken={tokenGetter} onClose={() => setSelected(null)} />
     </div>
   );
 }

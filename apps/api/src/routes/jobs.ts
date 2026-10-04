@@ -31,6 +31,8 @@
  */
 
 import { Hono } from 'hono';
+
+import type { JobError } from '@clickfy/types';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, inArray, lt, or } from 'drizzle-orm';
 
@@ -1276,6 +1278,13 @@ type JobStatusRow = Pick<typeof jobs.$inferSelect, keyof typeof JOB_STATUS_COLUM
  * only for completed runs — images first, then videos, each tagged with
  * its media kind and, where known, real dimensions and renditions.
  */
+/** The error as a client may see it: `detail` (the provider's raw text) is for admins only. */
+function publicJobError(error: JobError | null | undefined): Omit<JobError, 'detail'> | undefined {
+  if (!error) return undefined;
+  const { detail: _detail, ...rest } = error;
+  return rest;
+}
+
 async function serializeJobStatuses(db: Db, origin: string, rows: JobStatusRow[]) {
   const completed = rows.filter((j) => j.status === 'completed' && j.result);
   const filed = await filedRenditions(
@@ -1326,7 +1335,7 @@ async function serializeJobStatuses(db: Db, origin: string, rows: JobStatusRow[]
       status: job.status,
       progress: job.progress ?? null,
       outputs: outputs.length > 0 ? outputs : undefined,
-      error: job.error ?? undefined,
+      error: publicJobError(job.error),
       createdAt: job.createdAt.toISOString(),
       startedAt: job.startedAt?.toISOString() ?? null,
       completedAt: job.completedAt?.toISOString() ?? null,

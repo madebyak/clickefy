@@ -975,13 +975,17 @@ function errorToMessage(err: unknown): string {
  * text, as before. Always `provider_error`, so refunds are unchanged.
  */
 function providerJobError(err: unknown, stage: number): JobError {
-  const reason = jobErrorReasonFor(err instanceof Error ? err.message : String(err));
+  const raw = err instanceof Error ? err.message : String(err);
+  const reason = jobErrorReasonFor(raw);
   return {
     code: 'provider_error',
     message: reason ? JOB_ERROR_MESSAGES[reason] : errorToMessage(err),
     stage,
     retryCount: 0,
     ...(reason ? { reason } : {}),
+    // The admin needs the provider's exact words even when the user gets
+    // a friendlier sentence; the public API strips this field.
+    ...(reason && raw ? { detail: raw.slice(0, 1000) } : {}),
   };
 }
 

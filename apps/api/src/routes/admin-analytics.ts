@@ -6,6 +6,7 @@
  *                               with provider-invoice rows for the months touched
  *   GET  /costs/by              one row per model | provider | user | origin | template
  *   GET  /jobs                  per-generation drill-down, cursor-paginated
+ *   GET  /jobs/:id              one run in full: inputs, outputs, raw error, timings, ledger
  *   GET  /export.csv            the same rows as a spreadsheet (newest first, capped)
  *   GET  /export-monthly.csv    one month, one row per model
  *   PUT  /invoices              type in (or correct) a provider's monthly invoice total
@@ -53,10 +54,12 @@ import {
   costSeries,
   exportJobs,
   invoiceComparison,
+  jobDetail,
   listJobs,
   toTotals,
   type JobFilters,
 } from '../lib/analytics-sql';
+import { assetUrl } from '../lib/asset-url';
 import type { AppEnv } from '../types';
 
 export const adminAnalyticsRoute = new Hono<AppEnv>();
@@ -196,6 +199,13 @@ adminAnalyticsRoute.get(
     return c.json(body);
   },
 );
+
+adminAnalyticsRoute.get('/jobs/:id', zValidator('param', z.object({ id: z.string().uuid() })), async (c) => {
+  const { id } = c.req.valid('param');
+  const detail = await jobDetail(c.var.db, id, new URL(c.req.url).origin, assetUrl);
+  if (!detail) return c.json({ error: { code: 'not_found', message: 'Job not found.' } }, 404);
+  return c.json({ data: detail });
+});
 
 // ─── CSV exports ──────────────────────────────────────────────────────
 

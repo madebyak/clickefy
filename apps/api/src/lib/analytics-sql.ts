@@ -28,6 +28,7 @@ import {
   type AnalyticsBucket,
   type AnalyticsDimension,
   type AnalyticsFilters,
+  type AnalyticsJobDetail,
   type AnalyticsJobRow,
   type AnalyticsRange,
   type CashTotals,
@@ -526,4 +527,129 @@ export async function exportJobs(db: Db, range: AnalyticsRange, f: JobFilters, l
       LIMIT ${limit + 1}`),
   );
   return { rows: raw.slice(0, limit).map(toJobRow), truncated: raw.length > limit };
+}
+
+// ─── One job, in full ─────────────────────────────────────────────────
+
+/** Trigger.dev project the jobs worker deploys to (see apps/jobs-worker/trigger.config.ts). Not a secret. */
+const TRIGGER_PROJECT_REF = 'proj_dqwnwsfyhccgrtzxoqbt';
+
+interface JobDetailRaw extends JobRaw {
+  source: 'template' | 'user';
+  template_version_id: string | null;
+  project_id: string | null;
+  entitlement: string;
+  started_at: string | Date | null;
+  trigger_run_id: string | null;
+  idempotency_key: string | null;
+  progress: AnalyticsJobDetail['progress'];
+  error: AnalyticsJobDetail['error'];
+  options: Record<string, unknown> | null;
+  inputs: Record<string, { kind: string; r2Key?: string; mimeType?: string; sizeBytes?: number; value?: string }> | null;
+  result: {
+    images?: Array<{ r2Key: string; width?: number; height?: number }>;
+    videos?: Array<{ streamId: string; posterR2Key?: string | null; durationSec?: number; width?: number; height?: number }>;
+    durationMs?: number;
+    providerTaskId?: string;
+  } | null;
+  snapshot: { generation?: { stages?: Array<{ provider: string; model: string; config?: Record<string, unknown> }> } } | null;
+}
+
+/**
+ * Everything the admin needs to answer "what happened to this run": the
+ * row, the media (as URLs the admin's browser can load), the template's
+ * stage list at the version that ran, and every ledger movement.
+ */
+export async function jobDetail(db: Db, id: string, origin: string, assetUrl: (origin: string, key: string) => string): Promise<AnalyticsJobDetail | null> {
+  const [raw] = rowsOf<JobDetailRaw>(
+    await db.execute(sql`
+      WITH j AS (
+        SELECT
+          j.id, j.user_id, j.status::text AS status, j.origin, j.source, j.provider, j.created_at, j.started_at, j.completed_at,
+          j.template_id, j.template_version_id, j.project_id, j.options, j.inputs, j.result, j.error, j.progress,
+          j.trigger_run_id, j.idempotency_key, j.provider_billed_units, j.provider_request_ids, j.cost_basis,
+          ${MODEL_KEY} AS model_key,
+          j.provider_cost_usd::float8 AS cost_usd
+        FROM jobs j
+        WHERE j.id = ${id}::uuid
+      ),
+      c AS (
+        SELECT
+          l.job_id,
+          COALESCE(SUM(CASE WHEN l.reason = 'job_charge' THEN -l.delta END), 0)::int AS charged,
+          COALESCE(SUM(CASE WHEN l.reason = 'refund' THEN l.delta END), 0)::int AS refunded,
+          COALESCE(SUM(CASE WHEN l.reason = 'job_charge' THEN
+            CASE WHEN l.metadata ? 'fromPromo'
+                 THEN COALESCE((l.metadata->>'fromSubscription')::int, 0) + COALESCE((l.metadata->>'fromTopup')::int, 0)
+                 WHEN l.bucket IN ('subscription', 'topup') THEN -l.delta ELSE 0 END END), 0)::int AS paid_charged,
+          COALESCE(SUM(CASE WHEN l.reason = 'refund' THEN
+            CASE WHEN l.metadata ? 'rSub'
+                 THEN COALESCE((l.metadata->>'rSub')::int, 0) + COALESCE((l.metadata->>'rTopup')::int, 0)
+                 WHEN l.bucket IN ('subscription', 'topup') THEN l.delta ELSE 0 END END), 0)::int AS paid_refunded
+        FROM credit_ledger l JOIN j ON j.id = l.job_id
+        GROUP BY l.job_id
+      )
+      SELECT ${JOB_COLUMNS},
+             j.source, j.template_version_id, j.project_id, u.entitlement, j.started_at, j.trigger_run_id, j.idempotency_key,
+             j.progress, j.error, j.options, j.inputs, j.result,
+             tv.snapshot
+      ${JOB_JOINS}
+      LEFT JOIN template_versions tv ON tv.id = j.template_version_id`),
+  );
+  if (!raw) return null;
+
+  const ledger = rowsOf<{ id: string; reason: string; delta: number; bucket: string | null; balance_after: number; note: string | null; metadata: Record<string, unknown>; created_at: string | Date }>(
+    await db.execute(sql`
+      SELECT id, reason::text AS reason, delta, bucket, balance_after, note, metadata, created_at
+      FROM credit_ledger WHERE job_id = ${id}::uuid ORDER BY created_at ASC`),
+  );
+
+  const base = toJobRow(raw);
+  const createdMs = new Date(raw.created_at).getTime();
+  const startedMs = raw.started_at ? new Date(raw.started_at).getTime() : null;
+  const completedMs = raw.completed_at ? new Date(raw.completed_at).getTime() : null;
+
+  const inputs: AnalyticsJobDetail['inputs'] = Object.entries(raw.inputs ?? {}).map(([key, v]) =>
+    v.kind === 'text'
+      ? { key, kind: 'text' as const, value: v.value ?? '' }
+      : { key, kind: v.kind as 'image' | 'video' | 'audio', url: assetUrl(origin, v.r2Key ?? ''), mimeType: v.mimeType ?? '', sizeBytes: v.sizeBytes ?? 0 },
+  );
+  const outputs: AnalyticsJobDetail['outputs'] = [
+    ...(raw.result?.images ?? []).map((img) => ({ kind: 'image' as const, url: assetUrl(origin, img.r2Key), width: img.width ?? null, height: img.height ?? null })),
+    ...(raw.result?.videos ?? []).map((v) => ({
+      kind: 'video' as const,
+      url: assetUrl(origin, v.streamId),
+      posterUrl: v.posterR2Key ? assetUrl(origin, v.posterR2Key) : null,
+      durationSec: v.durationSec ?? null,
+      width: v.width ?? null,
+      height: v.height ?? null,
+    })),
+  ];
+  const stages = raw.snapshot?.generation?.stages?.map((s, i) => ({ stage: i + 1, provider: s.provider, model: s.model, config: s.config ?? {} })) ?? null;
+
+  return {
+    ...base,
+    source: raw.source,
+    templateVersionId: raw.template_version_id,
+    projectId: raw.project_id,
+    userEntitlement: raw.entitlement,
+    startedAt: iso(raw.started_at),
+    queueMs: startedMs != null ? startedMs - createdMs : null,
+    runMs: startedMs != null && completedMs != null ? completedMs - startedMs : null,
+    triggerRunId: raw.trigger_run_id,
+    triggerRunUrl: raw.trigger_run_id ? `https://cloud.trigger.dev/projects/v3/${TRIGGER_PROJECT_REF}/runs/${raw.trigger_run_id}` : null,
+    idempotencyKey: raw.idempotency_key,
+    progress: raw.progress ?? null,
+    error: raw.error ?? null,
+    options: raw.options ?? {},
+    inputs,
+    outputs,
+    resultDurationMs: raw.result?.durationMs ?? null,
+    providerTaskId: raw.result?.providerTaskId ?? null,
+    stages,
+    ledger: ledger.map((l) => ({
+      id: l.id, reason: l.reason, delta: l.delta, bucket: l.bucket, balanceAfter: l.balance_after, note: l.note,
+      metadata: l.metadata ?? {}, createdAt: iso(l.created_at)!,
+    })),
+  };
 }

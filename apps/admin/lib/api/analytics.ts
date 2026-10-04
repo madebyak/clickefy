@@ -9,6 +9,7 @@ import type {
   AnalyticsBucket,
   AnalyticsDimension,
   AnalyticsFilters,
+  AnalyticsJobDetail,
   AnalyticsJobsResponse,
   CostBreakdownResponse,
   CostsResponse,
@@ -40,6 +41,10 @@ export function fetchAnalyticsJobs(
   q: AnalyticsQuery & { search?: string; cursor?: string; limit?: number },
 ) {
   return apiFetch<AnalyticsJobsResponse>(`/v1/admin/analytics/jobs${qs(q)}`, { getToken, unwrap: false });
+}
+
+export function fetchAnalyticsJob(getToken: TokenGetter, id: string) {
+  return apiFetch<AnalyticsJobDetail>(`/v1/admin/analytics/jobs/${id}`, { getToken });
 }
 
 /** Paths for the two CSV downloads; fetch with `downloadCsv` so the bearer token travels along. */

@@ -173,6 +173,42 @@ export interface AnalyticsJobRow {
   errorCode: string | null;
 }
 
+/** One generation, everything the row and its ledger know. `GET /jobs/:id`. */
+export interface AnalyticsJobDetail extends AnalyticsJobRow {
+  source: 'template' | 'user';
+  templateVersionId: string | null;
+  projectId: string | null;
+  userEntitlement: string;
+  startedAt: string | null;
+  /** created → started, ms. */
+  queueMs: number | null;
+  /** started → completed, ms. */
+  runMs: number | null;
+  triggerRunId: string | null;
+  /** Trigger.dev dashboard page for the run, when we know the run id. */
+  triggerRunUrl: string | null;
+  idempotencyKey: string | null;
+  progress: { stage: number; totalStages: number; message: string } | null;
+  /** The raw error object, including the provider's verbatim `detail`. */
+  error: { code: string; message: string; stage: number; retryCount: number; reason?: string; detail?: string } | null;
+  /** `jobs.options` as stored. */
+  options: Record<string, unknown>;
+  inputs: Array<
+    | { key: string; kind: 'text'; value: string }
+    | { key: string; kind: 'image' | 'video' | 'audio'; url: string; mimeType: string; sizeBytes: number }
+  >;
+  outputs: Array<
+    | { kind: 'image'; url: string; width: number | null; height: number | null }
+    | { kind: 'video'; url: string; posterUrl: string | null; durationSec: number | null; width: number | null; height: number | null }
+  >;
+  resultDurationMs: number | null;
+  providerTaskId: string | null;
+  /** The template's pipeline at the version this job ran, when it was a template job. */
+  stages: Array<{ stage: number; provider: string; model: string; config: Record<string, unknown> }> | null;
+  /** Every ledger row that names this job, oldest first. */
+  ledger: Array<{ id: string; reason: string; delta: number; bucket: string | null; balanceAfter: number; note: string | null; metadata: Record<string, unknown>; createdAt: string }>;
+}
+
 export interface AnalyticsJobsResponse {
   data: AnalyticsJobRow[];
   nextCursor: string | null;

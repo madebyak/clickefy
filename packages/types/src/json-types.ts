@@ -501,6 +501,12 @@ export interface JobError {
    * failures without a known cause.
    */
   reason?: string;
+  /**
+   * The provider's own error text, verbatim (truncated), kept when
+   * `reason` replaced it with a plain-language `message`. For admins:
+   * the public job API strips it before a client sees the error.
+   */
+  detail?: string;
 }
 
 // `ProviderCapabilities` used to live here. The richer per-model

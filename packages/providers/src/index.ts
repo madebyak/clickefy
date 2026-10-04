@@ -30,6 +30,14 @@ export {
 export { compile, pixelSizeForAspect } from './compile';
 
 export {
+  failedStageCost,
+  stageCost,
+  summariseJobCost,
+  type StageCost,
+  type StageCostFacts,
+} from './job-cost';
+
+export {
   buildFalInput,
   isFalSpec,
   pickFalEndpoint,

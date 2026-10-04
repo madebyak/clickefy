@@ -50,8 +50,12 @@ import {
   CREATE_PROMPT_KEY,
   CREATE_START_FRAME_KEY,
   executeStage,
+  failedStageCost,
   findCapabilities,
   isProviderTaskFailedError,
+  stageCost,
+  summariseJobCost,
+  type StageCost,
   pollAsyncTask,
   type CompileContext,
   type ExecuteOutput,
@@ -351,6 +355,50 @@ export const generateJob = task({
     }> = [];
 
     const providerEnv = buildProviderEnv();
+
+    // ── Cost accounting ──────────────────────────────────────────
+    // What each stage cost us, worked out from the rate card and the
+    // units it consumed the moment it finishes, and frozen on the row
+    // at completion or failure. See `@clickfy/types/provider-cost`.
+    const stageCosts: StageCost[] = [];
+    const requestIds: string[] = [];
+    const costOpts = (jobRow.options ?? {}) as {
+      mode?: string; duration?: number; sound?: boolean; inputVideoSeconds?: number; sourceSeconds?: number;
+      aspectRatio?: string; upscale?: { fps?: number; tier?: string };
+    };
+    const referenceCount = Object.values((jobRow.inputs ?? {}) as Record<string, { kind?: string } | undefined>)
+      .filter((v) => v && v.kind !== 'text').length;
+    const costFactsFor = (stage: GenerationStage) => {
+      const cfg = (stage.config ?? {}) as { mode?: string; duration?: number; sound?: boolean | string; aspectRatio?: string };
+      return {
+        modelKey: stage.model,
+        provider: stage.provider,
+        mode: cfg.mode ?? costOpts.mode ?? null,
+        durationSeconds: cfg.duration ?? costOpts.duration ?? null,
+        inputVideoSeconds: costOpts.inputVideoSeconds ?? costOpts.sourceSeconds ?? null,
+        sound: cfg.sound === true || cfg.sound === 'on' || costOpts.sound === true,
+        aspectRatio: cfg.aspectRatio ?? costOpts.aspectRatio ?? null,
+        upscale: costOpts.upscale ?? null,
+        references: referenceCount,
+      };
+    };
+    /** Fail the job, charging the failing stage by the provider's failure rule plus every stage already done. */
+    const failWithCost = (stageNumber: number, error: JobError, reachedProvider: boolean) => {
+      const stage = stages[stageNumber - 1];
+      const failing = stage
+        ? failedStageCost(stageNumber, costFactsFor(stage), findCapabilities(stage.model), {
+            reachedProvider,
+            reason: error.reason ?? null,
+            errorCode: error.code,
+          })
+        : null;
+      const all = failing ? [...stageCosts, failing] : stageCosts;
+      return failJob(jobId, error, {
+        provider: stages[0]?.provider ?? null,
+        requestIds,
+        ...summariseJobCost(all),
+      });
+    };
     // The provider's id for the last async stage, kept on the result: a
     // Seedance Draft's final is generated from it, and nothing else
     // records which provider task produced an output.
@@ -408,7 +456,7 @@ export const generateJob = task({
           stage: stageNumber,
           err: String(err),
         });
-        return failJob(jobId, providerJobError(err, stageNumber));
+        return failWithCost(stageNumber, providerJobError(err, stageNumber), true);
       }
 
       if (result.status === 'pending') {
@@ -418,6 +466,7 @@ export const generateJob = task({
         // ignores.
         const pendingProvider = result.provider;
         providerTaskId = result.taskId;
+        requestIds.push(result.taskId);
         const variant = pendingProvider === 'kling' ? result.variant : 'image2video';
         const api2 = pendingProvider === 'kling' ? result.api2 === true : false;
         try {
@@ -442,15 +491,14 @@ export const generateJob = task({
             stage: stageNumber,
             err: String(err),
           });
-          return failJob(jobId, providerJobError(err, stageNumber));
+          return failWithCost(stageNumber, providerJobError(err, stageNumber), true);
         }
         if (result.status !== 'completed') {
-          return failJob(jobId, {
-            code: 'provider_timeout',
-            message: 'Provider took too long to return a result.',
-            stage: stageNumber,
-            retryCount: 0,
-          });
+          return failWithCost(
+            stageNumber,
+            { code: 'provider_timeout', message: 'Provider took too long to return a result.', stage: stageNumber, retryCount: 0 },
+            true,
+          );
         }
       }
 
@@ -516,7 +564,24 @@ export const generateJob = task({
           thumbhash: renditions.thumbhash,
         });
       }
+
+      // The stage is done: price it from what it consumed and returned.
+      const stageOutputs = allOutputKeys.filter((k) => k.stageIndex === stageNumber);
+      const usage = (result as { usage?: { videoTokens?: number | null; durationSec?: number | null } }).usage ?? null;
+      const cost = stageCost(
+        stageNumber,
+        {
+          ...costFactsFor(stage),
+          outputs: Math.max(1, result.outputs.length),
+          outputDurationSec: stageOutputs.find((k) => k.kind === 'video')?.durationSec ?? null,
+          usage,
+        },
+        capabilities,
+      );
+      if (cost) stageCosts.push(cost);
+      else logger.warn('generate-job:cost-unpriced', { jobId, stage: stageNumber, model: stage.model });
     }
+    const jobCost = summariseJobCost(stageCosts);
 
     // ── Mark completed + assemble JobResult ──────────────────────
     const completedAt = new Date();
@@ -616,6 +681,11 @@ export const generateJob = task({
         result: jobResult,
         completedAt,
         progress: { stage: totalStages, totalStages, message: 'Done' },
+        provider: stages[0]?.provider ?? null,
+        providerCostUsd: jobCost.usd.toFixed(5),
+        providerBilledUnits: jobCost.units,
+        providerRequestIds: requestIds.length ? requestIds : null,
+        costBasis: stageCosts.length ? jobCost.basis : null,
       })
       .where(and(eq(jobs.id, jobId), eq(jobs.status, 'processing')))
       .returning();
@@ -915,13 +985,24 @@ function providerJobError(err: unknown, stage: number): JobError {
   };
 }
 
-async function failJob(jobId: string, error: JobError): Promise<{ status: 'failed'; error: JobError }> {
+async function failJob(
+  jobId: string,
+  error: JobError,
+  cost?: { provider: string | null; requestIds: string[]; usd: number; basis: 'exact' | 'computed' | 'estimated'; units: StageCost[] },
+): Promise<{ status: 'failed'; error: JobError }> {
   const [row] = await getDb()
     .update(jobs)
     .set({
       status: 'failed',
       error,
       completedAt: new Date(),
+      // A failure before any provider was reached costs nothing; say so
+      // explicitly rather than leaving the column null (= unknown).
+      provider: cost?.provider ?? null,
+      providerCostUsd: (cost?.usd ?? 0).toFixed(5),
+      providerBilledUnits: cost?.units ?? [],
+      providerRequestIds: cost?.requestIds.length ? cost.requestIds : null,
+      costBasis: cost?.basis ?? 'computed',
     })
     .where(eq(jobs.id, jobId))
     .returning();

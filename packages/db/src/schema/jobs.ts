@@ -15,7 +15,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { jobStatusEnum } from './enums';
 import type {
@@ -29,6 +29,20 @@ import { projects } from './projects';
 import { templates } from './templates';
 import { templateVersions } from './template-versions';
 import { users } from './users';
+
+/** One stage's share of `provider_cost_usd`. */
+export interface ProviderBilledUnit {
+  stage: number;
+  model: string;
+  provider: string;
+  unit: 'second' | 'image' | 'call' | 'token' | 'megapixel';
+  quantity: number;
+  unitPriceUsd: number;
+  usd: number;
+  mode: string | null;
+  basis: 'exact' | 'computed' | 'estimated';
+  note?: string;
+}
 
 export const jobs = pgTable(
   'jobs',
@@ -83,6 +97,28 @@ export const jobs = pgTable(
     error: jsonb('error').$type<JobError>(),
 
     triggerRunId: text('trigger_run_id'),
+
+    // ── Cost tracking (migration 0042) ────────────────────────────────
+
+    /** Which adapter ran the job (first stage's provider). */
+
+    provider: text('provider'),
+
+    /** Dollars we paid the provider, frozen at completion / failure. */
+
+    providerCostUsd: numeric('provider_cost_usd', { precision: 10, scale: 5 }),
+
+    /** How the dollars were reached, one entry per stage. */
+
+    providerBilledUnits: jsonb('provider_billed_units').$type<ProviderBilledUnit[] | null>(),
+
+    /** The provider's own ids, one per async stage. */
+
+    providerRequestIds: jsonb('provider_request_ids').$type<string[] | null>(),
+
+    /** exact (provider reported units) | computed (rate card) | estimated (back-filled). */
+
+    costBasis: text('cost_basis').$type<'exact' | 'computed' | 'estimated' | null>(),
     /** For POST idempotency — same key returns the existing job, never a duplicate. */
     idempotencyKey: text('idempotency_key'),
 

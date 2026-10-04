@@ -45,7 +45,7 @@ import { Hono } from 'hono';
 import { eq, sql } from 'drizzle-orm';
 import type Stripe from 'stripe';
 
-import { creditPacks, planProducts, plans, stripeEvents, users } from '@clickfy/db';
+import { creditPacks, payments, planProducts, plans, stripeEvents, users } from '@clickfy/db';
 import {
   cancellationTransition,
   decideRollover,
@@ -447,6 +447,20 @@ async function applyInvoicePaid(
 
   const resumed = await resumeTopupClocks(c.var.db, userId);
 
+  // Cash, for the dashboard. Idempotent on the invoice id; a replay of
+  // the event updates nothing. Never allowed to fail the grant.
+  await recordPayment(c, {
+    userId,
+    kind: 'subscription',
+    externalId: invoice.id,
+    paymentIntentId: await invoicePaymentIntent(stripe, invoice.id),
+    amountCents: invoice.amount_paid ?? 0,
+    currency: invoice.currency ?? 'usd',
+    creditsGranted: rolled?.granted ?? null,
+    productRef: priceId,
+    occurredAt: new Date((invoice.status_transitions?.paid_at ?? invoice.created) * 1000),
+  });
+
   if (!rolled) return `already granted for ${invoice.id} (replay)`;
   const notes: string[] = [`granted ${rolled.granted} (${plan.tier}, ${decision})`];
   if (rolled.carried > 0) notes.push(`carried ${rolled.carried} forward`);
@@ -704,7 +718,75 @@ async function applyCheckoutCompleted(
     },
   });
 
+  await recordPayment(c, {
+    userId,
+    kind: 'pack',
+    externalId: sessionId,
+    paymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+    amountCents: typeof session.amount_total === 'number' ? session.amount_total : 0,
+    currency: typeof session.currency === 'string' ? session.currency : 'usd',
+    creditsGranted: amount,
+    productRef: pack.storeProductId,
+    occurredAt: new Date(event.created * 1000),
+  });
+
   return `top-up ${pack.storeProductId}: +${amount} credits (${pack.credits} + ${pack.bonusCredits} bonus)`;
+}
+
+/**
+ * One `payments` row per Stripe object. `ON CONFLICT DO NOTHING` on
+ * (platform, external_id): the webhook can be redelivered, the row cannot.
+ * Best-effort by contract — the grant has already happened, and a
+ * bookkeeping failure must not make Stripe retry a paid, granted event.
+ */
+async function recordPayment(
+  c: { var: AppEnv['Variables'] },
+  p: {
+    userId: string;
+    kind: 'subscription' | 'pack';
+    externalId: string;
+    paymentIntentId: string | null;
+    amountCents: number;
+    currency: string;
+    creditsGranted: number | null;
+    productRef: string | null;
+    occurredAt: Date;
+  },
+): Promise<void> {
+  try {
+    await c.var.db
+      .insert(payments)
+      .values({
+        userId: p.userId,
+        platform: 'stripe',
+        kind: p.kind,
+        externalId: p.externalId,
+        paymentIntentId: p.paymentIntentId,
+        amountCents: p.amountCents,
+        currency: p.currency,
+        creditsGranted: p.creditsGranted,
+        productRef: p.productRef,
+        occurredAt: p.occurredAt,
+      })
+      .onConflictDoNothing({ target: [payments.platform, payments.externalId] });
+  } catch (err) {
+    console.error('[stripe webhook] recordPayment failed', { externalId: p.externalId, err: String(err) });
+  }
+}
+
+/**
+ * The payment intent behind an invoice. On this API version the invoice
+ * no longer carries it; it hangs off `invoice_payments`. Needed so a later
+ * `charge.refunded` (which names the intent) can find the payment row.
+ */
+async function invoicePaymentIntent(stripe: Stripe, invoiceId: string): Promise<string | null> {
+  try {
+    const list = await stripe.invoicePayments.list({ invoice: invoiceId, limit: 1 });
+    const pi = list.data[0]?.payment?.payment_intent;
+    return typeof pi === 'string' ? pi : (pi?.id ?? null);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -739,6 +821,21 @@ async function applyChargeRefunded(
   const refunded = charge.amount_refunded ?? 0;
   const total = charge.amount ?? 0;
   if (total <= 0 || refunded <= 0) return 'nothing refunded';
+
+  // Cash side first: the payment row, found by the charge's intent, now
+  // carries the refunded amount. Idempotent — `amount_refunded` is the
+  // charge's running total, so a redelivery writes the same number.
+  const refundPi = typeof charge.payment_intent === 'string' ? charge.payment_intent : null;
+  if (refundPi) {
+    try {
+      await c.var.db
+        .update(payments)
+        .set({ amountRefundedCents: refunded })
+        .where(eq(payments.paymentIntentId, refundPi));
+    } catch (err) {
+      console.error('[stripe webhook] refund bookkeeping failed', { pi: refundPi, err: String(err) });
+    }
+  }
 
   let isTopup = false;
   let packCredits: number | null = null;

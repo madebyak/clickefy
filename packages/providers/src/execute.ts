@@ -15,6 +15,7 @@ import type { CompiledRequest } from './compile-types';
 import { executeFal, pollFal, type FalEnv } from './adapters/fal';
 import { ProviderTaskFailedError } from './provider-errors';
 import { executeGemini, type GeminiEnv } from './adapters/gemini';
+import { executeGeminiOmni } from './adapters/gemini-omni';
 import {
   executeKling,
   pollKling,
@@ -100,6 +101,11 @@ export async function executeStage(
   if (request.provider === 'gemini') {
     if (!env.gemini) {
       throw new Error('executeStage(): missing `env.gemini` for a Gemini request.');
+    }
+    // One vendor, two product lines: Omni (video) is a blocking call on
+    // the Interactions endpoint; the image models go through the SDK.
+    if (request.variant === 'omniVideo') {
+      return executeGeminiOmni(request, env.gemini);
     }
     return executeGemini(request, env.gemini);
   }

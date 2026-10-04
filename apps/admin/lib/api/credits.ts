@@ -63,6 +63,10 @@ export interface ProviderModelRow {
   tierPricing: Record<string, number> | null;
   costPerCallUsd: string;
   updatedAt: string;
+  /** Smoke test: the last test job and its outcome (null = never / pending). */
+  lastTestJobId: string | null;
+  lastTestedAt: string | null;
+  lastTestOk: boolean | null;
 }
 
 export interface ProviderModelDetail extends ProviderModelRow {
@@ -78,6 +82,8 @@ export function fetchModel(id: string, getToken: TokenGetter) {
 }
 
 export interface ModelUpdate {
+  /** Records a freshly submitted smoke-test job on the row. */
+  lastTestJobId?: string;
   costCredits?: number;
   displayName?: string;
   status?: ModelStatus;
@@ -329,4 +335,40 @@ export function fetchLedgerSample(getToken: TokenGetter, limit = 50) {
     `/v1/admin/credits/ledger?limit=${limit}`,
     { getToken },
   );
+}
+
+// ── Smoke test ──────────────────────────────────────────────────────
+
+export interface SmokeTestStatus {
+  job: {
+    id: string;
+    status: 'queued' | 'processing' | 'completed' | 'failed' | 'purged';
+    createdAt: string;
+    completedAt: string | null;
+    error: { code: string; message: string } | null;
+    outputs: Array<{ kind: 'image' | 'video'; url: string }>;
+  } | null;
+  lastTestedAt: string | null;
+  lastTestOk: boolean | null;
+}
+
+export function fetchSmokeTest(id: string, getToken: TokenGetter) {
+  return apiFetch<SmokeTestStatus>(`/v1/admin/credits/models/${id}/smoke-test`, { getToken });
+}
+
+/**
+ * Submit the smoke-test generation as the signed-in admin (an ordinary
+ * user account for this purpose: the job is charged to it like any other).
+ * Uses the public create route so the model runs exactly as it would for
+ * a customer — same validation, pricing and worker path.
+ */
+export function submitSmokeTestJob(
+  input: { modelKey: string; prompt: string; aspectRatio?: string; quality?: string; duration?: number },
+  getToken: TokenGetter,
+) {
+  return apiFetch<{ jobId: string; status: string }>('/v1/jobs/create', {
+    method: 'POST',
+    getToken,
+    json: input,
+  });
 }

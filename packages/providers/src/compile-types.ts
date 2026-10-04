@@ -143,6 +143,26 @@ export interface GeminiCompiledRequest {
   imageParts: ImagePart[];
 }
 
+/**
+ * Gemini Omni Flash — Google's VIDEO model on the Gemini API.
+ *
+ * Same provider tag and key as the image models (one vendor, one host),
+ * discriminated by `variant: 'omniVideo'`. The call is synchronous on
+ * Google's side, so the adapter returns `completed` outputs directly.
+ */
+export interface GeminiOmniCompiledRequest {
+  provider: 'gemini';
+  variant: 'omniVideo';
+  model: string;
+  prompt: string;
+  aspectRatio: '16:9' | '9:16';
+  resolution: '360p' | '720p' | '1080p' | '4k';
+  /** Omitted for first+last frame pairs so the model infers interpolation. */
+  task?: 'text_to_video' | 'image_to_video' | 'reference_to_video';
+  /** Start frame, end frame and references, in input order. Sent inline as base64. */
+  images: ImagePart[];
+}
+
 export interface KlingCompiledRequest {
   provider: 'kling';
   /**
@@ -289,6 +309,7 @@ export interface GptImageCompiledRequest {
 
 export type CompiledRequest =
   | GeminiCompiledRequest
+  | GeminiOmniCompiledRequest
   | KlingCompiledRequest
   | SeedanceCompiledRequest
   | SeedreamCompiledRequest

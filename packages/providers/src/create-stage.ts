@@ -298,6 +298,24 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
       if (u.fidelity) config.fidelity = u.fidelity;
       if (typeof u.bitDepth === 'number') config.bitDepth = u.bitDepth;
     }
+  } else if (provider === 'gemini' && !isImage) {
+    // Gemini Omni (video): frames or references, no duration control.
+    if (input.hasStartFrame || input.hasEndFrame) {
+      const frameSlots: SeedanceFrameSlots = {};
+      if (input.hasStartFrame) frameSlots.firstFrame = { kind: 'user_input', fieldKey: CREATE_START_FRAME_KEY };
+      if (input.hasEndFrame) frameSlots.lastFrame = { kind: 'user_input', fieldKey: CREATE_END_FRAME_KEY };
+      config.frameSlots = frameSlots;
+    }
+    if (refCount > 0) {
+      config.referenceSlots = Array.from(
+        { length: refCount },
+        (_, i): SeedanceReferenceSlot => ({
+          id: createReferenceKey(i),
+          assetKind: input.referenceKinds?.[i] ?? 'image',
+          source: { kind: 'user_input', fieldKey: createReferenceKey(i) },
+        }),
+      );
+    }
   } else if (provider === 'seedance' && !isImage) {
     const seedance = config as SeedanceStageConfig;
     if (typeof input.duration === 'number') seedance.duration = input.duration;

@@ -21,6 +21,8 @@ import type { FalSpec, ModelCapabilities } from '@clickfy/providers';
 const endpointId = z.string().min(3).regex(/^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)+$/i, 'fal endpoint ids look like owner/model/task');
 
 const enumMap = z.record(z.string(), z.string()).optional();
+/** Limit a field to some tasks (an endpoint that lacks it would 422). */
+const taskList = z.array(z.enum(['text', 'image', 'reference'])).min(1).optional();
 
 export const falSpecSchema = z
   .object({
@@ -34,17 +36,18 @@ export const falSpecSchema = z
     input: z.object({
       prompt: z.string().min(1).optional(),
       negativePrompt: z.string().min(1).optional(),
-      aspectRatio: z.object({ field: z.string().min(1), values: enumMap }).optional(),
-      mode: z.object({ field: z.string().min(1), values: enumMap }).optional(),
+      aspectRatio: z.object({ field: z.string().min(1), values: enumMap, tasks: taskList }).optional(),
+      mode: z.object({ field: z.string().min(1), values: enumMap, tasks: taskList }).optional(),
       duration: z
         .discriminatedUnion('as', [
-          z.object({ field: z.string().min(1), as: z.literal('number') }),
-          z.object({ field: z.string().min(1), as: z.literal('string') }),
+          z.object({ field: z.string().min(1), as: z.literal('number'), tasks: taskList }),
+          z.object({ field: z.string().min(1), as: z.literal('string'), tasks: taskList }),
           z.object({
             field: z.string().min(1),
             as: z.literal('frames'),
             fps: z.number().int().min(1).max(120),
             plusOne: z.boolean().optional(),
+            tasks: taskList,
           }),
         ])
         .optional(),

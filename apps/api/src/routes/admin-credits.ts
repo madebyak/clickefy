@@ -49,6 +49,7 @@ import {
   creditLedger,
   creditPacks,
   grantPolicies,
+  jobs,
   providerModels,
   subscriptionPlans,
 } from '@clickfy/db';
@@ -59,6 +60,7 @@ import { recomputeTemplatesForModel } from '../lib/template-cost';
 import { falModelCapabilitiesSchema } from '../lib/fal-model-schema';
 import { invalidateDynamicModels } from '../lib/dynamic-models';
 import { inspectFalEndpoint } from '../lib/fal-inspect';
+import { assetUrl } from '../lib/asset-url';
 import type { AppEnv } from '../types';
 
 export const adminCreditsRoute = new Hono<AppEnv>();
@@ -233,10 +235,58 @@ adminCreditsRoute.get('/models', async (c) => {
       tierPricing: providerModels.tierPricing,
       costPerCallUsd: providerModels.costPerCallUsd,
       updatedAt: providerModels.updatedAt,
+      lastTestJobId: providerModels.lastTestJobId,
+      lastTestedAt: providerModels.lastTestedAt,
+      lastTestOk: providerModels.lastTestOk,
     })
     .from(providerModels)
     .orderBy(providerModels.provider, providerModels.modelKey);
   return c.json({ data: rows });
+});
+
+/**
+ * The smoke test's outcome. The admin submits the test through the
+ * ordinary create route (so the model runs exactly as it would for a
+ * customer) and records the job id with PATCH; this reads the job back,
+ * mints viewable URLs for its outputs, and writes the verdict onto the
+ * row once the job is terminal.
+ */
+adminCreditsRoute.get('/models/:id/smoke-test', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const row = await c.var.db.query.providerModels.findFirst({ where: eq(providerModels.id, id) });
+  if (!row) return c.json({ error: { code: 'not_found', message: 'Model not found.' } }, 404);
+  if (!row.lastTestJobId) {
+    return c.json({ data: { job: null, lastTestedAt: null, lastTestOk: null } });
+  }
+  const job = await c.var.db.query.jobs.findFirst({ where: eq(jobs.id, row.lastTestJobId) });
+  if (!job) {
+    return c.json({ data: { job: null, lastTestedAt: row.lastTestedAt?.toISOString() ?? null, lastTestOk: row.lastTestOk } });
+  }
+  const origin = new URL(c.req.url).origin;
+  const result = (job.result ?? null) as { images?: Array<{ r2Key: string }>; videos?: Array<{ streamId: string }> } | null;
+  const outputs = [
+    ...(result?.images ?? []).map((i) => ({ kind: 'image' as const, url: assetUrl(origin, i.r2Key) })),
+    ...(result?.videos ?? []).map((v) => ({ kind: 'video' as const, url: assetUrl(origin, v.streamId) })),
+  ];
+  const terminal = job.status === 'completed' || job.status === 'failed';
+  const ok = terminal ? job.status === 'completed' : null;
+  if (terminal && row.lastTestOk !== ok) {
+    await c.var.db.update(providerModels).set({ lastTestOk: ok }).where(eq(providerModels.id, id));
+  }
+  return c.json({
+    data: {
+      job: {
+        id: job.id,
+        status: job.status,
+        createdAt: job.createdAt.toISOString(),
+        completedAt: job.completedAt?.toISOString() ?? null,
+        error: job.error ? { code: (job.error as { code: string }).code, message: (job.error as { message: string }).message } : null,
+        outputs,
+      },
+      lastTestedAt: row.lastTestedAt?.toISOString() ?? null,
+      lastTestOk: terminal ? ok : row.lastTestOk,
+    },
+  });
 });
 
 adminCreditsRoute.get('/models/:id', zValidator('param', idParamSchema), async (c) => {
@@ -258,6 +308,8 @@ const updateModelSchema = z
     tierPricing: tierPricingSchema.nullable().optional(),
     /** Database-driven fal models only. Validated against the fal schema. */
     capabilities: z.record(z.string(), z.unknown()).optional(),
+    /** A smoke-test job just submitted for this model. */
+    lastTestJobId: z.string().uuid().optional(),
   })
   .refine((b) => Object.keys(b).length > 0, 'nothing to update');
 
@@ -284,6 +336,11 @@ adminCreditsRoute.patch(
     if (body.status !== undefined) set.status = body.status;
     if (body.costPerCallUsd !== undefined) set.costPerCallUsd = body.costPerCallUsd.toFixed(4);
     if (body.tierPricing !== undefined) set.tierPricing = body.tierPricing;
+    if (body.lastTestJobId !== undefined) {
+      set.lastTestJobId = body.lastTestJobId;
+      set.lastTestedAt = new Date();
+      set.lastTestOk = null;
+    }
 
     if (body.capabilities !== undefined) {
       // Only a spec-driven fal row owns its capabilities; every other

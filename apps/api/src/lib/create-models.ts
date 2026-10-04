@@ -73,11 +73,34 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
     supportsEndFrame: false,
   },
   {
+    modelKey: 'gpt-image-2.5-sunburst',
+    name: 'GPT Image 2.5 Sunburst',
+    attachments: 'references',
+    requiresStartFrame: false,
+    supportsEndFrame: false,
+  },
+  {
+    modelKey: 'gpt-image-2.5-flare',
+    name: 'GPT Image 2.5 Flare',
+    attachments: 'references',
+    requiresStartFrame: false,
+    supportsEndFrame: false,
+  },
+  {
     modelKey: 'gpt-image-2',
     name: 'GPT Image 2',
     attachments: 'references',
     requiresStartFrame: false,
     supportsEndFrame: false,
+  },
+  {
+    modelKey: 'gemini-omni-1-1-flash',
+    name: 'Gemini Omni 1.1',
+    // Frames ⇄ References, like Seedance: a start (+end) frame, or up to
+    // three subject references. No duration picker (the API has none).
+    attachments: 'seedance',
+    requiresStartFrame: false,
+    supportsEndFrame: true,
   },
   {
     modelKey: 'kling-v3-omni',

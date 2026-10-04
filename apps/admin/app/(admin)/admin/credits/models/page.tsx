@@ -18,7 +18,8 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Check, Loader2, Pencil, Plus, Search, Settings2, X } from 'lucide-react';
+import { Check, FlaskConical, Loader2, Pencil, Plus, Search, Settings2, X } from 'lucide-react';
+import { useEffect } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -56,7 +57,9 @@ import {
   createFalModel,
   fetchModel,
   fetchModels,
+  fetchSmokeTest,
   inspectFalEndpoint,
+  submitSmokeTestJob,
   updateModel,
   updateModelCost,
   type FalInspectResult,
@@ -103,6 +106,7 @@ export default function ModelsPage() {
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
   const [editingRow, setEditingRow] = useState<ProviderModelRow | null>(null);
   const [adding, setAdding] = useState(false);
+  const [testingRow, setTestingRow] = useState<ProviderModelRow | null>(null);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin', 'credits'] });
 
@@ -151,21 +155,22 @@ export default function ModelsPage() {
               <TableHead>Status</TableHead>
               <TableHead className="text-right">USD / call</TableHead>
               <TableHead className="w-[180px] text-right">Credits</TableHead>
-              <TableHead className="w-[110px]" />
+              <TableHead className="w-[120px]">Tested</TableHead>
+              <TableHead className="w-[140px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={7}>
                     <Skeleton className="h-6 w-full" />
                   </TableCell>
                 </TableRow>
               ))
             ) : (data?.length ?? 0) === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                   No models registered.
                 </TableCell>
               </TableRow>
@@ -213,6 +218,16 @@ export default function ModelsPage() {
                         </span>
                       )}
                     </TableCell>
+                    <TableCell>
+                      {row.lastTestedAt ? (
+                        <span className={row.lastTestOk === true ? 'text-xs text-emerald-600' : row.lastTestOk === false ? 'text-xs text-red-600' : 'text-xs text-muted-foreground'}>
+                          {row.lastTestOk === true ? 'ok' : row.lastTestOk === false ? 'failed' : 'pending'} ·{' '}
+                          {new Date(row.lastTestedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">never</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       {isEditing ? (
                         <div className="flex justify-end gap-1">
@@ -230,6 +245,9 @@ export default function ModelsPage() {
                           </Button>
                           <Button size="icon" variant="ghost" title="Edit model" onClick={() => setEditingRow(row)}>
                             <Settings2 className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" title="Smoke test" onClick={() => setTestingRow(row)}>
+                            <FlaskConical className="h-4 w-4" />
                           </Button>
                         </div>
                       )}
@@ -250,6 +268,16 @@ export default function ModelsPage() {
           onSaved={() => {
             invalidate();
             setEditingRow(null);
+          }}
+        />
+      )}
+      {testingRow && (
+        <SmokeTestDialog
+          row={testingRow}
+          tokenGetter={tokenGetter}
+          onClose={() => {
+            invalidate();
+            setTestingRow(null);
           }}
         />
       )}
@@ -553,6 +581,136 @@ function AddFalModelDialog({
           <Button onClick={() => create.mutate()} disabled={!inspected || create.isPending || !modelKey.trim() || !displayName.trim()}>
             {create.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Create model
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Smoke test dialog ───────────────────────────────────────────────
+
+const SMOKE_PROMPT =
+  'A small red marble rolls slowly across a sunlit wooden table and stops beside a green apple. Soft daylight, shallow depth of field.';
+
+/**
+ * One real generation on the signed-in admin's own account, through the
+ * public create route — the same validation, pricing and worker path a
+ * customer hits. The job id is recorded on the model row; the outcome is
+ * read back here and written to the row by the API once terminal.
+ */
+function SmokeTestDialog({
+  row,
+  tokenGetter,
+  onClose,
+}: {
+  row: ProviderModelRow;
+  tokenGetter: () => Promise<string | null>;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const status = useQuery({
+    queryKey: ['admin', 'credits', 'models', row.id, 'smoke-test'],
+    queryFn: () => fetchSmokeTest(row.id, tokenGetter),
+    refetchInterval: (q) => {
+      const st = q.state.data?.job?.status;
+      return st === 'queued' || st === 'processing' ? 5000 : false;
+    },
+  });
+
+  const run = useMutation({
+    mutationFn: async () => {
+      const detail = await fetchModel(row.id, tokenGetter);
+      const caps = detail.capabilities as {
+        kind?: string;
+        modes?: { default?: string };
+        sizing?: { values?: string[]; aspectRatios?: string[] };
+        duration?: { default?: number };
+      };
+      const aspect = caps.sizing?.values?.[0] ?? caps.sizing?.aspectRatios?.[0];
+      const submitted = await submitSmokeTestJob(
+        {
+          modelKey: row.modelKey,
+          prompt: SMOKE_PROMPT,
+          ...(aspect ? { aspectRatio: aspect } : {}),
+          ...(caps.modes?.default ? { quality: caps.modes.default } : {}),
+          ...(caps.kind === 'video' && caps.duration?.default ? { duration: caps.duration.default } : {}),
+        },
+        tokenGetter,
+      );
+      await updateModel(row.id, { lastTestJobId: submitted.jobId }, tokenGetter);
+      return submitted.jobId;
+    },
+    onSuccess: () => {
+      toast.success('Smoke test submitted — this charges your own account like any generation.');
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'credits', 'models', row.id, 'smoke-test'] });
+    },
+    onError: (err) => toast.error(errorMessage(err, 'Could not submit the smoke test')),
+  });
+
+  useEffect(() => {
+    if (status.data?.job?.status === 'completed' || status.data?.job?.status === 'failed') {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'credits', 'models'] });
+    }
+  }, [status.data?.job?.status, queryClient]);
+
+  const job = status.data?.job ?? null;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Smoke test · {row.displayName}</DialogTitle>
+          <DialogDescription>
+            Runs one generation of a fixed prompt at the model&apos;s default settings on your own
+            account, through the normal create path. A model should pass this before it is set active.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <p className="rounded-md border p-3 text-xs text-muted-foreground">{SMOKE_PROMPT}</p>
+          {status.isLoading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : job ? (
+            <div className="rounded-md border p-3">
+              <div className="flex items-center justify-between">
+                <span>
+                  Last test:{' '}
+                  <Badge variant={job.status === 'completed' ? 'default' : job.status === 'failed' ? 'destructive' : 'secondary'} className="capitalize">
+                    {job.status}
+                  </Badge>
+                </span>
+                <span className="text-xs text-muted-foreground">{new Date(job.createdAt).toLocaleString()}</span>
+              </div>
+              {job.error ? (
+                <p className="mt-2 text-xs text-red-600">
+                  {job.error.code}: {job.error.message}
+                </p>
+              ) : null}
+              {job.outputs.length > 0 ? (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {job.outputs.map((o) =>
+                    o.kind === 'video' ? (
+                      <video key={o.url} src={o.url} controls className="w-full rounded" />
+                    ) : (
+                      <img key={o.url} src={o.url} alt="smoke test output" className="w-full rounded" />
+                    ),
+                  )}
+                </div>
+              ) : null}
+              {(job.status === 'queued' || job.status === 'processing') && (
+                <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Generating… this page polls every 5 seconds.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">This model has not been tested yet.</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+          <Button onClick={() => run.mutate()} disabled={run.isPending || job?.status === 'queued' || job?.status === 'processing'}>
+            {run.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FlaskConical className="mr-2 h-4 w-4" />}
+            Run smoke test
           </Button>
         </DialogFooter>
       </DialogContent>

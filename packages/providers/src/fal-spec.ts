@@ -62,14 +62,14 @@ export interface FalInputMap {
    * (`16:9`) to the endpoint's (`16:9` is the common case, so the map is
    * usually omitted). Absent = never sent.
    */
-  aspectRatio?: { field: string; values?: Record<string, string> };
+  aspectRatio?: { field: string; values?: Record<string, string>; tasks?: FalTask[] };
   /**
    * The billed tier (`stage.config.mode`, one of `capabilities.modes.values`)
    * written to a resolution/quality field, with an optional spelling map
    * (`'1080p' → '1080p'`, or `'high' → 'hd'`). Absent = never sent.
    */
-  mode?: { field: string; values?: Record<string, string> };
-  duration?: FalDurationEncoding;
+  mode?: { field: string; values?: Record<string, string>; tasks?: FalTask[] };
+  duration?: FalDurationEncoding & { tasks?: FalTask[] };
   /** Start-frame URL field (`image_url`). */
   imageUrl?: string;
   /** End-frame URL field (`end_image_url`, `tail_image_url`). */
@@ -136,13 +136,17 @@ export function buildFalInput(spec: FalSpec, task: FalTask, req: FalResolvedRequ
   const m = spec.input;
   const body: Record<string, unknown> = { ...(m.extra ?? {}) };
 
+  // A field can be limited to some tasks (`tasks`): H3 Max's image-to-video
+  // endpoint has no `aspect_ratio`, its text-to-video does.
+  const on = (entry: { tasks?: FalTask[] } | undefined) => !entry?.tasks || entry.tasks.includes(task);
+
   body[m.prompt ?? 'prompt'] = req.prompt;
   if (m.negativePrompt && req.negativePrompt) body[m.negativePrompt] = req.negativePrompt;
-  if (m.aspectRatio && req.aspectRatio) {
+  if (m.aspectRatio && req.aspectRatio && on(m.aspectRatio)) {
     body[m.aspectRatio.field] = m.aspectRatio.values?.[req.aspectRatio] ?? req.aspectRatio;
   }
-  if (m.mode && req.mode) body[m.mode.field] = m.mode.values?.[req.mode] ?? req.mode;
-  if (m.duration && typeof req.durationSeconds === 'number') {
+  if (m.mode && req.mode && on(m.mode)) body[m.mode.field] = m.mode.values?.[req.mode] ?? req.mode;
+  if (m.duration && typeof req.durationSeconds === 'number' && on(m.duration)) {
     const d = m.duration;
     if (d.as === 'number') body[d.field] = req.durationSeconds;
     else if (d.as === 'string') body[d.field] = String(req.durationSeconds);

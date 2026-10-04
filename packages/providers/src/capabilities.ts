@@ -1644,6 +1644,105 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     },
     notes: 'Strongest text rendering. Quality tier drives a 35x price swing.',
   },
+  'gpt-image-2.5-sunburst': {
+    provider: 'openai',
+    modelKey: 'gpt-image-2.5-sunburst',
+    // Dated snapshot pinned, as for GPT Image 2 — the bare alias floats.
+    apiModelId: 'gpt-image-2.5-sunburst-2026-09-08',
+    displayName: 'GPT Image 2.5 Sunburst',
+    status: 'active',
+    kind: 'image',
+    sizing: {
+      mode: 'pixels',
+      presets: ['1024x1024', '1536x1024', '1024x1536'],
+      aspectRatios: OPENAI_ASPECT_RATIOS,
+      divisibleBy: 16,
+      maxEdge: 3840,
+      minPixels: 655_360,
+      maxPixels: 8_294_400,
+    },
+    outputs: { min: 1, max: 1, default: 1 },
+    quality: { values: ['low', 'medium', 'high'], default: 'medium' },
+    refAddressing: 'ordinal',
+    maxReferences: 16,
+    maxSubjects: 16,
+    maxImagesTotal: 16,
+    maxPromptChars: 5000,
+    modes: {
+      values: ['low', 'medium', 'high'],
+      default: 'medium',
+      labels: { low: 'Draft', medium: 'Standard', high: 'High' },
+    },
+    notes: "OpenAI's most capable image model (Sept 2026). Token-priced like GPT Image 2.",
+  },
+  'gpt-image-2.5-flare': {
+    provider: 'openai',
+    modelKey: 'gpt-image-2.5-flare',
+    // Dated snapshot pinned, as for GPT Image 2 — the bare alias floats.
+    apiModelId: 'gpt-image-2.5-flare-2026-09-08',
+    displayName: 'GPT Image 2.5 Flare',
+    status: 'active',
+    kind: 'image',
+    sizing: {
+      mode: 'pixels',
+      presets: ['1024x1024', '1536x1024', '1024x1536'],
+      aspectRatios: OPENAI_ASPECT_RATIOS,
+      divisibleBy: 16,
+      maxEdge: 3840,
+      minPixels: 655_360,
+      maxPixels: 8_294_400,
+    },
+    outputs: { min: 1, max: 1, default: 1 },
+    quality: { values: ['low', 'medium', 'high'], default: 'medium' },
+    refAddressing: 'ordinal',
+    maxReferences: 16,
+    maxSubjects: 16,
+    maxImagesTotal: 16,
+    maxPromptChars: 5000,
+    modes: {
+      values: ['low', 'medium', 'high'],
+      default: 'medium',
+      labels: { low: 'Draft', medium: 'Standard', high: 'High' },
+    },
+    notes: "OpenAI's fast everyday image model (Sept 2026). Same token prices, lower latency.",
+  },
+
+  // ── Google video ────────────────────────────────────────────────────
+  /**
+   * Gemini Omni Flash 1.1 — Google's video model, called DIRECTLY on the
+   * Gemini API (not via fal; founder's decision 2026-10-05).
+   *
+   * No `duration`: the API has no length control — the model picks 3–10 s
+   * from the prompt. The composer therefore shows no duration picker and
+   * the price is per clip at the tier (assumes a typical ~8 s clip; the
+   * real token count is logged per call for cost tracking).
+   *
+   * Tiers are the API's `resolution` values. 360p and 720p are measured
+   * (1,931 and 5,792 video tokens per second at $17.50/M); 1080p and 4K
+   * are offered once their token rates are measured on the smoke test.
+   */
+  'gemini-omni-1-1-flash': {
+    provider: 'gemini',
+    modelKey: 'gemini-omni-1-1-flash',
+    apiModelId: 'gemini-omni-1.1-flash',
+    displayName: 'Gemini Omni 1.1',
+    status: 'active',
+    kind: 'video',
+    sizing: { mode: 'aspect', values: ['16:9', '9:16'] },
+    outputs: { min: 1, max: 1, default: 1 },
+    refAddressing: 'ordinal',
+    maxReferences: 3,
+    maxSubjects: 3,
+    maxImagesTotal: 3,
+    acceptsStartEndImage: true,
+    maxPromptChars: 2500,
+    modes: {
+      values: ['360p', '720p', '1080p'],
+      default: '720p',
+      labels: { '360p': '360p', '720p': '720p', '1080p': '1080p' },
+    },
+    notes: 'Google video with native audio; length chosen by the model (3–10 s).',
+  },
 };
 
 /**

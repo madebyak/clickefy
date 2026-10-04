@@ -68,6 +68,7 @@ import type {
   SeedanceCompiledRequest,
   SeedreamCompiledRequest,
   StageOutputRef,
+  GeminiOmniCompiledRequest,
 } from './compile-types';
 
 // ─── Token parsing ──────────────────────────────────────────────────
@@ -544,6 +545,73 @@ function compileFal(ctx: CompileContext, warnings: CompileWarning[]): CompileRes
 }
 
 /**
+ * Gemini Omni Flash (video). Reads the same slot config the fal and
+ * Seedance branches write: a start frame (+ optional end frame) or a set
+ * of references, plus aspect ratio and tier. Every image is passed to the
+ * adapter as a part; the adapter inlines the bytes.
+ */
+function compileGeminiOmni(ctx: CompileContext, warnings: CompileWarning[]): CompileResult {
+  const { stage, capabilities } = ctx;
+  const cfg = (stage.config ?? {}) as {
+    aspectRatio?: string;
+    mode?: string;
+    frameSlots?: import('@clickfy/types').SeedanceFrameSlots;
+    referenceSlots?: Array<import('@clickfy/types').SeedanceReferenceSlot>;
+  };
+  const name = capabilities.displayName;
+
+  const images: ImagePart[] = [];
+  const start = cfg.frameSlots?.firstFrame
+    ? resolveFrameSlot(cfg.frameSlots.firstFrame, ctx, 1, 'image', warnings, name)
+    : undefined;
+  const end = cfg.frameSlots?.lastFrame
+    ? resolveFrameSlot(cfg.frameSlots.lastFrame, ctx, 2, 'image', warnings, name)
+    : undefined;
+  if (start) images.push(start);
+  if (end) images.push(end);
+  (cfg.referenceSlots ?? []).forEach((slot, i) => {
+    if (slot.assetKind !== 'image') {
+      warnings.push({ code: 'reference_dropped', message: `${name} takes image references only; dropped a ${slot.assetKind}.` });
+      return;
+    }
+    const part = resolveFrameSlot(slot.source, ctx, images.length + 1, 'image', warnings, name);
+    if (part) images.push(part);
+  });
+  if (images.length > capabilities.maxImagesTotal) {
+    warnings.push({ code: 'reference_dropped', message: `${name} takes at most ${capabilities.maxImagesTotal} images; dropped ${images.length - capabilities.maxImagesTotal}.` });
+    images.length = capabilities.maxImagesTotal;
+  }
+
+  const ratios = aspectRatiosFor(capabilities);
+  let aspectRatio = cfg.aspectRatio && ratios.includes(cfg.aspectRatio) ? cfg.aspectRatio : ratios[0];
+  if (cfg.aspectRatio && aspectRatio !== cfg.aspectRatio) {
+    warnings.push({ code: 'config_clamped', message: `${name} does not offer aspect ratio "${cfg.aspectRatio}"; using ${aspectRatio}.` });
+  }
+  const modes = capabilities.modes?.values ?? ['720p'];
+  let resolution = cfg.mode && modes.includes(cfg.mode) ? cfg.mode : (capabilities.modes?.default ?? '720p');
+  if (cfg.mode && resolution !== cfg.mode) {
+    warnings.push({ code: 'config_clamped', message: `${name} does not offer tier "${cfg.mode}"; using ${resolution}.` });
+  }
+
+  const task: GeminiOmniCompiledRequest['task'] | undefined =
+    start && end ? undefined : images.length === 0 ? 'text_to_video' : images.length === 1 ? 'image_to_video' : 'reference_to_video';
+
+  return {
+    request: {
+      provider: 'gemini',
+      variant: 'omniVideo',
+      model: apiModelFor(stage, capabilities),
+      prompt: stage.prompt,
+      aspectRatio: aspectRatio as '16:9' | '9:16',
+      resolution: resolution as '360p' | '720p' | '1080p' | '4k',
+      ...(task ? { task } : {}),
+      images,
+    },
+    warnings,
+  };
+}
+
+/**
  * The generic fal compiler — every fal model that carries a spec.
  *
  * Reads the same stage config the create flow writes for Seedance
@@ -828,7 +896,9 @@ export function compile(ctx: CompileContext): CompileResult {
   const tokens = parseTokens(stage.prompt);
 
   if (capabilities.provider === 'gemini') {
-    return compileGemini(ctx, tokens, warnings);
+    return capabilities.kind === 'video'
+      ? compileGeminiOmni(ctx, warnings)
+      : compileGemini(ctx, tokens, warnings);
   }
   if (capabilities.provider === 'kling') {
     return compileKling(ctx, tokens, warnings);

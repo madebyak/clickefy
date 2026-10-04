@@ -12,7 +12,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { integer, numeric, pgTable, text, timestamp, unique, uuid, jsonb } from 'drizzle-orm/pg-core';
+import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 
 import { modelStatusEnum, providerEnum } from './enums';
 
@@ -55,6 +55,11 @@ export const providerModels = pgTable(
      */
     tierPricing: jsonb('tier_pricing').$type<Record<string, number> | null>(),
     timeoutMs: integer('timeout_ms').default(60000).notNull(),
+
+    /** The admin smoke test: the last test job and how it ended (migration 0041). */
+    lastTestJobId: uuid('last_test_job_id'),
+    lastTestedAt: timestamp('last_tested_at', { withTimezone: true }),
+    lastTestOk: boolean('last_test_ok'),
 
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .default(sql`now()`)

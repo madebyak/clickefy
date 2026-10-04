@@ -12,6 +12,7 @@ export * from './plan-change-policy';
 export * from './mime-sniff';
 export * from './subscription-state';
 export * from './provider-cost';
+export * from './admin-analytics';
 export * from './storage-quota';
 export * from './search-text';
 export * from './job-errors';

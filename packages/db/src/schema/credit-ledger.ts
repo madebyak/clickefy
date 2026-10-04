@@ -78,6 +78,8 @@ export const creditLedger = pgTable(
   (t) => [
     index('credit_ledger_user_created_idx').on(t.userId, t.createdAt),
     index('credit_ledger_revenuecat_idx').on(t.revenueCatTransactionId),
+    // Partial (job_id IS NOT NULL) in migration 0043; drizzle has no partial-index flag here.
+    index('credit_ledger_job_idx').on(t.jobId),
   ],
 );
 

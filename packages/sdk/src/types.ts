@@ -105,7 +105,9 @@ export interface CatalogTemplate {
 export interface JobOutput {
   /** The original file — what the result screen plays and the download saves. */
   url: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
+  /** Clip length in seconds for video and audio outputs. */
+  durationSec?: number;
   /** Video poster frame, when the output has been filed with renditions. */
   posterUrl?: string | null;
   /** Muted grid-autoplay clip (video only), when available. */
@@ -363,7 +365,7 @@ export interface GenModel {
   provider: string;
   /** Commercial name shown in the picker. */
   name: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   /** Flat credit cost per generation. */
   costCredits: number;
   /** Max prompt length in characters for this model. */

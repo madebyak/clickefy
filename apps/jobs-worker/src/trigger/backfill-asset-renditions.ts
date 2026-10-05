@@ -49,14 +49,14 @@ interface Payload {
   /** Rows per run. Default 25, capped at 200. */
   limit?: number;
   /** Restrict to one kind; default is both, videos first. */
-  kind?: 'image' | 'video';
+  kind?: 'image' | 'video' | 'audio';
   /** Fix only these asset ids (still subject to the candidate predicate). */
   assetIds?: string[];
 }
 
 interface RowResult {
   assetId: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   status: 'updated' | 'dry-run' | 'skipped' | 'error';
   posterR2Key?: string | null;
   previewR2Key?: string | null;
@@ -75,7 +75,7 @@ interface RowResult {
  * prefix, so a rendition for it would be written where nothing looks.
  * Those rows wait for the library feature to grow its own renditions.
  */
-function needsRenditions(kind?: 'image' | 'video') {
+function needsRenditions(kind?: 'image' | 'video' | 'audio') {
   const generated = like(projectAssets.r2Key, 'jobs/%');
   const video = and(
     generated,

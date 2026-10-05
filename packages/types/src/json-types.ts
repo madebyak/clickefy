@@ -33,6 +33,18 @@
  */
 export type JobOrigin = 'create' | 'template' | 'tool';
 
+/** What a generated output is. `audio` arrived with the Audio section (Phase 2). */
+export type MediaKind = 'image' | 'video' | 'audio';
+
+/** A generated audio clip (speech, sound effect, converted voice). No renditions: the file is the asset. */
+export interface AudioRef {
+  /** Object key under our R2 outputs bucket. */
+  r2Key: string;
+  mimeType: string;
+  durationSec: number;
+  sizeBytes: number;
+}
+
 export interface MediaRef {
   /** Object key under our R2 bucket. */
   r2Key: string;
@@ -478,6 +490,8 @@ export interface JobProgress {
 export interface JobResult {
   images: MediaRef[];
   videos: StreamRef[];
+  /** Audio outputs; absent on rows written before the audio kind existed. */
+  audios?: AudioRef[];
   durationMs: number;
   costCredits: number;
   /**

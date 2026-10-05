@@ -38,7 +38,7 @@ import { users } from './users';
 export type AssetFolderDepth = 0 | 1 | 2;
 
 /** What a library file can be. Audio is deliberately absent — see 0034. */
-export type LibraryAssetKind = 'image' | 'video';
+export type LibraryAssetKind = 'image' | 'video' | 'audio';
 
 export const assetFolders = pgTable(
   'asset_folders',
@@ -102,7 +102,7 @@ export const libraryAssets = pgTable(
     unique('library_assets_r2_key_uq').on(t.r2Key),
     index('library_assets_user_recent_idx').on(t.userId, t.createdAt),
     index('library_assets_folder_idx').on(t.folderId, t.createdAt),
-    check('library_assets_kind_check', sql`${t.kind} IN ('image', 'video')`),
+    check('library_assets_kind_check', sql`${t.kind} IN ('image', 'video', 'audio')`),
     check('library_assets_size_positive', sql`${t.sizeBytes} > 0`),
   ],
 );

@@ -125,7 +125,7 @@ export async function imageThumbhash(bytes: Uint8Array, extension: string): Prom
  */
 export async function persistOutputRenditions(args: {
   r2Key: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   bytes: Uint8Array;
   onWarn: (message: string, detail: Record<string, unknown>) => void;
 }): Promise<OutputRenditionKeys> {
@@ -134,6 +134,11 @@ export async function persistOutputRenditions(args: {
     if (kind === 'image') {
       const thumbhash = await imageThumbhash(bytes, extensionOf(r2Key));
       return { ...NO_RENDITIONS, thumbhash };
+    }
+    if (kind === 'audio') {
+      // No poster, no preview, no hash: the file is the asset. Only its length matters.
+      const durationSec = await audioDuration(bytes, extensionOf(r2Key));
+      return { ...NO_RENDITIONS, ...(durationSec > 0 ? { durationSec } : {}) };
     }
 
     const built = await buildVideoRenditions(bytes);
@@ -168,6 +173,16 @@ export async function persistOutputRenditions(args: {
     });
     return NO_RENDITIONS;
   }
+}
+
+/** Container-level length of an audio file via ffprobe; 0 when it cannot tell. */
+export async function audioDuration(bytes: Uint8Array, extension: string): Promise<number> {
+  return withTempDir('rend-', async (dir) => {
+    const input = join(dir, `input.${extension}`);
+    await writeFile(input, bytes);
+    const d = await probeDuration(input);
+    return Number.isFinite(d) && d > 0 ? d : 0;
+  }).catch(() => 0);
 }
 
 /** `jobs/<id>/stage1-0.mp4` → `jobs/<id>/stage1-0` */

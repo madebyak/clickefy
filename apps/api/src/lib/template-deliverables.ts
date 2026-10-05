@@ -100,6 +100,8 @@ function derivedFromStages(
     if (!cap) continue;
     recognised++;
     const kind = cap.kind;
+    // Templates deliver stills and clips; an audio stage (none exist yet) is not a deliverable here.
+    if (kind === 'audio') continue;
     const count = clampOutputs(stage, cap.outputs);
     byKind.set(kind, (byKind.get(kind) ?? 0) + count);
   }

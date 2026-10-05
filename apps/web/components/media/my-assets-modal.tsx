@@ -35,6 +35,7 @@ import {
   UploadSimple,
   VideoCamera,
   X,
+  SpeakerHigh,
 } from "@phosphor-icons/react";
 
 import type { MediaAsset, MediaFolder } from "@clickfy/sdk";
@@ -703,7 +704,9 @@ function FolderTile({
               return (
                 <div key={i} className="overflow-hidden bg-surface-2">
                   {a ? (
-                    a.kind === "video" ? (
+                    a.kind === "audio" ? (
+                      <span className="grid size-full place-items-center bg-surface-3 text-muted-foreground"><SpeakerHigh weight="fill" className="size-4" /></span>
+                    ) : a.kind === "video" ? (
                       <video src={a.url} muted playsInline className="size-full object-cover" />
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -849,7 +852,11 @@ function AssetTile({
         className="block w-full text-start outline-none"
       >
         <div className="relative aspect-square overflow-hidden">
-          {asset.kind === "video" ? (
+          {asset.kind === "audio" ? (
+            <span className="grid size-full place-items-center bg-gradient-to-br from-primary/25 via-surface-2 to-surface-3 text-white/80">
+              <SpeakerHigh weight="fill" className="size-8" />
+            </span>
+          ) : asset.kind === "video" ? (
             <>
               <video
                 src={asset.url}

@@ -48,7 +48,7 @@ export interface CurrentSubscription {
 export interface CatalogueModel {
   key: string;
   name: string;
-  kind: "image" | "video";
+  kind: "image" | "video" | "audio";
   /** Credits for one generation at the default quality and clip length. */
   credits: number;
   /** Default quality tier, already labelled for humans ("720p", "1K"). */

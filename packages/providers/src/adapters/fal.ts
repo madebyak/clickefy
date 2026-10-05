@@ -61,7 +61,7 @@ export interface FalSubmitResult {
 }
 
 export interface FalOutput {
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'audio';
   url: string;
   durationSec?: number;
 }
@@ -226,10 +226,12 @@ function collectOutputs(payload: unknown): FalOutput[] {
         contentType.startsWith('video/') || /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
       const isImage =
         contentType.startsWith('image/') || /\.(png|jpe?g|webp|gif)(\?|$)/i.test(url);
-      if (isVideo || isImage) {
+      const isAudio =
+        contentType.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|flac)(\?|$)/i.test(url);
+      if (isVideo || isImage || isAudio) {
         seen.add(url);
         found.push({
-          type: isVideo ? 'video' : 'image',
+          type: isVideo ? 'video' : isImage ? 'image' : 'audio',
           url,
           ...(typeof obj.duration === 'number' ? { durationSec: obj.duration } : {}),
         });

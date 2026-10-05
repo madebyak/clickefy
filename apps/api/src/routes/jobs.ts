@@ -1321,6 +1321,16 @@ async function serializeJobStatuses(db: Db, origin: string, rows: JobStatusRow[]
           ),
         });
       });
+      (job.result.audios ?? []).forEach((aud) => {
+        outputs.push({
+          url: `${origin}/v1/outputs/${aud.r2Key}`,
+          kind: 'audio',
+          durationSec: aud.durationSec || undefined,
+          posterUrl: null,
+          previewUrl: null,
+          thumbhash: null,
+        });
+      });
     }
 
     return {
@@ -1515,10 +1525,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** One output as the jobs endpoints serialise it (mirrored by the SDK's `JobOutput`). */
 type JobOutputWire = {
   url: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   width?: number;
   height?: number;
   aspectRatio?: number;
+  /** Clip length for video and audio outputs. */
+  durationSec?: number;
 } & RenditionUrls;
 
 /**

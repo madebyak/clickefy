@@ -28,8 +28,8 @@ import { rebaseAssetUrl } from "@/lib/rebase-url";
 
 export const MEDIA_KEY = ["media-library"] as const;
 
-/** What the browser accepts. Audio is absent — nothing can consume it. */
-export const MEDIA_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime";
+/** What the browser accepts. Audio joined with the Audio section (voice changer input, reference audio). */
+export const MEDIA_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,audio/mpeg,audio/wav,audio/x-wav";
 
 const IMAGE_MIME = new Set([
   "image/jpeg",
@@ -39,6 +39,7 @@ const IMAGE_MIME = new Set([
   "image/heif",
 ]);
 const VIDEO_MIME = new Set(["video/mp4", "video/quicktime"]);
+const AUDIO_MIME = new Set(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave"]);
 
 /**
  * Per-kind ceilings, mirroring the server's `userUploadClass` (uploads.ts):
@@ -46,9 +47,10 @@ const VIDEO_MIME = new Set(["video/mp4", "video/quicktime"]);
  * and a normal 30s 1080p clip alone is over the old flat 25MB. Rejected
  * here to save the round trip; the server enforces the same numbers.
  */
-export const MAX_FILE_BYTES: Record<"image" | "video", number> = {
+export const MAX_FILE_BYTES: Record<"image" | "video" | "audio", number> = {
   image: 25 * 1024 * 1024,
   video: 200 * 1024 * 1024,
+  audio: 15 * 1024 * 1024,
 };
 
 export interface UploadingFile {
@@ -59,9 +61,10 @@ export interface UploadingFile {
   status: "uploading" | "error";
 }
 
-function kindOf(mime: string): "image" | "video" | null {
+function kindOf(mime: string): "image" | "video" | "audio" | null {
   if (IMAGE_MIME.has(mime)) return "image";
   if (VIDEO_MIME.has(mime)) return "video";
+  if (AUDIO_MIME.has(mime)) return "audio";
   return null;
 }
 

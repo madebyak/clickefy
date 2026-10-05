@@ -9,6 +9,7 @@ import {
   Heart,
   Trash,
   CaretDown,
+  SpeakerHigh,
 } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel } from "@/components/ui/menu";
@@ -61,7 +62,9 @@ function ProjectPicker({
               >
                 <span className="size-6 shrink-0 overflow-hidden rounded bg-surface-2">
                   {p.cover &&
-                    (p.cover.kind === "video" ? (
+                    (p.cover.kind === "audio" ? (
+                      <span className="grid size-full place-items-center bg-surface-3 text-muted-foreground"><SpeakerHigh weight="fill" className="size-3" /></span>
+                    ) : p.cover.kind === "video" ? (
                       <video
                         src={p.cover.url}
                         muted

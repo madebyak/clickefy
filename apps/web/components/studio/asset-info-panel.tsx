@@ -10,6 +10,8 @@
 import { useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { X } from "@phosphor-icons/react";
+
+import { AudioPlayer } from "@/components/studio/audio-tile";
 import type { AssetDetail } from "@clickfy/sdk";
 import {
   AssetDetailActions,
@@ -78,7 +80,9 @@ export function AssetInfoPanel({
               full-size media sits right next to it). */}
           <div className="overflow-hidden rounded-xl bg-surface-2">
             {detail ? (
-              detail.kind === "video" ? (
+              detail.kind === "audio" ? (
+                <AudioPlayer id={detail.id} src={detail.url} durationSec={detail.durationSec ?? undefined} />
+              ) : detail.kind === "video" ? (
                 <video
                   src={detail.url}
                   poster={detail.posterUrl ?? undefined}

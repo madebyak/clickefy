@@ -75,7 +75,7 @@ export const falModelCapabilitiesSchema = z
     modelKey: z.string().min(2).max(80).regex(/^[a-z0-9][a-z0-9-]*$/, 'lowercase letters, digits and dashes'),
     displayName: z.string().min(1).max(80),
     status: z.enum(['active', 'preview', 'deprecated']),
-    kind: z.enum(['image', 'video']),
+    kind: z.enum(['image', 'video', 'audio']),
     sizing: z.object({
       mode: z.literal('aspect'),
       values: z.array(aspectRatio).min(1),

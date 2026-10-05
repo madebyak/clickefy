@@ -131,6 +131,15 @@ function extensionForMime(mime: string): string {
       return 'mp4';
     case 'video/quicktime':
       return 'mov';
+    case 'audio/mpeg':
+    case 'audio/mp3':
+      return 'mp3';
+    case 'audio/wav':
+    case 'audio/x-wav':
+    case 'audio/wave':
+      return 'wav';
+    case 'audio/ogg':
+      return 'ogg';
     default:
       return 'bin';
   }

@@ -48,7 +48,7 @@ export type RuntimeInputValue =
 export interface StageOutputRef {
   /** 1-indexed position of the producing stage. */
   stageIndex: number;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   /** R2 pointer once the executor has persisted the output. */
   r2Key?: string;
   /** Inline binary if the executor is chaining stages in-memory. */

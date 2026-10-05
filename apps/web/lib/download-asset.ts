@@ -23,10 +23,10 @@
  */
 
 /** Extension from a URL path, without the query string. Defaults sanely. */
-function extensionOf(url: string, kind: "image" | "video"): string {
+function extensionOf(url: string, kind: "image" | "video" | "audio"): string {
   const path = url.split("?")[0] ?? "";
   const match = /\.([a-z0-9]{1,5})$/i.exec(path);
-  return match?.[1]?.toLowerCase() ?? (kind === "video" ? "mp4" : "png");
+  return match?.[1]?.toLowerCase() ?? (kind === "video" ? "mp4" : kind === "audio" ? "mp3" : "png");
 }
 
 /**
@@ -36,7 +36,7 @@ function extensionOf(url: string, kind: "image" | "video"): string {
 export function assetFilename(input: {
   id: string;
   src: string;
-  type: "image" | "video";
+  type: "image" | "video" | "audio";
   projectName?: string;
 }): string {
   const stem = (input.projectName ?? "clickefy")
@@ -57,7 +57,7 @@ export function assetFilename(input: {
 export function downloadAsset(input: {
   id: string;
   src: string;
-  type: "image" | "video";
+  type: "image" | "video" | "audio";
   projectName?: string;
 }): void {
   const filename = assetFilename(input);
@@ -96,7 +96,7 @@ export function downloadAsset(input: {
  * the studio has always used and no one has reported a miss.
  */
 export function downloadAssets(
-  assets: Array<{ id: string; src: string; type: "image" | "video"; projectName?: string }>,
+  assets: Array<{ id: string; src: string; type: "image" | "video" | "audio"; projectName?: string }>,
 ): void {
   assets.forEach((asset, i) => {
     window.setTimeout(() => downloadAsset(asset), i * 250);

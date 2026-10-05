@@ -278,7 +278,7 @@ export interface CreateModelDTO {
   modelKey: string;
   provider: string;
   name: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   costCredits: number;
   maxPromptChars: number;
   aspectRatios: string[];

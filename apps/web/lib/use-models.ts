@@ -13,7 +13,7 @@ import { getSDK } from "@/lib/api";
 
 export const MODELS_QUERY_KEY = ["models"] as const;
 
-export function useModels(kind?: "image" | "video") {
+export function useModels(kind?: "image" | "video" | "audio") {
   const { isLoaded, isSignedIn } = useAuth();
   const query = useQuery({
     queryKey: MODELS_QUERY_KEY,

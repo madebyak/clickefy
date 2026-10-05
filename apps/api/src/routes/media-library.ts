@@ -260,7 +260,7 @@ const registerSchema = z
   .object({
     r2Key: z.string().min(1).max(400),
     name: z.string().trim().min(1).max(200),
-    kind: z.enum(['image', 'video']),
+    kind: z.enum(['image', 'video', 'audio']),
     mimeType: z.string().min(1).max(120),
     sizeBytes: z.number().int().positive(),
     folderId: z.string().uuid().nullable().optional(),

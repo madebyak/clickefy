@@ -146,10 +146,11 @@ function idempotencyKey(): string {
  * alone, for a video filed before it had a poster).
  */
 function coverThumb(
-  cover: { kind: 'image' | 'video'; url: string; posterUrl: string | null; thumbhash?: string | null } | null,
+  cover: { kind: 'image' | 'video' | 'audio'; url: string; posterUrl: string | null; thumbhash?: string | null } | null,
 ): { coverUri?: string; coverThumbhash?: string } {
   if (!cover) return {};
-  const still = cover.kind === 'video' ? cover.posterUrl : cover.url;
+  // An audio cover has no frame to show; the drawer falls back to its placeholder.
+  const still = cover.kind === 'video' ? cover.posterUrl : cover.kind === 'audio' ? null : cover.url;
   return {
     coverUri: still ? outputThumbnailUrl(still, { width: 38 }) : undefined,
     coverThumbhash: cover.thumbhash ?? undefined,
@@ -157,7 +158,7 @@ function coverThumb(
 }
 
 /** Masonry cell shape from real dimensions, clamped like web's grid. */
-function ratioFrom(width: number | null, height: number | null, kind: 'image' | 'video'): string {
+function ratioFrom(width: number | null, height: number | null, kind: 'image' | 'video' | 'audio'): string {
   const raw = width && height && height > 0 ? width / height : kind === 'video' ? 16 / 9 : 1;
   const clamped = Math.min(2.4, Math.max(0.45, raw));
   return `${Math.round(clamped * 100)}:100`;
@@ -780,7 +781,8 @@ export default function ComposerScreen() {
     if (!asset) return null;
     return {
       id: asset.id,
-      kind: asset.kind,
+      // Mobile has no audio surface yet; an audio asset filed from the web shows as a still.
+      kind: asset.kind === 'video' ? 'video' : 'image',
       ratio: ratioFrom(asset.width, asset.height, asset.kind),
       uri: asset.url, // the original — the viewer plays it, the download saves it
       posterUri: asset.posterUrl ?? undefined,
@@ -991,7 +993,7 @@ export default function ComposerScreen() {
     if (!openProjectId) return sessionCells;
     const settled = (assetsQuery.data?.items ?? []).map<MasonryCell>((asset) => ({
       id: asset.id,
-      kind: asset.kind,
+      kind: asset.kind === 'video' ? 'video' : 'image',
       ratio: ratioFrom(asset.width, asset.height, asset.kind),
       uri: asset.kind === 'video' ? (asset.posterUrl ?? undefined) : asset.url,
       thumbhash: asset.thumbhash ?? undefined,
@@ -1139,7 +1141,7 @@ export default function ComposerScreen() {
           subtitle: m.kind === 'video' ? t('model.video') : t('model.image'),
           trailing: t('composer.fromCredits', { count: m.costCredits }),
           leading: (
-            <ModelLogo provider={m.provider} kind={m.kind} size={24} fallbackColor={colors.ink} />
+            <ModelLogo provider={m.provider} kind={m.kind === 'video' ? 'video' : 'image'} size={24} fallbackColor={colors.ink} />
           ),
         }))}
         selectedId={model?.modelKey ?? null}

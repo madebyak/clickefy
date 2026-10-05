@@ -66,6 +66,7 @@ import {
   type StageOutputRef,
 } from '@clickfy/providers';
 import {
+  type AudioRef,
   JOB_ERROR_MESSAGES,
   jobErrorReasonFor,
   type GenerationStage,
@@ -340,7 +341,7 @@ export const generateJob = task({
       stageIndex: number;
       r2Key: string;
       mimeType: string;
-      kind: 'image' | 'video';
+      kind: 'image' | 'video' | 'audio';
       /** Probed from the bytes (images: header; videos: ffprobe). */
       width?: number;
       height?: number;
@@ -352,6 +353,7 @@ export const generateJob = task({
       posterR2Key: string | null;
       previewR2Key: string | null;
       thumbhash: string | null;
+      sizeBytes?: number;
     }> = [];
 
     const providerEnv = buildProviderEnv();
@@ -562,6 +564,7 @@ export const generateJob = task({
           posterR2Key: renditions.posterR2Key,
           previewR2Key: renditions.previewR2Key,
           thumbhash: renditions.thumbhash,
+          sizeBytes: bytes.byteLength,
         });
       }
 
@@ -573,7 +576,7 @@ export const generateJob = task({
         {
           ...costFactsFor(stage),
           outputs: Math.max(1, result.outputs.length),
-          outputDurationSec: stageOutputs.find((k) => k.kind === 'video')?.durationSec ?? null,
+          outputDurationSec: stageOutputs.find((k) => k.kind === 'video' || k.kind === 'audio')?.durationSec ?? null,
           usage,
         },
         capabilities,
@@ -662,9 +665,19 @@ export const generateJob = task({
         aspectRatio: k.aspectRatio,
       }));
 
+    const audios: AudioRef[] = userVisibleKeys
+      .filter((k) => k.kind === 'audio')
+      .map((k) => ({
+        r2Key: k.r2Key,
+        mimeType: k.mimeType,
+        durationSec: k.durationSec ?? 0,
+        sizeBytes: k.sizeBytes ?? 0,
+      }));
+
     const jobResult: JobResult = {
       images,
       videos,
+      ...(audios.length ? { audios } : {}),
       durationMs,
       costCredits: jobCostCredits,
       ...(providerTaskId ? { providerTaskId } : {}),
@@ -734,6 +747,15 @@ export const generateJob = task({
             posterR2Key: vid.posterR2Key,
             previewR2Key: vid.previewR2Key ?? null,
             thumbhash: vid.thumbhash ?? null,
+          })),
+          ...audios.map((aud, i) => ({
+            projectId: completedProjectId,
+            userId: jobRow.userId,
+            jobId,
+            outputIndex: images.length + videos.length + i,
+            kind: 'audio' as const,
+            r2Key: aud.r2Key,
+            durationSec: aud.durationSec || null,
           })),
         ];
         if (assetRows.length > 0) {
@@ -959,8 +981,8 @@ async function outputBytes(out: ExecuteOutput): Promise<Uint8Array> {
   throw new Error('ExecuteOutput has neither base64 nor url — cannot persist.');
 }
 
-function defaultMimeFor(kind: 'image' | 'video'): string {
-  return kind === 'image' ? 'image/png' : 'video/mp4';
+function defaultMimeFor(kind: 'image' | 'video' | 'audio'): string {
+  return kind === 'image' ? 'image/png' : kind === 'audio' ? 'audio/mpeg' : 'video/mp4';
 }
 
 function errorToMessage(err: unknown): string {

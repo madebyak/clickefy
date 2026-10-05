@@ -20,7 +20,10 @@ import {
   Trash,
   VideoCamera,
   X,
+  SpeakerHigh,
 } from "@phosphor-icons/react";
+
+import { AudioPlayer, AudioTile, formatClip } from "./audio-tile";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import { downloadAsset } from "@/lib/download-asset";
@@ -87,7 +90,9 @@ function aspectOf(a: Asset): number {
       ? a.width / a.height
       : a.type === "video"
         ? 16 / 9
-        : 1;
+        : a.type === "audio"
+          ? 2 // a wide card: play button, bars, length
+          : 1;
   return Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, ratio));
 }
 
@@ -350,7 +355,9 @@ export function Masonry({
               className="block size-full cursor-pointer outline-none"
               aria-label={t("expand")}
             >
-              {a.type === "video" ? (
+              {a.type === "audio" ? (
+                <AudioTile id={a.id} src={a.src} durationSec={a.durationSec} />
+              ) : a.type === "video" ? (
                 <video
                   className="size-full object-cover"
                   autoPlay
@@ -393,9 +400,11 @@ export function Masonry({
                 the badge yields on hover; both are orientation, not
                 controls, and the hover state makes the media type obvious
                 anyway. */}
-            {(a.type === "video" || (showProjectName && a.projectName)) && (
+            {(a.type === "video" || a.type === "audio" || (showProjectName && a.projectName)) && (
               <span className="pointer-events-none absolute start-2 bottom-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-md bg-black/55 px-1.5 py-1 text-[10px] font-medium text-white opacity-100 backdrop-blur transition-opacity group-hover:opacity-0">
                 {a.type === "video" && <Play weight="fill" className="size-3 shrink-0" />}
+                {a.type === "audio" && <SpeakerHigh weight="fill" className="size-3 shrink-0" />}
+                {a.type === "audio" && a.durationSec ? <span className="shrink-0 tabular-nums">{formatClip(a.durationSec)}</span> : null}
                 {a.draft && <span className="shrink-0">{t("draftBadge")}</span>}
                 {showProjectName && a.projectName && (
                   <span className="truncate">{a.projectName}</span>
@@ -760,7 +769,7 @@ function ExpandedAsset({
       // Someone typing (the details panel has no inputs today, but a
       // focused <video> uses the arrows to seek) keeps their keys.
       const target = e.target as HTMLElement | null;
-      if (target && (target.closest("input, textarea, [contenteditable=true]") || target.tagName === "VIDEO")) return;
+      if (target && (target.closest("input, textarea, [contenteditable=true]") || target.tagName === "VIDEO" || target.tagName === "AUDIO")) return;
       // Physical arrows follow the layout direction: the "previous" chevron
       // sits at the start edge, which is the RIGHT edge in RTL.
       const rtl = document.documentElement.dir === "rtl";
@@ -786,7 +795,11 @@ function ExpandedAsset({
         className="relative flex min-h-0 flex-1 items-center justify-center p-4 md:p-8"
         onClick={onClose}
       >
-        {asset.type === "video" ? (
+        {asset.type === "audio" ? (
+          <div className="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+            <AudioPlayer id={asset.id} src={asset.src} durationSec={asset.durationSec} />
+          </div>
+        ) : asset.type === "video" ? (
           <video
             // Remount per asset: a reused element keeps the old clip's
             // playback state and may not autoplay the new source.

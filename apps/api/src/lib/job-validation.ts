@@ -310,7 +310,7 @@ export interface CreateValidationContext {
    */
   model: {
     modelKey: string;
-    kind: 'image' | 'video';
+    kind: 'image' | 'video' | 'audio';
     /** Total input-image budget (0 = model accepts no images). */
     maxImagesTotal: number;
     /** Per-model prompt character cap; undefined = use the default. */

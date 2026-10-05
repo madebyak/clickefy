@@ -12,6 +12,7 @@ import {
   Trash,
   Check,
   X,
+  SpeakerHigh,
 } from "@phosphor-icons/react";
 import { useStudio, type StudioFolder, type StudioProject } from "@/components/studio/studio-context";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/menu";
@@ -79,6 +80,13 @@ function InlineRename({
 
 function ProjectCover({ project }: { project: StudioProject }) {
   if (!project.cover) return null;
+  if (project.cover.kind === "audio") {
+    return (
+      <span className="grid size-full place-items-center bg-gradient-to-br from-primary/25 via-surface-2 to-surface-3 text-white/80">
+        <SpeakerHigh weight="fill" className="size-10" />
+      </span>
+    );
+  }
   if (project.cover.kind === "video") {
     return (
       <video

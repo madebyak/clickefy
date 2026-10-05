@@ -18,6 +18,7 @@ import {
   Trash,
   CaretLeft,
   Check,
+  SpeakerHigh,
 } from "@phosphor-icons/react";
 import { getSDK } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ import { foldersInTreeOrder } from "@/lib/folder-order";
 import type { StudioProject, StudioFolder } from "@/components/studio/studio-context";
 import { MenuPanel } from "@/components/ui/menu";
 
-type Asset = { id: string; kind: "image" | "video"; url: string };
+type Asset = { id: string; kind: "image" | "video" | "audio"; url: string };
 
 /** Which panel the menu is showing. */
 type View = "root" | "thumbnail" | "folder" | "confirmDelete";
@@ -128,7 +129,8 @@ export function ProjectRow({
       .then((r) => {
         if (!cancelled) {
           setAssets(
-            r.items.map((a) => ({ id: a.id, kind: a.kind, url: a.posterUrl ?? a.url })),
+            // A cover is a picture; audio has none to offer.
+            r.items.filter((a) => a.kind !== "audio").map((a) => ({ id: a.id, kind: a.kind, url: a.posterUrl ?? a.url })),
           );
         }
       })
@@ -170,7 +172,11 @@ export function ProjectRow({
             )}
           >
             {project.cover &&
-              (project.cover.kind === "video" ? (
+              (project.cover.kind === "audio" ? (
+                <span className="grid size-full place-items-center bg-surface-3 text-muted-foreground">
+                  <SpeakerHigh weight="fill" className="size-3.5" />
+                </span>
+              ) : project.cover.kind === "video" ? (
                 <video
                   src={project.cover.url}
                   muted

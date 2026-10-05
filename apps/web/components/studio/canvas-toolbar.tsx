@@ -13,7 +13,7 @@
  */
 
 import { useTranslations } from "next-intl";
-import { Grid2x2, Grid3x3, Heart, Image as ImageIcon, Layers, Video } from "lucide-react";
+import { Grid2x2, Grid3x3, Heart, Image as ImageIcon, Layers, Video, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
  * the same group because that is how people reach for it: "just show me
  * the good ones", not "show me the good ones, of which the videos".
  */
-export type CanvasFilter = "all" | "image" | "video" | "favorite";
+export type CanvasFilter = "all" | "image" | "video" | "audio" | "favorite";
 
 /**
  * Grid density, smallest index = largest tiles. Four steps is enough to
@@ -79,14 +79,14 @@ export function CanvasToolbar({
   gridSize: GridSize;
   onGridSizeChange: (next: GridSize) => void;
   /** Drives which filters are worth offering — see below. */
-  counts: { image: number; video: number; favorite: number };
+  counts: { image: number; video: number; audio: number; favorite: number };
 }) {
   const t = useTranslations("studio");
 
   // A project of nothing but images has no use for an Images/Videos
   // toggle — it would be three buttons where two are always empty. Show
   // those only once the canvas actually holds both kinds.
-  const showKinds = counts.image > 0 && counts.video > 0;
+  const showKinds = [counts.image, counts.video, counts.audio].filter((n) => n > 0).length > 1;
 
   // Favourites are gated SEPARATELY, and this is the point of the split:
   // the project that most needs a favourites filter is a hundred images
@@ -95,7 +95,7 @@ export function CanvasToolbar({
   const showFavorites = counts.favorite > 0;
 
   const showFilter = showKinds || showFavorites;
-  const showSize = counts.image + counts.video > 0;
+  const showSize = counts.image + counts.video + counts.audio > 0;
   if (!showFilter && !showSize) return null;
 
   return (
@@ -129,6 +129,15 @@ export function CanvasToolbar({
               >
                 <Video className="size-3.5 shrink-0" strokeWidth={2} />
               </FilterButton>
+              {counts.audio > 0 && (
+                <FilterButton
+                  active={filter === "audio"}
+                  label={t("filterAudio")}
+                  onClick={() => onFilterChange("audio")}
+                >
+                  <Volume2 className="size-3.5 shrink-0" strokeWidth={2} />
+                </FilterButton>
+              )}
             </>
           )}
           {showFavorites && (

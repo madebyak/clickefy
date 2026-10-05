@@ -40,7 +40,7 @@ import {
 import type { FalSpec } from './fal-spec';
 
 /** What the model produces. Drives which arm of `CompiledRequest` is built. */
-export type ModelKind = 'image' | 'video';
+export type ModelKind = 'image' | 'video' | 'audio';
 
 /** How the model addresses dimensions in its API call. */
 export type SizingMode =

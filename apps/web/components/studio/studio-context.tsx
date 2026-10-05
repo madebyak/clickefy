@@ -60,7 +60,7 @@ const EMPTY_PROJECTS: StudioProject[] = [];
 
 /* ------------------------------------------------------------------ model */
 
-export type AssetType = "image" | "video";
+export type AssetType = "image" | "video" | "audio";
 /** The masonry's render unit — mapped from `StudioAsset`. */
 export type Asset = {
   id: string;
@@ -77,6 +77,8 @@ export type Asset = {
    */
   width?: number;
   height?: number;
+  /** Clip length for video and audio, when the API knows it. */
+  durationSec?: number;
   favorited: boolean;
   /**
    * Placed from "My Assets" rather than generated — so there is no prompt
@@ -233,6 +235,7 @@ const toAsset = (a: StudioAsset): Asset => ({
   poster: a.kind === "video" && a.posterUrl ? rebaseAssetUrl(a.posterUrl) : undefined,
   width: a.width ?? undefined,
   height: a.height ?? undefined,
+  durationSec: a.durationSec ?? undefined,
   favorited: a.isFavorited,
   fromLibrary: a.fromLibrary ?? false,
   draft: a.draft && a.jobId ? { jobId: a.jobId, ...a.draft } : undefined,
@@ -909,8 +912,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       // prompt bar owns that ordering; we only carry the payload.
       setPendingSetup({
         // The asset's own kind IS the model's kind — a video asset can
-        // only have come from a video model.
-        kind: detail.kind,
+        // only have come from a video model. Audio has no composer yet,
+        // so its setup lands in the image composer's prompt box.
+        kind: detail.kind === "video" ? "video" : "image",
         prompt: gen.prompt ?? "",
         modelKey: gen.modelKey,
         aspectRatio: gen.aspectRatio,

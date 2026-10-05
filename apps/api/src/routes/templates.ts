@@ -174,7 +174,7 @@ function deriveGenerationAndOutput(
   // derivation correct: every Kling model is video, everything
   // else in the current catalog (Gemini, OpenAI image, Imagen) is
   // image.
-  const kinds: Array<'image' | 'video'> = stages.map((stage) => {
+  const kinds: Array<'image' | 'video' | 'audio'> = stages.map((stage) => {
     const cap = findCapabilities(stage.model);
     if (cap) return cap.kind;
     if (stage.provider === 'kling' || stage.provider === 'seedance') return 'video';

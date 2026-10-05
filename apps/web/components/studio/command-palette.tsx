@@ -182,7 +182,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     const projectRows: Row[] = studio.projects.map((p) => {
       const thumb =
-        (p.cover?.kind === "video" ? p.cover.posterUrl : p.cover?.url) ?? undefined;
+        (p.cover?.kind === "video" ? p.cover.posterUrl : p.cover?.kind === "audio" ? null : p.cover?.url) ?? undefined;
       return {
         id: `project-${p.id}`,
         section: "projects" as const,

@@ -210,7 +210,7 @@ projectsRoute.get('/', ...readChain, async (c) => {
   const covers = new Map<
     string,
     {
-      kind: 'image' | 'video';
+      kind: 'image' | 'video' | 'audio';
       r2Key: string;
       posterR2Key: string | null;
       previewR2Key: string | null;
@@ -266,7 +266,7 @@ projectsRoute.get('/', ...readChain, async (c) => {
     // arbitrary asset instead of its newest one.
     const coverRows = await c.var.db.execute<{
       project_id: string;
-      kind: 'image' | 'video';
+      kind: 'image' | 'video' | 'audio';
       r2_key: string;
       poster_r2_key: string | null;
       preview_r2_key: string | null;

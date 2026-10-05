@@ -81,7 +81,8 @@ interface JobStatusWire {
    */
   outputs?: Array<{
     url: string;
-    kind: 'image' | 'video';
+    kind: 'image' | 'video' | 'audio';
+    durationSec?: number;
     width?: number;
     height?: number;
     aspectRatio?: number;

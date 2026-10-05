@@ -49,7 +49,7 @@ export const projectAssets = pgTable(
     outputIndex: integer('output_index').default(0).notNull(),
     // Plain text + TS union (not pgEnum) — matches the CreditBucket
     // judgment call for churn-prone sets.
-    kind: text('kind').$type<'image' | 'video'>().notNull(),
+    kind: text('kind').$type<'image' | 'video' | 'audio'>().notNull(),
     r2Key: text('r2_key').notNull(),
     width: integer('width'),
     height: integer('height'),

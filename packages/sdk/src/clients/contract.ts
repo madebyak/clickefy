@@ -289,7 +289,7 @@ export interface MediaAsset {
   id: string;
   folderId: string | null;
   name: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   /** Ready to render, or to hand back as a prompt reference. */
   url: string;
   /** The R2 object key — what an attachment actually needs. */
@@ -331,7 +331,7 @@ export interface MediaClient {
   register(input: {
     r2Key: string;
     name: string;
-    kind: 'image' | 'video';
+    kind: 'image' | 'video' | 'audio';
     mimeType: string;
     sizeBytes: number;
     folderId?: string | null;
@@ -483,7 +483,7 @@ export interface StudioFolder {
 }
 
 export interface StudioProjectCover {
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   url: string;
   /** Video poster frame; null while the row still awaits its renditions. */
   posterUrl: string | null;
@@ -523,7 +523,7 @@ export interface StudioAsset {
   id: string;
   projectId: string;
   jobId: string | null;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   /** The original file — what the viewer plays and the download saves. */
   url: string;
   /** Video poster frame; null while the row still awaits its renditions. */

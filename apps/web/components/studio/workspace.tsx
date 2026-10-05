@@ -341,6 +341,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
     () => ({
       image: activeAssets.filter((a) => a.type === "image").length,
       video: activeAssets.filter((a) => a.type === "video").length,
+      audio: activeAssets.filter((a) => a.type === "audio").length,
       favorite: activeAssets.filter((a) => a.favorited).length,
     }),
     [activeAssets],

@@ -47,7 +47,7 @@ export interface ProviderEnv {
 
 /** A single output piece returned by an adapter. */
 export interface ExecuteOutput {
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'audio';
   /** Inline base64 image data (Gemini path). */
   base64?: string;
   mimeType?: string;

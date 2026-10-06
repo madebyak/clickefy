@@ -411,7 +411,8 @@ function FrameSlot({
   /** Tighter box for narrow viewports. */
   compact?: boolean;
 }) {
-  const box = compact ? "size-16" : "size-20";
+  // Short viewports (13" laptops) take the compact box too.
+  const box = compact ? "size-16" : "size-20 [@media(max-height:720px)]:size-16";
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline gap-1.5">
@@ -531,7 +532,7 @@ function AttachmentThumb({
       <div
         className={cn(
           "group/att relative flex items-center gap-1.5 overflow-hidden rounded-lg bg-surface-3 px-2",
-          compact ? "h-11 max-w-32" : "h-14 max-w-40",
+          compact ? "h-11 max-w-32" : "h-14 max-w-40 [@media(max-height:720px)]:h-11",
           attachment.status !== "ready" && "opacity-60",
         )}
       >
@@ -563,7 +564,7 @@ function AttachmentThumb({
     <div
       className={cn(
         "group/att relative overflow-hidden rounded-lg bg-surface-3",
-        compact ? "size-11" : "size-14",
+        compact ? "size-11" : "size-14 [@media(max-height:720px)]:size-11",
       )}
     >
       {attachment.kind === "video" ? (
@@ -1945,7 +1946,7 @@ export function PromptBar({
                       rows={1}
                       wrapperClassName="flex-1"
                       textClassName="text-base sm:text-sm"
-                      className="block max-h-24 w-full resize-none [field-sizing:content] placeholder:text-muted-foreground"
+                      className="block max-h-[min(6rem,16dvh)] w-full resize-none [field-sizing:content] placeholder:text-muted-foreground"
                     />
                     {/* Seconds stepper — takes the difference from the last
                         other shot, so the total always fills the clip. */}
@@ -2000,9 +2001,18 @@ export function PromptBar({
               rows={1}
               wrapperClassName={compact ? "mt-1" : "mt-1.5"}
               textClassName="text-base sm:text-sm"
+              // Three lines while idle, so a long prompt stops hiding the
+              // canvas the moment the user clicks away; growing while
+              // typing, capped against the viewport rather than a fixed
+              // 160px — on a 13" laptop that is the difference between a
+              // composer and a wall.
               className={cn(
                 "block w-full resize-none [field-sizing:content] placeholder:text-muted-foreground",
-                compact ? "max-h-28" : "max-h-40",
+                focused
+                  ? compact
+                    ? "max-h-[min(7rem,24dvh)]"
+                    : "max-h-[min(10rem,24dvh)]"
+                  : "max-h-[4.5rem]",
               )}
             />
             )}

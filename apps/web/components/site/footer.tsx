@@ -6,7 +6,7 @@ import { XLogo, InstagramLogo, YoutubeLogo, TiktokLogo } from "@phosphor-icons/r
 const COLUMNS = [
   {
     titleKey: "create",
-    links: ["linkCreateImage", "linkCreateVideo", "linkStoryboard", "linkCameraAngles"],
+    links: ["linkCreateImage", "linkCreateVideo", "linkAudio", "linkStoryboard", "linkCameraAngles"],
   },
   { titleKey: "explore", links: ["linkTemplates", "linkModels", "linkPricing"] },
   // No Careers entry: there is no careers page, and a footer link that
@@ -29,6 +29,7 @@ const COLUMNS = [
 const HREFS: Record<string, string> = {
   linkCreateImage: "/create",
   linkCreateVideo: "/create-video",
+  linkAudio: "/audio",
   linkStoryboard: "/create?tool=storyboard",
   linkCameraAngles: "/create?tool=camera",
   linkTemplates: "/templates",

@@ -284,7 +284,8 @@
     "linkContentPolicy": "سياسة المحتوى",
     "linkAiDisclosure": "الإفصاح عن الذكاء الاصطناعي",
     "linkDmca": "حقوق النشر وDMCA",
-    "linkBlog": "المدوّنة"
+    "linkBlog": "المدوّنة",
+    "linkAudio": "الصوت"
   },
   "promptbar": {
     "placeholderImage": "صف الصورة التي تريد إنشاءها",

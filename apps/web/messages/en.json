@@ -284,7 +284,8 @@
     "linkContentPolicy": "Content Policy",
     "linkAiDisclosure": "AI Disclosure",
     "linkDmca": "Copyright & DMCA",
-    "linkBlog": "Blog"
+    "linkBlog": "Blog",
+    "linkAudio": "Audio"
   },
   "promptbar": {
     "placeholderImage": "Describe the image you want to create",

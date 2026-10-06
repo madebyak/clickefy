@@ -19,12 +19,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { Pause, Play, SpeakerHigh, UploadSimple, Waveform, Microphone, MusicNotes } from "@phosphor-icons/react";
+import { CaretDown, Pause, Play, SlidersHorizontal, SpeakerHigh, UploadSimple, Waveform, Microphone, MusicNotes, X } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 import type { AudioVoice, GenModel, JobInputValue } from "@clickfy/sdk";
 import { JobSubmissionError } from "@clickfy/sdk";
 
+import { Modal } from "@/components/ui/modal";
 import { useStudio } from "@/components/studio/studio-context";
 import { useModels } from "@/lib/use-models";
 import { getSDK } from "@/lib/api";
@@ -56,8 +57,8 @@ function useVoices() {
   });
 }
 
-/** The voice list with a one-at-a-time preview player. */
-function VoicePicker({ voices, value, onChange, loading }: { voices: AudioVoice[]; value: AudioVoice | null; onChange: (v: AudioVoice) => void; loading: boolean }) {
+/** The voice list, in a modal, with a one-at-a-time preview player. Choosing closes it. */
+function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voices: AudioVoice[]; value: AudioVoice | null; onChange: (v: AudioVoice) => void; onClose: () => void; loading: boolean; error: boolean }) {
   const t = useTranslations("audio");
   const [query, setQuery] = useState("");
   const [lang, setLang] = useState<"all" | "en" | "ar">("all");
@@ -84,14 +85,9 @@ function VoicePicker({ voices, value, onChange, loading }: { voices: AudioVoice[
   useEffect(() => () => { audioRef.current?.pause(); }, []);
 
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-surface-2">
-      <div className="flex items-center gap-2 border-b border-white/[0.06] p-2">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("searchVoices")}
-          className="h-8 min-w-0 flex-1 rounded-md bg-surface-3 px-2 text-sm outline-none placeholder:text-muted-foreground"
-        />
+    <Modal onClose={onClose} label={t("pickVoice")} className="max-w-lg">
+      <div className="flex items-center gap-2 border-b border-white/[0.06] p-3">
+        <h2 className="me-auto text-sm font-semibold">{t("pickVoice")}</h2>
         <div className="flex gap-0.5 rounded-md bg-surface-3 p-0.5 text-xs">
           {(["all", "en", "ar"] as const).map((l) => (
             <button key={l} type="button" onClick={() => setLang(l)} className={cn("rounded px-2 py-1", lang === l ? "bg-background text-foreground" : "text-muted-foreground")}>
@@ -99,10 +95,24 @@ function VoicePicker({ voices, value, onChange, loading }: { voices: AudioVoice[
             </button>
           ))}
         </div>
+        <button type="button" onClick={onClose} aria-label={t("close")} className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-surface-3 hover:text-foreground">
+          <X className="size-4" />
+        </button>
       </div>
-      <div className="max-h-56 overflow-y-auto p-1">
+      <div className="p-3">
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("searchVoices")}
+          className="h-9 w-full rounded-md bg-surface-3 px-3 text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+      <div className="max-h-[50dvh] overflow-y-auto px-2 pb-3">
         {loading ? (
           <p className="p-3 text-xs text-muted-foreground">{t("loadingVoices")}</p>
+        ) : error ? (
+          <p className="p-3 text-xs text-destructive">{t("voicesFailed")}</p>
         ) : filtered.length === 0 ? (
           <p className="p-3 text-xs text-muted-foreground">{t("noVoices")}</p>
         ) : (
@@ -116,11 +126,11 @@ function VoicePicker({ voices, value, onChange, loading }: { voices: AudioVoice[
                   aria-label={playingId === v.voiceId ? t("stopPreview") : t("playPreview")}
                   disabled={!v.previewUrl}
                   onClick={() => preview(v)}
-                  className="grid size-7 shrink-0 place-items-center rounded-full bg-white/10 text-foreground disabled:opacity-30"
+                  className="grid size-8 shrink-0 place-items-center rounded-full bg-white/10 text-foreground disabled:opacity-30"
                 >
-                  {playingId === v.voiceId ? <Pause weight="fill" className="size-3" /> : <Play weight="fill" className="size-3 translate-x-px" />}
+                  {playingId === v.voiceId ? <Pause weight="fill" className="size-3.5" /> : <Play weight="fill" className="size-3.5 translate-x-px" />}
                 </button>
-                <button type="button" onClick={() => onChange(v)} className="min-w-0 flex-1 text-start">
+                <button type="button" onClick={() => { onChange(v); onClose(); }} className="min-w-0 flex-1 py-0.5 text-start">
                   <div className="truncate text-sm font-medium">{v.name}{v.source === "account" && <span className="ms-1 text-[10px] text-primary">{t("yourVoice")}</span>}</div>
                   <div className="truncate text-xs text-muted-foreground">{meta || v.useCase || ""}</div>
                 </button>
@@ -129,6 +139,37 @@ function VoicePicker({ voices, value, onChange, loading }: { voices: AudioVoice[
           })
         )}
       </div>
+    </Modal>
+  );
+}
+
+/** The compact trigger: the chosen voice's name, a preview button, and a caret that opens the modal. */
+function VoiceButton({ voice, onOpen }: { voice: AudioVoice | null; onOpen: () => void }) {
+  const t = useTranslations("audio");
+  // The playing element lives in state so the cleanup below can stop it; a
+  // voice change remounts the button (keyed by the caller) and drops it.
+  const [player, setPlayer] = useState<HTMLAudioElement | null>(null);
+  const playing = player != null;
+  useEffect(() => () => { player?.pause(); }, [player]);
+  const toggle = () => {
+    if (player) { player.pause(); setPlayer(null); return; }
+    if (!voice?.previewUrl) return;
+    const el = new Audio(voice.previewUrl);
+    el.onended = () => setPlayer(null);
+    void el.play().then(() => setPlayer(el)).catch(() => setPlayer(null));
+  };
+  return (
+    <div className="flex h-9 items-center rounded-lg bg-surface-3 text-sm">
+      {voice?.previewUrl && (
+        <button type="button" onClick={toggle} aria-label={playing ? t("stopPreview") : t("playPreview")} className="grid size-9 place-items-center rounded-s-lg hover:bg-white/10">
+          {playing ? <Pause weight="fill" className="size-3.5" /> : <Play weight="fill" className="size-3.5 translate-x-px" />}
+        </button>
+      )}
+      <button type="button" onClick={onOpen} className={cn("flex h-9 items-center gap-1.5 rounded-e-lg px-2.5 hover:bg-white/10", !voice?.previewUrl && "rounded-s-lg")}>
+        <Microphone className="size-4 text-muted-foreground" />
+        <span className={cn("max-w-[11rem] truncate", !voice && "text-muted-foreground")}>{voice ? voice.name.split(" - ")[0] : t("pickVoice")}</span>
+        <CaretDown className="size-3 text-muted-foreground" />
+      </button>
     </div>
   );
 }
@@ -239,9 +280,12 @@ export function AudioComposer() {
     }
   };
 
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-surface-1/95 p-3 shadow-2xl backdrop-blur">
-      <div className="mb-3 flex gap-1 rounded-lg bg-surface-2 p-1">
+      <div className="mb-2 flex gap-1 rounded-lg bg-surface-2 p-1">
         {TABS.map(({ key, icon: Icon }) => (
           <button key={key} type="button" onClick={() => setTab(key)} className={cn("flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors", tab === key ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground")}>
             <Icon className="size-4" weight={tab === key ? "fill" : "regular"} />
@@ -255,96 +299,109 @@ export function AudioComposer() {
       ) : !model ? (
         <p className="p-4 text-sm text-muted-foreground">{t("unavailable")}</p>
       ) : (
-        <div className="grid gap-3 md:grid-cols-[1fr_280px]">
-          <div className="space-y-3">
-            {tab === "tts" && (
-              <>
-                <textarea
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder={t("ttsPlaceholder")}
-                  rows={5}
-                  dir="auto"
-                  className="w-full resize-none rounded-xl bg-surface-2 p-3 text-sm outline-none placeholder:text-muted-foreground"
-                />
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className={cn("tabular-nums", text.length > maxChars && "text-destructive")}>{text.length.toLocaleString()} / {maxChars.toLocaleString()}</span>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={expressive} onChange={(e) => setExpressive(e.target.checked)} disabled={!model.audio?.expressive} />
-                    {t("expressive")}
-                  </label>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-2">
+          {tab === "tts" && (
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={t("ttsPlaceholder")}
+              rows={3}
+              dir="auto"
+              className="w-full resize-none rounded-xl bg-surface-2 p-3 text-sm outline-none placeholder:text-muted-foreground"
+            />
+          )}
+          {tab === "sfx" && (
+            <textarea
+              value={sfxText}
+              onChange={(e) => setSfxText(e.target.value.slice(0, model.maxPromptChars))}
+              placeholder={t("sfxPlaceholder")}
+              rows={2}
+              dir="auto"
+              className="w-full resize-none rounded-xl bg-surface-2 p-3 text-sm outline-none placeholder:text-muted-foreground"
+            />
+          )}
+          {tab === "sts" && (
+            <label className={cn("flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed border-white/15 bg-surface-2 px-4 py-3 text-sm", source && "border-primary/50")}>
+              <input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f); e.target.value = ""; }} />
+              {source ? (
+                <>
+                  <SpeakerHigh className="size-5 shrink-0 text-primary" weight="fill" />
+                  <span className="min-w-0 truncate font-medium">{source.file.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{source.seconds ? `${Math.round(source.seconds)} s` : t("unknownLength")} · {(source.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                </>
+              ) : (
+                <>
+                  <UploadSimple className="size-5 shrink-0 text-muted-foreground" />
+                  <span>{t("dropRecording")}</span>
+                  <span className="text-xs text-muted-foreground">{t("recordingLimits")}</span>
+                </>
+              )}
+            </label>
+          )}
+
+          {showSettings && (
+            <div className="grid grid-cols-2 gap-3 rounded-xl bg-surface-2 p-3 sm:grid-cols-3">
+              {tab === "tts" && (
+                <>
                   <Slider label={t("stability")} value={stability} min={0} max={1} step={0.05} onChange={setStability} />
                   <Slider label={t("similarity")} value={similarity} min={0} max={1} step={0.05} onChange={setSimilarity} />
                   <Slider label={t("speed")} value={speed} min={0.7} max={1.2} step={0.05} onChange={setSpeed} />
-                </div>
-              </>
-            )}
-            {tab === "sfx" && (
-              <>
-                <textarea
-                  value={sfxText}
-                  onChange={(e) => setSfxText(e.target.value.slice(0, model.maxPromptChars))}
-                  placeholder={t("sfxPlaceholder")}
-                  rows={4}
-                  dir="auto"
-                  className="w-full resize-none rounded-xl bg-surface-2 p-3 text-sm outline-none placeholder:text-muted-foreground"
-                />
-                <div className="grid grid-cols-2 gap-3">
+                </>
+              )}
+              {tab === "sfx" && (
+                <>
                   <label className="block text-xs">
                     <span className="flex justify-between text-muted-foreground"><span>{t("length")}</span><span className="tabular-nums">{duration ? `${duration}s` : t("auto")}</span></span>
                     <input type="range" min={0} max={model.audio?.duration?.max ?? 30} step={0.5} value={duration ?? 0} onChange={(e) => setDuration(Number(e.target.value) || null)} className="mt-1 w-full accent-[var(--color-primary)]" />
                     <span className="text-[10px] text-muted-foreground">{t("lengthHint")}</span>
                   </label>
                   <Slider label={t("influence")} value={influence} min={0} max={1} step={0.05} onChange={setInfluence} hint={t("influenceHint")} />
-                </div>
-              </>
-            )}
-            {tab === "sts" && (
-              <>
-                <label className={cn("flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-surface-2 p-5 text-center text-sm", source && "border-primary/50")}>
-                  <input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f); e.target.value = ""; }} />
-                  {source ? (
-                    <>
-                      <SpeakerHigh className="size-6 text-primary" weight="fill" />
-                      <span className="font-medium">{source.file.name}</span>
-                      <span className="text-xs text-muted-foreground">{source.seconds ? `${Math.round(source.seconds)} s` : t("unknownLength")} · {(source.file.size / 1024 / 1024).toFixed(1)} MB</span>
-                    </>
-                  ) : (
-                    <>
-                      <UploadSimple className="size-6 text-muted-foreground" />
-                      <span>{t("dropRecording")}</span>
-                      <span className="text-xs text-muted-foreground">{t("recordingLimits")}</span>
-                    </>
-                  )}
-                </label>
-                <div className="grid grid-cols-2 gap-3">
+                </>
+              )}
+              {tab === "sts" && (
+                <>
                   <Slider label={t("stability")} value={stability} min={0} max={1} step={0.05} onChange={setStability} />
                   <Slider label={t("similarity")} value={similarity} min={0} max={1} step={0.05} onChange={setSimilarity} />
-                </div>
-              </>
-            )}
-          </div>
+                </>
+              )}
+            </div>
+          )}
 
-          <div className="flex flex-col gap-3">
-            {tab !== "sfx" && (
-              <>
-                <div className="text-xs text-muted-foreground">{voice ? t("voiceSelected", { name: voice.name }) : t("pickVoice")}</div>
-                <VoicePicker voices={voices} value={voice} onChange={setVoice} loading={voicesQuery.isLoading} />
-                {voicesQuery.isError && <p className="text-xs text-destructive">{t("voicesFailed")}</p>}
-              </>
+          {/* Bottom bar: voice, settings, expressive, counter, generate. */}
+          <div className="flex flex-wrap items-center gap-2">
+            {tab !== "sfx" && <VoiceButton key={voice?.voiceId ?? "none"} voice={voice} onOpen={() => setVoiceOpen(true)} />}
+            <button
+              type="button"
+              onClick={() => setShowSettings((v) => !v)}
+              aria-pressed={showSettings}
+              className={cn("flex h-9 items-center gap-1.5 rounded-lg bg-surface-3 px-2.5 text-sm hover:bg-white/10", showSettings && "text-primary")}
+            >
+              <SlidersHorizontal className="size-4" />
+              {t("settings")}
+            </button>
+            {tab === "tts" && model.audio?.expressive && (
+              <label className="flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-surface-3 px-2.5 text-sm">
+                <input type="checkbox" checked={expressive} onChange={(e) => setExpressive(e.target.checked)} />
+                {t("expressive")}
+              </label>
             )}
+            <span className={cn("ms-auto text-xs tabular-nums text-muted-foreground", tab === "tts" && text.length > maxChars && "text-destructive")}>
+              {tab === "tts" ? `${text.length.toLocaleString()} / ${maxChars.toLocaleString()}` : tab === "sfx" ? `${sfxText.length} / ${model.maxPromptChars}` : ""}
+            </span>
             <button
               type="button"
               disabled={!canSubmit}
               onClick={submit}
-              className="mt-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-black transition-opacity disabled:opacity-40"
+              className="flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-black transition-opacity disabled:opacity-40"
             >
               {busy ? t("working") : t("generate", { credits })}
             </button>
           </div>
         </div>
+      )}
+
+      {voiceOpen && (
+        <VoiceModal voices={voices} value={voice} onChange={setVoice} onClose={() => setVoiceOpen(false)} loading={voicesQuery.isLoading} error={voicesQuery.isError} />
       )}
     </div>
   );

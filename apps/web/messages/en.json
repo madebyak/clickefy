@@ -966,6 +966,8 @@
     "working": "Working…",
     "queued": "Added to the canvas — it will appear when ready.",
     "insufficientCredits": "Not enough credits.",
-    "failed": "Could not start the generation."
+    "failed": "Could not start the generation.",
+    "settings": "Settings",
+    "close": "Close"
   }
 }

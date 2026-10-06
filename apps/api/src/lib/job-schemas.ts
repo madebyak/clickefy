@@ -130,10 +130,29 @@ export const createToolSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+/** Audio models: the voice and settings the Audio page chose. All optional; the compiler clamps. */
+export const createAudioOptionsSchema = z
+  .object({
+    voiceId: z.string().min(1).max(64).optional(),
+    publicOwnerId: z.string().min(1).max(128).optional(),
+    voiceName: z.string().min(1).max(80).optional(),
+    stability: z.number().min(0).max(1).optional(),
+    similarity: z.number().min(0).max(1).optional(),
+    speed: z.number().min(0.7).max(1.2).optional(),
+    expressive: z.boolean().optional(),
+    languageCode: z.string().regex(/^[a-z]{2}$/).optional(),
+    durationSeconds: z.number().min(0.5).max(30).optional(),
+    promptInfluence: z.number().min(0).max(1).optional(),
+  })
+  .strict();
+
 export const createUserJobSchema = z.object({
   // Optional because tool jobs resolve their model server-side; plain
   // create submissions must still send one (enforced in the handler).
   modelKey: z.string().min(1).max(128).optional(),
+  audio: createAudioOptionsSchema.optional(),
+  /** Voice changer: the source length in seconds, used only when the upload is not in My Assets. */
+  inputAudioSeconds: z.number().positive().max(600).optional(),
   // May be empty for Camera Angle (the whole prompt is engineered);
   // required otherwise — enforced semantically in validation.
   prompt: z.string().max(10_000),

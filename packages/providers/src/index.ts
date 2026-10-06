@@ -28,6 +28,7 @@ export {
 } from './capabilities';
 
 export { compile, pixelSizeForAspect } from './compile';
+export { executeElevenLabs, type ElevenLabsEnv, type ElevenLabsResult, type ElevenLabsUsage } from './adapters/elevenlabs';
 
 export {
   failedStageCost,

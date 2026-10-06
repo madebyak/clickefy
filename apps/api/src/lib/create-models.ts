@@ -51,8 +51,12 @@ interface CreateModelDef {
   supportsEndFrame: boolean;
 }
 
-/** The v1 roster, in dropdown display order (image first, then video). */
+/** The v1 roster, in dropdown display order (image first, then video, then audio). */
 export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
+  // ── Audio (ElevenLabs) — served only when a client asks for kind=audio ──
+  { modelKey: 'eleven-tts', name: 'Speech', attachments: 'references', requiresStartFrame: false, supportsEndFrame: false },
+  { modelKey: 'eleven-sfx', name: 'Sound effects', attachments: 'references', requiresStartFrame: false, supportsEndFrame: false },
+  { modelKey: 'eleven-sts', name: 'Voice changer', attachments: 'references', requiresStartFrame: false, supportsEndFrame: false },
   // Gemini image roster on the GA model keys. The `-preview` keys these
   // replaced are still registered in MODEL_CAPABILITIES (deprecated) so
   // existing template snapshots resolve, but they are deliberately absent
@@ -445,6 +449,17 @@ export interface CreateModelDTO {
   acceptedImageMimes?: string[];
   /** Provider pixel constraints on input images (Kling: ≥300px, aspect 1:2.5–2.5:1). */
   imageConstraints?: { minEdge: number; minAspect: number; maxAspect: number };
+  /** Audio models only: what the Audio page needs to build the form and quote the price. */
+  audio?: {
+    task: 'tts' | 'sfx' | 'sts';
+    voices: boolean;
+    maxChars?: number;
+    duration?: { min: number; max: number; default: number };
+    inputAudio?: boolean;
+    expressive?: boolean;
+    /** The unit prices behind `resolveCreditCost`; the page quotes from these. */
+    pricing: { per1kChars?: number; perMinute?: number; flat?: number };
+  };
 }
 
 /**
@@ -536,6 +551,21 @@ export function buildCreateModelDTO(
     referenceVideo: caps.referenceVideo ? { ...caps.referenceVideo } : undefined,
     referenceAudio: caps.referenceAudio ? { ...caps.referenceAudio } : undefined,
     audioRefRequiresVisual: caps.audioRefRequiresVisual,
+    audio: caps.audio
+      ? {
+          task: caps.audio.task,
+          voices: caps.audio.voices,
+          maxChars: caps.audio.maxChars,
+          duration: caps.audio.duration ? { ...caps.audio.duration } : undefined,
+          inputAudio: caps.audio.inputAudio,
+          expressive: Boolean(caps.audio.expressiveModelId),
+          pricing: {
+            per1kChars: tierPricing?.per_1k_chars,
+            perMinute: tierPricing?.per_minute,
+            flat: tierPricing?.flat,
+          },
+        }
+      : undefined,
     supportsVideoTasks:
       caps.supportsOmniTaskType === true && caps.referenceVideo !== undefined
         ? true

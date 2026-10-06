@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { key: "createImage", href: "/create" },
   { key: "createVideo", href: "/create-video" },
+  { key: "audio", href: "/audio" },
   { key: "storyboard", tool: "storyboard" },
   { key: "cameraAngles", tool: "camera" },
   { key: "upscaleVideo", tool: "upscale" },
@@ -39,7 +40,7 @@ export function StudioNavigation({ className, onNavigate }: { className?: string
             aria-current={pathname === item.href ? "page" : undefined}
             className={cn(itemClass, pathname === item.href ? "bg-surface-3 text-foreground" : "text-muted-foreground")}
             onClick={() => {
-              if (item.key === "createImage" || item.key === "createVideo") setActiveProject(null);
+              if (item.key === "createImage" || item.key === "createVideo" || item.key === "audio") setActiveProject(null);
               onNavigate?.();
             }}>
             {t(item.key)}

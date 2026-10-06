@@ -50,12 +50,14 @@ export interface ProviderCostInput {
   usage?: { videoTokens?: number | null; durationSec?: number | null } | null;
   /** `provider_models.cost_per_call_usd`, for models this book does not know. */
   fallbackUsdPerCall?: number | null;
+  /** Characters of input text (speech models bill on these). */
+  textChars?: number | null;
 }
 
 export interface ProviderCost {
   usd: number;
   basis: CostBasis;
-  unit: 'second' | 'image' | 'call' | 'token' | 'megapixel';
+  unit: 'second' | 'image' | 'call' | 'token' | 'megapixel' | 'character';
   quantity: number;
   unitPriceUsd: number;
   mode: string | null;
@@ -72,7 +74,9 @@ type Rule =
       default: string;
     }
   | { kind: 'upscale'; usdPerSecond: Record<string, number>; fps60Multiplier: number; proMultiplier: number; default: string }
-  | { kind: 'video_tokens'; usdPerMillion: number; tokensPerSecond: Record<string, number>; default: string; assumedSeconds: number };
+  | { kind: 'video_tokens'; usdPerMillion: number; tokensPerSecond: Record<string, number>; default: string; assumedSeconds: number }
+  /** Speech: the provider bills per character of input text. */
+  | { kind: 'per_1k_chars'; usdPer1k: number; assumedChars: number };
 
 /** GPT Image: quality × size band. Sizes beyond 1024² use the 2048×1152 band (landscape/portrait). */
 const GPT_IMAGE_TIERS: Record<string, number> = {
@@ -134,6 +138,11 @@ export const PROVIDER_COST_BOOK: Record<string, Rule> = {
     default: '720p',
     assumedSeconds: 10,
   },
+  // ── ElevenLabs (elevenlabs.io/pricing/api, read 2026-10-04; the plan rate, the API page lists $0.08) ──
+  'eleven-tts': { kind: 'per_1k_chars', usdPer1k: 0.165, assumedChars: 1000 },
+  // Sound effects and voice changer bill per minute of audio ($0.12/min) → $0.002 per second.
+  'eleven-sfx': { kind: 'per_second', tiers: { std: 0.002 }, default: 'std', defaultSeconds: 10 },
+  'eleven-sts': { kind: 'per_second', tiers: { std: 0.002 }, default: 'std', defaultSeconds: 60 },
 };
 
 /** Flux and friends don't exist in the book yet: an unknown model falls back to the row's reference USD. */
@@ -220,6 +229,19 @@ export function providerCostUsd(input: ProviderCostInput): ProviderCost | null {
       const tokens = Math.round(rule.tokensPerSecond[mode]! * seconds);
       return { usd: round(tokens * perToken), basis: 'computed', unit: 'token', quantity: tokens, unitPriceUsd: perToken, mode, note: `${seconds}s assumed` };
     }
+    case 'per_1k_chars': {
+      const chars = input.textChars && input.textChars > 0 ? Math.round(input.textChars) : rule.assumedChars;
+      const perChar = rule.usdPer1k / 1000;
+      return {
+        usd: round(chars * perChar * outputs),
+        basis: 'computed',
+        unit: 'character',
+        quantity: chars * outputs,
+        unitPriceUsd: perChar,
+        mode: null,
+        ...(input.textChars ? {} : { note: `${chars} characters assumed` }),
+      };
+    }
   }
 }
 
@@ -241,6 +263,8 @@ export function failedCostFactor(args: {
   if (args.reason && /^input_/.test(args.reason)) return 0;
   switch (args.provider) {
     case 'fal':
+    // ElevenLabs deducts quota only when a request succeeds.
+    case 'elevenlabs':
       // Queue failures and 422s are not billed; only COMPLETED results are.
       return 0;
     case 'gemini':

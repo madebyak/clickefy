@@ -178,3 +178,16 @@ describe('Seedance video input — billed over input PLUS output seconds', () =>
     ).toBe(43);
   });
 });
+
+describe('resolveCreditCost — audio unit pricing', () => {
+  it('charges speech per started 1,000 characters with a one-credit floor', () => {
+    expect(resolveCreditCost({ baseCredits: 0, tierPricing: { per_1k_chars: 3 }, textChars: 0 })).toBe(3);
+    expect(resolveCreditCost({ baseCredits: 0, tierPricing: { per_1k_chars: 3 }, textChars: 1000 })).toBe(3);
+    expect(resolveCreditCost({ baseCredits: 0, tierPricing: { per_1k_chars: 3 }, textChars: 1001 })).toBe(6);
+  });
+  it('charges the voice changer per started minute and effects flat', () => {
+    expect(resolveCreditCost({ baseCredits: 0, tierPricing: { per_minute: 2 }, inputAudioSeconds: 59 })).toBe(2);
+    expect(resolveCreditCost({ baseCredits: 0, tierPricing: { per_minute: 2 }, inputAudioSeconds: 61 })).toBe(4);
+    expect(resolveCreditCost({ baseCredits: 0, tierPricing: { flat: 1 } })).toBe(1);
+  });
+});

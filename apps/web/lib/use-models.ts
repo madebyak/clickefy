@@ -15,9 +15,11 @@ export const MODELS_QUERY_KEY = ["models"] as const;
 
 export function useModels(kind?: "image" | "video" | "audio") {
   const { isLoaded, isSignedIn } = useAuth();
+  // Audio models are served only on request, so they get their own cache entry.
+  const audio = kind === "audio";
   const query = useQuery({
-    queryKey: MODELS_QUERY_KEY,
-    queryFn: () => getSDK().models.listModels(),
+    queryKey: audio ? [...MODELS_QUERY_KEY, "audio"] : MODELS_QUERY_KEY,
+    queryFn: () => getSDK().models.listModels(audio ? { kind: "audio" } : undefined),
     enabled: isLoaded && !!isSignedIn,
     // The roster changes only when admin re-prices; cache generously.
     staleTime: 5 * 60_000,

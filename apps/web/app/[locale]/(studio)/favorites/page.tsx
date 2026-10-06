@@ -55,7 +55,7 @@ export default function FavoritesPage() {
   const [exitingIds, setExitingIds] = useState<string[]>([]);
 
   /** Where a restored setup should land — the composer is mode-specific. */
-  const composerPath = (kind: Asset["type"]) => (kind === "video" ? "/create-video" : "/create");
+  const composerPath = (kind: Asset["type"]) => (kind === "video" ? "/create-video" : kind === "audio" ? "/audio" : "/create");
 
   const handleReuse = useCallback(
     async (a: Asset) => {

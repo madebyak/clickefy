@@ -80,6 +80,12 @@ export interface Bindings {
    * itself runs on the jobs worker, which has its own FAL_KEY.
    */
   FAL_KEY?: string;
+  /**
+   * ElevenLabs key, for the voice list (`GET /v1/audio/voices`). Generation
+   * runs on the jobs worker with its own copy.
+   *   prod: pnpm --filter @clickfy/api exec wrangler secret put ELEVENLABS_API_KEY
+   */
+  ELEVENLABS_API_KEY?: string;
   /** DeepSeek API key for admin EN→AR content translation. */
   DEEPSEEK_API_KEY?: string;
   /**

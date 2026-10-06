@@ -117,6 +117,19 @@ export interface BuildCreateStageInput {
    * `supportsOmniTaskType`.
    */
   task?: 'edit' | 'extend';
+  /** Audio models: the voice and settings the Audio page chose. */
+  audio?: {
+    voiceId?: string;
+    publicOwnerId?: string;
+    voiceName?: string;
+    stability?: number;
+    similarity?: number;
+    speed?: number;
+    expressive?: boolean;
+    languageCode?: string;
+    durationSeconds?: number;
+    promptInfluence?: number;
+  };
   /**
    * Seedance Draft mode (models with a `draft` capability): generate a
    * low-resolution preview whose task id can later make the final.
@@ -297,6 +310,13 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
       if (typeof u.fps === 'number') config.targetFps = u.fps;
       if (u.fidelity) config.fidelity = u.fidelity;
       if (typeof u.bitDepth === 'number') config.bitDepth = u.bitDepth;
+    }
+  } else if (provider === 'elevenlabs') {
+    // Settings verbatim; the compiler clamps against the model. The voice
+    // changer's recording is reference 0.
+    if (input.audio) Object.assign(config, input.audio);
+    if (caps.audio?.inputAudio && refCount > 0) {
+      config.audioSlot = { kind: 'user_input', fieldKey: createReferenceKey(0) };
     }
   } else if (provider === 'gemini' && !isImage) {
     // Gemini Omni (video): frames or references, no duration control.

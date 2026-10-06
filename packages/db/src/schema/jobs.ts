@@ -35,7 +35,7 @@ export interface ProviderBilledUnit {
   stage: number;
   model: string;
   provider: string;
-  unit: 'second' | 'image' | 'call' | 'token' | 'megapixel';
+  unit: 'second' | 'image' | 'call' | 'token' | 'megapixel' | 'character';
   quantity: number;
   unitPriceUsd: number;
   usd: number;

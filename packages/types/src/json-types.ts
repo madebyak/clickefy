@@ -224,7 +224,7 @@ export type TemplateInputField =
  * polling shape — while which model runs is decided by the capability
  * entry, exactly as it is for everyone else.
  */
-export type Provider = 'gemini' | 'kling' | 'seedance' | 'openai' | 'fal';
+export type Provider = 'gemini' | 'kling' | 'seedance' | 'openai' | 'fal' | 'elevenlabs';
 
 /**
  * Role tags admins attach to reference images so the prompt-compiler

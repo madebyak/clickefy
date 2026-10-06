@@ -485,6 +485,16 @@ export interface GenModel {
    * the composer offers its Edit/Extend modes only when this is true.
    */
   supportsVideoTasks?: boolean;
+  /** Audio models only: what the Audio page needs to build its form and quote the price. */
+  audio?: {
+    task: 'tts' | 'sfx' | 'sts';
+    voices: boolean;
+    maxChars?: number;
+    duration?: { min: number; max: number; default: number };
+    inputAudio?: boolean;
+    expressive?: boolean;
+    pricing: { per1kChars?: number; perMinute?: number; flat?: number };
+  };
   /**
    * Draft mode: a preview at `tier`, then the final from it at
    * `finalTier` within `validDays`. Absent = no draft mode.
@@ -548,6 +558,42 @@ export type CreateToolInput =
       rows: number;
     };
 
+/** Settings for an audio generation; every field optional, the server clamps. */
+export interface CreateAudioOptions {
+  voiceId?: string;
+  publicOwnerId?: string;
+  voiceName?: string;
+  /** 0–1 */
+  stability?: number;
+  /** 0–1 */
+  similarity?: number;
+  /** 0.7–1.2 */
+  speed?: number;
+  /** Use the expressive model (eleven_v3) for speech. */
+  expressive?: boolean;
+  /** ISO 639-1, e.g. `ar`. */
+  languageCode?: string;
+  /** Sound effects: 0.5–30 s. */
+  durationSeconds?: number;
+  /** Sound effects: 0–1. */
+  promptInfluence?: number;
+}
+
+/** A voice the Speech and Voice-changer tabs can use. */
+export interface AudioVoice {
+  voiceId: string;
+  name: string;
+  previewUrl: string | null;
+  source: 'account' | 'library';
+  publicOwnerId?: string;
+  language: string | null;
+  gender: string | null;
+  accent: string | null;
+  age: string | null;
+  useCase: string | null;
+  description: string | null;
+}
+
 export interface CreateGenerationInput {
   /** Omitted on tool jobs — the server resolves the model itself. */
   modelKey?: string;
@@ -593,6 +639,10 @@ export interface CreateGenerationInput {
    * that declare `referenceVideo` / `referenceAudio` budgets (Seedance).
    */
   references?: Array<Extract<JobInputValue, { kind: 'image' | 'video' | 'audio' }>>;
+  /** Audio models: the voice and settings chosen on the Audio page. */
+  audio?: CreateAudioOptions;
+  /** Voice changer: source length in seconds, when the upload is not in My Assets. */
+  inputAudioSeconds?: number;
   /**
    * Kling 3.0 family multi-shot storyboard: 2–6 shots, each with its own
    * prompt (≤512 chars) and a duration; durations must sum to `duration`.

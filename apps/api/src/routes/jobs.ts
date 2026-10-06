@@ -36,7 +36,8 @@ import type { JobError } from '@clickfy/types';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, inArray, lt, or } from 'drizzle-orm';
 
-import { jobs, projectAssets, projects, providerModels, templates, type Db } from '@clickfy/db';
+import {
+  libraryAssets, jobs, projectAssets, projects, providerModels, templates, type Db } from '@clickfy/db';
 import { resolveCreditCost, upscalePriceKey } from '@clickfy/types';
 import {
   aspectRatiosFor,
@@ -618,6 +619,49 @@ jobsRoute.post(
     }
     const { inputVideoSeconds } = validation.ok;
 
+    // ── Audio models: what the charge is computed from ────────────
+    // Speech bills per character of the text; the voice changer per
+    // minute of the recording. The recording's length comes from My
+    // Assets when the upload was registered there (probed at upload),
+    // else from the body, capped at five minutes.
+    const audioTask = caps.kind === 'audio' ? caps.audio?.task : undefined;
+    const textChars = audioTask === 'tts' || audioTask === 'sfx' ? body.prompt.length : undefined;
+    if (audioTask === 'tts' && caps.audio?.maxChars && body.prompt.length > caps.audio.maxChars) {
+      return c.json(
+        { error: { code: 'text_too_long', message: `Speech takes up to ${caps.audio.maxChars} characters.`, details: { max: caps.audio.maxChars, actual: body.prompt.length } } },
+        422,
+      );
+    }
+    if ((audioTask === 'tts' || audioTask === 'sfx') && body.prompt.trim().length === 0) {
+      return c.json({ error: { code: 'prompt_empty', message: audioTask === 'tts' ? 'Type the text to speak.' : 'Describe the sound.' } }, 422);
+    }
+    if (caps.audio?.voices && !body.audio?.voiceId) {
+      return c.json({ error: { code: 'voice_required', message: 'Pick a voice.' } }, 422);
+    }
+    let inputAudioSeconds: number | undefined;
+    if (caps.audio?.inputAudio) {
+      const source = body.references.find((r) => r.kind === 'audio');
+      if (!source) {
+        return c.json({ error: { code: 'audio_required', message: 'Add the recording to convert.' } }, 422);
+      }
+      const filed = await c.var.db.query.libraryAssets.findFirst({
+        where: eq(libraryAssets.r2Key, source.r2Key),
+        columns: { durationSeconds: true },
+      });
+      const probed = filed?.durationSeconds != null ? Number(filed.durationSeconds) : undefined;
+      inputAudioSeconds = probed && probed > 0 ? probed : body.inputAudioSeconds;
+      if (!inputAudioSeconds || inputAudioSeconds <= 0) {
+        return c.json({ error: { code: 'audio_duration_unknown', message: 'Could not read the recording length.' } }, 422);
+      }
+      const maxSeconds = caps.referenceAudio?.maxClipSeconds ?? 300;
+      if (inputAudioSeconds > maxSeconds) {
+        return c.json(
+          { error: { code: 'audio_too_long', message: `Recordings up to ${Math.round(maxSeconds / 60)} minutes.`, details: { max: maxSeconds, actual: inputAudioSeconds } } },
+          422,
+        );
+      }
+    }
+
     // ── Price (tier + duration + audio + input video) ──────────────
     // Charge audio only when it will actually be SERVED: on a tier below
     // `nativeAudioRequiresTier` the compiler drops the audio rather than
@@ -662,6 +706,8 @@ jobsRoute.post(
           defaultDuration: refDuration,
           inputVideoSeconds,
           inputVideoFactor: caps.inputVideoDurationFactor,
+          textChars,
+          inputAudioSeconds,
         });
     if (cost <= 0) {
       return c.json(
@@ -769,6 +815,8 @@ jobsRoute.post(
        * the number any margin report has to start from.
        */
       sourceSeconds: caps.billsSourceDuration ? billedDuration : undefined,
+      // Audio: the settings the worker compiles from, and the units charged.
+      ...(caps.kind === 'audio' ? { audio: body.audio, textChars, inputAudioSeconds } : {}),
       // Draft mode. A draft records its probed input-video length so the
       // final can be priced without probing again; a final records the
       // draft it came from and the provider id it is generated from, and

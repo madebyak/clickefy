@@ -62,6 +62,14 @@ describe('providerCostUsd', () => {
     expect(providerCostUsd({ modelKey: 'h3-max', mode: '768P', durationSeconds: 15 })?.usd).toBeCloseTo(1.2, 5);
   });
 
+  it('prices ElevenLabs speech per character and effects per second', () => {
+    const speech = providerCostUsd({ modelKey: 'eleven-tts', textChars: 2500 });
+    expect(speech?.unit).toBe('character');
+    expect(speech?.usd).toBeCloseTo(0.4125, 5);
+    expect(providerCostUsd({ modelKey: 'eleven-sfx', durationSeconds: 30 })?.usd).toBeCloseTo(0.06, 5);
+    expect(providerCostUsd({ modelKey: 'eleven-sts', durationSeconds: 90 })?.usd).toBeCloseTo(0.18, 5);
+  });
+
   it('falls back to the row reference cost for an unknown model, and null without one', () => {
     expect(providerCostUsd({ modelKey: 'mystery', fallbackUsdPerCall: 0.2 })?.usd).toBe(0.2);
     expect(providerCostUsd({ modelKey: 'mystery' })).toBeNull();
@@ -76,6 +84,8 @@ describe('providerCostUsd', () => {
       'seedream-4-0-250828': 1, 'seedream-5-0-260128': 1, 'dola-seedream-5-0-pro-260628': 2, 'bytedance-upscaler': 1,
       'wan-3-0': 8, 'flux-3-image': 1, 'flux-3-video': 13, 'h3-max': 6, 'gemini-omni-1-1-flash': 16,
       'gpt-image-2.5-sunburst': 1, 'gpt-image-2.5-flare': 1,
+      // audio: speech is 3 credits per 1,000 chars; effects 1 credit (≤30 s, 10 s assumed); voice changer 2 per minute
+      'eleven-tts': 3, 'eleven-sfx': 1, 'eleven-sts': 2,
     };
     for (const [modelKey, cr] of Object.entries(credits)) {
       const rule = PROVIDER_COST_BOOK[modelKey]!;
@@ -83,6 +93,7 @@ describe('providerCostUsd', () => {
         modelKey,
         durationSeconds: rule.kind === 'per_second' ? rule.defaultSeconds : rule.kind === 'seedance_tokens' ? 5 : undefined,
         inputVideoSeconds: rule.kind === 'upscale' ? 5 : undefined,
+        textChars: rule.kind === 'per_1k_chars' ? 1000 : undefined,
       })!;
       const margin = (cr * 0.1 - cost.usd) / (cr * 0.1);
       expect(margin, `${modelKey}: ${cr} credits vs $${cost.usd}`).toBeGreaterThanOrEqual(0.33);
@@ -98,6 +109,7 @@ describe('failedCostFactor', () => {
   });
   it('bills fal never, Google/OpenAI per call, Kling/BytePlus once the task ran', () => {
     expect(failedCostFactor({ provider: 'fal', reachedProvider: true })).toBe(0);
+    expect(failedCostFactor({ provider: 'elevenlabs', reachedProvider: true })).toBe(0);
     expect(failedCostFactor({ provider: 'gemini', reachedProvider: true })).toBe(1);
     expect(failedCostFactor({ provider: 'openai', reachedProvider: true, reason: 'safety' })).toBe(1);
     expect(failedCostFactor({ provider: 'seedance', reachedProvider: true, reason: 'output_moderated' })).toBe(1);

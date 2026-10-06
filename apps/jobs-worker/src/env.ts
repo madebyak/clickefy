@@ -45,6 +45,8 @@ const envSchema = z.object({
    * the worker boots without it and only a fal stage fails.
    */
   FAL_KEY: z.string().min(1).optional(),
+  /** ElevenLabs (Audio section: speech, sound effects, voice changer). */
+  ELEVENLABS_API_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

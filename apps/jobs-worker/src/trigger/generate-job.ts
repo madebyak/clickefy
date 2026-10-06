@@ -219,6 +219,8 @@ export const generateJob = task({
         tool?: import('@clickfy/providers').CreateToolRequest;
         // Video Upscaler settings, as charged for at submit.
         upscale?: import('@clickfy/types').UpscaleOptions;
+        // Audio models: voice and settings from the Audio page.
+        audio?: import('@clickfy/providers').BuildCreateStageInput['audio'];
       };
       const rawInputs = jobRow.inputs as Record<string, { kind?: string }>;
       const rawInputKeys = Object.keys(rawInputs);
@@ -250,6 +252,7 @@ export const generateJob = task({
           shots: opts.shots,
           tool: opts.tool,
           upscale: opts.upscale,
+          audio: opts.audio,
         });
         stages = [built.stage];
         stageTemplateInputs = built.templateInputs;
@@ -367,6 +370,8 @@ export const generateJob = task({
     const costOpts = (jobRow.options ?? {}) as {
       mode?: string; duration?: number; sound?: boolean; inputVideoSeconds?: number; sourceSeconds?: number;
       aspectRatio?: string; upscale?: { fps?: number; tier?: string };
+      /** Audio jobs: the text's length and the voice changer's source length, as billed at submit. */
+      textChars?: number; inputAudioSeconds?: number;
     };
     const referenceCount = Object.values((jobRow.inputs ?? {}) as Record<string, { kind?: string } | undefined>)
       .filter((v) => v && v.kind !== 'text').length;
@@ -378,6 +383,7 @@ export const generateJob = task({
         mode: cfg.mode ?? costOpts.mode ?? null,
         durationSeconds: cfg.duration ?? costOpts.duration ?? null,
         inputVideoSeconds: costOpts.inputVideoSeconds ?? costOpts.sourceSeconds ?? null,
+        textChars: costOpts.textChars ?? (stage.provider === 'elevenlabs' ? stage.prompt?.length ?? null : null),
         sound: cfg.sound === true || cfg.sound === 'on' || costOpts.sound === true,
         aspectRatio: cfg.aspectRatio ?? costOpts.aspectRatio ?? null,
         upscale: costOpts.upscale ?? null,
@@ -838,6 +844,7 @@ function buildProviderEnv(): ProviderEnv {
     seedance: env.SEEDANCE_API_KEY ? { apiKey: env.SEEDANCE_API_KEY } : undefined,
     openai: env.OPENAI_API_KEY ? { apiKey: env.OPENAI_API_KEY } : undefined,
     fal: env.FAL_KEY ? { apiKey: env.FAL_KEY } : undefined,
+    elevenlabs: env.ELEVENLABS_API_KEY ? { apiKey: env.ELEVENLABS_API_KEY } : undefined,
   };
 }
 

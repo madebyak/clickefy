@@ -30,6 +30,7 @@ import {
 } from "@/components/studio/canvas-toolbar";
 import { AssetInfoPanel } from "@/components/studio/asset-info-panel";
 import { SelectionBar } from "@/components/studio/selection-bar";
+import { AudioComposer } from "@/components/generate/audio-composer";
 import { PromptBar } from "@/components/generate/prompt-bar";
 import { useTimeLabel } from "@/lib/time-label";
 import { isJobErrorReason, type JobErrorReason } from "@clickfy/types";
@@ -70,7 +71,7 @@ function useGridSize(): [GridSize, (next: GridSize) => void] {
   return [gridSize, update];
 }
 
-function EmptyState({ kind }: { kind: "image" | "video" }) {
+function EmptyState({ kind }: { kind: "image" | "video" | "audio" }) {
   const t = useTranslations("studio");
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
@@ -79,7 +80,7 @@ function EmptyState({ kind }: { kind: "image" | "video" }) {
       </div>
       <h1 className="mt-5 text-2xl font-semibold tracking-tight">{t("startNewProject")}</h1>
       <p className="mt-2 max-w-md text-muted-foreground">
-        {t(kind === "video" ? "emptyPromptVideo" : "emptyPromptImage")}
+        {t(kind === "video" ? "emptyPromptVideo" : kind === "audio" ? "emptyPromptAudio" : "emptyPromptImage")}
       </p>
     </div>
   );
@@ -232,7 +233,7 @@ function ProjectView({
   );
 }
 
-export function Workspace({ kind }: { kind: "image" | "video" }) {
+export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
   const t = useTranslations("studio");
   const {
     folders,
@@ -492,7 +493,7 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
       >
         <div className="pointer-events-auto mx-auto max-w-4xl">
           <SelectionBar />
-          <PromptBar kind={kind} />
+          {kind === "audio" ? <AudioComposer /> : <PromptBar kind={kind} />}
         </div>
       </div>
       {activeProject && infoAssetId && (

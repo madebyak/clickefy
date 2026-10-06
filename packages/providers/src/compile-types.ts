@@ -163,6 +163,29 @@ export interface GeminiOmniCompiledRequest {
   images: ImagePart[];
 }
 
+/** One ElevenLabs call; `variant` picks the endpoint. */
+export interface ElevenLabsCompiledRequest {
+  provider: 'elevenlabs';
+  variant: 'tts' | 'sfx' | 'sts';
+  /** ElevenLabs model id, e.g. `eleven_multilingual_v2`. */
+  model: string;
+  /** The words to speak (tts) or the sound to describe (sfx). */
+  text?: string;
+  voiceId?: string;
+  /** Set for a public-library voice so the adapter can add it to the account on first use. */
+  publicOwnerId?: string;
+  voiceName?: string;
+  voiceSettings?: { stability?: number; similarityBoost?: number; speed?: number };
+  /** ISO 639-1 hint for multilingual models (e.g. `ar`). */
+  languageCode?: string;
+  /** sfx: 0.5–30 s; omitted lets the model choose. */
+  durationSeconds?: number;
+  /** sfx: 0–1, how literally to follow the text. */
+  promptInfluence?: number;
+  /** sts: the recording to convert. */
+  audio?: { bytes?: Uint8Array; url?: string; mimeType: string };
+}
+
 export interface KlingCompiledRequest {
   provider: 'kling';
   /**
@@ -314,7 +337,8 @@ export type CompiledRequest =
   | SeedanceCompiledRequest
   | SeedreamCompiledRequest
   | GptImageCompiledRequest
-  | FalCompiledRequest;
+  | FalCompiledRequest
+  | ElevenLabsCompiledRequest;
 
 /**
  * fal — an aggregator, so the compiled shape is deliberately thin.

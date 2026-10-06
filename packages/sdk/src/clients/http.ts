@@ -21,6 +21,7 @@ import type {
 } from '@clickfy/types';
 
 import type {
+  AudioVoice,
   AppNotification,
   CatalogCategory,
   CatalogTemplate,
@@ -1083,11 +1084,19 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
       // `GET /v1/models` — create-eligible model roster (name, cost, prompt
       // cap, aspect ratios, durations, attachment shape) for the create
       // screen. Auth required.
-      async listModels(): Promise<GenModel[]> {
-        const json = await get<ApiEnvelope<{ models: GenModel[] }>>('/v1/models', {
+      async listModels(params): Promise<GenModel[]> {
+        const qs = params?.kind ? `?kind=${params.kind}` : '';
+        const json = await get<ApiEnvelope<{ models: GenModel[] }>>(`/v1/models${qs}`, {
           auth: true,
         });
         return json.data.models;
+      },
+    },
+
+    audio: {
+      async listVoices(): Promise<AudioVoice[]> {
+        const json = await get<ApiEnvelope<{ voices: AudioVoice[] }>>('/v1/audio/voices', { auth: true });
+        return json.data.voices;
       },
     },
 

@@ -16,7 +16,8 @@
     "search": "Search anything…",
     "home": "Clickefy home",
     "toggleMenu": "Toggle menu",
-    "openMenu": "Open menu"
+    "openMenu": "Open menu",
+    "audio": "Audio"
   },
   "language": {
     "change": "Change language"
@@ -526,7 +527,8 @@
     "finalFailed": "Couldn't start the final — try again",
     "deleteAsset": "Delete",
     "turnToVideo": "Turn into video",
-    "changeCameraAngle": "Change camera angle"
+    "changeCameraAngle": "Change camera angle",
+    "emptyPromptAudio": "Turn text into speech, make a sound effect, or re-voice a recording with the panel below."
   },
   "projects": {
     "heading": "My Projects",
@@ -926,5 +928,43 @@
     "ctaSub": "Everything in this post is live in Clickefy today. Your first generations are free.",
     "ctaButton": "Open the studio",
     "moreHeading": "More from the blog"
+  },
+  "audio": {
+    "tab_tts": "Speech",
+    "tab_sfx": "Sound effects",
+    "tab_sts": "Voice changer",
+    "loading": "Loading…",
+    "unavailable": "Audio is not available right now.",
+    "ttsPlaceholder": "Type what should be said. Arabic and English both work.",
+    "sfxPlaceholder": "Describe the sound: “rain on a tin roof, distant thunder”",
+    "expressive": "Expressive (v3)",
+    "stability": "Stability",
+    "similarity": "Similarity",
+    "speed": "Speed",
+    "length": "Length",
+    "auto": "Auto",
+    "lengthHint": "0.5–30 s, or let the model decide",
+    "influence": "Prompt influence",
+    "influenceHint": "Higher follows the text more literally",
+    "dropRecording": "Choose a recording to re-voice",
+    "recordingLimits": "MP3 or WAV, up to 5 minutes and 15 MB",
+    "unknownLength": "length unknown",
+    "pickVoice": "Pick a voice",
+    "voiceSelected": "Voice: {name}",
+    "searchVoices": "Search voices…",
+    "lang_all": "All",
+    "lang_en": "EN",
+    "lang_ar": "AR",
+    "loadingVoices": "Loading voices…",
+    "noVoices": "No voices match.",
+    "voicesFailed": "Voices could not be loaded.",
+    "yourVoice": "yours",
+    "playPreview": "Play preview",
+    "stopPreview": "Stop preview",
+    "generate": "Generate · {credits} credits",
+    "working": "Working…",
+    "queued": "Added to the canvas — it will appear when ready.",
+    "insufficientCredits": "Not enough credits.",
+    "failed": "Could not start the generation."
   }
 }

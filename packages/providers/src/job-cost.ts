@@ -41,6 +41,8 @@ export interface StageCostFacts {
   usage?: { videoTokens?: number | null; durationSec?: number | null } | null;
   /** `provider_models.cost_per_call_usd`, the fallback for unknown models. */
   fallbackUsdPerCall?: number | null;
+  /** Characters of input text (speech). */
+  textChars?: number | null;
 }
 
 export interface StageCost extends ProviderCost {
@@ -51,7 +53,7 @@ export interface StageCost extends ProviderCost {
 
 /** Cost of one COMPLETED stage. Null when neither the book nor the row can price it. */
 export function stageCost(stage: number, facts: StageCostFacts, caps?: ModelCapabilities): StageCost | null {
-  const isVideo = caps?.kind === 'video';
+  const isVideo = caps?.kind === 'video' || caps?.kind === 'audio';
   const cost = providerCostUsd({
     modelKey: facts.modelKey,
     mode: facts.mode ?? caps?.modes?.default ?? null,
@@ -69,6 +71,7 @@ export function stageCost(stage: number, facts: StageCostFacts, caps?: ModelCapa
     upscale: facts.upscale ?? null,
     usage: facts.usage ?? null,
     fallbackUsdPerCall: facts.fallbackUsdPerCall ?? null,
+    textChars: facts.textChars ?? null,
   });
   if (!cost) return null;
   return { stage, model: facts.modelKey, provider: facts.provider, ...cost };

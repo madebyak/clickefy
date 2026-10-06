@@ -117,7 +117,20 @@ export interface CreditCostInputs {
    * (Kling) or not at all.
    */
   inputVideoFactor?: number | null;
+  /**
+   * Audio models price by unit instead of by tier and length. The keys
+   * live in `tierPricing` next to everything else:
+   *   per_1k_chars  speech: credits per started 1,000 characters of `textChars`
+   *   per_minute    voice changer: credits per started minute of `inputAudioSeconds`
+   *   flat          sound effects: credits per generation
+   * The first key present wins; without any, the model prices like the rest.
+   */
+  textChars?: number | null;
+  inputAudioSeconds?: number | null;
 }
+
+/** Audio pricing keys an admin can put in `tier_pricing`. */
+export const AUDIO_PRICE_KEYS = ['per_1k_chars', 'per_minute', 'flat'] as const;
 
 /**
  * Credits for ONE output at the given tier and duration.
@@ -126,6 +139,19 @@ export interface CreditCostInputs {
  * job" rather than "it's free".
  */
 export function resolveCreditCost(input: CreditCostInputs): number {
+  const unit = input.tierPricing;
+  if (unit?.per_1k_chars !== undefined && unit.per_1k_chars > 0) {
+    const chars = Math.max(0, Math.floor(input.textChars ?? 0));
+    return Math.max(1, Math.ceil(chars / 1000)) * unit.per_1k_chars;
+  }
+  if (unit?.per_minute !== undefined && unit.per_minute > 0) {
+    const seconds = Math.max(0, input.inputAudioSeconds ?? 0);
+    return Math.max(1, Math.ceil(seconds / 60)) * unit.per_minute;
+  }
+  if (unit?.flat !== undefined && unit.flat > 0) {
+    return unit.flat;
+  }
+
   const inputVideoSeconds =
     typeof input.inputVideoSeconds === 'number' && input.inputVideoSeconds > 0
       ? input.inputVideoSeconds

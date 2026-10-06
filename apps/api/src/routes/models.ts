@@ -26,6 +26,8 @@ import { providerModels } from '@clickfy/db';
 import type { AppEnv } from '../types';
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
+import { findCapabilities } from '@clickfy/providers';
+
 import { buildCreateModelDTO, listCreateModelDefs } from '../lib/create-models';
 import { ensureDynamicModels } from '../lib/dynamic-models';
 
@@ -41,7 +43,16 @@ modelsRoute.get(
   withCurrentUser(),
   async (c) => {
     await ensureDynamicModels(c.var.db);
-    const defs = listCreateModelDefs();
+    // Audio models have their own page on the web and no surface in the
+    // app, so they are served only when asked for (`?kind=audio`), never
+    // in the default roster a picker reads.
+    const kindParam = c.req.query('kind');
+    const defs = listCreateModelDefs().filter((d) => {
+      const kind = findCapabilities(d.modelKey)?.kind ?? 'image';
+      if (kindParam === 'all') return true;
+      if (kindParam) return kind === kindParam;
+      return kind !== 'audio';
+    });
     const rosterKeys = defs.map((d) => d.modelKey);
 
     const rows = await c.var.db

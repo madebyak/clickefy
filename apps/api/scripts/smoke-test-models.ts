@@ -33,6 +33,10 @@ if (!triggerKey?.startsWith('tr_dev_')) { console.error('REFUSING: not a Trigger
 
 const USER_ID = '6703dee1-e723-4bdd-8e9e-42ea9969bcde'; // webtest fixture (dev)
 const PROMPT = 'A small red marble rolls slowly across a sunlit wooden table and stops beside a green apple. Soft daylight, shallow depth of field.';
+// 'Bella', a premade voice on the account (the free tier refuses library voices, Rachel included).
+const PREMADE_VOICE_ID = 'hpp4J3VqNfWAUOO0d1Us';
+const AUDIO_TEXT = 'Welcome to Clickefy. This short line checks that speech generation works end to end.';
+const SFX_TEXT = 'A single soft doorbell chime in a quiet hallway.';
 const db = createDb({ connectionString: url, runtime: 'http' });
 
 async function main() {
@@ -81,23 +85,29 @@ async function main() {
     const row = rows.find((r) => r.modelKey === modelKey);
     if (!caps || !row) { console.log(`✗ ${modelKey}: not registered / no row`); continue; }
     const mode = caps.modes?.default;
+    // Audio: speech and effects take a short text; the voice changer needs an upload and is skipped here.
+    if (caps.audio?.inputAudio) { console.log(`- ${modelKey}: needs an uploaded recording; test it from the Audio page`); continue; }
+    const prompt = caps.audio?.task === 'tts' ? AUDIO_TEXT : caps.audio?.task === 'sfx' ? SFX_TEXT : PROMPT;
     const cost = resolveCreditCost({
       baseCredits: row.costCredits,
       tierPricing: row.tierPricing ?? null,
       mode,
       duration: caps.kind === 'video' ? caps.duration?.default : undefined,
       defaultDuration: caps.kind === 'video' ? caps.duration?.default : undefined,
+      textChars: caps.kind === 'audio' ? prompt.length : undefined,
     });
     const options: Record<string, unknown> = {
       aspectRatio: aspectRatiosFor(caps)[0],
       ...(mode ? { mode } : {}),
       ...(caps.kind === 'video' && caps.duration ? { duration: caps.duration.default } : {}),
+      ...(caps.audio?.task === 'tts' ? { audio: { voiceId: PREMADE_VOICE_ID, stability: 0.5, similarity: 0.75 }, textChars: prompt.length } : {}),
+      ...(caps.audio?.task === 'sfx' ? { audio: { durationSeconds: 3, promptInfluence: 0.3 }, textChars: prompt.length } : {}),
     };
     const result = await createUserJobAtomically(db, {
       userId: USER_ID,
       cost,
       modelKey,
-      inputs: { prompt: { kind: 'text', value: PROMPT } },
+      inputs: { prompt: { kind: 'text', value: prompt } },
       options,
       idempotencyKey: null,
       origin: 'create',
@@ -125,7 +135,7 @@ async function main() {
         const res = j.result as { images?: unknown[]; videos?: Array<{ durationSec?: number }> } | null;
         const err = j.error as { code?: string; message?: string } | null;
         const took = j.completedAt && j.startedAt ? Math.round((j.completedAt.getTime() - j.startedAt.getTime()) / 1000) : null;
-        console.log(`${j.status === 'completed' ? '✓' : '✗'} ${modelKey.padEnd(24)} ${j.status}${took != null ? ` in ${took}s` : ''} ${j.status === 'completed' ? `images ${res?.images?.length ?? 0} videos ${res?.videos?.length ?? 0}${res?.videos?.[0]?.durationSec ? ` (${res.videos[0].durationSec}s)` : ''}` : `${err?.code}: ${err?.message?.slice(0, 160)}`}`);
+        console.log(`${j.status === 'completed' ? '✓' : '✗'} ${modelKey.padEnd(24)} ${j.status}${took != null ? ` in ${took}s` : ''} ${j.status === 'completed' ? `images ${res?.images?.length ?? 0} videos ${res?.videos?.length ?? 0} audios ${res?.audios?.length ?? 0}${res?.audios?.[0]?.durationSec ? ` (${res.audios[0].durationSec.toFixed(1)}s)` : ''}${res?.videos?.[0]?.durationSec ? ` (${res.videos[0].durationSec}s)` : ''}` : `${err?.code}: ${err?.message?.slice(0, 160)}`}`);
       }
     }
   }

@@ -428,6 +428,21 @@ export interface ModelCapabilities {
    * (their prompts are admin-authored).
    */
   maxPromptChars?: number;
+  /**
+   * Audio models (ElevenLabs). `task` picks the endpoint; `voices` says
+   * the request carries a voice id; `duration` is the sound-effect length
+   * range in seconds; `inputAudio` means one uploaded recording is the
+   * input (voice changer). `expressiveModelId` is the alternative model
+   * for the "expressive" switch (eleven_v3).
+   */
+  audio?: {
+    task: 'tts' | 'sfx' | 'sts';
+    voices: boolean;
+    maxChars?: number;
+    duration?: { min: number; max: number; default: number };
+    inputAudio?: boolean;
+    expressiveModelId?: string;
+  };
 
   /**
    * Seedance: does the model accept a `seed` body parameter?
@@ -1775,6 +1790,60 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       labels: { '360p': '360p', '720p': '720p', '1080p': '1080p' },
     },
     notes: 'Google video with native audio; length chosen by the model (3–10 s).',
+  },
+
+  // ── ElevenLabs (Phase 2, Audio section) ───────────────────────────
+  'eleven-tts': {
+    provider: 'elevenlabs',
+    modelKey: 'eleven-tts',
+    apiModelId: 'eleven_multilingual_v2',
+    displayName: 'ElevenLabs Speech',
+    status: 'active',
+    kind: 'audio',
+    sizing: { mode: 'aspect', values: [] },
+    outputs: { min: 1, max: 1, default: 1 },
+    refAddressing: 'ordinal',
+    maxReferences: 0,
+    maxSubjects: 0,
+    maxImagesTotal: 0,
+    maxPromptChars: 5000,
+    audio: { task: 'tts', voices: true, maxChars: 5000, expressiveModelId: 'eleven_v3' },
+    notes: 'Text to speech, 32 languages including Arabic. Billed per character.',
+  },
+  'eleven-sfx': {
+    provider: 'elevenlabs',
+    modelKey: 'eleven-sfx',
+    apiModelId: 'eleven_text_to_sound_v2',
+    displayName: 'ElevenLabs Sound Effects',
+    status: 'active',
+    kind: 'audio',
+    sizing: { mode: 'aspect', values: [] },
+    outputs: { min: 1, max: 1, default: 1 },
+    refAddressing: 'ordinal',
+    maxReferences: 0,
+    maxSubjects: 0,
+    maxImagesTotal: 0,
+    maxPromptChars: 450,
+    audio: { task: 'sfx', voices: false, duration: { min: 0.5, max: 30, default: 5 } },
+    notes: 'Sound effect from a description, 0.5–30 s.',
+  },
+  'eleven-sts': {
+    provider: 'elevenlabs',
+    modelKey: 'eleven-sts',
+    apiModelId: 'eleven_multilingual_sts_v2',
+    displayName: 'ElevenLabs Voice Changer',
+    status: 'active',
+    kind: 'audio',
+    sizing: { mode: 'aspect', values: [] },
+    outputs: { min: 1, max: 1, default: 1 },
+    refAddressing: 'ordinal',
+    maxReferences: 1,
+    maxSubjects: 0,
+    maxImagesTotal: 0,
+    maxPromptChars: 0,
+    referenceAudio: { max: 1, maxTotalSeconds: 300, minClipSeconds: 1, maxClipSeconds: 300 },
+    audio: { task: 'sts', voices: true, inputAudio: true },
+    notes: 'Re-voices an uploaded recording (≤ 5 min, ≤ 50 MB) in the chosen voice.',
   },
 };
 

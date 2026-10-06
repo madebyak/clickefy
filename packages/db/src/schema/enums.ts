@@ -139,6 +139,7 @@ export const providerEnum = pgEnum('provider', [
   'seedance',
   'openai',
   'fal',
+  'elevenlabs',
 ]);
 
 export const modelStatusEnum = pgEnum('model_status', [

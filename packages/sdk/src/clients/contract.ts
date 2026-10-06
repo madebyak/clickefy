@@ -10,6 +10,7 @@ import type {
 } from '@clickfy/types';
 
 import type {
+  AudioVoice,
   AppNotification,
   AuthProvider,
   AuthSession,
@@ -677,7 +678,12 @@ export interface ModelsClient {
    * (cost, prompt cap, aspect ratios, durations, attachment shape).
    * Hits `GET /v1/models`. Auth required.
    */
-  listModels(): Promise<GenModel[]>;
+  listModels(params?: { kind?: 'image' | 'video' | 'audio' | 'all' }): Promise<GenModel[]>;
+}
+
+export interface AudioClient {
+  /** Voices for speech and the voice changer. Hits `GET /v1/audio/voices`. Auth required. */
+  listVoices(): Promise<AudioVoice[]>;
 }
 
 export interface NotificationsClient {
@@ -712,6 +718,7 @@ export interface SDKClient {
   /** "My Assets" — uploaded source media. See MediaClient. */
   media: MediaClient;
   models: ModelsClient;
+  audio: AudioClient;
   notifications: NotificationsClient;
   store: StoreClient;
   uploads: UploadsClient;

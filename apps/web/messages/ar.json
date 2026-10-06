@@ -16,7 +16,8 @@
     "search": "ابحث عن أي شيء…",
     "home": "الصفحة الرئيسية لكليكيفاي",
     "toggleMenu": "تبديل القائمة",
-    "openMenu": "فتح القائمة"
+    "openMenu": "فتح القائمة",
+    "audio": "الصوت"
   },
   "language": {
     "change": "تغيير اللغة"
@@ -526,7 +527,8 @@
     "finalFailed": "تعذّر بدء النسخة النهائية — حاول مرة أخرى",
     "deleteAsset": "حذف",
     "turnToVideo": "حوّلها إلى فيديو",
-    "changeCameraAngle": "تغيير زاوية الكاميرا"
+    "changeCameraAngle": "تغيير زاوية الكاميرا",
+    "emptyPromptAudio": "حوّل النص إلى كلام، أو أنشئ مؤثرًا صوتيًا، أو غيّر صوت تسجيل من اللوحة أدناه."
   },
   "projects": {
     "heading": "مشاريعي",
@@ -926,5 +928,43 @@
     "ctaSub": "كل ما في هذا المقال متاح في Clickefy اليوم. أول إنشاءاتك مجانية.",
     "ctaButton": "افتح الاستوديو",
     "moreHeading": "المزيد من المدوّنة"
+  },
+  "audio": {
+    "tab_tts": "كلام",
+    "tab_sfx": "مؤثرات صوتية",
+    "tab_sts": "تغيير الصوت",
+    "loading": "جارٍ التحميل…",
+    "unavailable": "الصوت غير متاح حاليًا.",
+    "ttsPlaceholder": "اكتب ما يجب قوله. يعمل بالعربية والإنجليزية.",
+    "sfxPlaceholder": "صف الصوت: «مطر على سقف معدني، رعد بعيد»",
+    "expressive": "تعبيري (v3)",
+    "stability": "الثبات",
+    "similarity": "التشابه",
+    "speed": "السرعة",
+    "length": "المدة",
+    "auto": "تلقائي",
+    "lengthHint": "من 0.5 إلى 30 ثانية، أو دع النموذج يقرر",
+    "influence": "تأثير الوصف",
+    "influenceHint": "الأعلى يلتزم بالنص حرفيًا أكثر",
+    "dropRecording": "اختر تسجيلًا لتغيير صوته",
+    "recordingLimits": "MP3 أو WAV، حتى 5 دقائق و15 ميغابايت",
+    "unknownLength": "المدة غير معروفة",
+    "pickVoice": "اختر صوتًا",
+    "voiceSelected": "الصوت: {name}",
+    "searchVoices": "ابحث عن صوت…",
+    "lang_all": "الكل",
+    "lang_en": "EN",
+    "lang_ar": "AR",
+    "loadingVoices": "جارٍ تحميل الأصوات…",
+    "noVoices": "لا توجد أصوات مطابقة.",
+    "voicesFailed": "تعذّر تحميل الأصوات.",
+    "yourVoice": "لك",
+    "playPreview": "تشغيل المعاينة",
+    "stopPreview": "إيقاف المعاينة",
+    "generate": "إنشاء · {credits} رصيد",
+    "working": "جارٍ العمل…",
+    "queued": "أُضيف إلى اللوحة — سيظهر عندما يجهز.",
+    "insufficientCredits": "الرصيد غير كافٍ.",
+    "failed": "تعذّر بدء الإنشاء."
   }
 }

@@ -68,6 +68,7 @@ import type {
   SeedanceCompiledRequest,
   SeedreamCompiledRequest,
   StageOutputRef,
+  ElevenLabsCompiledRequest,
   GeminiOmniCompiledRequest,
 } from './compile-types';
 
@@ -879,6 +880,74 @@ function compileVideoUpscale(
   };
 }
 
+/**
+ * ElevenLabs: the stage config holds the settings the Audio page chose;
+ * the prompt is the text (speech) or the description (effects); the
+ * voice changer's recording is the one audio input.
+ */
+function compileElevenLabs(ctx: CompileContext, warnings: CompileWarning[]): CompileResult {
+  const { stage, capabilities } = ctx;
+  const audio = capabilities.audio;
+  if (!audio) throw new Error(`${capabilities.modelKey} has no audio capability.`);
+  const cfg = (stage.config ?? {}) as {
+    voiceId?: string;
+    publicOwnerId?: string;
+    voiceName?: string;
+    stability?: number;
+    similarity?: number;
+    speed?: number;
+    expressive?: boolean;
+    languageCode?: string;
+    durationSeconds?: number;
+    promptInfluence?: number;
+    audioSlot?: { kind: 'user_input'; fieldKey: string };
+  };
+  const name = capabilities.displayName;
+  const clamp = (v: number | undefined, lo: number, hi: number) => (v === undefined ? undefined : Math.min(hi, Math.max(lo, v)));
+
+  let text = stage.prompt ?? '';
+  const maxChars = audio.maxChars ?? capabilities.maxPromptChars;
+  if (maxChars && text.length > maxChars) {
+    warnings.push({ code: 'config_clamped', message: `${name} takes at most ${maxChars} characters; the text was cut.` });
+    text = text.slice(0, maxChars);
+  }
+  if (audio.voices && !cfg.voiceId) throw new Error(`${name} needs a voice.`);
+
+  const model = cfg.expressive && audio.expressiveModelId ? audio.expressiveModelId : (capabilities.apiModelId ?? capabilities.modelKey);
+  const voiceSettings =
+    cfg.stability !== undefined || cfg.similarity !== undefined || cfg.speed !== undefined
+      ? { stability: clamp(cfg.stability, 0, 1), similarityBoost: clamp(cfg.similarity, 0, 1), speed: clamp(cfg.speed, 0.7, 1.2) }
+      : undefined;
+
+  const request: ElevenLabsCompiledRequest = {
+    provider: 'elevenlabs',
+    variant: audio.task,
+    model,
+    ...(audio.task !== 'sts' ? { text } : {}),
+    ...(cfg.voiceId ? { voiceId: cfg.voiceId } : {}),
+    ...(cfg.publicOwnerId ? { publicOwnerId: cfg.publicOwnerId } : {}),
+    ...(cfg.voiceName ? { voiceName: cfg.voiceName } : {}),
+    ...(voiceSettings ? { voiceSettings } : {}),
+    ...(cfg.languageCode ? { languageCode: cfg.languageCode } : {}),
+  };
+  if (audio.task === 'sfx' && audio.duration) {
+    const d = clamp(cfg.durationSeconds, audio.duration.min, audio.duration.max);
+    if (cfg.durationSeconds !== undefined && d !== cfg.durationSeconds) {
+      warnings.push({ code: 'config_clamped', message: `${name} makes ${audio.duration.min}–${audio.duration.max} s clips; using ${d} s.` });
+    }
+    if (d !== undefined) request.durationSeconds = d;
+    const influence = clamp(cfg.promptInfluence, 0, 1);
+    if (influence !== undefined) request.promptInfluence = influence;
+  }
+  if (audio.task === 'sts') {
+    const slot = cfg.audioSlot;
+    const value = slot ? ctx.inputValues[slot.fieldKey] : undefined;
+    if (!value || value.kind !== 'audio') throw new Error(`${name} needs an audio recording to convert.`);
+    request.audio = { bytes: value.bytes, url: value.url, mimeType: value.mimeType };
+  }
+  return { request, warnings };
+}
+
 // ─── Top-level compiler ─────────────────────────────────────────────
 
 function isImagen(model: string): boolean {
@@ -908,6 +977,9 @@ export function compile(ctx: CompileContext): CompileResult {
   }
   if (capabilities.provider === 'fal') {
     return compileFal(ctx, warnings);
+  }
+  if (capabilities.provider === 'elevenlabs') {
+    return compileElevenLabs(ctx, warnings);
   }
   if (capabilities.provider === 'seedance') {
     // One vendor, two product lines: Seedream (image) is a synchronous

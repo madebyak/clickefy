@@ -16,6 +16,7 @@ import { executeFal, pollFal, type FalEnv } from './adapters/fal';
 import { ProviderTaskFailedError } from './provider-errors';
 import { executeGemini, type GeminiEnv } from './adapters/gemini';
 import { executeGeminiOmni } from './adapters/gemini-omni';
+import { executeElevenLabs, type ElevenLabsEnv } from './adapters/elevenlabs';
 import {
   executeKling,
   pollKling,
@@ -43,6 +44,7 @@ export interface ProviderEnv {
   seedance?: SeedanceEnv;
   openai?: OpenAIEnv;
   fal?: FalEnv;
+  elevenlabs?: ElevenLabsEnv;
 }
 
 /** A single output piece returned by an adapter. */
@@ -108,6 +110,12 @@ export async function executeStage(
       return executeGeminiOmni(request, env.gemini);
     }
     return executeGemini(request, env.gemini);
+  }
+  if (request.provider === 'elevenlabs') {
+    if (!env.elevenlabs) {
+      throw new Error('executeStage(): missing `env.elevenlabs` for an ElevenLabs request.');
+    }
+    return executeElevenLabs(request, env.elevenlabs);
   }
   if (request.provider === 'kling') {
     if (request.api2) {

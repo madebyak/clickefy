@@ -1568,7 +1568,7 @@ export function PromptBar({
       {...dragHandlers}
       onPaste={onPaste}
       className={cn(
-        "relative rounded-2xl bg-surface-1 transition-colors",
+        "relative rounded-2xl bg-surface-1 shadow-2xl shadow-black/40 transition-colors",
         compact ? "p-2.5" : "p-3",
         dragActive && "ring-2 ring-primary",
       )}

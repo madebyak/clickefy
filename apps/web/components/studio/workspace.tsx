@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Sparkle,
@@ -375,8 +375,25 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
 
   const downloadAll = () => downloadAssets(activeAssets);
 
+  // The composer floats over the canvas rather than taking a slice of it:
+  // on a 13" laptop an in-flow dock with attachments and a long prompt
+  // left the grid a couple of hundred pixels tall. The canvas gets bottom
+  // padding equal to the dock's live height instead, so the last row still
+  // scrolls fully clear of it and nothing is ever hidden underneath.
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [dockHeight, setDockHeight] = useState(0);
+  useEffect(() => {
+    const el = dockRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry) setDockHeight(Math.ceil(entry.contentRect.height));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <main className="relative flex min-w-0 flex-1 flex-col overflow-y-auto">
+    <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* Wrap filters below the project actions on narrow screens. */}
       <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
@@ -425,13 +442,14 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
         </div>
       </div>
 
-      {/* scrollable content */}
+      {/* scrollable content — padded past the floating composer */}
       <div
         className={cn(
-          "min-h-48 flex-1 overflow-y-auto px-4 pb-6 pt-2 sm:px-6",
+          "min-h-0 flex-1 overflow-y-auto px-4 pt-2 sm:px-6",
           // Empty state fills the area and centers vertically; content scrolls from top.
           isEmpty && "flex flex-col",
         )}
+        style={{ paddingBottom: dockHeight + 24 }}
       >
         {isEmpty ? (
           <EmptyState kind={kind} />
@@ -465,9 +483,14 @@ export function Workspace({ kind }: { kind: "image" | "video" }) {
         )}
       </div>
 
-      {/* In flow: attachments, long prompts and selection controls reserve their actual height. */}
-      <div className="shrink-0 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-6">
-        <div className="mx-auto max-w-4xl">
+      {/* Floating composer. The dock itself is transparent and lets clicks
+          through to the canvas in the side gutters; only the card catches
+          them. Its measured height becomes the canvas's bottom padding. */}
+      <div
+        ref={dockRef}
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6"
+      >
+        <div className="pointer-events-auto mx-auto max-w-4xl">
           <SelectionBar />
           <PromptBar kind={kind} />
         </div>

@@ -6,6 +6,7 @@
     "label": "النموذج",
     "choose": "اختر نموذجًا",
     "sheetTitle": "اختر نموذجًا",
+    "badgeNew": "جديد",
     "image": "صورة",
     "video": "فيديو",
     "creditsEach_zero": "{{count}} رصيد",
@@ -62,8 +63,7 @@
     "tier_other": "{{label}} · {{count}} رصيد",
     "draftValue": "مسودة · {{tier}}",
     "draftHint": "معاينة أولًا، ثم أنشئ النسخة النهائية بدقة {{finalTier}}",
-    "badgeDraft": "مسودة",
-    "badgeNew": "جديد"
+    "badgeDraft": "مسودة"
   },
   "sound": {
     "label": "الصوت",

@@ -363,6 +363,8 @@ export interface GenModel {
    */
   toolOnly?: boolean;
   provider: string;
+  /** Picker "New" badge; set by the roster on a launch. */
+  isNew?: boolean;
   /** Commercial name shown in the picker. */
   name: string;
   kind: 'image' | 'video' | 'audio';

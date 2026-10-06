@@ -38,6 +38,12 @@ interface CreateModelDef {
   toolOnly?: boolean;
   /** Commercial name shown in the picker (registry displayName is internal). */
   name: string;
+  /**
+   * Carries the picker's "New" badge. Set by hand on a launch and taken
+   * off by hand when the next one lands — a date rule would quietly
+   * expire the label on the day nobody is looking.
+   */
+  isNew?: boolean;
   attachments: CreateAttachmentMode;
   /** Image-to-video only — a start frame is mandatory (Kling 2.6). */
   requiresStartFrame: boolean;
@@ -54,6 +60,14 @@ export const CREATE_MODEL_DEFS: readonly CreateModelDef[] = [
   {
     modelKey: 'gemini-3-pro-image',
     name: 'Nano Banana Pro',
+    attachments: 'references',
+    requiresStartFrame: false,
+    supportsEndFrame: false,
+  },
+  {
+    modelKey: 'gemini-nano-banana-2.1',
+    name: 'Nano Banana 2.1',
+    isNew: true,
     attachments: 'references',
     requiresStartFrame: false,
     supportsEndFrame: false,
@@ -278,6 +292,8 @@ export interface CreateModelDTO {
   modelKey: string;
   provider: string;
   name: string;
+  /** Picker "New" badge — see `CreateModelDef.isNew`. */
+  isNew?: boolean;
   kind: 'image' | 'video' | 'audio';
   costCredits: number;
   maxPromptChars: number;
@@ -482,6 +498,7 @@ export function buildCreateModelDTO(
     kind: caps.kind,
     // Priced and returned, but not offered in the composer's picker.
     ...(def.toolOnly ? { toolOnly: true as const } : {}),
+    ...(def.isNew ? { isNew: true as const } : {}),
     costCredits,
     maxPromptChars: caps.maxPromptChars ?? DEFAULT_CREATE_PROMPT_CHARS,
     aspectRatios,

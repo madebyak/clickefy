@@ -129,10 +129,14 @@ export async function executeGemini(
         if (part.text) textReason += part.text;
       }
     }
+    // The finish reason is the only signal on a silent refusal — 2.1 on
+    // a generic prompt ("a red circle") came back with IMAGE_RECITATION
+    // and an empty content block, no text at all.
+    const finishReason = candidates.map((c) => c.finishReason).filter(Boolean).join(', ');
     throw new Error(
       textReason
         ? `Gemini returned no images. Model said: ${textReason.slice(0, 500)}`
-        : 'Gemini returned no images. The model may have filtered the output.',
+        : `Gemini returned no images. The model may have filtered the output${finishReason ? ` (${finishReason})` : ''}.`,
     );
   }
 

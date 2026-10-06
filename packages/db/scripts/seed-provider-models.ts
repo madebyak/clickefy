@@ -86,6 +86,7 @@ const COST_PER_CALL_USD: Record<string, string> = {
   //   NB2     0.5K $0.045 · 1K $0.067 · 2K $0.101 · 4K $0.151
   //   Lite    1K $0.0336 (only tier)
   'gemini/gemini-3-pro-image': '0.1340',
+  'gemini/gemini-nano-banana-2.1': '0.0336', // 1K; 2K $0.0504, 4K $0.0756 (read 2026-10-06)
   'gemini/gemini-3.1-flash-image': '0.0670',
   'gemini/gemini-3.1-flash-lite-image': '0.0336',
 

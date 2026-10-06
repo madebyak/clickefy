@@ -87,6 +87,10 @@ const SEEDANCE_25_DIMS: Record<string, [number, number]> = { '480p': [854, 480],
 export const PROVIDER_COST_BOOK: Record<string, Rule> = {
   // ── Google images (cost-basis-2026-09) ───────────────────────────────
   'gemini-3.1-flash-lite-image': { kind: 'per_image', tiers: { '1K': 0.0336 }, default: '1K', perReferenceUsd: 0.00014 },
+  // ai.google.dev/gemini-api/docs/pricing, read 2026-10-06: $30/M output
+  // tokens (1120 / 1680 / 2520 per image); input $1.50/M → ~560 tokens per
+  // reference image.
+  'gemini-nano-banana-2.1': { kind: 'per_image', tiers: { '1K': 0.0336, '2K': 0.0504, '4K': 0.0756 }, default: '1K', perReferenceUsd: 0.00084 },
   'gemini-3.1-flash-image': { kind: 'per_image', tiers: { '512': 0.04482, '1K': 0.0672, '2K': 0.1008, '4K': 0.1512 }, default: '1K', perReferenceUsd: 0.00028 },
   'gemini-3.1-flash-image-preview': { kind: 'per_image', tiers: { '512': 0.04482, '1K': 0.0672, '2K': 0.1008, '4K': 0.1512 }, default: '1K', perReferenceUsd: 0.00028 },
   'gemini-3-pro-image': { kind: 'per_image', tiers: { '1K': 0.1344, '2K': 0.1344, '4K': 0.24 }, default: '1K', perReferenceUsd: 0.00112 },

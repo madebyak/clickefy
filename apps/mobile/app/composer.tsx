@@ -1143,6 +1143,9 @@ export default function ComposerScreen() {
           leading: (
             <ModelLogo provider={m.provider} kind={m.kind === 'video' ? 'video' : 'image'} size={24} fallbackColor={colors.ink} />
           ),
+          badges: m.isNew
+            ? [{ text: t('model.badgeNew'), bg: accents.green.solid, fg: accents.green.ink }]
+            : undefined,
         }))}
         selectedId={model?.modelKey ?? null}
         tint={MODE_TINT[mode]}
@@ -1175,7 +1178,6 @@ export default function ComposerScreen() {
                   }),
                   badges: [
                     { text: t('quality.badgeDraft'), bg: accents.violet.solid, fg: accents.violet.ink },
-                    { text: t('quality.badgeNew'), bg: accents.green.solid, fg: accents.green.ink },
                   ],
                 },
               ]

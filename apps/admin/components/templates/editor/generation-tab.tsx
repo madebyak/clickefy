@@ -70,7 +70,8 @@ type AdminProvider = 'gemini' | 'kling' | 'seedance' | 'openai';
  */
 const MODEL_HINTS: Record<string, string> = {
   'gemini-3-pro-image': 'best quality',
-  'gemini-3.1-flash-image': 'balanced',
+  'gemini-nano-banana-2.1': 'latest, balanced',
+  'gemini-3.1-flash-image': 'retiring 2026-10-29',
   'gemini-3.1-flash-lite-image': 'fastest',
   'kling-v3-omni': 'latest',
   'kling-v2-5-turbo': 'fast',
@@ -88,6 +89,7 @@ const MODEL_HINTS: Record<string, string> = {
  */
 const MODEL_ORDER: string[] = [
   'gemini-3-pro-image',
+  'gemini-nano-banana-2.1',
   'gemini-3.1-flash-image',
   'gemini-3.1-flash-lite-image',
   'kling-v3-omni',
@@ -154,7 +156,8 @@ const MODELS_BY_PROVIDER: Record<AdminProvider, Array<{ value: string; label: st
  * is ever retired.
  */
 const PROVIDER_DEFAULTS: Record<AdminProvider, string> = {
-  gemini: 'gemini-3.1-flash-image',
+  // Nano Banana 2 shuts down 2026-10-29; new stages start on its successor.
+  gemini: 'gemini-nano-banana-2.1',
   kling: 'kling-v2-6',
   openai: 'gpt-image-2',
   seedance: 'dreamina-seedance-2-0-fast-260128',

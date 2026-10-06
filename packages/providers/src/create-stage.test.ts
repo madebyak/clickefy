@@ -69,6 +69,28 @@ describe('buildCreateStage — Gemini (image)', () => {
     expect(g.imageParts).toHaveLength(0);
   });
 
+  it('Nano Banana 2.1: billed tier becomes imageSize, panoramic ratio allowed, no 0.5K', () => {
+    const caps = getCapabilities('gemini-nano-banana-2.1');
+    expect(caps.modes?.values).toEqual(['1K', '2K', '4K']);
+    expect(caps.sizing.mode === 'aspect' && caps.sizing.values).toContain('8:1');
+    const built = buildCreateStage({
+      modelKey: 'gemini-nano-banana-2.1',
+      prompt: 'a lighthouse at dusk, painted in the style of @Image1',
+      aspectRatio: '16:9',
+      mode: '2K',
+      referenceCount: 1,
+    });
+    const { request, warnings } = run(built, { [createReferenceKey(0)]: img('ref') });
+    const g = request as GeminiCompiledRequest;
+    expect(g.provider).toBe('gemini');
+    expect(g.model).toBe('gemini-nano-banana-2.1');
+    expect(g.imageConfig).toEqual({ aspectRatio: '16:9', imageSize: '2K' });
+    expect(g.imageParts).toHaveLength(1);
+    // The soft "prompt does not name the image" note is the only warning
+    // a Gemini create stage ever carries; nothing about 2.1 adds to it.
+    expect(warnings.map((w) => w.code)).toEqual(['unused_reference']);
+  });
+
   it('reference images become subject image parts in order', () => {
     const built = buildCreateStage({
       modelKey: 'gemini-3.1-flash-image-preview',

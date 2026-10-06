@@ -6,6 +6,7 @@
     "label": "Model",
     "choose": "Choose a model",
     "sheetTitle": "Choose a model",
+    "badgeNew": "New",
     "image": "Image",
     "video": "Video",
     "creditsEach_one": "{{count}} credit",
@@ -54,8 +55,7 @@
     "tier_other": "{{label}} · {{count}} credits",
     "draftValue": "Draft · {{tier}}",
     "draftHint": "Preview first, then make the {{finalTier}} final",
-    "badgeDraft": "Draft",
-    "badgeNew": "New"
+    "badgeDraft": "Draft"
   },
   "sound": {
     "label": "Audio",

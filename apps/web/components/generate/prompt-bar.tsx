@@ -2127,7 +2127,14 @@ export function PromptBar({
                         }}
                       >
                         <ProviderBadge provider={m.provider} modelKey={m.modelKey} />
-                        <span className="min-w-0 flex-1 truncate text-start">{m.name}</span>
+                        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-start">
+                          <span className="truncate">{m.name}</span>
+                          {m.isNew && (
+                            <Badge variant="green" className={menuLabelCls}>
+                              {t("newBadge")}
+                            </Badge>
+                          )}
+                        </span>
                         <span className="ms-2 text-xs tabular-nums text-muted-foreground">
                           {m.costCredits}
                         </span>
@@ -2223,9 +2230,6 @@ export function PromptBar({
                               {draftTierLabel}
                               <Badge variant="purple" className={menuLabelCls}>
                                 {t("draft")}
-                              </Badge>
-                              <Badge variant="green" className={menuLabelCls}>
-                                {t("newBadge")}
                               </Badge>
                             </span>
                             <span className="text-[11px] leading-snug text-muted-foreground">

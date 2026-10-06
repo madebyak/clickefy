@@ -691,7 +691,8 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   // ── Gemini (Nano Banana family) ─────────────────────────────────────
   //
   // Marketing names are aliases; the GA api ids are the `gemini-*-image`
-  // strings. Verified live 2026-08-15 against our AI Studio key.
+  // strings (2.1 broke the pattern: `gemini-nano-banana-2.1`). Verified
+  // live 2026-08-15 against our AI Studio key; 2.1 on 2026-10-06.
   //
   // The two `-preview` keys further down are LEGACY: they stay registered
   // because ~250 template snapshots have them frozen in, and they now
@@ -720,6 +721,36 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     modes: { values: ['1K', '2K', '4K'], default: '1K' },
     notes: 'Highest quality: best text rendering, style references, up to 4K.',
   },
+  // Released 2026-10-06 as the successor to Nano Banana 2, which Google
+  // deprecated the same day (shutdown 2026-10-29). Same request shape as
+  // the rest of the family — verified live on `generateContent` with
+  // `imageConfig`: the 14 ratios below are the exact enum the API echoed
+  // back, `512` is rejected ("not supported for this model"), and a 16:9
+  // 1K call returned image/jpeg. Half of Nano Banana 2's per-image price
+  // ($0.0336 / $0.0504 / $0.0756 at 1K / 2K / 4K).
+  'gemini-nano-banana-2.1': {
+    provider: 'gemini',
+    modelKey: 'gemini-nano-banana-2.1',
+    displayName: 'Nano Banana 2.1',
+    status: 'active',
+    kind: 'image',
+    sizing: {
+      mode: 'aspect',
+      values: [...GEMINI_ASPECT_RATIOS, ...GEMINI_31_FLASH_EXTRA],
+      resolutions: GEMINI_RESOLUTIONS,
+    },
+    outputs: { min: 1, max: 4, default: 1 },
+    refAddressing: 'ordinal',
+    // 10 object + 4 character refs, same as Nano Banana 2.
+    maxReferences: 14,
+    maxSubjects: 14,
+    maxImagesTotal: 14,
+    maxPromptChars: 5000,
+    // No 0.5K tier on 2.1. Each tier is its own price.
+    modes: { values: ['1K', '2K', '4K'], default: '1K' },
+    notes:
+      'Successor to Nano Banana 2: better realism and text, fixed panoramic tiling, half the price. 1K–4K, 14 ratios.',
+  },
   'gemini-3.1-flash-image': {
     provider: 'gemini',
     modelKey: 'gemini-3.1-flash-image',
@@ -745,7 +776,9 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
       default: '1K',
       labels: { '512': '0.5K' },
     },
-    notes: 'Balanced default: widest aspect + resolution range, 0.5K–4K.',
+    // Deprecated by Google on 2026-10-06, shutdown 2026-10-29 — replacement
+    // is `gemini-nano-banana-2.1`. Kept active until templates are moved.
+    notes: 'Balanced default: widest aspect + resolution range, 0.5K–4K. Google shuts it down 2026-10-29.',
   },
   'gemini-3.1-flash-lite-image': {
     provider: 'gemini',

@@ -30,6 +30,8 @@ export {
 export { compile, pixelSizeForAspect } from './compile';
 export {
   AD_ASPECT_RATIO,
+  AD_BRIEF_DEFAULT,
+  AD_BRIEF_PLACEHOLDERS,
   AD_DURATION_SECONDS,
   AD_MAX_BRIEF_CHARS,
   AD_MAX_IMAGES,

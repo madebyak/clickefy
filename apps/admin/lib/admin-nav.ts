@@ -31,6 +31,7 @@ import {
   FolderTree,
   Home,
   LayoutDashboard,
+  ScrollText,
   Settings,
   ShieldCheck,
   Users,
@@ -123,6 +124,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     title: 'System',
     items: [
       { title: 'Settings', href: '/admin/settings', icon: Settings, page: 'settings' },
+      { title: 'Prompts', href: '/admin/prompts', icon: ScrollText, page: 'settings' },
       { title: 'Team & roles', href: '/admin/team', icon: ShieldCheck, page: 'team', superadmin: true },
     ],
   },

@@ -27,7 +27,16 @@ export const AD_SCRIPT_CREDITS = 1;
 /** Our estimated cost of the writing step (Gemini Pro, ~2k in / ~500 out tokens). */
 export const AD_SCRIPT_COST_USD = 0.015;
 
-const BRIEF = `ROLE
+/** The placeholders the brief may use; the admin editor documents them. */
+export const AD_BRIEF_PLACEHOLDERS = [
+  { token: '{IMAGES}', meaning: '"one product image" or "N images of the same product (different angles or details)"' },
+  { token: '{SECONDS}', meaning: 'the ad length in seconds (15)' },
+  { token: '{S}', meaning: '"s" when there are several images, else nothing ("image{S}" → "images")' },
+  { token: '{IS_ARE}', meaning: '"is" for one image, "are" for several' },
+] as const;
+
+/** The code default; the admin may override it in `prompt_templates` (key `ad_brief`). */
+export const AD_BRIEF_DEFAULT = `ROLE
 You are a senior commercial director and Seedance 2.5 prompt engineer. I will give you {IMAGES}. Your only output is a single, production-ready Seedance 2.5 prompt for a {SECONDS}-second cinematic product commercial.
 
 STEP 1 — ANALYZE SILENTLY (never print this)
@@ -72,10 +81,11 @@ RULES
 - Length: 180 to 280 words.
 - Output ONLY the final Seedance prompt in one code block. No analysis, no explanation, no title, no alternatives.`;
 
-/** The brief for a run: how many images, and the user's note if any. */
-export function buildAdBrief(input: { imageCount: number; notes?: string | null }): string {
+/** The brief for a run: how many images, the user's note if any, and the admin's text when one is saved. */
+export function buildAdBrief(input: { imageCount: number; notes?: string | null; template?: string | null }): string {
   const n = Math.max(1, input.imageCount);
-  const brief = BRIEF
+  const source = input.template && input.template.trim().length > 0 ? input.template : AD_BRIEF_DEFAULT;
+  const brief = source
     .replace('{IMAGES}', n === 1 ? 'one product image' : `${n} images of the same product (different angles or details)`)
     .replace('{SECONDS}', String(AD_DURATION_SECONDS))
     .replaceAll('{S}', n === 1 ? '' : 's')

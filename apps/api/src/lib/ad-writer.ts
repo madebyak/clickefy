@@ -73,8 +73,10 @@ export async function writeAdPrompt(args: {
   apiKey: string;
   images: AdImage[];
   notes?: string | null;
+  /** The admin's saved brief, when there is one; else the code default. */
+  template?: string | null;
 }): Promise<{ prompt: string; writer: string }> {
-  const brief = buildAdBrief({ imageCount: args.images.length, notes: args.notes });
+  const brief = buildAdBrief({ imageCount: args.images.length, notes: args.notes, template: args.template });
   let lastError: Error | null = null;
   for (const model of AD_WRITER_MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {

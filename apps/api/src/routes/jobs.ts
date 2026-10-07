@@ -64,6 +64,7 @@ import { createJobAtomically, createUserJobAtomically, isCreditRace } from '../l
 import { getCreateModelDef, isCreateEligible, isToolOnlyModel } from '../lib/create-models';
 import { ensureDynamicModels } from '../lib/dynamic-models';
 import { writeAdPrompt, type AdImage } from '../lib/ad-writer';
+import { getPromptOverride } from '../lib/prompt-templates';
 import { adoptProjectOrigin } from '../lib/project-origin';
 import { loadDraftForFinal, type DraftSource } from '../lib/draft-final';
 import { dispatchJob } from '../lib/dispatch-job';
@@ -612,7 +613,8 @@ jobsRoute.post(
         images.push({ bytes: await obj.arrayBuffer(), mimeType: ref.mimeType || obj.httpMetadata?.contentType || 'image/jpeg' });
       }
       try {
-        const written = await writeAdPrompt({ apiKey: c.env.GEMINI_API_KEY, images, notes: body.tool.notes });
+        const template = await getPromptOverride(c.var.db, 'ad_brief');
+        const written = await writeAdPrompt({ apiKey: c.env.GEMINI_API_KEY, images, notes: body.tool.notes, template });
         body.prompt = written.prompt;
         adWriter = written.writer;
       } catch (err) {

@@ -556,7 +556,19 @@ export type CreateToolInput =
       style: 'hand_drawn' | 'sketch' | 'realistic' | 'comic' | '3d';
       cols: number;
       rows: number;
-    };
+    }
+  /** One-Click AI Ad: the product images go in `references`; the prompt is written server-side. */
+  | { kind: 'ad'; orientation: 'reels' | 'hd'; notes?: string };
+
+/** What a One-Click Ad costs right now, from `GET /v1/tools/ad`. */
+export interface AdQuote {
+  credits: number;
+  /** Video tier the ad renders at (e.g. 480p, 1080p). */
+  tier: string;
+  durationSeconds: number;
+  maxImages: number;
+  maxNoteChars: number;
+}
 
 /** Settings for an audio generation; every field optional, the server clamps. */
 export interface CreateAudioOptions {

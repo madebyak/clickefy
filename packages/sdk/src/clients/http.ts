@@ -21,6 +21,7 @@ import type {
 } from '@clickfy/types';
 
 import type {
+  AdQuote,
   AudioVoice,
   AppNotification,
   CatalogCategory,
@@ -1090,6 +1091,13 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           auth: true,
         });
         return json.data.models;
+      },
+    },
+
+    tools: {
+      async adQuote(): Promise<AdQuote> {
+        const json = await get<ApiEnvelope<AdQuote>>('/v1/tools/ad', { auth: true });
+        return json.data;
       },
     },
 

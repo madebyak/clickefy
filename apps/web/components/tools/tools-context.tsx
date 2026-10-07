@@ -27,6 +27,7 @@ import { usePathname, useRouter } from "@/i18n/navigation";
 import { CameraAngleModal } from "@/components/tools/camera-angle-modal";
 import { StoryboardModal } from "@/components/tools/storyboard-modal";
 import { UpscaleModal, type ToolVideo } from "@/components/tools/upscale-modal";
+import { AdModal } from "@/components/tools/ad-modal";
 
 /** A photo handed to Camera Angle from an existing tile. */
 export type ToolPhoto = { id: string; src: string };
@@ -42,6 +43,8 @@ type ToolsValue = {
    * and a finished video's action — are the same modal.
    */
   openUpscale: (video?: ToolVideo) => void;
+  /** Open the One-Click AI Ad. */
+  openAd: () => void;
 };
 
 const ToolsContext = createContext<ToolsValue | null>(null);
@@ -52,6 +55,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
   const [storyboardOpen, setStoryboardOpen] = useState(false);
   const [upscaleOpen, setUpscaleOpen] = useState(false);
   const [upscaleVideo, setUpscaleVideo] = useState<ToolVideo | null>(null);
+  const [adOpen, setAdOpen] = useState(false);
 
   const openCameraAngle = useCallback((photo?: ToolPhoto) => {
     setCameraPhoto(photo ?? null);
@@ -62,10 +66,11 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
     setUpscaleVideo(video ?? null);
     setUpscaleOpen(true);
   }, []);
+  const openAd = useCallback(() => setAdOpen(true), []);
 
   const value = useMemo(
-    () => ({ openCameraAngle, openStoryboard, openUpscale }),
-    [openCameraAngle, openStoryboard, openUpscale],
+    () => ({ openCameraAngle, openStoryboard, openUpscale, openAd }),
+    [openCameraAngle, openStoryboard, openUpscale, openAd],
   );
 
   return (
@@ -75,6 +80,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
           openCameraAngle={openCameraAngle}
           openStoryboard={openStoryboard}
           openUpscale={openUpscale}
+          openAd={openAd}
         />
       </Suspense>
       {children}
@@ -88,6 +94,7 @@ export function ToolsProvider({ children }: { children: ReactNode }) {
         />
       )}
       {storyboardOpen && <StoryboardModal onClose={() => setStoryboardOpen(false)} />}
+      {adOpen && <AdModal onClose={() => setAdOpen(false)} />}
       {upscaleOpen && (
         <UpscaleModal
           initialVideo={upscaleVideo}
@@ -112,10 +119,12 @@ function ToolDeepLink({
   openCameraAngle,
   openStoryboard,
   openUpscale,
+  openAd,
 }: {
   openCameraAngle: () => void;
   openStoryboard: () => void;
   openUpscale: () => void;
+  openAd: () => void;
 }) {
   const params = useSearchParams();
   const router = useRouter();
@@ -130,7 +139,8 @@ function ToolDeepLink({
     if (tool === "camera") openCameraAngle();
     else if (tool === "storyboard") openStoryboard();
     else if (tool === "upscale") openUpscale();
-  }, [params, router, pathname, openCameraAngle, openStoryboard, openUpscale]);
+    else if (tool === "ad") openAd();
+  }, [params, router, pathname, openCameraAngle, openStoryboard, openUpscale, openAd]);
 
   return null;
 }

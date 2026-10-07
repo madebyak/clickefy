@@ -340,7 +340,7 @@ export function HomeHero() {
           >
             <div className="relative flex h-full flex-col p-6">
               <Link
-                href="#"
+                href="/create?tool=ad"
                 aria-label={t("openProductVisuals")}
                 className="absolute end-4 top-4 grid size-9 place-items-center rounded-lg bg-surface-2/70 backdrop-blur transition-colors hover:bg-surface-3"
               >

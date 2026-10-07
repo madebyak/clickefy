@@ -37,6 +37,17 @@ export type CreateToolRequest =
       /** Panels per row / rows on the sheet (validated 2-4 x 2-3). */
       cols: number;
       rows: number;
+    }
+  | {
+      /**
+       * One-Click AI Ad. The prompt was written by a vision model on the
+       * API from the product images (see `ad-prompt.ts`) and arrives here
+       * final: nothing is composed. `writer` names the model that wrote it.
+       */
+      kind: 'ad';
+      orientation: 'reels' | 'hd';
+      notes?: string;
+      writer?: string;
     };
 
 /** Named shots, in the order the preset grid shows them. */
@@ -76,6 +87,8 @@ export const TOOL_MODELS: Record<
   // different model if one frames shot sizes better.
   camera_preset: { modelKey: 'gpt-image-2', quality: 'high' },
   storyboard: { modelKey: 'gemini-3-pro-image', quality: '4K' },
+  // 480p while the client tests; the plan is 1080p once the flow is approved.
+  ad: { modelKey: 'dreamina-seedance-2-5-260628', quality: '480p' },
 };
 
 const STYLE_DESCRIPTIONS: Record<StoryboardStyle, string> = {
@@ -189,5 +202,6 @@ export function composeStoryboardPrompt(
 export function composeToolPrompt(tool: CreateToolRequest, userText: string): string {
   if (tool.kind === 'camera_angle') return composeCameraAnglePrompt(tool.h, tool.v);
   if (tool.kind === 'camera_preset') return composeCameraPresetPrompt(tool.preset);
+  if (tool.kind === 'ad') return userText;
   return composeStoryboardPrompt(tool.style, tool.cols, tool.rows, userText);
 }

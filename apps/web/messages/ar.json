@@ -17,7 +17,8 @@
     "home": "الصفحة الرئيسية لكليكيفاي",
     "toggleMenu": "تبديل القائمة",
     "openMenu": "فتح القائمة",
-    "audio": "الصوت"
+    "audio": "الصوت",
+    "aiAd": "إعلان بالذكاء الاصطناعي"
   },
   "language": {
     "change": "تغيير اللغة"
@@ -794,7 +795,26 @@
     "preset_aigc_desc": "لقطات من إنتاج نماذج الذكاء الاصطناعي",
     "preset_old_film_desc": "ترميم الأفلام القديمة والأرشيفية",
     "fidelity_high_desc": "تحسين لطيف يحافظ على شكل المصدر",
-    "fidelity_medium_desc": "تحسين أقوى للصورة"
+    "fidelity_medium_desc": "تحسين أقوى للصورة",
+    "adTitle": "إعلان بالذكاء الاصطناعي",
+    "adIntro": "أضف صور منتجك واحصل على إعلان مدته 15 ثانية. نكتب الفكرة ونصوّرها ونضيف الصوت.",
+    "adImages": "صور المنتج",
+    "adImagesHint": "حتى {max} صور للمنتج نفسه",
+    "adRemoveImage": "إزالة الصورة",
+    "adUnsupportedImage": "استخدم صورة JPG أو PNG أو WebP.",
+    "adImageTooLarge": "الصور حتى {max} ميغابايت.",
+    "adShape": "الشكل",
+    "adReels": "ريلز",
+    "adReelsSub": "عمودي · إنستغرام، تيك توك، شورتس",
+    "adHd": "HD",
+    "adHdSub": "أفقي · يوتيوب، الويب",
+    "adNotes": "ملاحظات (اختياري)",
+    "adNotesPlaceholder": "أي شيء يجب أن نعرفه: اسم المنتج، لمن هو، مكان تريده…",
+    "adSpec": "{seconds} ث · {tier} · مع الصوت",
+    "adGenerate": "أنشئ الإعلان · {credits} رصيد",
+    "adWorking": "جارٍ كتابة الفكرة…",
+    "adStarted": "إعلانك قيد الإنتاج — سيظهر على اللوحة خلال دقائق.",
+    "uploading": "جارٍ الرفع…"
   },
   "modelsPage": {
     "metaTitle": "نماذج الذكاء الاصطناعي",

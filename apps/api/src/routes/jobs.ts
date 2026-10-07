@@ -40,6 +40,10 @@ import {
   libraryAssets, jobs, projectAssets, projects, providerModels, templates, type Db } from '@clickfy/db';
 import { resolveCreditCost, upscalePriceKey } from '@clickfy/types';
 import {
+  AD_ASPECT_RATIO,
+  AD_DURATION_SECONDS,
+  AD_MAX_IMAGES,
+  AD_SCRIPT_CREDITS,
   aspectRatiosFor,
   CREATE_END_FRAME_KEY,
   CREATE_PROMPT_KEY,
@@ -59,6 +63,7 @@ import { validateCreateSubmission, validateJobSubmission } from '../lib/job-vali
 import { createJobAtomically, createUserJobAtomically, isCreditRace } from '../lib/job-create';
 import { getCreateModelDef, isCreateEligible, isToolOnlyModel } from '../lib/create-models';
 import { ensureDynamicModels } from '../lib/dynamic-models';
+import { writeAdPrompt, type AdImage } from '../lib/ad-writer';
 import { adoptProjectOrigin } from '../lib/project-origin';
 import { loadDraftForFinal, type DraftSource } from '../lib/draft-final';
 import { dispatchJob } from '../lib/dispatch-job';
@@ -577,6 +582,53 @@ jobsRoute.post(
       );
     }
 
+    // ── One-Click AI Ad: write the prompt before anything is charged ──
+    // The product images are read from the uploads bucket and handed to
+    // a vision model with the hidden brief; the reply becomes the job's
+    // prompt and the ad's fixed shape (orientation, length, audio, tier)
+    // is pinned here so the user never sets any of it.
+    let adWriter: string | undefined;
+    if (body.tool?.kind === 'ad') {
+      const imageRefs = body.references.filter((r) => r.kind === 'image');
+      if (imageRefs.length === 0 || imageRefs.length !== body.references.length || body.startFrame || body.endFrame) {
+        return c.json({ error: { code: 'ad_images_required', message: 'Add one to five product images.' } }, 422);
+      }
+      if (imageRefs.length > AD_MAX_IMAGES) {
+        return c.json({ error: { code: 'ad_too_many_images', message: `Up to ${AD_MAX_IMAGES} product images.` } }, 422);
+      }
+      if (!c.env.GEMINI_API_KEY) {
+        return c.json({ error: { code: 'ad_not_configured', message: 'The ad writer is not available right now.' } }, 503);
+      }
+      const expectedPrefix = `user-uploads/${user.id}/`;
+      const images: AdImage[] = [];
+      for (const ref of imageRefs) {
+        if (!ref.r2Key.startsWith(expectedPrefix)) {
+          return c.json({ error: { code: 'forbidden_r2_key', message: 'That upload does not belong to you.' } }, 403);
+        }
+        const obj = await uploads.get(ref.r2Key);
+        if (!obj) {
+          return c.json({ error: { code: 'r2_key_not_found', message: 'An uploaded image could not be found.' } }, 422);
+        }
+        images.push({ bytes: await obj.arrayBuffer(), mimeType: ref.mimeType || obj.httpMetadata?.contentType || 'image/jpeg' });
+      }
+      try {
+        const written = await writeAdPrompt({ apiKey: c.env.GEMINI_API_KEY, images, notes: body.tool.notes });
+        body.prompt = written.prompt;
+        adWriter = written.writer;
+      } catch (err) {
+        console.error('[ad] writer failed:', err instanceof Error ? err.message : err);
+        return c.json(
+          { error: { code: 'ad_writer_failed', message: 'Could not write the ad from these images. Try again or add a note describing the product.' } },
+          502,
+        );
+      }
+      body.aspectRatio = AD_ASPECT_RATIO[body.tool.orientation];
+      body.duration = AD_DURATION_SECONDS;
+      body.sound = true;
+      body.task = undefined;
+      body.draft = undefined;
+    }
+
     // ── Semantic validation (model-adaptive) ───────────────────────
     // Same accessor the roster uses — otherwise the picker can offer a
     // ratio that validation then rejects. Runs BEFORE pricing because
@@ -691,7 +743,7 @@ jobsRoute.post(
           : refDuration;
     // A final bills the DRAFT's settings at the final tier — the same
     // helper prices the tile's "Make final" figure.
-    const cost = draftSource
+    const videoCost = draftSource
       ? draftFinalCost({
           caps,
           price: { costCredits: priceRow.costCredits, tierPricing: priceRow.tierPricing ?? null },
@@ -709,12 +761,14 @@ jobsRoute.post(
           textChars,
           inputAudioSeconds,
         });
-    if (cost <= 0) {
+    if (videoCost <= 0) {
       return c.json(
         { error: { code: 'model_unpriced', message: 'That model is not available right now.' } },
         422,
       );
     }
+    // The ad's writing step is charged with the video, one line on the ledger.
+    const cost = body.tool?.kind === 'ad' ? videoCost + AD_SCRIPT_CREDITS : videoCost;
 
     // ── Credit balance (pre-check; the CTE re-checks authoritatively) ─
     if (spendableCredits(user) < cost) {
@@ -798,7 +852,7 @@ jobsRoute.post(
       shots: body.shots,
       // Studio tool request — the worker composes the engineered prompt
       // from these parameters, keeping it out of `jobs.inputs`.
-      tool: body.tool,
+      tool: body.tool?.kind === 'ad' ? { ...body.tool, writer: adWriter } : body.tool,
       // Video Upscaler settings. Persisted because two of them (frame
       // rate, enhancement tier) are part of what was CHARGED, so the job
       // row has to record the combination the user paid for.

@@ -530,8 +530,12 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
 
       generation = {
         source: job.source,
+        // A One-Click Ad's prompt was written by a model, not the user:
+        // withheld like a template's, so the info panel and Re-use skip it.
         prompt:
-          !isTemplate && promptInput?.kind === 'text' ? (promptInput.value ?? null) : null,
+          !isTemplate && promptInput?.kind === 'text' && (opts as { tool?: { kind?: string } }).tool?.kind !== 'ad'
+            ? (promptInput.value ?? null)
+            : null,
         templateTitle,
         modelKey: job.modelKey,
         modelName: caps?.displayName ?? job.modelKey,

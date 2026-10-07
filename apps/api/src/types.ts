@@ -36,6 +36,8 @@ export interface Bindings {
    */
   SEEDANCE_API_KEY?: string;
   OPENAI_API_KEY?: string;
+  /** Gemini key: the One-Click Ad's prompt writer runs on the API. prod: wrangler secret put GEMINI_API_KEY */
+  GEMINI_API_KEY?: string;
 
   // ─── Payments ─────────────────────────────────────────────────
   /**

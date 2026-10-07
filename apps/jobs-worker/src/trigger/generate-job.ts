@@ -44,6 +44,7 @@ import {
   type Template,
 } from '@clickfy/db';
 import {
+  AD_SCRIPT_COST_USD,
   buildCreateStage,
   compile,
   CREATE_END_FRAME_KEY,
@@ -372,7 +373,16 @@ export const generateJob = task({
       aspectRatio?: string; upscale?: { fps?: number; tier?: string };
       /** Audio jobs: the text's length and the voice changer's source length, as billed at submit. */
       textChars?: number; inputAudioSeconds?: number;
+      tool?: { kind?: string; writer?: string };
     };
+    // One-Click Ad: the prompt-writing call on the API is part of what
+    // this job cost us, so it rides along as a stage-0 unit.
+    if (costOpts.tool?.kind === 'ad') {
+      stageCosts.push({
+        stage: 0, model: costOpts.tool.writer ?? 'gemini', provider: 'gemini', unit: 'call', quantity: 1,
+        unitPriceUsd: AD_SCRIPT_COST_USD, usd: AD_SCRIPT_COST_USD, mode: null, basis: 'estimated', note: 'ad brief written by a vision model',
+      });
+    }
     const referenceCount = Object.values((jobRow.inputs ?? {}) as Record<string, { kind?: string } | undefined>)
       .filter((v) => v && v.kind !== 'text').length;
     const costFactsFor = (stage: GenerationStage) => {

@@ -28,6 +28,19 @@ export {
 } from './capabilities';
 
 export { compile, pixelSizeForAspect } from './compile';
+export {
+  AD_ASPECT_RATIO,
+  AD_DURATION_SECONDS,
+  AD_MAX_BRIEF_CHARS,
+  AD_MAX_IMAGES,
+  AD_MAX_NOTE_CHARS,
+  AD_ORIENTATIONS,
+  AD_SCRIPT_COST_USD,
+  AD_SCRIPT_CREDITS,
+  buildAdBrief,
+  extractAdPrompt,
+  type AdOrientation,
+} from './ad-prompt';
 export { executeElevenLabs, type ElevenLabsEnv, type ElevenLabsResult, type ElevenLabsUsage } from './adapters/elevenlabs';
 
 export {

@@ -10,6 +10,7 @@ const NAV = [
   { key: "createImage", href: "/create" },
   { key: "createVideo", href: "/create-video" },
   { key: "audio", href: "/audio" },
+  { key: "aiAd", tool: "ad" },
   { key: "storyboard", tool: "storyboard" },
   { key: "cameraAngles", tool: "camera" },
   { key: "upscaleVideo", tool: "upscale" },
@@ -29,7 +30,8 @@ export function StudioNavigation({ className, onNavigate }: { className?: string
           <button key={item.key} type="button" className={cn(itemClass, "text-muted-foreground")}
             onClick={() => {
               onNavigate?.();
-              if (item.tool === "camera") tools?.openCameraAngle();
+              if (item.tool === "ad") tools?.openAd();
+              else if (item.tool === "camera") tools?.openCameraAngle();
               else if (item.tool === "upscale") tools?.openUpscale();
               else tools?.openStoryboard();
             }}>

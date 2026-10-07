@@ -18,6 +18,7 @@ const NAV_LINKS = [
   { key: "createImage", href: "/create" },
   { key: "createVideo", href: "/create-video" },
   { key: "audio", href: "/audio" },
+  { key: "aiAd", href: "/create?tool=ad" },
   { key: "storyboard", href: "/create?tool=storyboard" },
   { key: "cameraAngles", href: "/create?tool=camera" },
   { key: "upscaleVideo", href: "/create?tool=upscale" },

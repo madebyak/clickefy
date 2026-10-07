@@ -10,6 +10,7 @@ import type {
 } from '@clickfy/types';
 
 import type {
+  AdQuote,
   AudioVoice,
   AppNotification,
   AuthProvider,
@@ -681,6 +682,11 @@ export interface ModelsClient {
   listModels(params?: { kind?: 'image' | 'video' | 'audio' | 'all' }): Promise<GenModel[]>;
 }
 
+export interface ToolsClient {
+  /** Price and limits of the One-Click AI Ad. Hits `GET /v1/tools/ad`. Auth required. */
+  adQuote(): Promise<AdQuote>;
+}
+
 export interface AudioClient {
   /** Voices for speech and the voice changer. Hits `GET /v1/audio/voices`. Auth required. */
   listVoices(): Promise<AudioVoice[]>;
@@ -719,6 +725,7 @@ export interface SDKClient {
   media: MediaClient;
   models: ModelsClient;
   audio: AudioClient;
+  tools: ToolsClient;
   notifications: NotificationsClient;
   store: StoreClient;
   uploads: UploadsClient;

@@ -128,6 +128,13 @@ export const createToolSchema = z.discriminatedUnion('kind', [
     cols: z.number().int().min(2).max(4),
     rows: z.number().int().min(2).max(3),
   }),
+  z.object({
+    // One-Click AI Ad: product images ride in `references`; the prompt is
+    // written server-side, so `prompt` may be empty.
+    kind: z.literal('ad'),
+    orientation: z.enum(['reels', 'hd']),
+    notes: z.string().trim().max(1000).optional(),
+  }),
 ]);
 
 /** Audio models: the voice and settings the Audio page chose. All optional; the compiler clamps. */

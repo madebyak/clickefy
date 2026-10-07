@@ -204,7 +204,7 @@ export function AdModal({ onClose }: { onClose: () => void }) {
             type="button"
             disabled={!canGenerate}
             onClick={onGenerate}
-            className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-black transition-opacity disabled:opacity-40"
+            className="flex h-10 min-w-[13rem] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-semibold text-black disabled:opacity-40"
           >
             {submitting ? t("adWorking") : quote.data ? t("adGenerate", { credits: quote.data.credits }) : t("adTitle")}
           </button>

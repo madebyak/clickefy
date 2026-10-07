@@ -646,6 +646,14 @@ export async function validateCreateSubmission(
           message: 'Attach the photo you want to re-shoot.',
         });
       }
+    } else if (body.tool.kind === 'ad') {
+      // The ad is built from the product photos: one to five images, nothing else.
+      if (imageAttachments.length === 0 || imageAttachments.length !== attachments.length) {
+        return fail({
+          code: 'model_requires_image',
+          message: 'Add one to five photos of the product.',
+        });
+      }
     } else {
       // Storyboard is text-to-sheet — the script is the only input.
       if (attachments.length > 0) {

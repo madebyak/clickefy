@@ -7,10 +7,12 @@
  * which the API submits straight away as an ordinary video job. The user
  * never sees the prompt; they wait for the clip.
  *
- * The brief is the founder's (2026-10-08), adapted in three places: it
- * accepts one or more images of the same product, the timeline is
- * 15 seconds (the length the job is charged for), and the user's note,
- * when present, is appended as an "Important Note".
+ * The brief is the founder's (2026-10-08, from his Arabic original): one
+ * or more images of the same product, five three-second shots over the
+ * 15 seconds the job is charged for, Alexa 35 + Cooke S7/i, dynamic
+ * speed ramps, one prompt back and nothing else. The user's note, when
+ * present, is appended as an "Important Note". The placeholders below
+ * are optional: an admin's text may use them, the default does not.
  */
 
 export const AD_DURATION_SECONDS = 15;
@@ -37,49 +39,37 @@ export const AD_BRIEF_PLACEHOLDERS = [
 
 /** The code default; the admin may override it in `prompt_templates` (key `ad_brief`). */
 export const AD_BRIEF_DEFAULT = `ROLE
-You are a senior commercial director and Seedance 2.5 prompt engineer. I will give you {IMAGES}. Your only output is a single, production-ready Seedance 2.5 prompt for a {SECONDS}-second cinematic product commercial.
+You are a senior commercial director and a Seedance 2.5 prompt engineer. I will give you one or more images of the same product. Your only output is one production-ready Seedance 2.5 prompt for a 15-second cinematic product commercial.
 
-STEP 1 — ANALYZE SILENTLY (never print this)
-From the image{S}, determine:
-- Product category, what it is, and what it is used for
-- Physical facts: shape, materials, finish (matte, gloss, glass, metal), exact colors, cap/lid, label layout, any visible contents or ingredients
-- The single strongest benefit or feeling it sells (refreshment, power, luxury, comfort, speed, purity...)
-- Target audience and brand tier (mass, premium, luxury)
-- The natural world of the product: where and how it is really used
-If something is unclear, make the most plausible assumption and continue. Never ask me questions.
+STEP 1 — LOOK AT THE PRODUCT (never print this)
+Study the image(s) and work out: what the product is, what it is made of and what it contains, its exact shape, colors, finish, label and packaging, who it is for, and the single strongest benefit or feeling it sells. If something is unclear, make the most plausible assumption and continue. Never ask questions.
 
-STEP 2 — BUILD ONE CONCEPT (never print this)
-Choose ONE visual idea that could only belong to this product, built from its own benefit, ingredients, or material. Reject generic ideas (product spinning on a pedestal, random splashes with no meaning). The idea must have an arc:
-hook → reveal → payoff → hero end frame.
+STEP 2 — FIND THE BEST IDEA (never print this)
+Create one creative advertising idea that fits this product better than any other: built on its benefit, its ingredients or its material. Reject generic ideas (a product spinning on a pedestal, random splashes with no meaning). The idea must have a clear beginning, a build-up and an ending.
 
-STEP 3 — WRITE THE SEEDANCE PROMPT in exactly this structure
+STEP 3 — WRITE THE SEEDANCE PROMPT, in this structure
 
-REFERENCE: State that the attached image{S} {IS_ARE} the product reference and that the product must stay identical in every shot: same shape, proportions, colors, materials, and label layout. Label text and logo must not be redrawn, changed, or invented.
+REFERENCE: Say that the attached image(s) show the product and that it must stay identical in every shot: same shape, proportions, colors, materials and label. Label text and logo must never be redrawn, changed or invented.
 
-CONCEPT: One sentence describing the idea and mood.
+CONCEPT: One sentence with the idea and the mood.
 
-LOOK: Shot on ARRI Alexa 35 with Cooke S7/i full-frame primes. Describe the result, not only the gear: shallow depth of field, smooth focus falloff, gentle highlight roll-off, rich natural color, fine film grain, soft warm contrast. Add one lighting scheme and one color palette, both derived from the product's own colors, and keep them consistent across all shots.
+LOOK: Shot on ARRI Alexa 35 with Cooke S7/i full-frame primes. Describe the result: shallow depth of field, smooth focus falloff, gentle highlight roll-off, rich natural color, fine film grain. One lighting scheme and one color palette, both taken from the product's own colors, kept consistent across all shots.
 
-TIMELINE: four shots, hard cuts, each a different shot size AND a different angle.
-0-4s  HOOK: an intriguing image that does not fully show the product yet.
-4-8s  REVEAL: the product enters or is revealed, clearly readable.
-8-12s PAYOFF: the benefit in action (use, pour, texture, ingredient, or human reaction).
-12-15s HERO: clean final packshot, product centered and sharp, label facing camera, the motion settles and holds still for the last second.
-For each shot write: shot size, camera angle, ONE named camera move (slow push-in, low tracking, orbit, crane up, macro slide, whip pan...), what physically happens, and the light.
+TIMELINE: five shots of three seconds each (0-3, 3-6, 6-9, 9-12, 12-15), hard cuts, every shot a different shot size and a different camera angle. The first shot is an opening that intrigues without fully showing the product; the last shot is a clean hero packshot, product centered and sharp, label facing camera, holding still for the final second. For each shot write: shot size, camera angle, one named camera move, what physically happens, and the light.
 
-SPEED: Place speed ramps precisely. Name the exact shot and moment that drops into slow motion (the peak of an action: impact, splash, pour, lift) and where it snaps back to real time or accelerates into the next cut. Use at most two ramps.
+SPEED: Dynamic speed ramps. Name the exact shot and moment that drops into slow motion (the peak of an action: impact, splash, pour, lift) and where it snaps back to real time or accelerates into the next cut. Use at most two ramps.
 
-AUDIO: Sound design matched to the action (specific SFX per shot) plus one music direction that builds and resolves on the hero frame. No voiceover, no dialogue.
+AUDIO: Sound design matched to each shot, plus one music direction that builds and resolves on the hero frame. No voiceover, no dialogue.
 
-AVOID: on-screen text, subtitles, watermarks, extra logos, other brands, warped or changed label, extra or duplicated products, distorted hands, flicker, morphing between shots.
+AVOID: on-screen text, subtitles, captions, watermarks, extra logos, other brands, a warped or changed label, extra or duplicated products, distorted hands, flicker, morphing between shots.
 
 RULES
-- Write in English, present tense, concrete physical detail. No vague words like "stunning", "amazing", or "cinematic" on their own.
-- One camera move per shot. Nothing physically impossible unless the concept needs it.
-- People appear only if they serve the concept; if they do, describe them briefly and keep them consistent.
-- Do not write aspect ratio, resolution, or duration settings inside the prompt.
+- Write in English, present tense, concrete physical detail. No vague words such as "stunning", "amazing" or "cinematic" on their own.
+- One camera move per shot. Nothing physically impossible unless the idea needs it.
+- People appear only if the idea needs them; if they do, describe them briefly and keep them consistent.
+- Do not write aspect ratio, resolution or duration settings inside the prompt.
 - Length: 180 to 280 words.
-- Output ONLY the final Seedance prompt in one code block. No analysis, no explanation, no title, no alternatives.`;
+- Output ONLY the final Seedance prompt, in one code block. No analysis, no explanation, no title, no alternatives.`;
 
 /** The brief for a run: how many images, the user's note if any, and the admin's text when one is saved. */
 export function buildAdBrief(input: { imageCount: number; notes?: string | null; template?: string | null }): string {

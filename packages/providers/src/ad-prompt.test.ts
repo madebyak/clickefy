@@ -5,15 +5,15 @@ import { AD_MAX_BRIEF_CHARS, buildAdBrief, extractAdPrompt } from './ad-prompt';
 describe('buildAdBrief', () => {
   it('speaks of one image or several, and appends the note only when given', () => {
     const one = buildAdBrief({ imageCount: 1 });
-    expect(one).toContain('I will give you one product image.');
-    expect(one).toContain('From the image, determine');
+    expect(one).toContain('one or more images of the same product');
+    expect(one).toContain('15-second');
     expect(one).not.toContain('Important Note');
     const many = buildAdBrief({ imageCount: 3, notes: ' show it by the pool ' });
-    expect(many).toContain('3 images of the same product');
-    expect(many).toContain('attached images are the product reference');
     expect(many.endsWith('Important Note: "show it by the pool"')).toBe(true);
-    expect(many).toContain('15-second');
     expect(many.length).toBeLessThanOrEqual(AD_MAX_BRIEF_CHARS);
+    // An admin's own text may still use the placeholders.
+    const custom = buildAdBrief({ imageCount: 2, template: 'Look at {IMAGES}; the image{S} {IS_ARE} the reference for {SECONDS} seconds.' });
+    expect(custom).toBe('Look at 2 images of the same product (different angles or details); the images are the reference for 15 seconds.');
   });
 });
 

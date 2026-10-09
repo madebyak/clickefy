@@ -648,6 +648,9 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
               startFrame: input.startFrame,
               endFrame: input.endFrame,
               references: input.references ?? [],
+              // Audio models: the voice and settings, and the voice changer's source length.
+              audio: input.audio,
+              inputAudioSeconds: input.inputAudioSeconds,
               projectId: input.projectId,
             }),
           });

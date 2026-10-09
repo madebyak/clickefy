@@ -487,9 +487,16 @@
         "audio": "Audio {n}",
         "startFrame": "Start frame",
         "endFrame": "End frame",
-        "the": { "image": "The image", "video": "The video", "audio": "The audio" }
+        "the": {
+          "image": "The image",
+          "video": "The video",
+          "audio": "The audio"
+        }
       },
-      "unknown": { "title": "Generation failed", "body": "The model couldn’t finish this one. Try again." },
+      "unknown": {
+        "title": "Generation failed",
+        "body": "The model couldn’t finish this one. Try again."
+      },
       "refunded": "Credits returned",
       "details": "Details",
       "technical": "Technical details",
@@ -544,10 +551,22 @@
         "title": "Blocked by safety filter",
         "body": "The result was blocked by the model’s safety filter. Adjust the prompt or the references and try again."
       },
-      "output_empty": { "title": "No result", "body": "The model returned nothing this time. Try again or reword the prompt." },
-      "provider_busy": { "title": "Model busy", "body": "The model is overloaded right now. Try again in a few minutes." },
-      "provider_timeout": { "title": "Timed out", "body": "The model took too long to respond. Try again." },
-      "system": { "title": "Something went wrong", "body": "This one is on us. Try again — if it keeps happening, contact support." }
+      "output_empty": {
+        "title": "No result",
+        "body": "The model returned nothing this time. Try again or reword the prompt."
+      },
+      "provider_busy": {
+        "title": "Model busy",
+        "body": "The model is overloaded right now. Try again in a few minutes."
+      },
+      "provider_timeout": {
+        "title": "Timed out",
+        "body": "The model took too long to respond. Try again."
+      },
+      "system": {
+        "title": "Something went wrong",
+        "body": "This one is on us. Try again — if it keeps happening, contact support."
+      }
     },
     "dismiss": "Dismiss",
     "projectActions": "Project options",
@@ -1065,6 +1084,21 @@
     "cloneTitle": "Create your own voice",
     "cloneSub": "Record or upload a sample and speak in your own voice.",
     "cloneCta": "Coming soon",
-    "cloneSoon": "Voice cloning is coming soon."
+    "cloneSoon": "Voice cloning is coming soon.",
+    "searchLibrary": "Search thousands of voices… (name, accent, style)",
+    "searchingLibrary": "Searching the library…",
+    "libraryNote": "Results come from the ElevenLabs voice library, most used first.",
+    "gender_male": "Male",
+    "gender_female": "Female",
+    "age_young": "Young",
+    "age_middle_aged": "Middle-aged",
+    "age_old": "Old",
+    "use_narrative_story": "Narration",
+    "use_conversational": "Conversational",
+    "use_advertisement": "Ads",
+    "use_social_media": "Social media",
+    "use_informative_educational": "Educational",
+    "use_entertainment_tv": "TV & entertainment",
+    "use_characters_animation": "Characters"
   }
 }

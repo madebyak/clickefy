@@ -74,22 +74,51 @@ function useVoices() {
   });
 }
 
-/** The voice list, in a modal, with a one-at-a-time preview player. Choosing closes it. */
+/** The library's facets, as the filter chips offer them. */
+const GENDERS = ["male", "female"] as const;
+const AGES = ["young", "middle_aged", "old"] as const;
+const USE_CASES = ["narrative_story", "conversational", "advertisement", "social_media", "informative_educational", "entertainment_tv", "characters_animation"] as const;
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => { const id = setTimeout(() => setV(value), ms); return () => clearTimeout(id); }, [value, ms]);
+  return v;
+}
+
+/**
+ * The voice list, in a modal. Opens on the curated set (the account's
+ * voices, then the most popular English and Arabic library voices); the
+ * moment a search term or a facet is set it asks the library itself.
+ */
 function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voices: AudioVoice[]; value: AudioVoice | null; onChange: (v: AudioVoice) => void; onClose: () => void; loading: boolean; error: boolean }) {
   const t = useTranslations("audio");
   const [query, setQuery] = useState("");
   const [lang, setLang] = useState<"all" | "en" | "ar">("all");
+  const [gender, setGender] = useState<(typeof GENDERS)[number] | null>(null);
+  const [age, setAge] = useState<(typeof AGES)[number] | null>(null);
+  const [useCase, setUseCase] = useState<(typeof USE_CASES)[number] | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return voices.filter((v) => {
-      if (lang !== "all" && (v.language ?? "").toLowerCase() !== lang) return false;
-      if (!q) return true;
-      return [v.name, v.accent, v.gender, v.useCase, v.description].some((s) => s?.toLowerCase().includes(q));
-    });
-  }, [voices, query, lang]);
+  const q = useDebounced(query.trim(), 350);
+  const searching = q.length >= 2 || gender != null || age != null || useCase != null;
+  const search = useQuery({
+    queryKey: ["audio", "voices", "search", q, lang, gender, age, useCase],
+    queryFn: () => getSDK().audio.searchVoices({ q: q || undefined, language: lang === "all" ? undefined : lang, gender: gender ?? undefined, age: age ?? undefined, useCase: useCase ?? undefined }),
+    enabled: searching,
+    staleTime: 10 * 60_000,
+  });
+
+  const shown = useMemo(() => {
+    if (searching) {
+      const lib = search.data ?? [];
+      // The account's own voices stay on top when they match the words typed.
+      const own = voices.filter((v) => v.source === "account" && (!q || v.name.toLowerCase().includes(q.toLowerCase())) && (lang === "all" || (v.language ?? "").toLowerCase() === lang));
+      const ids = new Set(own.map((v) => v.voiceId));
+      return [...own, ...lib.filter((v) => !ids.has(v.voiceId))];
+    }
+    return voices.filter((v) => lang === "all" || (v.language ?? "").toLowerCase() === lang);
+  }, [searching, search.data, voices, q, lang]);
 
   const preview = (v: AudioVoice) => {
     if (!v.previewUrl) return;
@@ -100,6 +129,12 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
     void el.play().then(() => setPlayingId(v.voiceId)).catch(() => setPlayingId(null));
   };
   useEffect(() => () => { audioRef.current?.pause(); }, []);
+
+  const chip = (active: boolean, label: string, onClick: () => void) => (
+    <button key={label} type="button" onClick={onClick} className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs transition-colors", active ? "bg-primary text-black" : "bg-surface-3 text-muted-foreground hover:text-foreground")}>
+      {label}
+    </button>
+  );
 
   return (
     <Modal onClose={onClose} label={t("pickVoice")} className="max-w-lg">
@@ -127,26 +162,34 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
           {t("cloneCta")}
         </button>
       </div>
-      <div className="p-3">
+      <div className="space-y-2 p-3">
         <input
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("searchVoices")}
+          placeholder={t("searchLibrary")}
           className="h-9 w-full rounded-md bg-surface-3 px-3 text-sm outline-none placeholder:text-muted-foreground"
         />
+        <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]">
+          {GENDERS.map((g) => chip(gender === g, t(`gender_${g}`), () => setGender(gender === g ? null : g)))}
+          <span className="w-px shrink-0 bg-white/10" />
+          {AGES.map((a) => chip(age === a, t(`age_${a}`), () => setAge(age === a ? null : a)))}
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]">
+          {USE_CASES.map((u) => chip(useCase === u, t(`use_${u}`), () => setUseCase(useCase === u ? null : u)))}
+        </div>
       </div>
-      <div className="max-h-[50dvh] overflow-y-auto px-2 pb-3">
-        {loading ? (
-          <p className="p-3 text-xs text-muted-foreground">{t("loadingVoices")}</p>
-        ) : error ? (
+      <div className="max-h-[42dvh] overflow-y-auto px-2 pb-3">
+        {loading || (searching && search.isPending) ? (
+          <p className="p-3 text-xs text-muted-foreground">{searching ? t("searchingLibrary") : t("loadingVoices")}</p>
+        ) : error || (searching && search.isError) ? (
           <p className="p-3 text-xs text-destructive">{t("voicesFailed")}</p>
-        ) : filtered.length === 0 ? (
+        ) : shown.length === 0 ? (
           <p className="p-3 text-xs text-muted-foreground">{t("noVoices")}</p>
         ) : (
-          filtered.map((v) => {
+          shown.map((v) => {
             const selected = value?.voiceId === v.voiceId;
-            const meta = [v.language?.toUpperCase(), v.gender, v.accent, v.age].filter(Boolean).join(" · ");
+            const meta = [v.language?.toUpperCase(), v.gender, v.accent, v.age?.replace("_", " ")].filter(Boolean).join(" · ");
             return (
               <div key={v.voiceId} className={cn("flex items-center gap-3 rounded-lg px-2 py-1.5", selected ? "bg-primary/15" : "hover:bg-surface-3")}>
                 <button type="button" onClick={() => { onChange(v); onClose(); }} className="flex min-w-0 flex-1 items-center gap-3 py-0.5 text-start">
@@ -170,6 +213,7 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
             );
           })
         )}
+        {searching && !search.isPending && shown.length > 0 && <p className="px-3 pt-2 text-[10px] text-muted-foreground">{t("libraryNote")}</p>}
       </div>
     </Modal>
   );

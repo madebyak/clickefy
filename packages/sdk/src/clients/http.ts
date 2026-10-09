@@ -21,6 +21,7 @@ import type {
 } from '@clickfy/types';
 
 import type {
+  VoiceSearchParams,
   AdQuote,
   AudioVoice,
   AppNotification,
@@ -1119,6 +1120,12 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
     audio: {
       async listVoices(): Promise<AudioVoice[]> {
         const json = await get<ApiEnvelope<{ voices: AudioVoice[] }>>('/v1/audio/voices', { auth: true });
+        return json.data.voices;
+      },
+      async searchVoices(params): Promise<AudioVoice[]> {
+        const sp = new URLSearchParams();
+        for (const [k, v] of Object.entries(params)) if (v) sp.set(k, String(v));
+        const json = await get<ApiEnvelope<{ voices: AudioVoice[] }>>(`/v1/audio/voices/search?${sp.toString()}`, { auth: true });
         return json.data.voices;
       },
     },

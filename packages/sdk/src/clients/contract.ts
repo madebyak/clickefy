@@ -10,6 +10,7 @@ import type {
 } from '@clickfy/types';
 
 import type {
+  VoiceSearchParams,
   AdQuote,
   AudioVoice,
   AppNotification,
@@ -697,6 +698,8 @@ export interface ToolsClient {
 export interface AudioClient {
   /** Voices for speech and the voice changer. Hits `GET /v1/audio/voices`. Auth required. */
   listVoices(): Promise<AudioVoice[]>;
+  /** Live search of the public voice library. Hits `GET /v1/audio/voices/search`. */
+  searchVoices(params: VoiceSearchParams): Promise<AudioVoice[]>;
 }
 
 export interface NotificationsClient {

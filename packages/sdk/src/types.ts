@@ -596,6 +596,16 @@ export interface CreateAudioOptions {
   promptInfluence?: number;
 }
 
+/** Filters for a live search of the voice library. */
+export interface VoiceSearchParams {
+  q?: string;
+  language?: 'en' | 'ar';
+  gender?: 'male' | 'female' | 'neutral';
+  age?: 'young' | 'middle_aged' | 'old';
+  /** One of the library's use cases, e.g. `narrative_story`, `advertisement`, `conversational`. */
+  useCase?: string;
+}
+
 /** A voice the Speech and Voice-changer tabs can use. */
 export interface AudioVoice {
   voiceId: string;

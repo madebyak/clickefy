@@ -11,6 +11,8 @@
  */
 
 import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 
 import { withAuth, withCurrentUser } from '../middleware/with-auth';
 import { byClerkUserId, withRateLimit } from '../middleware/with-rate-limit';
@@ -36,7 +38,10 @@ export interface AudioVoice {
 const BASE = 'https://api.elevenlabs.io';
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const LIBRARY_LANGUAGES = ['en', 'ar'] as const;
-const LIBRARY_PAGE = 40;
+const LIBRARY_PAGE = 100;
+const SEARCH_PAGE = 40;
+const SEARCH_TTL_MS = 10 * 60 * 1000;
+const searchCache = new Map<string, { at: number; voices: AudioVoice[] }>();
 
 let cache: { at: number; voices: AudioVoice[] } | null = null;
 let inFlight: Promise<AudioVoice[]> | null = null;
@@ -87,6 +92,11 @@ function fromAccount(v: AccountVoice): AudioVoice {
   };
 }
 
+/** The licence terms the plan set: free to use, not live-moderated, no custom per-use rate. */
+function usable(v: SharedVoice): boolean {
+  return v.free_users_allowed !== false && !v.live_moderation_enabled && (v.rate ?? 0) <= 0;
+}
+
 function fromLibrary(v: SharedVoice): AudioVoice {
   return {
     voiceId: v.voice_id,
@@ -127,8 +137,7 @@ async function loadVoices(apiKey: string): Promise<AudioVoice[]> {
   for (const page of library) {
     for (const v of page.voices ?? []) {
       if (seen.has(v.voice_id)) continue;
-      // The licence terms the plan set: free to use, not live-moderated, no custom per-use rate.
-      if (v.free_users_allowed === false || v.live_moderation_enabled || (v.rate ?? 0) > 0) continue;
+      if (!usable(v)) continue;
       seen.add(v.voice_id);
       out.push(fromLibrary(v));
     }
@@ -164,5 +173,63 @@ audioRoute.get(
     }
     c.header('Cache-Control', 'private, max-age=300');
     return c.json({ data: { voices: cache.voices } });
+  },
+);
+
+/**
+ * `GET /voices/search` — the whole public library, live. `q` matches
+ * name and description; `language` is en | ar (both when absent);
+ * `gender`, `age` and `useCase` are the library's own facets. Cached ten
+ * minutes per distinct query.
+ */
+const searchSchema = z.object({
+  q: z.string().trim().max(80).optional(),
+  language: z.enum(['en', 'ar']).optional(),
+  gender: z.enum(['male', 'female', 'neutral']).optional(),
+  age: z.enum(['young', 'middle_aged', 'old']).optional(),
+  useCase: z.string().trim().max(40).optional(),
+});
+
+audioRoute.get(
+  '/voices/search',
+  withAuth({ required: true }),
+  withCurrentUser(),
+  withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  zValidator('query', searchSchema),
+  async (c) => {
+    const apiKey = c.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      return c.json({ error: { code: 'audio_not_configured', message: 'Voices are not available right now.' } }, 503);
+    }
+    const q = c.req.valid('query');
+    const key = JSON.stringify(q);
+    const hit = searchCache.get(key);
+    if (hit && Date.now() - hit.at < SEARCH_TTL_MS) {
+      c.header('Cache-Control', 'private, max-age=120');
+      return c.json({ data: { voices: hit.voices } });
+    }
+    const languages = q.language ? [q.language] : [...LIBRARY_LANGUAGES];
+    const pages = await Promise.all(
+      languages.map((lang) => {
+        const params = new URLSearchParams({ page_size: String(SEARCH_PAGE), language: lang, sort: 'cloned_by_count', free_users_allowed: 'true' });
+        if (q.q) params.set('search', q.q);
+        if (q.gender) params.set('gender', q.gender);
+        if (q.age) params.set('age', q.age);
+        if (q.useCase) params.set('use_cases', q.useCase);
+        return elevenGet<{ voices?: SharedVoice[] }>(`/v1/shared-voices?${params.toString()}`, apiKey).catch(() => ({ voices: [] as SharedVoice[] }));
+      }),
+    );
+    const seen = new Set<string>();
+    const voices: AudioVoice[] = [];
+    for (const page of pages) {
+      for (const v of page.voices ?? []) {
+        if (seen.has(v.voice_id) || !usable(v)) continue;
+        seen.add(v.voice_id);
+        voices.push(fromLibrary(v));
+      }
+    }
+    searchCache.set(key, { at: Date.now(), voices });
+    c.header('Cache-Control', 'private, max-age=120');
+    return c.json({ data: { voices } });
   },
 );

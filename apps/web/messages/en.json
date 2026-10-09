@@ -1099,6 +1099,7 @@
     "use_social_media": "Social media",
     "use_informative_educational": "Educational",
     "use_entertainment_tv": "TV & entertainment",
-    "use_characters_animation": "Characters"
+    "use_characters_animation": "Characters",
+    "dropAudioOnly": "Drop an audio file (MP3 or WAV)."
   }
 }

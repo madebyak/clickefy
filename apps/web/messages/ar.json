@@ -1099,6 +1099,7 @@
     "use_social_media": "سوشيال ميديا",
     "use_informative_educational": "تعليمي",
     "use_entertainment_tv": "تلفزيون وترفيه",
-    "use_characters_animation": "شخصيات"
+    "use_characters_animation": "شخصيات",
+    "dropAudioOnly": "أسقط ملفًا صوتيًا (MP3 أو WAV)."
   }
 }

@@ -294,6 +294,7 @@ export function AudioComposer() {
   // Voice changer
   const [source, setSource] = useState<{ file: File; seconds: number | null; ref?: Extract<JobInputValue, { kind: "audio" }> } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   const [busy, setBusy] = useState(false);
 
@@ -407,7 +408,18 @@ export function AudioComposer() {
             />
           )}
           {tab === "sts" && (
-            <label className={cn("flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed border-white/15 bg-surface-2 px-4 py-3 text-sm", source && "border-primary/50")}>
+            <label
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("audio/"));
+                if (f) pickFile(f);
+                else toast.error(t("dropAudioOnly"));
+              }}
+              className={cn("flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed border-white/15 bg-surface-2 px-4 py-3 text-sm transition-colors", source && "border-primary/50", dragging && "border-primary bg-primary/10")}
+            >
               <input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f); e.target.value = ""; }} />
               {source ? (
                 <>

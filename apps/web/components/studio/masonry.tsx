@@ -90,9 +90,7 @@ function aspectOf(a: Asset): number {
       ? a.width / a.height
       : a.type === "video"
         ? 16 / 9
-        : a.type === "audio"
-          ? 2 // a wide card: play button, bars, length
-          : 1;
+        : 1; // images without a size and audio clips sit as squares
   return Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, ratio));
 }
 

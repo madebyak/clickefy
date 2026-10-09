@@ -147,6 +147,8 @@ export const createAudioOptionsSchema = z
     similarity: z.number().min(0).max(1).optional(),
     speed: z.number().min(0.7).max(1.2).optional(),
     expressive: z.boolean().optional(),
+    /** Speech engine (the provider's model id) from the model's `audio.engines`. */
+    engine: z.string().min(1).max(64).optional(),
     languageCode: z.string().regex(/^[a-z]{2}$/).optional(),
     durationSeconds: z.number().min(0.5).max(30).optional(),
     promptInfluence: z.number().min(0).max(1).optional(),

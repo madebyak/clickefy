@@ -19,13 +19,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { CaretDown, Pause, Play, SlidersHorizontal, SpeakerHigh, UploadSimple, Waveform, Microphone, MusicNotes, X } from "@phosphor-icons/react";
+import { CaretDown, Check, Pause, Play, SlidersHorizontal, Sparkle, SpeakerHigh, UploadSimple, Waveform, Microphone, MusicNotes, X } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 import type { AudioVoice, GenModel, JobInputValue } from "@clickfy/sdk";
 import { JobSubmissionError } from "@clickfy/sdk";
 
 import { Modal } from "@/components/ui/modal";
+import { Menu, MenuItem } from "@/components/ui/menu";
 import { useStudio } from "@/components/studio/studio-context";
 import { useModels } from "@/lib/use-models";
 import { getSDK } from "@/lib/api";
@@ -45,6 +46,22 @@ function quote(model: GenModel | undefined, chars: number, seconds: number): num
   if (p.per1kChars) return Math.max(1, Math.ceil(chars / 1000)) * p.per1kChars;
   if (p.perMinute) return Math.max(1, Math.ceil(seconds / 60)) * p.perMinute;
   return p.flat ?? model?.costCredits ?? 0;
+}
+
+/** A stable colour pair per voice name, so the same voice always wears the same circle. */
+function avatarStyle(name: string): { background: string } {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return { background: `linear-gradient(135deg, hsl(${hue} 70% 55%), hsl(${(hue + 40) % 360} 70% 40%))` };
+}
+
+function VoiceAvatar({ name, className }: { name: string; className?: string }) {
+  return (
+    <span className={cn("grid shrink-0 place-items-center rounded-full text-[11px] font-semibold text-white", className)} style={avatarStyle(name)} aria-hidden>
+      {name.trim().charAt(0).toUpperCase()}
+    </span>
+  );
 }
 
 function useVoices() {
@@ -99,6 +116,17 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
           <X className="size-4" />
         </button>
       </div>
+      {/* Cloning needs a plan with voice slots; shown now so the door is visible, opened later. */}
+      <div className="mx-3 mt-3 flex items-center gap-3 rounded-xl bg-gradient-to-r from-primary/20 to-surface-3 p-3">
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-black"><Sparkle weight="fill" className="size-4" /></span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold">{t("cloneTitle")}</div>
+          <div className="truncate text-xs text-muted-foreground">{t("cloneSub")}</div>
+        </div>
+        <button type="button" onClick={() => toast.info(t("cloneSoon"))} className="shrink-0 rounded-lg bg-surface-1 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-white/10">
+          {t("cloneCta")}
+        </button>
+      </div>
       <div className="p-3">
         <input
           autoFocus
@@ -120,19 +148,23 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
             const selected = value?.voiceId === v.voiceId;
             const meta = [v.language?.toUpperCase(), v.gender, v.accent, v.age].filter(Boolean).join(" · ");
             return (
-              <div key={v.voiceId} className={cn("flex items-center gap-2 rounded-lg px-2 py-1.5", selected ? "bg-primary/15" : "hover:bg-surface-3")}>
+              <div key={v.voiceId} className={cn("flex items-center gap-3 rounded-lg px-2 py-1.5", selected ? "bg-primary/15" : "hover:bg-surface-3")}>
+                <button type="button" onClick={() => { onChange(v); onClose(); }} className="flex min-w-0 flex-1 items-center gap-3 py-0.5 text-start">
+                  <VoiceAvatar name={v.name} className="size-9" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{v.name.split(" - ")[0]}{v.source === "account" && <span className="ms-1 text-[10px] text-primary">{t("yourVoice")}</span>}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{meta || v.useCase || v.name.split(" - ")[1] || ""}</span>
+                  </span>
+                  {selected && <Check weight="bold" className="size-4 shrink-0 text-primary" />}
+                </button>
                 <button
                   type="button"
                   aria-label={playingId === v.voiceId ? t("stopPreview") : t("playPreview")}
                   disabled={!v.previewUrl}
                   onClick={() => preview(v)}
-                  className="grid size-8 shrink-0 place-items-center rounded-full bg-white/10 text-foreground disabled:opacity-30"
+                  className="grid size-8 shrink-0 place-items-center rounded-full bg-white/10 text-foreground hover:bg-white/20 disabled:opacity-30"
                 >
                   {playingId === v.voiceId ? <Pause weight="fill" className="size-3.5" /> : <Play weight="fill" className="size-3.5 translate-x-px" />}
-                </button>
-                <button type="button" onClick={() => { onChange(v); onClose(); }} className="min-w-0 flex-1 py-0.5 text-start">
-                  <div className="truncate text-sm font-medium">{v.name}{v.source === "account" && <span className="ms-1 text-[10px] text-primary">{t("yourVoice")}</span>}</div>
-                  <div className="truncate text-xs text-muted-foreground">{meta || v.useCase || ""}</div>
                 </button>
               </div>
             );
@@ -160,16 +192,16 @@ function VoiceButton({ voice, onOpen }: { voice: AudioVoice | null; onOpen: () =
   };
   return (
     <div className="flex h-9 items-center rounded-lg bg-surface-3 text-sm">
-      {voice?.previewUrl && (
-        <button type="button" onClick={toggle} aria-label={playing ? t("stopPreview") : t("playPreview")} className="grid size-9 place-items-center rounded-s-lg hover:bg-white/10">
-          {playing ? <Pause weight="fill" className="size-3.5" /> : <Play weight="fill" className="size-3.5 translate-x-px" />}
-        </button>
-      )}
-      <button type="button" onClick={onOpen} className={cn("flex h-9 items-center gap-1.5 rounded-e-lg px-2.5 hover:bg-white/10", !voice?.previewUrl && "rounded-s-lg")}>
-        <Microphone className="size-4 text-muted-foreground" />
+      <button type="button" onClick={onOpen} className="flex h-9 items-center gap-2 rounded-s-lg ps-1.5 pe-2.5 hover:bg-white/10">
+        {voice ? <VoiceAvatar name={voice.name} className="size-6 text-[10px]" /> : <Microphone className="size-4 text-muted-foreground" />}
         <span className={cn("max-w-[11rem] truncate", !voice && "text-muted-foreground")}>{voice ? voice.name.split(" - ")[0] : t("pickVoice")}</span>
         <CaretDown className="size-3 text-muted-foreground" />
       </button>
+      {voice?.previewUrl && (
+        <button type="button" onClick={toggle} aria-label={playing ? t("stopPreview") : t("playPreview")} className="grid size-9 place-items-center rounded-e-lg border-s border-white/10 hover:bg-white/10">
+          {playing ? <Pause weight="fill" className="size-3.5" /> : <Play weight="fill" className="size-3.5 translate-x-px" />}
+        </button>
+      )}
     </div>
   );
 }
@@ -189,18 +221,28 @@ export function AudioComposer() {
   const { startGeneration } = useStudio();
   const { models, isLoading: modelsLoading } = useModels("audio");
   const voicesQuery = useVoices();
-  const voices = voicesQuery.data ?? [];
+  const voices = useMemo(() => voicesQuery.data ?? [], [voicesQuery.data]);
 
   const [tab, setTab] = useState<Tab>("tts");
   const model = models.find((m) => m.audio?.task === tab);
+  const speechModel = models.find((m) => m.audio?.task === "tts");
+  const engines = speechModel?.audio?.engines ?? [];
+  const [engineId, setEngineId] = useState<string | null>(null);
+  const engine = engines.find((e) => e.id === engineId) ?? engines.find((e) => e.id === speechModel?.audio?.defaultEngine) ?? engines[0];
 
   // Speech
   const [text, setText] = useState("");
   const [voice, setVoice] = useState<AudioVoice | null>(null);
+  // A voice is preselected the moment the list arrives: the account's own first, else the first listed.
+  useEffect(() => {
+    if (voice || voices.length === 0) return;
+    setVoice(voices.find((v) => v.source === "account") ?? voices[0]!);
+  }, [voices, voice]);
   const [stability, setStability] = useState(0.5);
   const [similarity, setSimilarity] = useState(0.75);
   const [speed, setSpeed] = useState(1);
-  const [expressive, setExpressive] = useState(false);
+  // Kept for engines without a dropdown (older API builds); the engine picker supersedes it.
+  const expressive = false;
   // Effects
   const [sfxText, setSfxText] = useState("");
   const [duration, setDuration] = useState<number | null>(null);
@@ -211,7 +253,7 @@ export function AudioComposer() {
 
   const [busy, setBusy] = useState(false);
 
-  const maxChars = model?.audio?.maxChars ?? 5000;
+  const maxChars = (tab === "tts" ? engine?.maxChars : undefined) ?? model?.audio?.maxChars ?? 5000;
   const credits = quote(model, tab === "tts" ? text.length : sfxText.length, source?.seconds ?? 0);
 
   // A dropped file: read its length in the browser so the price is known before upload.
@@ -264,7 +306,7 @@ export function AudioComposer() {
           references,
           audio: {
             ...(voice && tab !== "sfx" ? { voiceId: voice.voiceId, voiceName: voice.name, ...(voice.publicOwnerId ? { publicOwnerId: voice.publicOwnerId } : {}) } : {}),
-            ...(tab === "tts" ? { stability, similarity, speed, expressive, ...(voice?.language && /^[a-z]{2}$/i.test(voice.language) ? { languageCode: voice.language.toLowerCase() } : {}) } : {}),
+            ...(tab === "tts" ? { stability, similarity, speed, ...(engine ? { engine: engine.id } : { expressive }), ...(voice?.language && /^[a-z]{2}$/i.test(voice.language) ? { languageCode: voice.language.toLowerCase() } : {}) } : {}),
             ...(tab === "sfx" ? { ...(duration ? { durationSeconds: duration } : {}), promptInfluence: influence } : {}),
             ...(tab === "sts" ? { stability, similarity } : {}),
           },
@@ -377,13 +419,34 @@ export function AudioComposer() {
               className={cn("flex h-9 items-center gap-1.5 rounded-lg bg-surface-3 px-2.5 text-sm hover:bg-white/10", showSettings && "text-primary")}
             >
               <SlidersHorizontal className="size-4" />
-              {t("settings")}
+              {t("advanced")}
             </button>
-            {tab === "tts" && model.audio?.expressive && (
-              <label className="flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-surface-3 px-2.5 text-sm">
-                <input type="checkbox" checked={expressive} onChange={(e) => setExpressive(e.target.checked)} />
-                {t("expressive")}
-              </label>
+            {tab === "tts" && engines.length > 0 && engine && (
+              <Menu
+                align="start"
+                side="top"
+                trigger={({ toggle }) => (
+                  <button type="button" onClick={toggle} className="flex h-9 items-center gap-1.5 rounded-lg bg-surface-3 px-2.5 text-sm hover:bg-white/10">
+                    <span className="text-muted-foreground">{t("engine")}</span>
+                    <span className="max-w-[9rem] truncate">{engine.label}</span>
+                    <CaretDown className="size-3 text-muted-foreground" />
+                  </button>
+                )}
+              >
+                {({ close }) => (
+                  <>
+                    {engines.map((e) => (
+                      <MenuItem key={e.id} selected={e.id === engine.id} onClick={() => { setEngineId(e.id); close(); }}>
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span>{speechModel?.provider === "elevenlabs" ? `ElevenLabs · ${e.label}` : e.label}</span>
+                          <span className="text-xs text-muted-foreground">{e.hint}</span>
+                        </span>
+                        {e.id === engine.id && <Check weight="bold" className="size-4 shrink-0 text-primary" />}
+                      </MenuItem>
+                    ))}
+                  </>
+                )}
+              </Menu>
             )}
             <span className={cn("ms-auto text-xs tabular-nums text-muted-foreground", tab === "tts" && text.length > maxChars && "text-destructive")}>
               {tab === "tts" ? `${text.length.toLocaleString()} / ${maxChars.toLocaleString()}` : tab === "sfx" ? `${sfxText.length} / ${model.maxPromptChars}` : ""}

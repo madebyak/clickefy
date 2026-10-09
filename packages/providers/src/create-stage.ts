@@ -126,6 +126,7 @@ export interface BuildCreateStageInput {
     similarity?: number;
     speed?: number;
     expressive?: boolean;
+    engine?: string;
     languageCode?: string;
     durationSeconds?: number;
     promptInfluence?: number;

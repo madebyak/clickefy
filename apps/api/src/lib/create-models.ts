@@ -457,6 +457,8 @@ export interface CreateModelDTO {
     duration?: { min: number; max: number; default: number };
     inputAudio?: boolean;
     expressive?: boolean;
+    engines?: Array<{ id: string; label: string; hint: string; maxChars: number; tags?: boolean }>;
+    defaultEngine?: string;
     /** The unit prices behind `resolveCreditCost`; the page quotes from these. */
     pricing: { per1kChars?: number; perMinute?: number; flat?: number };
   };
@@ -559,6 +561,8 @@ export function buildCreateModelDTO(
           duration: caps.audio.duration ? { ...caps.audio.duration } : undefined,
           inputAudio: caps.audio.inputAudio,
           expressive: Boolean(caps.audio.expressiveModelId),
+          engines: caps.audio.engines ? caps.audio.engines.map((e) => ({ ...e })) : undefined,
+          defaultEngine: caps.audio.defaultEngine,
           pricing: {
             per1kChars: tierPricing?.per_1k_chars,
             perMinute: tierPricing?.per_minute,

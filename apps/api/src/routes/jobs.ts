@@ -680,9 +680,14 @@ jobsRoute.post(
     // else from the body, capped at five minutes.
     const audioTask = caps.kind === 'audio' ? caps.audio?.task : undefined;
     const textChars = audioTask === 'tts' || audioTask === 'sfx' ? body.prompt.length : undefined;
-    if (audioTask === 'tts' && caps.audio?.maxChars && body.prompt.length > caps.audio.maxChars) {
+    if (body.audio?.engine && !caps.audio?.engines?.some((e) => e.id === body.audio?.engine)) {
+      return c.json({ error: { code: 'unknown_engine', message: 'That speech engine is not available.' } }, 422);
+    }
+    const engine = caps.audio?.engines?.find((e) => e.id === body.audio?.engine);
+    const speechMax = engine?.maxChars ?? caps.audio?.maxChars;
+    if (audioTask === 'tts' && speechMax && body.prompt.length > speechMax) {
       return c.json(
-        { error: { code: 'text_too_long', message: `Speech takes up to ${caps.audio.maxChars} characters.`, details: { max: caps.audio.maxChars, actual: body.prompt.length } } },
+        { error: { code: 'text_too_long', message: `This engine takes up to ${speechMax} characters.`, details: { max: speechMax, actual: body.prompt.length } } },
         422,
       );
     }

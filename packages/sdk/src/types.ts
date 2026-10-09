@@ -493,6 +493,9 @@ export interface GenModel {
     duration?: { min: number; max: number; default: number };
     inputAudio?: boolean;
     expressive?: boolean;
+    /** Speech engines to offer, with the one to preselect. */
+    engines?: Array<{ id: string; label: string; hint: string; maxChars: number; tags?: boolean }>;
+    defaultEngine?: string;
     pricing: { per1kChars?: number; perMinute?: number; flat?: number };
   };
   /**
@@ -581,8 +584,10 @@ export interface CreateAudioOptions {
   similarity?: number;
   /** 0.7–1.2 */
   speed?: number;
-  /** Use the expressive model (eleven_v3) for speech. */
+  /** Use the expressive model (eleven_v3) for speech. Superseded by `engine`. */
   expressive?: boolean;
+  /** Speech engine id from the model's `audio.engines`. */
+  engine?: string;
   /** ISO 639-1, e.g. `ar`. */
   languageCode?: string;
   /** Sound effects: 0.5–30 s. */
@@ -758,6 +763,13 @@ export interface GenerationProgress {
    * `error` verbatim. Undefined for other failures.
    */
   errorReason?: string;
+  /**
+   * The specifics behind `errorReason` (`JobErrorParams`): which
+   * attachment, which side, the measurement and the limit.
+   */
+  errorParams?: Record<string, string | number | undefined>;
+  /** True once the failed job's credits were returned. */
+  refunded?: boolean;
 }
 
 // ─── Generic API result envelope ─────────────────────────────────────

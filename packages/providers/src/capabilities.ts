@@ -442,6 +442,14 @@ export interface ModelCapabilities {
     duration?: { min: number; max: number; default: number };
     inputAudio?: boolean;
     expressiveModelId?: string;
+    /**
+     * Speech engines the user may pick (the provider's model ids). The
+     * page shows them as a dropdown; `defaultEngine` is preselected.
+     * Each carries its own text ceiling and whether it reads audio tags
+     * like [laughs].
+     */
+    engines?: ReadonlyArray<{ id: string; label: string; hint: string; maxChars: number; tags?: boolean }>;
+    defaultEngine?: string;
   };
 
   /**
@@ -1806,9 +1814,23 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     maxReferences: 0,
     maxSubjects: 0,
     maxImagesTotal: 0,
-    maxPromptChars: 5000,
-    audio: { task: 'tts', voices: true, maxChars: 5000, expressiveModelId: 'eleven_v3' },
-    notes: 'Text to speech, 32 languages including Arabic. Billed per character.',
+    maxPromptChars: 10000,
+    audio: {
+      task: 'tts',
+      voices: true,
+      maxChars: 10000,
+      expressiveModelId: 'eleven_v3',
+      defaultEngine: 'eleven_v4',
+      // Verified against GET /v1/models on 2026-10-09: ids, ceilings and languages.
+      engines: [
+        { id: 'eleven_v4', label: 'Eleven v4', hint: 'Newest, most expressive · 85 languages · audio tags', maxChars: 10000, tags: true },
+        { id: 'eleven_v4_turbo', label: 'Eleven v4 Turbo', hint: 'v4 quality, faster', maxChars: 10000, tags: true },
+        { id: 'eleven_v3', label: 'Eleven v3', hint: 'Expressive · 74 languages · audio tags', maxChars: 5000, tags: true },
+        { id: 'eleven_multilingual_v2', label: 'Multilingual v2', hint: 'Stable classic · 29 languages', maxChars: 10000 },
+        { id: 'eleven_flash_v2_5', label: 'Flash v2.5', hint: 'Fastest · 32 languages', maxChars: 40000 },
+      ],
+    },
+    notes: 'Text to speech, up to 85 languages including Arabic. Billed per character.',
   },
   'eleven-sfx': {
     provider: 'elevenlabs',

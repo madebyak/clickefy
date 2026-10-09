@@ -897,23 +897,29 @@ function compileElevenLabs(ctx: CompileContext, warnings: CompileWarning[]): Com
     similarity?: number;
     speed?: number;
     expressive?: boolean;
+    engine?: string;
     languageCode?: string;
     durationSeconds?: number;
     promptInfluence?: number;
     audioSlot?: { kind: 'user_input'; fieldKey: string };
   };
   const name = capabilities.displayName;
+  // The engine the page chose, when it is one this model offers; else the
+  // default engine, the "expressive" alternative, or the model's own id.
+  const engine = cfg.engine && audio.engines?.some((e) => e.id === cfg.engine) ? audio.engines.find((e) => e.id === cfg.engine) : undefined;
   const clamp = (v: number | undefined, lo: number, hi: number) => (v === undefined ? undefined : Math.min(hi, Math.max(lo, v)));
 
   let text = stage.prompt ?? '';
-  const maxChars = audio.maxChars ?? capabilities.maxPromptChars;
+  const maxChars = engine?.maxChars ?? audio.maxChars ?? capabilities.maxPromptChars;
   if (maxChars && text.length > maxChars) {
     warnings.push({ code: 'config_clamped', message: `${name} takes at most ${maxChars} characters; the text was cut.` });
     text = text.slice(0, maxChars);
   }
   if (audio.voices && !cfg.voiceId) throw new Error(`${name} needs a voice.`);
 
-  const model = cfg.expressive && audio.expressiveModelId ? audio.expressiveModelId : (capabilities.apiModelId ?? capabilities.modelKey);
+  const model =
+    engine?.id ??
+    (cfg.expressive && audio.expressiveModelId ? audio.expressiveModelId : (audio.defaultEngine ?? capabilities.apiModelId ?? capabilities.modelKey));
   const voiceSettings =
     cfg.stability !== undefined || cfg.similarity !== undefined || cfg.speed !== undefined
       ? { stability: clamp(cfg.stability, 0, 1), similarityBoost: clamp(cfg.similarity, 0, 1), speed: clamp(cfg.speed, 0.7, 1.2) }
@@ -1515,13 +1521,19 @@ function compileKling(
   // 2.6: 1080p only). The tier is what the user was BILLED for, so it is
   // not ours to upgrade — quietly serving 1080p when they paid for 720p
   // loses the difference on every job. Drop the audio and say why.
+  // A stage with no explicit tier runs at the model's default one, so the
+  // tier rules below must read that default: template stages never set
+  // `mode`, and eight 2.6 template runs went out with an end frame at
+  // 720p — "model/resolution(kling-v2-6/720p) is not supported with last
+  // frame" — after the debit.
+  const effectiveMode = mode ?? capabilities.modes?.default;
   let audioEnabled = soundEnabled;
   const audioTier = capabilities.nativeAudioRequiresTier;
-  if (audioEnabled && audioTier && mode && mode !== audioTier) {
+  if (audioEnabled && audioTier && effectiveMode && effectiveMode !== audioTier) {
     const label = capabilities.modes?.labels?.[audioTier] ?? audioTier;
     warnings.push({
       code: 'config_clamped',
-      message: `${stage.model} only generates native audio at the ${label} tier; this stage is billed at "${mode}", so audio was turned off. Select ${label} to keep the sound.`,
+      message: `${stage.model} only generates native audio at the ${label} tier; this stage is billed at "${effectiveMode}", so audio was turned off. Select ${label} to keep the sound.`,
     });
     audioEnabled = undefined;
   }
@@ -1532,11 +1544,11 @@ function compileKling(
   // the resolution would hand them output we did not charge for.
   let endFrame = capabilities.acceptsStartEndImage ? subjects[1] : undefined;
   const endTier = capabilities.endFrameRequiresTier;
-  if (endFrame && endTier && mode && mode !== endTier) {
+  if (endFrame && endTier && effectiveMode && effectiveMode !== endTier) {
     const label = capabilities.modes?.labels?.[endTier] ?? endTier;
     warnings.push({
       code: 'config_clamped',
-      message: `${stage.model} only supports a first+last frame pair at the ${label} tier; this stage is billed at "${mode}", so the end frame was dropped. Select ${label} to keep it.`,
+      message: `${stage.model} only supports a first+last frame pair at the ${label} tier; this stage is billed at "${effectiveMode}", so the end frame was dropped. Select ${label} to keep it.`,
     });
     endFrame = undefined;
   }

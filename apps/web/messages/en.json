@@ -988,6 +988,12 @@
     "insufficientCredits": "Not enough credits.",
     "failed": "Could not start the generation.",
     "settings": "Settings",
-    "close": "Close"
+    "close": "Close",
+    "advanced": "Advanced",
+    "engine": "Model",
+    "cloneTitle": "Create your own voice",
+    "cloneSub": "Record or upload a sample and speak in your own voice.",
+    "cloneCta": "Coming soon",
+    "cloneSoon": "Voice cloning is coming soon."
   }
 }

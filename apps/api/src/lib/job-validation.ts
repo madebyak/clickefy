@@ -26,7 +26,7 @@
 import type { TemplateInputField } from '@clickfy/db';
 import type { CreateJobBody, CreateUserJobBody, JobInputValueParsed } from './job-schemas';
 import { probeAudioDurationSeconds, probeVideoDurationSeconds } from './media-duration';
-import { danglingReferenceTokens, referenceCounts } from '@clickfy/types';
+import { danglingReferenceTokens, jobErrorMessage, probeImageDimensions, referenceCounts } from '@clickfy/types';
 
 export type JobValidationErrorCode =
   | 'template_not_published'
@@ -67,6 +67,9 @@ export type JobValidationErrorCode =
   | 'references_not_supported'
   | 'too_many_references'
   | 'image_format_not_supported'
+  | 'image_too_small'
+  | 'image_too_large'
+  | 'image_bad_shape'
   | 'shots_not_supported'
   | 'shots_invalid'
   // ── Prompt reference tokens (@Image1 …) ──
@@ -360,6 +363,12 @@ export interface CreateValidationContext {
      * allow-list (Kling: jpeg/png only). Absent = anything uploaded.
      */
     acceptedImageMimes?: readonly string[];
+    /**
+     * Pixel rules the provider enforces on input images. Probed from the
+     * file's own header bytes in R2 so a 146px-wide upload is refused
+     * here, with the real number, instead of after the debit.
+     */
+    imageConstraints?: { minEdge: number; maxEdge?: number; minAspect: number; maxAspect: number };
     /** Kling 3.0 family multi-shot limits; absent = not supported. */
     multiShot?: { maxShots: number; maxCharsPerShot: number; minShotSeconds: number };
   };
@@ -729,6 +738,50 @@ export async function validateCreateSubmission(
     });
   }
 
+  // ── Image dimensions, probed from the header bytes in R2 ───────
+  //
+  // The providers' own rules (Seedance: 300–6000px a side, aspect
+  // 0.4–2.5; Kling: ≥300px, 1:2.5–2.5:1) were only checked in the web
+  // composer, and only for Kling; 37 jobs failed on them after the
+  // debit in Sept–Oct 2026. The copy is the same sentence the worker
+  // would have produced for the provider's rejection.
+  if (model.imageConstraints && imageAttachments.length > 0) {
+    const rules = model.imageConstraints;
+    const labels = attachmentLabels(body);
+    const dims = await Promise.all(
+      imageAttachments.map((a) => probeImageDimensionsInR2(ctx.uploadsBucket, a.val.r2Key)),
+    );
+    for (let i = 0; i < imageAttachments.length; i++) {
+      const d = dims[i];
+      if (!d) continue; // unreadable header — the provider decides
+      const a = imageAttachments[i]!;
+      const item = labels.get(a.fieldKey);
+      const short: 'width' | 'height' | null =
+        d.width < rules.minEdge ? 'width' : d.height < rules.minEdge ? 'height' : null;
+      if (short) {
+        const params = { item, kind: 'image' as const, side: short, value: short === 'width' ? d.width : d.height, min: rules.minEdge };
+        return fail({ code: 'image_too_small', message: jobErrorMessage('input_media_too_small', params), fieldKey: a.fieldKey, details: params });
+      }
+      const long: 'width' | 'height' | null =
+        rules.maxEdge !== undefined
+          ? d.width > rules.maxEdge
+            ? 'width'
+            : d.height > rules.maxEdge
+              ? 'height'
+              : null
+          : null;
+      if (long) {
+        const params = { item, kind: 'image' as const, side: long, value: long === 'width' ? d.width : d.height, max: rules.maxEdge };
+        return fail({ code: 'image_too_large', message: jobErrorMessage('input_media_too_large', params), fieldKey: a.fieldKey, details: params });
+      }
+      const ratio = d.width / d.height;
+      if (ratio < rules.minAspect || ratio > rules.maxAspect) {
+        const params = { item, kind: 'image' as const, value: Math.round(ratio * 100) / 100, min: rules.minAspect, max: rules.maxAspect };
+        return fail({ code: 'image_bad_shape', message: jobErrorMessage('input_media_bad_shape', params), fieldKey: a.fieldKey, details: params });
+      }
+    }
+  }
+
   // ── Reference-clip durations, probed from the bytes in R2 ──────
   //
   // Video durations feed BILLING (`inputVideoSeconds` scales the
@@ -869,4 +922,36 @@ export async function validateCreateSubmission(
   // depends on `inputVideoSeconds`, which only exists once the clips
   // above have been probed.
   return { ok: { inputVideoSeconds } };
+}
+
+/**
+ * The composer's own names for the attachments, by field key: "Start
+ * frame", "End frame", then per-kind numbering ("Image 2", "Video 1") in
+ * the order they were sent — the same labels the worker uses when a
+ * provider rejects one after submit.
+ */
+function attachmentLabels(body: CreateUserJobBody): Map<string, string> {
+  const labels = new Map<string, string>();
+  if (body.startFrame) labels.set('start_frame', 'Start frame');
+  if (body.endFrame) labels.set('end_frame', 'End frame');
+  const counts = { image: 0, video: 0, audio: 0 };
+  body.references.forEach((r, i) => {
+    counts[r.kind] += 1;
+    labels.set(`ref_${i}`, `${r.kind.charAt(0).toUpperCase()}${r.kind.slice(1)} ${counts[r.kind]}`);
+  });
+  return labels;
+}
+
+/** Header bytes are enough for PNG / JPEG / WebP; 512KB covers a JPEG with a large EXIF block. */
+async function probeImageDimensionsInR2(
+  bucket: R2Bucket,
+  r2Key: string,
+): Promise<{ width: number; height: number } | null> {
+  try {
+    const obj = await bucket.get(r2Key, { range: { offset: 0, length: 512 * 1024 } });
+    if (!obj) return null;
+    return probeImageDimensions(new Uint8Array(await obj.arrayBuffer()));
+  } catch {
+    return null;
+  }
 }

@@ -46,6 +46,7 @@ import {
 } from "@/components/generate/reference-prompt-input";
 import type { GenModel } from "@clickfy/sdk";
 import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
+import { describeJobError, SUBMIT_CODE_REASON } from "@/lib/job-error-copy";
 import { cn } from "@/lib/utils";
 import { useModels } from "@/lib/use-models";
 import {
@@ -123,10 +124,16 @@ function uploadKindOf(file: File): "image" | "video" | "audio" {
  * the upload — and after the debit, which is where the provider would
  * have refused it. Returns an i18n key, or null when the image passes.
  */
+/** An attach-time refusal, with the file's real measurement so the toast can quote it. */
+type ImageProblem =
+  | { key: "imageWidthTooLow" | "imageHeightTooLow"; value: number; min: number }
+  | { key: "imageWidthTooHigh" | "imageHeightTooHigh"; value: number; max: number }
+  | { key: "imageAspectOutOfRange" };
+
 function checkImageConstraints(
   file: File,
-  c: { minEdge: number; minAspect: number; maxAspect: number },
-): Promise<"imageTooSmall" | "imageAspectOutOfRange" | null> {
+  c: { minEdge: number; maxEdge?: number; minAspect: number; maxAspect: number },
+): Promise<ImageProblem | null> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -135,9 +142,12 @@ function checkImageConstraints(
       const w = img.naturalWidth;
       const h = img.naturalHeight;
       if (!w || !h) return resolve(null); // undecodable here — let the server decide
-      if (w < c.minEdge || h < c.minEdge) return resolve("imageTooSmall");
+      if (w < c.minEdge) return resolve({ key: "imageWidthTooLow", value: w, min: c.minEdge });
+      if (h < c.minEdge) return resolve({ key: "imageHeightTooLow", value: h, min: c.minEdge });
+      if (c.maxEdge !== undefined && w > c.maxEdge) return resolve({ key: "imageWidthTooHigh", value: w, max: c.maxEdge });
+      if (c.maxEdge !== undefined && h > c.maxEdge) return resolve({ key: "imageHeightTooHigh", value: h, max: c.maxEdge });
       const ratio = w / h;
-      if (ratio < c.minAspect || ratio > c.maxAspect) return resolve("imageAspectOutOfRange");
+      if (ratio < c.minAspect || ratio > c.maxAspect) return resolve({ key: "imageAspectOutOfRange" });
       resolve(null);
     };
     img.onerror = () => {
@@ -651,6 +661,7 @@ export function PromptBar({
   animatedPlaceholder?: boolean;
 } = {}) {
   const t = useTranslations("promptbar");
+  const tStudio = useTranslations("studio");
   const compact = size === "compact";
   // Class overrides rather than conditional markup: `cn` runs tailwind-merge,
   // so these reliably beat the base utilities they conflict with.
@@ -1223,7 +1234,7 @@ export function PromptBar({
           if (constraints) {
             const problem = await checkImageConstraints(f, constraints);
             if (problem) {
-              toast.error(t(problem, { min: constraints.minEdge, name: f.name }));
+              toast.error(t(problem.key, { ...problem, name: f.name }));
               continue;
             }
           }
@@ -1552,10 +1563,17 @@ export function PromptBar({
       } else if (err instanceof RateLimitedError) {
         toast.error(t("rateLimited", { seconds: err.retryAfterSeconds }));
       } else if (err instanceof JobSubmissionError && err.httpStatus === 422 && err.message) {
-        // Validation refusals (clip too long, wrong mix, …) carry a
-        // human sentence from the server — far more actionable than the
-        // generic failure line.
-        toast.error(err.message);
+        // Validation refusals carry a human sentence from the server. The
+        // ones that measure something (an image's pixels, the prompt's
+        // length) share the failed-job vocabulary, so they read in the
+        // viewer's language with the real numbers; the rest show the
+        // server's own sentence, still far better than the generic line.
+        const reason = SUBMIT_CODE_REASON[err.code];
+        toast.error(
+          reason
+            ? describeJobError(tStudio, { reason, params: err.details as Record<string, string | number | undefined> }).body
+            : err.message,
+        );
       } else {
         toast.error(t("submitFailed"));
       }

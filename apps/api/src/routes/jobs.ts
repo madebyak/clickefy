@@ -665,6 +665,7 @@ jobsRoute.post(
             maxReferences: caps.maxReferences,
             maxReferencesWithVideo: caps.maxReferencesWithVideo,
             acceptedImageMimes: caps.acceptedImageMimes,
+            imageConstraints: caps.imageConstraints,
             multiShot: caps.multiShot,
           },
         });

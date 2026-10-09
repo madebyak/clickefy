@@ -68,6 +68,10 @@ interface JobErrorWire {
   message: string;
   /** Recognised, user-actionable cause (see `JobErrorReason`). */
   reason?: string;
+  /** The specifics behind `reason` (attachment, side, value, limit). */
+  params?: Record<string, string | number | undefined>;
+  /** True once the job's credits were actually returned. */
+  refunded?: boolean;
 }
 interface JobStatusWire {
   jobId: string;
@@ -189,6 +193,8 @@ function mapJobStatusToProgress(data: JobStatusWire): GenerationProgress {
     outputs: data.outputs,
     error: data.error?.message,
     errorReason: data.error?.reason,
+    errorParams: data.error?.params,
+    refunded: data.error?.refunded,
   };
 }
 

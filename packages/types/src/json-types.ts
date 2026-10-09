@@ -516,6 +516,18 @@ export interface JobError {
    */
   reason?: string;
   /**
+   * The specifics behind `reason` (which attachment, which side, the
+   * measurement and the limit) so the apps can build "Image 2 width of
+   * 146 pixels is too low. Minimum width is 300 pixels." in any language.
+   */
+  params?: import('./job-errors').JobErrorParams;
+  /**
+   * Whether the job's credits were actually returned. Written after the
+   * refund ran, never claimed in advance. Absent on rows older than the
+   * field and on failures that are not refundable.
+   */
+  refunded?: boolean;
+  /**
    * The provider's own error text, verbatim (truncated), kept when
    * `reason` replaced it with a plain-language `message`. For admins:
    * the public job API strips it before a client sees the error.

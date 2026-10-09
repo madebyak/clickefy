@@ -309,9 +309,13 @@ export interface ModelCapabilities {
   /**
    * Pixel constraints on input images, where the provider documents
    * them. Kling: each side ≥300px and an aspect between 1:2.5 and 2.5:1.
-   * Checked client-side at attach time so the refusal is instant.
+   * Seedance: each side 300–6000px, aspect 0.4–2.5 (its own rejections,
+   * verbatim: "expected the width to be at least 300px", "at most
+   * 6000px", "aspect ratio to be between 0.39 and 2.50"). Checked at
+   * attach time in the apps and again at submit by the API, so the
+   * refusal is instant and free instead of a failed job.
    */
-  imageConstraints?: { minEdge: number; minAspect: number; maxAspect: number };
+  imageConstraints?: { minEdge: number; maxEdge?: number; minAspect: number; maxAspect: number };
 
   /**
    * Kling O1: "When using both the first and last frames, no additional
@@ -625,6 +629,8 @@ const KLING_ASPECT_RATIOS = ['16:9', '9:16', '1:1'] as const;
 const KLING_IMAGE_MIMES = ['image/jpeg', 'image/png'] as const;
 /** Every Kling endpoint page: ≥300px each side, aspect within 1:2.5–2.5:1. */
 const KLING_IMAGE_CONSTRAINTS = { minEdge: 300, minAspect: 1 / 2.5, maxAspect: 2.5 } as const;
+/** BytePlus Seedance input images: 300–6000px a side, aspect 0.4–2.5 (its own 400s, 2026-09/10). */
+const SEEDANCE_IMAGE_CONSTRAINTS = { minEdge: 300, maxEdge: 6000, minAspect: 0.4, maxAspect: 2.5 } as const;
 /** Kling 3.0 / 3.0 Omni: grammar + `settings.multi_shot`. */
 const KLING_MULTI_SHOT = { maxShots: 6, maxCharsPerShot: 512, minShotSeconds: 1, toggleable: true } as const;
 /** Kling 3.0 Turbo: documents the grammar but exposes no switch. */
@@ -1291,6 +1297,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     supportsSound: true,
     inputVideoDurationFactor: 1.0,
+    imageConstraints: SEEDANCE_IMAGE_CONSTRAINTS,
     referenceVideo: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     referenceAudio: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     audioRefRequiresVisual: true,
@@ -1330,6 +1337,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     supportsSound: true,
     inputVideoDurationFactor: 1.0,
+    imageConstraints: SEEDANCE_IMAGE_CONSTRAINTS,
     referenceVideo: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     referenceAudio: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     audioRefRequiresVisual: true,
@@ -1371,6 +1379,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     supportsSound: true,
     inputVideoDurationFactor: 1.0,
+    imageConstraints: SEEDANCE_IMAGE_CONSTRAINTS,
     referenceVideo: { max: 10, maxTotalSeconds: 30, minClipSeconds: 2, maxClipSeconds: 30 },
     referenceAudio: { max: 10, maxTotalSeconds: 30, minClipSeconds: 2, maxClipSeconds: 30 },
     // A first / first+last frame makes 2.5 preserve that frame's own
@@ -1409,6 +1418,7 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     acceptsStartEndImage: true,
     supportsSound: true,
     inputVideoDurationFactor: 1.0,
+    imageConstraints: SEEDANCE_IMAGE_CONSTRAINTS,
     referenceVideo: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     referenceAudio: { max: 3, maxTotalSeconds: 15, minClipSeconds: 2, maxClipSeconds: 15 },
     audioRefRequiresVisual: true,

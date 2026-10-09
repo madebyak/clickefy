@@ -64,7 +64,11 @@ export interface MasonryCell {
   /** 0–1 within the active stage. */
   stageProgress?: number;
   failed?: boolean;
-  errorMessage?: string;
+  /** Already translated: what went wrong, and in one line what to do. */
+  errorTitle?: string;
+  errorBody?: string;
+  /** "Credits returned" line, when they were. */
+  errorRefunded?: string;
   /** A short tag in the top corner — "Draft" on a Draft-mode preview. */
   badge?: string;
 }
@@ -101,6 +105,7 @@ export function ProjectMasonry({
   onOpenCell,
   onCellMenu,
   onCellDownload,
+  onCellError,
   onDismissFailed,
 }: {
   cells: MasonryCell[];
@@ -112,6 +117,8 @@ export function ProjectMasonry({
   onOpenCell: (cell: MasonryCell) => void;
   onCellMenu: (cell: MasonryCell) => void;
   onCellDownload: (cell: MasonryCell) => void;
+  /** Tap on a failed tile — the caller shows the full explanation. */
+  onCellError: (cell: MasonryCell) => void;
   onDismissFailed: (cell: MasonryCell) => void;
 }) {
   const { width: screenWidth } = useWindowDimensions();
@@ -207,6 +214,7 @@ export function ProjectMasonry({
       thumbWidth={cellWidth}
       onOpen={() => onOpenCell(cell)}
       onMenu={() => onCellMenu(cell)}
+      onError={() => onCellError(cell)}
       onDownload={() => onCellDownload(cell)}
       onDismiss={() => onDismissFailed(cell)}
     />
@@ -238,6 +246,7 @@ function Cell({
   onMenu,
   onDownload,
   onDismiss,
+  onError,
 }: {
   cell: MasonryCell;
   labels: MasonryLabels;
@@ -247,6 +256,7 @@ function Cell({
   onMenu: () => void;
   onDownload: () => void;
   onDismiss: () => void;
+  onError: () => void;
 }) {
   const { colors } = useTheme();
   const interactive = !cell.pending && !cell.failed;
@@ -264,17 +274,45 @@ function Cell({
         {cell.pending ? (
           <PendingSkeleton cell={cell} labels={labels} />
         ) : cell.failed ? (
-          <View style={[styles.centerFill, { backgroundColor: colors.surfaceMuted }]}>
+          <Pressable
+            onPress={onError}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel={cell.errorTitle ?? labels.failed}
+            style={[styles.centerFill, { backgroundColor: colors.surfaceMuted }]}
+          >
             <Icon name="warning" size={20} color={colors.inkMuted} />
             <Text
               variant="caption"
-              color="inkMuted"
+              color="ink"
+              weight="700"
               align="center"
-              numberOfLines={4}
+              numberOfLines={2}
               style={{ marginTop: 6, paddingHorizontal: 12 }}
             >
-              {cell.errorMessage || labels.failed}
+              {cell.errorTitle ?? labels.failed}
             </Text>
+            {cell.errorBody ? (
+              <Text
+                variant="caption"
+                color="inkMuted"
+                align="center"
+                numberOfLines={3}
+                style={{ marginTop: 2, paddingHorizontal: 12, fontSize: 11 }}
+              >
+                {cell.errorBody}
+              </Text>
+            ) : null}
+            {cell.errorRefunded ? (
+              <Text
+                variant="caption"
+                align="center"
+                weight="600"
+                style={{ marginTop: 4, fontSize: 11, color: colors.success }}
+              >
+                {cell.errorRefunded}
+              </Text>
+            ) : null}
             <Pressable
               onPress={onDismiss}
               haptic="light"
@@ -284,7 +322,7 @@ function Cell({
             >
               <Icon name="close" size={13} color="#FFFFFF" weight="bold" />
             </Pressable>
-          </View>
+          </Pressable>
         ) : (
           <>
             {cell.kind === 'video' && cell.videoUrl ? (

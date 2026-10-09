@@ -24,6 +24,8 @@
 import { accents, Text, useTheme } from '@clickfy/ui';
 import { useAuth, useUser } from '@clerk/expo';
 import { JobSubmissionError, type CreateGenerationInput, type GenModel } from '@clickfy/sdk';
+
+import { describeJobError, SUBMIT_CODE_REASON } from '@/lib/job-error-copy';
 import { resolveCreditCost } from '@clickfy/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -413,8 +415,15 @@ export default function ComposerScreen() {
   const imageRules = model?.imageConstraints;
   const acceptImage = imageRules
     ? (w: number, h: number): string | null => {
-        if (w < imageRules.minEdge || h < imageRules.minEdge) {
-          return t('attachments.imageTooSmall', { min: imageRules.minEdge });
+        // The file's own numbers, so "width of 146 pixels is too low"
+        // rather than a rule the user has to measure against.
+        if (w < imageRules.minEdge) return t('attachments.imageWidthTooLow', { value: w, min: imageRules.minEdge });
+        if (h < imageRules.minEdge) return t('attachments.imageHeightTooLow', { value: h, min: imageRules.minEdge });
+        if (imageRules.maxEdge !== undefined && w > imageRules.maxEdge) {
+          return t('attachments.imageWidthTooHigh', { value: w, max: imageRules.maxEdge });
+        }
+        if (imageRules.maxEdge !== undefined && h > imageRules.maxEdge) {
+          return t('attachments.imageHeightTooHigh', { value: h, max: imageRules.maxEdge });
         }
         const shape = w / h;
         if (shape < imageRules.minAspect || shape > imageRules.maxAspect) {
@@ -633,8 +642,20 @@ export default function ComposerScreen() {
         if (code === 'insufficient_credits' || code === 'topup_locked') {
           alertInsufficientCredits(code, err.message);
         } else {
-          // Validation refusals carry a human sentence — show it verbatim.
-          Alert.alert(t('errors.genericTitle'), err.message);
+          // Validation refusals carry a human sentence. The measured ones
+          // (an image's pixels, the prompt's length) share the failed-job
+          // vocabulary and read in the app's language with the numbers;
+          // the rest show the server's sentence.
+          const reason = SUBMIT_CODE_REASON[code];
+          if (reason) {
+            const copy = describeJobError(t, {
+              errorReason: reason,
+              errorParams: err.details as Record<string, string | number | undefined>,
+            });
+            Alert.alert(copy.title, copy.body);
+          } else {
+            Alert.alert(t('errors.genericTitle'), err.message);
+          }
         }
       } else {
         Alert.alert(
@@ -970,7 +991,12 @@ export default function ComposerScreen() {
       stageLabel: a.stageLabel,
       stageProgress: a.stageProgress,
       failed: a.status === 'failed',
-      errorMessage: a.errorMessage,
+      ...(a.status === 'failed'
+        ? (() => {
+            const copy = describeJobError(t, a);
+            return { errorTitle: copy.title, errorBody: copy.body, errorRefunded: copy.refundedLine };
+          })()
+        : {}),
     };
   };
 
@@ -1070,6 +1096,12 @@ export default function ComposerScreen() {
             // preview or the poster) — exactly what Save to Photos wants.
             const info = cellInfo(cell);
             if (info) void saveAsset(info);
+          }}
+          onCellError={(cell) => {
+            const art = artifacts.find((a) => a.jobId === cell.id);
+            if (!art) return;
+            const copy = describeJobError(t, art);
+            Alert.alert(copy.title, copy.refundedLine ? `${copy.body}\n\n${copy.refundedLine}` : copy.body);
           }}
           onDismissFailed={(cell) => untrackJobs([cell.id])}
         />

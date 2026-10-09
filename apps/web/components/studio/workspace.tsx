@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
-  Sparkle,
-  ShareNetwork,
-  DownloadSimple,
   CircleNotch,
+  DownloadSimple,
+  Info,
+  ShareNetwork,
+  Sparkle,
   Warning,
   X,
 } from "@phosphor-icons/react";
@@ -33,17 +34,13 @@ import { SelectionBar } from "@/components/studio/selection-bar";
 import { AudioComposer } from "@/components/generate/audio-composer";
 import { PromptBar } from "@/components/generate/prompt-bar";
 import { useTimeLabel } from "@/lib/time-label";
-import { isJobErrorReason, type JobErrorReason } from "@clickfy/types";
+import { describeJobError } from "@/lib/job-error-copy";
+import { Modal } from "@/components/ui/modal";
 import { JobSubmissionError } from "@clickfy/sdk";
 
 const GRID_SIZE_STORAGE_KEY = "clickefy:studio:gridSize";
 
 /** `studio` message key per recognised job-failure cause. */
-const JOB_ERROR_KEYS: Record<JobErrorReason, string> = {
-  video_task_mismatch: "jobErrorVideoTaskMismatch",
-  input_real_person: "jobErrorInputRealPerson",
-};
-
 /**
  * Grid density, remembered across sessions.
  *
@@ -95,6 +92,11 @@ function PendingStrip({
   onDismiss: (jobId: string) => void;
 }) {
   const t = useTranslations("studio");
+  // The failed tile holds a title and one line; the rest (the full
+  // sentence, whether credits came back, the provider's own words) opens
+  // in a dialog so the grid never has to fit a paragraph.
+  const [detailFor, setDetailFor] = useState<string | null>(null);
+  const detail = detailFor ? pending.find((p) => p.jobId === detailFor) : undefined;
   if (pending.length === 0) return null;
   return (
     <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -107,30 +109,39 @@ function PendingStrip({
           )}
         >
           {p.status === "failed" ? (
-            <>
-              <Warning weight="fill" className="size-6 text-status-red" />
-              <p className="text-xs font-medium text-foreground">{t("generationFailed")}</p>
-              {(() => {
-                // A recognised cause reads in the viewer's language; anything
-                // else is still the provider's own text, as before.
-                const text = isJobErrorReason(p.errorReason)
-                  ? t(JOB_ERROR_KEYS[p.errorReason])
-                  : p.error;
-                return text ? (
-                  <p title={text} className="line-clamp-4 text-[11px] text-muted-foreground">
-                    {text}
-                  </p>
-                ) : null;
-              })()}
-              <button
-                type="button"
-                aria-label={t("dismiss")}
-                onClick={() => onDismiss(p.jobId)}
-                className="absolute end-2 top-2 grid size-6 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-black"
-              >
-                <X className="size-3.5" weight="bold" />
-              </button>
-            </>
+            (() => {
+              const copy = describeJobError(t, {
+                reason: p.errorReason,
+                params: p.errorParams,
+                message: p.error,
+              });
+              return (
+                <>
+                  <Warning weight="fill" className={cn("size-6", copy.fixable ? "text-amber-400" : "text-status-red")} />
+                  <p className="text-xs font-semibold text-foreground">{copy.title}</p>
+                  <p className="line-clamp-3 text-[11px] text-muted-foreground">{copy.body}</p>
+                  {p.refunded && (
+                    <p className="text-[11px] font-medium text-status-green">{t("jobError.refunded")}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDetailFor(p.jobId)}
+                    className="mt-1 inline-flex items-center gap-1 rounded-md bg-surface-3 px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-surface-1"
+                  >
+                    <Info className="size-3.5" />
+                    {t("jobError.details")}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t("dismiss")}
+                    onClick={() => onDismiss(p.jobId)}
+                    className="absolute end-2 top-2 grid size-6 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-black"
+                  >
+                    <X className="size-3.5" weight="bold" />
+                  </button>
+                </>
+              );
+            })()
           ) : (
             <>
               <CircleNotch className="size-6 animate-spin text-primary" />
@@ -152,7 +163,65 @@ function PendingStrip({
           )}
         </div>
       ))}
+      {detail && detail.status === "failed" && (
+        <JobErrorDialog pending={detail} onClose={() => setDetailFor(null)} onDismiss={() => { onDismiss(detail.jobId); setDetailFor(null); }} />
+      )}
     </div>
+  );
+}
+
+/** The whole story behind one failed run: what happened, what to do, whether credits came back. */
+function JobErrorDialog({
+  pending,
+  onClose,
+  onDismiss,
+}: {
+  pending: PendingGeneration;
+  onClose: () => void;
+  onDismiss: () => void;
+}) {
+  const t = useTranslations("studio");
+  const copy = describeJobError(t, {
+    reason: pending.errorReason,
+    params: pending.errorParams,
+    message: pending.error,
+  });
+  // The provider's own sentence is only worth showing when it says more
+  // than the translated one — i.e. when the cause was not recognised.
+  const technical = pending.errorReason ? undefined : copy.technical;
+  return (
+    <Modal label={copy.title} onClose={onClose} className="max-w-md">
+      <div className="flex flex-col gap-4 p-5">
+        <div className="flex items-start gap-3">
+          <span className={cn("grid size-9 shrink-0 place-items-center rounded-full", copy.fixable ? "bg-amber-400/15 text-amber-400" : "bg-status-red/15 text-status-red")}>
+            <Warning weight="fill" className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold">{copy.title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{copy.body}</p>
+          </div>
+        </div>
+        {pending.refunded && (
+          <p className="rounded-lg bg-status-green/10 px-3 py-2 text-sm font-medium text-status-green">
+            {t("jobError.refunded")}
+          </p>
+        )}
+        {technical && (
+          <details className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
+            <summary className="cursor-pointer font-medium text-foreground">{t("jobError.technical")}</summary>
+            <p className="mt-2 break-words font-mono">{technical}</p>
+          </details>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onDismiss} className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground">
+            {t("dismiss")}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
+            {t("close")}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

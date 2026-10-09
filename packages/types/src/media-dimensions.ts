@@ -6,11 +6,12 @@
  *   JPEG — first SOF0/1/2 marker's height/width (big-endian u16)
  *   WebP — VP8 (lossy) / VP8L (lossless) / VP8X (extended) headers
  *
- * Used by the generate-job persist step so `JobResult` carries REAL
- * dimensions and the mobile app can lay outputs out at their true
- * aspect ratio instead of guessing (the "4:3 renders cropped as 3:4"
- * bug). Returns null when the format isn't recognised — callers fall
- * back to the requested aspect ratio.
+ * Used by the worker's persist step so `JobResult` carries REAL
+ * dimensions, and by the API at submit time to refuse an image the
+ * provider would reject (too small, too large, wrong shape) BEFORE the
+ * debit — a few hundred KB of header bytes is enough for all three
+ * formats. Returns null when the format isn't recognised; callers fall
+ * back to the requested aspect ratio or let the provider decide.
  */
 
 export interface ProbedDimensions {

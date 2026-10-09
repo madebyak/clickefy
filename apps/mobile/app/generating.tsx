@@ -8,6 +8,8 @@ import {
   useTheme,
 } from '@clickfy/ui';
 import type { GenerationProgress } from '@clickfy/sdk';
+
+import { describeJobError } from '@/lib/job-error-copy';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -143,7 +145,15 @@ export default function GeneratingScreen() {
           // their balance restored.
           <Stack gap="sm">
             <Text variant="bodySemi" color="ink" align="center">
-              {progress.error || t('errorFallback')}
+              {(() => {
+                const copy = describeJobError(t, {
+                  errorReason: progress.errorReason,
+                  errorParams: progress.errorParams,
+                  errorMessage: progress.error,
+                  refunded: progress.refunded,
+                });
+                return copy.refundedLine ? `${copy.body}\n${copy.refundedLine}` : copy.body;
+              })()}
             </Text>
             {templateId ? (
               <Button

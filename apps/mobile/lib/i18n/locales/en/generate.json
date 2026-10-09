@@ -4,7 +4,6 @@
   "subtitle": "Usually takes 20–40 seconds. Feel free to leave — we'll ping you when it's ready.",
   "step": "Step {{current}} of {{total}}",
   "working": "Working…",
-  "errorFallback": "Something went wrong while generating.",
   "tryAgain": "Try again",
   "backToHome": "Back to home",
   "runInBackground": "Run in background",

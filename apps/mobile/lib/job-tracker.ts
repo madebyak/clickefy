@@ -58,6 +58,11 @@ export interface TrackedJob {
   /** 0–1 within the active stage. */
   stageProgress?: number;
   errorMessage?: string;
+  /** Recognised cause + its specifics; the grid translates them. */
+  errorReason?: string;
+  errorParams?: Record<string, string | number | undefined>;
+  /** True once the credits for this run were returned. */
+  refunded?: boolean;
   /** Final outputs once ready. */
   outputs?: JobOutput[];
   /** When the run settled (ready/failed), for the TTL sweep. */
@@ -264,6 +269,9 @@ function apply(s: GenerationProgress): boolean {
       ...job,
       status: 'failed',
       errorMessage: s.error,
+      errorReason: s.errorReason,
+      errorParams: s.errorParams,
+      refunded: s.refunded,
       pendingStatus: undefined,
       settledAt: Date.now(),
     };

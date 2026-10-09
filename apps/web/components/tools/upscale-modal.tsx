@@ -295,6 +295,18 @@ export function UpscaleModal({
     source?.status === "ready" && !!source.media && !submitting && !!studio && !!model;
 
   const onGenerate = async () => {
+    // fal's own rule for the 1080p tier: "the input video must have one
+    // side of length less than 1080 pixels" — twelve jobs failed on it
+    // after the debit. The source's size was read at pick time.
+    if (
+      resolution === "1080p" &&
+      source?.width &&
+      source?.height &&
+      Math.min(source.width, source.height) >= 1080
+    ) {
+      toast.error(t("upscaleSourceTooLarge", { max: 1080 }));
+      return;
+    }
     if (!canGenerate || !source?.media || !model) return;
     setSubmitting(true);
     try {

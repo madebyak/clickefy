@@ -31,6 +31,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import { describeJobError } from '@/lib/job-error-copy';
 import { ActivityIndicator, Alert, ScrollView, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -191,9 +193,19 @@ export default function ResultScreen() {
           <Text variant="title" color="ink" align="center" style={{ fontSize: 22 }}>
             {tr('failedTitle')}
           </Text>
-          <Text variant="body" color="inkMuted" align="center">
-            {jobQuery.data?.error || tr('errorFallback')}
-          </Text>
+          {(() => {
+            const copy = describeJobError(tr, {
+              errorReason: jobQuery.data?.errorReason,
+              errorParams: jobQuery.data?.errorParams,
+              errorMessage: jobQuery.data?.error,
+              refunded: jobQuery.data?.refunded,
+            });
+            return (
+              <Text variant="body" color="inkMuted" align="center">
+                {copy.refundedLine ? `${copy.body}\n${copy.refundedLine}` : copy.body}
+              </Text>
+            );
+          })()}
           {templateId ? (
             <Button variant="primary" full onPress={() => router.replace(`/use/${templateId}`)}>
               {tr('tryAgain')}

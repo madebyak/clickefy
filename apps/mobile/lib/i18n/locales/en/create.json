@@ -46,8 +46,11 @@
     "referencesHint": "Add up to {{count}} images to guide the result.",
     "framesHint": "Set a start frame (and an optional end frame).",
     "modeLabel": "Input",
-    "imageTooSmall": "An image is too small — this model needs at least {{min}}px on each side",
-    "imageBadShape": "An image is too wide or too tall — this model takes shapes between 1:2.5 and 2.5:1"
+    "imageBadShape": "An image is too wide or too tall — this model takes shapes between 1:2.5 and 2.5:1",
+    "imageWidthTooLow": "Image width of {{value}} pixels is too low. Minimum width is {{min}} pixels.",
+    "imageHeightTooLow": "Image height of {{value}} pixels is too low. Minimum height is {{min}} pixels.",
+    "imageWidthTooHigh": "Image width of {{value}} pixels is too high. Maximum width is {{max}} pixels.",
+    "imageHeightTooHigh": "Image height of {{value}} pixels is too high. Maximum height is {{max}} pixels."
   },
   "quality": {
     "label": "Quality",
@@ -82,6 +85,92 @@
     "promptTooLong": "Your prompt is too long for this model.",
     "imageRejectedTitle": "Image not supported"
   },
+  "jobError": {
+      "item": {
+        "image": "Image {{n}}",
+        "video": "Video {{n}}",
+        "audio": "Audio {{n}}",
+        "startFrame": "Start frame",
+        "endFrame": "End frame",
+        "theImage": "The image",
+        "theVideo": "The video",
+        "theAudio": "The audio"
+      },
+      "unknownTitle": "Generation failed",
+      "unknownBody": "The model couldn’t finish this one. Try again.",
+      "refunded": "Credits returned",
+      "input_real_person": {
+        "title": "Reference not accepted",
+        "body": "{{item}} appears to show a real person, which this model doesn’t accept. Use one without a recognisable person."
+      },
+      "input_media_too_small": {
+        "titleImage": "Image too small",
+        "titleVideo": "Video too small",
+        "titleAudio": "Audio too short",
+        "bodyWidth": "{{item}} width of {{value}} pixels is too low. Minimum width is {{min}} pixels.",
+        "bodyHeight": "{{item}} height of {{value}} pixels is too low. Minimum height is {{min}} pixels.",
+        "body": "{{item}} is too small. Minimum size is {{min}}×{{min}} pixels."
+      },
+      "input_media_too_large": {
+        "titleImage": "Image too large",
+        "titleVideo": "Video too large",
+        "titleAudio": "Audio too long",
+        "bodyWidth": "{{item}} width of {{value}} pixels is too high. Maximum width is {{max}} pixels.",
+        "bodyHeight": "{{item}} height of {{value}} pixels is too high. Maximum height is {{max}} pixels.",
+        "body": "{{item}} is too large for this model."
+      },
+      "input_media_bad_shape": {
+        "title": "Unsupported shape",
+        "body": "{{item}} is too wide or too tall. Use a shape between 1:2.5 and 2.5:1."
+      },
+      "input_video_too_long": {
+        "title": "Video references too long",
+        "bodyMax": "This model takes up to {{max}} seconds of video in total. Trim the clips or attach fewer.",
+        "body": "Your video references are too long for this model. Trim them or attach fewer."
+      },
+      "input_upscale_source_too_large": {
+        "title": "Nothing to upscale",
+        "body": "This video is already {{max}}p or larger. Pick a higher output resolution or a smaller source."
+      },
+      "input_media_flagged": {
+        "title": "File not accepted",
+        "body": "{{item}} was flagged by the model’s content filter. Try a different file."
+      },
+      "input_prompt_too_long": {
+        "title": "Prompt too long",
+        "bodyMax": "Keep the prompt under {{max}} characters for this model.",
+        "body": "Your prompt is too long for this model."
+      },
+      "video_task_mismatch": {
+        "title": "Wrong input mode",
+        "body": "This prompt edits or continues your video, which References mode can’t do. Try Edit video or Extend video."
+      },
+      "output_copyright": {
+        "title": "Blocked for copyright",
+        "bodyAudio": "The generated sound resembled copyrighted music. Try again with sound off, or ask for original sound effects instead of a song.",
+        "body": "The result resembled copyrighted material. Change the prompt or the references and try again."
+      },
+      "output_flagged": {
+        "title": "Blocked by safety filter",
+        "body": "The result was blocked by the model’s safety filter. Adjust the prompt or the references and try again."
+      },
+      "output_empty": {
+        "title": "No result",
+        "body": "The model returned nothing this time. Try again or reword the prompt."
+      },
+      "provider_busy": {
+        "title": "Model busy",
+        "body": "The model is overloaded right now. Try again in a few minutes."
+      },
+      "provider_timeout": {
+        "title": "Timed out",
+        "body": "The model took too long to respond. Try again."
+      },
+      "system": {
+        "title": "Something went wrong",
+        "body": "This one is on us. Try again — if it keeps happening, contact support."
+      }
+    },
   "composer": {
     "title": "Create",
     "menu": "Open history",

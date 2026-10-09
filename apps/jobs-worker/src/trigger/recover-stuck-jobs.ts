@@ -34,6 +34,7 @@ import { logger, schedules } from '@trigger.dev/sdk';
 import { and, eq, sql } from 'drizzle-orm';
 
 import { jobs } from '@clickfy/db';
+import { jobErrorMessage } from '@clickfy/types';
 
 import { getDb } from '../lib/db';
 import { generateJob } from './generate-job';
@@ -198,9 +199,13 @@ async function abandonJob(
     .update(jobs)
     .set({
       status: 'failed',
+      // The user reads a plain "something went wrong on our side"; the
+      // technical sentence stays in `detail` for the admin.
       error: {
         code: 'internal_error',
-        message,
+        reason: 'system',
+        message: jobErrorMessage('system'),
+        detail: message,
         stage: 0,
         retryCount: attempts,
       },
@@ -224,6 +229,15 @@ async function abandonJob(
 
   try {
     await refundForJob(jobId);
+    // Written after the fact, so the apps' "credits returned" line is
+    // never ahead of the ledger.
+    const [row] = updated;
+    if (row?.error) {
+      await db
+        .update(jobs)
+        .set({ error: { ...row.error, refunded: true } })
+        .where(eq(jobs.id, jobId));
+    }
   } catch (err) {
     logger.error('recover-stuck-jobs:abandon-refund-failed', {
       jobId,

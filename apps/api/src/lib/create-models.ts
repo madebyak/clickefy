@@ -448,7 +448,7 @@ export interface CreateModelDTO {
   /** Image formats the provider accepts, when narrower than our uploads (Kling: jpeg/png). */
   acceptedImageMimes?: string[];
   /** Provider pixel constraints on input images (Kling: ≥300px, aspect 1:2.5–2.5:1). */
-  imageConstraints?: { minEdge: number; minAspect: number; maxAspect: number };
+  imageConstraints?: { minEdge: number; maxEdge?: number; minAspect: number; maxAspect: number };
   /** Audio models only: what the Audio page needs to build the form and quote the price. */
   audio?: {
     task: 'tts' | 'sfx' | 'sts';

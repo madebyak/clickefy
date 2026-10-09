@@ -222,6 +222,10 @@ export type PendingGeneration = {
   error?: string;
   /** Recognised cause (`JobErrorReason`); the tile shows it translated. */
   errorReason?: string;
+  /** The specifics behind the reason (attachment, side, value, limit). */
+  errorParams?: Record<string, string | number | undefined>;
+  /** True once the credits for this run were returned. */
+  refunded?: boolean;
 };
 
 const toAsset = (a: StudioAsset): Asset => ({
@@ -1105,7 +1109,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           setPending((prev) =>
             prev.map((p) =>
               p.jobId === jobId
-                ? { ...p, status: "failed", error: update.error, errorReason: update.errorReason }
+                ? {
+                    ...p,
+                    status: "failed",
+                    error: update.error,
+                    errorReason: update.errorReason,
+                    errorParams: update.errorParams,
+                    refunded: update.refunded,
+                  }
                 : p,
             ),
           );

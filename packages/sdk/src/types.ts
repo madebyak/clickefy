@@ -519,7 +519,7 @@ export interface GenModel {
   /** Image formats the provider accepts, when narrower than our uploads. */
   acceptedImageMimes?: string[];
   /** Provider pixel constraints on input images. */
-  imageConstraints?: { minEdge: number; minAspect: number; maxAspect: number };
+  imageConstraints?: { minEdge: number; maxEdge?: number; minAspect: number; maxAspect: number };
 }
 
 // ─── Notifications (in-app inbox) ────────────────────────────────────

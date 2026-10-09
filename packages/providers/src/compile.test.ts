@@ -1242,6 +1242,31 @@ describe('compile() — apiModelId indirection', () => {
     expect(kling.soundEnabled).toBeUndefined();
     expect(warnings.some((w) => w.message.includes('native audio'))).toBe(true);
   });
+
+  it('reads the default tier when a template stage sets none (Kling 2.6 end frame at 720p)', () => {
+    // Eight template runs failed upstream with "model/resolution
+    // (kling-v2-6/720p) is not supported with last frame": no `mode` on
+    // the stage meant the 1080p-only rule was never applied.
+    const first = imageField('first', 'First');
+    const last = imageField('last', 'Last');
+    const stage = makeStage({
+      provider: 'kling',
+      model: 'kling-v2-6',
+      prompt: 'Morph from the first frame to the last.',
+      config: { aspectRatio: '16:9' },
+    });
+    const { request, warnings } = compile(
+      makeCtx({
+        stage,
+        templateInputs: [first, last],
+        inputValues: { first: imageValue('a'), last: imageValue('b') },
+      }),
+    );
+    const kling = request as KlingCompiledRequest;
+    expect(kling.startImage?.r2Key).toBe('a');
+    expect(kling.endImage).toBeUndefined();
+    expect(warnings.some((w) => w.message.includes('first+last frame pair at the 1080p tier'))).toBe(true);
+  });
 });
 
 // ─── Seedream (ModelArk image line) ─────────────────────────────────

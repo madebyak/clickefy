@@ -68,11 +68,16 @@ import {
 } from '@clickfy/providers';
 import {
   type AudioRef,
-  JOB_ERROR_MESSAGES,
-  jobErrorReasonFor,
+  type ContentItemLabeller,
+  explainProviderError,
   type GenerationStage,
+  isJobErrorReason,
+  type JobErrorReason,
+  jobErrorMessage,
   type Provider,
   type TemplateInputField,
+  aspectRatioToNumber,
+  probeImageDimensions,
 } from '@clickfy/types';
 
 import { env } from '../env';
@@ -81,7 +86,6 @@ import { loadDynamicModels } from '../lib/dynamic-models';
 import { resolveJobInputs } from '../lib/input-resolver';
 import { reportStage, updateJobProgress } from '../lib/progress';
 import { pushUser } from '../lib/push';
-import { aspectRatioToNumber, probeImageDimensions } from '../lib/media-dimensions';
 import { writeOutputObject } from '../lib/r2';
 import { isRefundable, refundForJob } from '../lib/refund';
 import { persistOutputRenditions } from '../lib/renditions';
@@ -153,6 +157,9 @@ export const generateJob = task({
       logger.warn('generate-job:already-terminal', { jobId, status: jobRow.status });
       return { status: 'skipped' as const, reason: 'already_terminal' };
     }
+    // Names the attachment a provider error points at (`content[3]`), so
+    // the user reads "Image 2 is too small" rather than an array index.
+    const contentLabel = contentItemLabeller(jobRow.inputs as Record<string, { kind?: string }>);
 
     // ── Mark as processing ──────────────────────────────────────
     const startedAt = new Date();
@@ -474,7 +481,7 @@ export const generateJob = task({
           stage: stageNumber,
           err: String(err),
         });
-        return failWithCost(stageNumber, providerJobError(err, stageNumber), true);
+        return failWithCost(stageNumber, providerJobError(err, stageNumber, contentLabel), true);
       }
 
       if (result.status === 'pending') {
@@ -509,7 +516,7 @@ export const generateJob = task({
             stage: stageNumber,
             err: String(err),
           });
-          return failWithCost(stageNumber, providerJobError(err, stageNumber), true);
+          return failWithCost(stageNumber, providerJobError(err, stageNumber, contentLabel), true);
         }
         if (result.status !== 'completed') {
           return failWithCost(
@@ -1008,31 +1015,85 @@ function errorToMessage(err: unknown): string {
 }
 
 /**
- * The `JobError` for a provider failure. A cause the user can act on (see
- * `jobErrorReasonFor`) gets a plain-language message plus a stable
- * `reason` the apps translate; anything else keeps the provider's own
- * text, as before. Always `provider_error`, so refunds are unchanged.
+ * Seedance addresses attachments by their position in `content[]`: the
+ * prompt is item 0, then the start frame, the end frame, and the
+ * references in the order they were sent. Labels follow the composer's
+ * own numbering (per kind: Image 1, Image 2, Video 1), which is what the
+ * user sees on the tray.
  */
-function providerJobError(err: unknown, stage: number): JobError {
+function contentItemLabeller(rawInputs: Record<string, { kind?: string }>): ContentItemLabeller {
+  const items: string[] = [];
+  if (rawInputs[CREATE_START_FRAME_KEY]) items.push('Start frame');
+  if (rawInputs[CREATE_END_FRAME_KEY]) items.push('End frame');
+  const counts = { image: 0, video: 0, audio: 0 };
+  const refKeys = Object.keys(rawInputs)
+    .filter((k) => k.startsWith('ref_'))
+    .sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)));
+  for (const k of refKeys) {
+    const kind = rawInputs[k]?.kind;
+    const key = kind === 'video' || kind === 'audio' ? kind : 'image';
+    counts[key] += 1;
+    items.push(`${key.charAt(0).toUpperCase()}${key.slice(1)} ${counts[key]}`);
+  }
+  return (contentIndex) => (contentIndex >= 1 ? items[contentIndex - 1] : undefined);
+}
+
+/**
+ * The `JobError` for a provider failure. A cause we recognise (see
+ * `explainProviderError`) gets a plain-language message, a stable
+ * `reason` the apps translate and the specifics behind it; anything
+ * else keeps the provider's own text, as before. Always
+ * `provider_error`, so refunds are unchanged.
+ */
+function providerJobError(err: unknown, stage: number, label?: ContentItemLabeller): JobError {
   const raw = err instanceof Error ? err.message : String(err);
-  const reason = jobErrorReasonFor(raw);
+  const explained = explainProviderError(raw, label);
   return {
     code: 'provider_error',
-    message: reason ? JOB_ERROR_MESSAGES[reason] : errorToMessage(err),
+    message: explained ? jobErrorMessage(explained.reason, explained.params) : errorToMessage(err),
     stage,
     retryCount: 0,
-    ...(reason ? { reason } : {}),
+    ...(explained ? { reason: explained.reason, params: explained.params } : {}),
     // The admin needs the provider's exact words even when the user gets
     // a friendlier sentence; the public API strips this field.
-    ...(reason && raw ? { detail: raw.slice(0, 1000) } : {}),
+    ...(explained && raw ? { detail: raw.slice(0, 1000) } : {}),
+  };
+}
+
+/**
+ * Every failure carries a reason the apps can translate. Provider
+ * failures explain themselves above; the worker's own codes map here —
+ * a timeout is a timeout, everything else (a missing upload, an
+ * unregistered model, a lost template) is our problem to fix and is
+ * told to the user as such, with the technical sentence kept in
+ * `detail` for admins.
+ */
+const REASON_FOR_CODE: Record<string, JobErrorReason> = {
+  provider_timeout: 'provider_timeout',
+  r2_input_missing: 'system',
+  internal_error: 'system',
+  unknown_model: 'system',
+  template_missing: 'system',
+};
+
+function withReason(error: JobError): JobError {
+  if (isJobErrorReason(error.reason)) return error;
+  const reason = REASON_FOR_CODE[error.code];
+  if (!reason) return error;
+  return {
+    ...error,
+    reason,
+    message: jobErrorMessage(reason),
+    detail: error.detail ?? error.message.slice(0, 1000),
   };
 }
 
 async function failJob(
   jobId: string,
-  error: JobError,
+  rawError: JobError,
   cost?: { provider: string | null; requestIds: string[]; usd: number; basis: 'exact' | 'computed' | 'estimated'; units: StageCost[] },
 ): Promise<{ status: 'failed'; error: JobError }> {
+  const error = withReason(rawError);
   const [row] = await getDb()
     .update(jobs)
     .set({
@@ -1064,6 +1125,12 @@ async function failJob(
     try {
       await refundForJob(jobId);
       refunded = true;
+      // Recorded only now that it happened — the apps print "credits
+      // returned" from this flag, so it must never run ahead of the refund.
+      await getDb()
+        .update(jobs)
+        .set({ error: { ...error, refunded: true } })
+        .where(eq(jobs.id, jobId));
     } catch (refundErr) {
       // A refund failure shouldn't mask the original job failure — log
       // loudly and continue. NOTE: nothing retries a missed refund

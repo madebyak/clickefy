@@ -393,8 +393,11 @@
     "acceptedAudio": "MP3 and WAV audio",
     "listSeparator": ", ",
     "acceptedImagesList": "{formats} images",
-    "imageTooSmall": "{name} is too small — this model needs at least {min}px on each side",
     "imageAspectOutOfRange": "{name} is too wide or too tall — this model takes shapes between 1:2.5 and 2.5:1",
+    "imageWidthTooLow": "{name}: width of {value} pixels is too low. Minimum width is {min} pixels.",
+    "imageHeightTooLow": "{name}: height of {value} pixels is too low. Minimum height is {min} pixels.",
+    "imageWidthTooHigh": "{name}: width of {value} pixels is too high. Maximum width is {max} pixels.",
+    "imageHeightTooHigh": "{name}: height of {value} pixels is too high. Maximum height is {max} pixels.",
     "shots": "Shots",
     "singleShot": "Single shot",
     "shotsN": "{n} shots",
@@ -477,8 +480,73 @@
     "queued": "Queued",
     "generating": "Generating…",
     "generationFailed": "Generation failed",
-    "jobErrorVideoTaskMismatch": "This prompt edits or continues your video, which References mode can’t do. Try Edit video or Extend video.",
-    "jobErrorInputRealPerson": "A reference appears to show a real person, which this model doesn’t accept. Try one without a recognisable person.",
+    "jobError": {
+      "item": {
+        "image": "Image {n}",
+        "video": "Video {n}",
+        "audio": "Audio {n}",
+        "startFrame": "Start frame",
+        "endFrame": "End frame",
+        "the": { "image": "The image", "video": "The video", "audio": "The audio" }
+      },
+      "unknown": { "title": "Generation failed", "body": "The model couldn’t finish this one. Try again." },
+      "refunded": "Credits returned",
+      "details": "Details",
+      "technical": "Technical details",
+      "input_real_person": {
+        "title": "Reference not accepted",
+        "body": "{item} appears to show a real person, which this model doesn’t accept. Use one without a recognisable person."
+      },
+      "input_media_too_small": {
+        "title": "{kind, select, video {Video} audio {Audio} other {Image}} too small",
+        "bodySized": "{item} {side, select, width {width} other {height}} of {value} pixels is too low. Minimum {side, select, width {width} other {height}} is {min} pixels.",
+        "body": "{item} is too small. Minimum size is {min}×{min} pixels."
+      },
+      "input_media_too_large": {
+        "title": "{kind, select, video {Video} audio {Audio} other {Image}} too large",
+        "bodySized": "{item} {side, select, width {width} other {height}} of {value} pixels is too high. Maximum {side, select, width {width} other {height}} is {max} pixels.",
+        "body": "{item} is too large for this model."
+      },
+      "input_media_bad_shape": {
+        "title": "Unsupported shape",
+        "body": "{item} is too wide or too tall. Use a shape between 1:2.5 and 2.5:1."
+      },
+      "input_video_too_long": {
+        "title": "Video references too long",
+        "bodyMax": "This model takes up to {max} seconds of video in total. Trim the clips or attach fewer.",
+        "body": "Your video references are too long for this model. Trim them or attach fewer."
+      },
+      "input_upscale_source_too_large": {
+        "title": "Nothing to upscale",
+        "body": "This video is already {max}p or larger. Pick a higher output resolution or a smaller source."
+      },
+      "input_media_flagged": {
+        "title": "File not accepted",
+        "body": "{item} was flagged by the model’s content filter. Try a different file."
+      },
+      "input_prompt_too_long": {
+        "title": "Prompt too long",
+        "bodyMax": "Keep the prompt under {max} characters for this model.",
+        "body": "Your prompt is too long for this model."
+      },
+      "video_task_mismatch": {
+        "title": "Wrong input mode",
+        "body": "This prompt edits or continues your video, which References mode can’t do. Try Edit video or Extend video."
+      },
+      "output_copyright": {
+        "title": "Blocked for copyright",
+        "bodyAudio": "The generated sound resembled copyrighted music. Try again with sound off, or ask for original sound effects instead of a song.",
+        "body": "The result resembled copyrighted material. Change the prompt or the references and try again."
+      },
+      "output_flagged": {
+        "title": "Blocked by safety filter",
+        "body": "The result was blocked by the model’s safety filter. Adjust the prompt or the references and try again."
+      },
+      "output_empty": { "title": "No result", "body": "The model returned nothing this time. Try again or reword the prompt." },
+      "provider_busy": { "title": "Model busy", "body": "The model is overloaded right now. Try again in a few minutes." },
+      "provider_timeout": { "title": "Timed out", "body": "The model took too long to respond. Try again." },
+      "system": { "title": "Something went wrong", "body": "This one is on us. Try again — if it keeps happening, contact support." }
+    },
     "dismiss": "Dismiss",
     "projectActions": "Project options",
     "rename": "Rename",
@@ -719,6 +787,7 @@
     "upscaleTo": "Resolution",
     "upscaleNote": "Takes a few minutes. We'll tell you when it's ready.",
     "upscaleStarted": "Upscaling started — we'll let you know when it's done.",
+    "upscaleSourceTooLarge": "This video is already {max}p or larger, so there is nothing to upscale at that size. Pick a higher output resolution or a smaller source.",
     "uploadVideo": "Upload a video",
     "uploadVideoHint": "MP4, MOV or M4V · up to {max} seconds",
     "videoTooLarge": "That file is over {max}MB. Try a shorter clip or a smaller export.",

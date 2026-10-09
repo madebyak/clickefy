@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
+  ArrowCounterClockwise,
   CircleNotch,
   DownloadSimple,
   Info,
@@ -87,9 +88,12 @@ function EmptyState({ kind }: { kind: "image" | "video" | "audio" }) {
 function PendingStrip({
   pending,
   onDismiss,
+  onEditRetry,
 }: {
   pending: PendingGeneration[];
   onDismiss: (jobId: string) => void;
+  /** Put the failed run's prompt, model, settings and attachments back in the composer. */
+  onEditRetry: (jobId: string) => void;
 }) {
   const t = useTranslations("studio");
   // The failed tile holds a title and one line; the rest (the full
@@ -123,14 +127,24 @@ function PendingStrip({
                   {p.refunded && (
                     <p className="text-[11px] font-medium text-status-green">{t("jobError.refunded")}</p>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setDetailFor(p.jobId)}
-                    className="mt-1 inline-flex items-center gap-1 rounded-md bg-surface-3 px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-surface-1"
-                  >
-                    <Info className="size-3.5" />
-                    {t("jobError.details")}
-                  </button>
+                  <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onEditRetry(p.jobId)}
+                      className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                    >
+                      <ArrowCounterClockwise className="size-3.5" />
+                      {t("jobError.editRetry")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDetailFor(p.jobId)}
+                      className="inline-flex items-center gap-1 rounded-md bg-surface-3 px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-surface-1"
+                    >
+                      <Info className="size-3.5" />
+                      {t("jobError.details")}
+                    </button>
+                  </div>
                   <button
                     type="button"
                     aria-label={t("dismiss")}
@@ -164,7 +178,12 @@ function PendingStrip({
         </div>
       ))}
       {detail && detail.status === "failed" && (
-        <JobErrorDialog pending={detail} onClose={() => setDetailFor(null)} onDismiss={() => { onDismiss(detail.jobId); setDetailFor(null); }} />
+        <JobErrorDialog
+          pending={detail}
+          onClose={() => setDetailFor(null)}
+          onDismiss={() => { onDismiss(detail.jobId); setDetailFor(null); }}
+          onEditRetry={() => { onEditRetry(detail.jobId); setDetailFor(null); }}
+        />
       )}
     </div>
   );
@@ -175,10 +194,12 @@ function JobErrorDialog({
   pending,
   onClose,
   onDismiss,
+  onEditRetry,
 }: {
   pending: PendingGeneration;
   onClose: () => void;
   onDismiss: () => void;
+  onEditRetry: () => void;
 }) {
   const t = useTranslations("studio");
   const copy = describeJobError(t, {
@@ -216,8 +237,12 @@ function JobErrorDialog({
           <button type="button" onClick={onDismiss} className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground">
             {t("dismiss")}
           </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
+          <button type="button" onClick={onClose} className="rounded-lg bg-surface-3 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2">
             {t("close")}
+          </button>
+          <button type="button" onClick={onEditRetry} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
+            <ArrowCounterClockwise className="size-4" />
+            {t("jobError.editRetry")}
           </button>
         </div>
       </div>
@@ -230,6 +255,7 @@ function ProjectView({
   assets,
   pending,
   onDismissPending,
+  onEditRetry,
   onAttach,
   onAssetInfo,
   onAssetReuse,
@@ -247,6 +273,7 @@ function ProjectView({
   assets: Asset[];
   pending: PendingGeneration[];
   onDismissPending: (jobId: string) => void;
+  onEditRetry: (jobId: string) => void;
   onAttach: (a: Asset) => void;
   onAssetInfo: (a: Asset) => void;
   onAssetReuse: (a: Asset) => void;
@@ -282,7 +309,7 @@ function ProjectView({
           </p>
         </div>
       )}
-      <PendingStrip pending={pending} onDismiss={onDismissPending} />
+      <PendingStrip pending={pending} onDismiss={onDismissPending} onEditRetry={onEditRetry} />
       <Masonry
         assets={assets}
         onAssetClick={onAttach}
@@ -315,6 +342,7 @@ export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
     selectedAssetIds,
     toggleAssetSelection,
     reuseSetup,
+    reuseGeneration,
     setAssetsFavorite,
     deleteAssets,
     startImageToVideo,
@@ -405,6 +433,23 @@ export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
       }
     },
     [activeProject, reusingAssetId, reuseSetup, t],
+  );
+
+  // "Edit & retry" on a failed run: the server still has everything the
+  // run was made from, so the composer gets it all back — prompt, model,
+  // settings and attachments — and the failed tile goes away.
+  const handleEditRetry = useCallback(
+    async (jobId: string) => {
+      const failed = pending.find((p) => p.jobId === jobId);
+      try {
+        const gen = await getSDK().generation.getJobSetup(jobId);
+        reuseGeneration(failed?.kind === "video" ? "video" : "image", gen);
+        dismissPending(jobId);
+      } catch {
+        toast.error(t("jobError.setupUnavailable"));
+      }
+    },
+    [pending, reuseGeneration, dismissPending, t],
   );
 
   const kindCounts = useMemo(
@@ -536,6 +581,7 @@ export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
               assets={visibleAssets}
               pending={projectPending}
               onDismissPending={dismissPending}
+              onEditRetry={handleEditRetry}
               onAttach={addAttachment}
               onAssetInfo={(a) => setInfoAssetId(a.id)}
               onAssetReuse={handleReuse}

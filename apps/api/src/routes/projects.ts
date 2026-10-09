@@ -35,6 +35,7 @@ import { favoriteAssets, folders, jobs, projectAssets, projects, templates } fro
 
 import { assetUrl } from '../lib/asset-url';
 import { renditionUrls } from '../lib/renditions';
+import { generationSetupFor, type AssetGeneration } from '../lib/job-setup';
 import { draftAssetInfos } from '../lib/draft-final';
 
 import type { JobInputValue } from '@clickfy/types';
@@ -106,27 +107,10 @@ const mediaUrl = assetUrl;
  * `ref_0…ref_N`; the API caps submissions well below this, so scanning a
  * fixed window is cheaper than parsing every key.
  */
-const MAX_LISTED_REFERENCES = 16;
-
 /** File extension from the stored R2 key — we persist no MIME type. */
 function formatFromKey(r2Key: string): string | null {
   const ext = r2Key.split('.').pop();
   return ext && ext.length <= 5 && !ext.includes('/') ? ext.toLowerCase() : null;
-}
-
-/** Provenance block on the asset-detail response. */
-interface AssetGeneration {
-  source: 'template' | 'user';
-  /** User-typed prompt. Always null for template jobs — see the route. */
-  prompt: string | null;
-  templateTitle: string | null;
-  modelKey: string | null;
-  modelName: string | null;
-  aspectRatio: string | null;
-  quality: string | null;
-  duration: number | null;
-  sound: boolean | null;
-  references: Array<{ role: 'start_frame' | 'end_frame' | 'reference'; url: string }>;
 }
 
 const readChain = [
@@ -485,67 +469,7 @@ projectsRoute.get('/:id/assets/:assetId', ...readChain, async (c) => {
       .from(jobs)
       .where(and(eq(jobs.id, row.jobId), eq(jobs.userId, user.id)))
       .limit(1);
-
-    if (job) {
-      // `options` is wider on the wire than its column annotation: the
-      // create flow also persists the resolved quality tier and the
-      // sound toggle.
-      const opts = (job.options ?? {}) as {
-        aspectRatio?: string;
-        duration?: number;
-        sound?: boolean;
-        mode?: string;
-      };
-      const inputs = (job.inputs ?? {}) as Record<string, JobInputValue>;
-
-      // Template prompts are ours, not the user's — surface the template
-      // by name and withhold the prompt text itself.
-      const isTemplate = job.source === 'template';
-      let templateTitle: string | null = null;
-      if (isTemplate && job.templateId) {
-        const [tpl] = await c.var.db
-          .select({ title: templates.title })
-          .from(templates)
-          .where(eq(templates.id, job.templateId))
-          .limit(1);
-        templateTitle = tpl?.title ?? null;
-      }
-
-      const promptInput = inputs[CREATE_PROMPT_KEY];
-      const caps = job.modelKey ? findCapabilities(job.modelKey) : undefined;
-
-      // Every image the user supplied, in the order the model saw it.
-      const refs: AssetGeneration['references'] = [];
-      const pushRef = (key: string, role: 'start_frame' | 'end_frame' | 'reference') => {
-        const v = inputs[key];
-        if (v && (v.kind === 'image' || v.kind === 'video') && v.r2Key) {
-          refs.push({ role, url: mediaUrl(origin, v.r2Key) });
-        }
-      };
-      pushRef(CREATE_START_FRAME_KEY, 'start_frame');
-      pushRef(CREATE_END_FRAME_KEY, 'end_frame');
-      for (let i = 0; i < MAX_LISTED_REFERENCES; i += 1) {
-        pushRef(createReferenceKey(i), 'reference');
-      }
-
-      generation = {
-        source: job.source,
-        // A One-Click Ad's prompt was written by a model, not the user:
-        // withheld like a template's, so the info panel and Re-use skip it.
-        prompt:
-          !isTemplate && promptInput?.kind === 'text' && (opts as { tool?: { kind?: string } }).tool?.kind !== 'ad'
-            ? (promptInput.value ?? null)
-            : null,
-        templateTitle,
-        modelKey: job.modelKey,
-        modelName: caps?.displayName ?? job.modelKey,
-        aspectRatio: opts.aspectRatio ?? null,
-        quality: opts.mode ?? null,
-        duration: opts.duration ?? null,
-        sound: typeof opts.sound === 'boolean' ? opts.sound : null,
-        references: refs,
-      };
-    }
+    if (job) generation = await generationSetupFor(c.var.db, origin, job);
   }
 
   return c.json({

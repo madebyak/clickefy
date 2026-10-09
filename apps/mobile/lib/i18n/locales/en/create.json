@@ -99,6 +99,8 @@
       "unknownTitle": "Generation failed",
       "unknownBody": "The model couldn’t finish this one. Try again.",
       "refunded": "Credits returned",
+      "editRetry": "Edit & retry",
+      "setupUnavailable": "Couldn’t load that run’s setup — try again.",
       "input_real_person": {
         "title": "Reference not accepted",
         "body": "{{item}} appears to show a real person, which this model doesn’t accept. Use one without a recognisable person."

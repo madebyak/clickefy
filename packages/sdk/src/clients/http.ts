@@ -36,6 +36,7 @@ import type {
 } from '../types';
 import { JobSubmissionError, RateLimitedError } from '../types';
 import type {
+  AssetGeneration,
   CreditsSummary,
   AssetDetail,
   FavoriteAssetsResponse,
@@ -824,6 +825,11 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
           'POST',
           `/v1/jobs/${jobId}/project`,
         );
+      },
+
+      async getJobSetup(jobId) {
+        const json = await get<ApiEnvelope<AssetGeneration>>(`/v1/jobs/${jobId}/setup`, { auth: true });
+        return json.data;
       },
     },
     library: {

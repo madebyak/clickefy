@@ -30,6 +30,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import type {
   AssetDetail,
+  AssetGeneration,
   CreateGenerationInput,
   FavoriteAsset,
   GenerationProgress,
@@ -325,6 +326,8 @@ type StudioValue = {
    * The prompt bar consumes `pendingSetup` and clears it once applied.
    */
   reuseSetup: (detail: AssetDetail) => void;
+  /** The same restore from a bare generation block — a failed run's "Edit & retry". */
+  reuseGeneration: (kind: "image" | "video", gen: AssetGeneration) => void;
   /** Flip the composer to video mode with this image as the start frame. */
   startImageToVideo: (imageUrl: string) => void;
   pendingSetup: ReuseSetup | null;
@@ -907,18 +910,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [t],
   );
 
-  const reuseSetup = useCallback(
-    (detail: AssetDetail) => {
-      const gen = detail.generation;
-      if (!gen) return;
+  const reuseGeneration = useCallback(
+    (kind: "image" | "video", gen: AssetGeneration) => {
       // References first: the composer clears attachments when the model
       // changes, so they have to land after the model is applied. The
       // prompt bar owns that ordering; we only carry the payload.
       setPendingSetup({
-        // The asset's own kind IS the model's kind — a video asset can
-        // only have come from a video model. Audio has no composer yet,
-        // so its setup lands in the image composer's prompt box.
-        kind: detail.kind === "video" ? "video" : "image",
+        kind,
         prompt: gen.prompt ?? "",
         modelKey: gen.modelKey,
         aspectRatio: gen.aspectRatio,
@@ -932,6 +930,17 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       toast.success(t("reuseApplied"));
     },
     [t],
+  );
+
+  const reuseSetup = useCallback(
+    (detail: AssetDetail) => {
+      if (!detail.generation) return;
+      // The asset's own kind IS the model's kind — a video asset can
+      // only have come from a video model. Audio has no composer yet,
+      // so its setup lands in the image composer's prompt box.
+      reuseGeneration(detail.kind === "video" ? "video" : "image", detail.generation);
+    },
+    [reuseGeneration],
   );
 
   // A ref, not state: the policy is read inside callbacks, never
@@ -1254,6 +1263,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       addAttachment,
       setAttachmentPolicy,
       reuseSetup,
+      reuseGeneration,
       startImageToVideo,
       pendingSetup,
       clearPendingSetup,
@@ -1296,6 +1306,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       addAttachment,
       setAttachmentPolicy,
       reuseSetup,
+      reuseGeneration,
       startImageToVideo,
       pendingSetup,
       clearPendingSetup,

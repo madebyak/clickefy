@@ -163,6 +163,13 @@ export interface GenerationClient {
    * Hits `POST /v1/jobs/:id/project`.
    */
   fileIntoProject(jobId: string): Promise<{ projectId: string; created: boolean }>;
+
+  /**
+   * The run's setup as the composer needs it to restore it — the same
+   * block an asset's detail carries, for runs that have no asset
+   * (a failed one). Hits `GET /v1/jobs/:id/setup`.
+   */
+  getJobSetup(jobId: string): Promise<AssetGeneration>;
 }
 
 /**

@@ -70,6 +70,7 @@ import { loadDraftForFinal, type DraftSource } from '../lib/draft-final';
 import { dispatchJob } from '../lib/dispatch-job';
 import { resolveOwnMediaUrl } from '../lib/template-dto';
 import { renditionUrls, type RenditionUrls } from '../lib/renditions';
+import { generationSetupFor } from '../lib/job-setup';
 
 export const jobsRoute = new Hono<AppEnv>();
 
@@ -1508,6 +1509,43 @@ jobsRoute.delete(
       .where(and(eq(jobs.id, jobId), eq(jobs.userId, userRow.id)));
 
     return c.body(null, 204);
+  },
+);
+
+// ─── GET /v1/jobs/:id/setup ─────────────────────────────────────────
+//
+// What the composer needs to put a run back on the screen — prompt,
+// model, tier, ratio, duration, sound and the attachments. The apps'
+// "Edit & retry" on a failed run reads this; a finished run's setup
+// rides the asset-detail response instead. Same shape either way.
+jobsRoute.get(
+  '/:id/setup',
+  withAuth({ required: true }),
+  withRateLimit((env) => env.RL_USER_READ, byClerkUserId),
+  withCurrentUser(),
+  async (c) => {
+    const jobId = c.req.param('id');
+    if (!isUuid(jobId)) {
+      return c.json({ error: { code: 'invalid_job_id', message: 'Job id is malformed.' } }, 400);
+    }
+    const userRow = c.var.user!;
+    const [job] = await c.var.db
+      .select({
+        source: jobs.source,
+        modelKey: jobs.modelKey,
+        inputs: jobs.inputs,
+        options: jobs.options,
+        templateId: jobs.templateId,
+      })
+      .from(jobs)
+      .where(and(eq(jobs.id, jobId), eq(jobs.userId, userRow.id)))
+      .limit(1);
+    if (!job) {
+      return c.json({ error: { code: 'job_not_found', message: 'Job not found.' } }, 404);
+    }
+    const origin = new URL(c.req.url).origin;
+    c.header('Cache-Control', 'no-store');
+    return c.json({ data: await generationSetupFor(c.var.db, origin, job) });
   },
 );
 

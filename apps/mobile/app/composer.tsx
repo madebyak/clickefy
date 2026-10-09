@@ -23,7 +23,12 @@
 
 import { accents, Text, useTheme } from '@clickfy/ui';
 import { useAuth, useUser } from '@clerk/expo';
-import { JobSubmissionError, type CreateGenerationInput, type GenModel } from '@clickfy/sdk';
+import {
+  JobSubmissionError,
+  type AssetGeneration,
+  type CreateGenerationInput,
+  type GenModel,
+} from '@clickfy/sdk';
 
 import { describeJobError, SUBMIT_CODE_REASON } from '@/lib/job-error-copy';
 import { resolveCreditCost } from '@clickfy/types';
@@ -863,6 +868,39 @@ export default function ComposerScreen() {
     void attachFromUrl(a.uri, attachmentCap, false);
   };
 
+  /**
+   * "Edit & retry" on a failed run: the server still has everything the
+   * run was made from. Mode and model first (both reset the option
+   * state), then the knobs, then the attachments re-uploaded from their
+   * URLs — the same order Re-use follows on the web.
+   */
+  const editAndRetry = async (a: Artifact) => {
+    let gen: AssetGeneration;
+    try {
+      gen = await sdk.generation.getJobSetup(a.jobId);
+    } catch {
+      toast.error(t('jobError.setupUnavailable'));
+      return;
+    }
+    const kind = a.kind;
+    if (kind !== mode) switchMode(kind);
+    if (gen.modelKey) setModelByMode((prev) => ({ ...prev, [kind]: gen.modelKey }));
+    setPrompt(gen.prompt ?? '');
+    if (gen.aspectRatio) setRatio(gen.aspectRatio);
+    if (gen.quality) setTier(gen.quality);
+    if (gen.duration != null) setDuration(gen.duration);
+    if (gen.sound != null) setSoundChoice(gen.sound);
+    const frames = gen.references.some((r) => r.role !== 'reference');
+    if (gen.references.length > 0) setAttachChoice(frames ? 'frames' : 'references');
+    const cap = frames ? 2 : 16;
+    for (const [i, ref] of gen.references.entries()) {
+      // Sequential: each re-upload appends behind the last, keeping the
+      // start → end → references order the model saw.
+      await attachFromUrl(ref.url, cap, i === 0);
+    }
+    untrackJobs([a.jobId]);
+  };
+
   const reuseAsset = (a: AssetInfo) => {
     setViewerAsset(null);
     if (a.kind !== mode) switchMode(a.kind);
@@ -1101,7 +1139,15 @@ export default function ComposerScreen() {
             const art = artifacts.find((a) => a.jobId === cell.id);
             if (!art) return;
             const copy = describeJobError(t, art);
-            Alert.alert(copy.title, copy.refundedLine ? `${copy.body}\n\n${copy.refundedLine}` : copy.body);
+            Alert.alert(
+              copy.title,
+              copy.refundedLine ? `${copy.body}\n\n${copy.refundedLine}` : copy.body,
+              [
+                { text: t('composer.dismiss'), style: 'destructive', onPress: () => untrackJobs([art.jobId]) },
+                { text: t('composer.close'), style: 'cancel' },
+                { text: t('jobError.editRetry'), onPress: () => void editAndRetry(art) },
+              ],
+            );
           }}
           onDismissFailed={(cell) => untrackJobs([cell.id])}
         />

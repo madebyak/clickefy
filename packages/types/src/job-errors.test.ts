@@ -99,6 +99,10 @@ describe('explainProviderError', () => {
     expect(explainProviderError('Seedance API 403 Forbidden: {"error":{"code":"AccountOverdueError"}}')?.reason).toBe('system');
     expect(explainProviderError('Kling API 2.0 error code=1201 message=model/resolution(kling-v2-6/720p) is not supported with last frame')?.reason).toBe('system');
     expect(explainProviderError('Seedance task failed (InvalidParameter): Invalid video_url.')?.reason).toBe('system');
+    expect(
+      explainProviderError('fal 403 https://queue.fal.run/fal-ai/bytedance-upscaler/upscale/video: {"detail":"User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing."}')?.reason,
+    ).toBe('system');
+    expect(explainProviderError('fal 403 …/requests/<id>: {"detail":"User is locked. Reason: TOP_UP."}')?.reason).toBe('system');
   });
 
   it('leaves the truly unknown unexplained', () => {

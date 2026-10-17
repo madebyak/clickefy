@@ -3,6 +3,7 @@
 import { useState, useSyncExternalStore, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
+import { composerRouteFor, isComposerRoute } from "@/lib/composer-route";
 import { Plus, Heart, CaretUpDown, Images, X } from "@phosphor-icons/react";
 import { useStudio } from "@/components/studio/studio-context";
 import { ProjectRow } from "@/components/studio/project-row";
@@ -57,14 +58,18 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
   const inBrowser = pathname === "/projects";
   const inFavorites = pathname === "/favorites";
 
+  // A project opens on the composer of its latest asset — an audio project
+  // on the Audio surface, a video one on Video — so what you made is what
+  // you can make more of.
   const openProject = (id: string) => {
     setActiveProject(id);
-    router.push("/create");
+    router.push(composerRouteFor(projects.find((p) => p.id === id)?.cover?.kind));
     onClose();
   };
 
   const newProject = async () => {
-    router.push("/create");
+    // Stay on the composer you are looking at; only leave a page that has none.
+    router.push(isComposerRoute(pathname) ? pathname : "/create");
     onClose();
     // createProject re-throws so generation flows can abort; here the
     // failure toast already fired, so swallow to avoid an unhandled

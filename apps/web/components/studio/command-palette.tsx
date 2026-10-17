@@ -27,6 +27,7 @@ import {
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "@/i18n/navigation";
+import { composerRouteFor } from "@/lib/composer-route";
 import {
   X,
   MagnifyingGlass,
@@ -38,6 +39,7 @@ import {
   Heart,
   GearSix,
   Sparkle,
+  SpeakerHigh,
 } from "@phosphor-icons/react";
 
 import { matchesSearch, searchTokens } from "@clickfy/types";
@@ -131,6 +133,17 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         },
       },
       {
+        id: "tool-audio",
+        section: "tools",
+        label: tNav("audio"),
+        keywords: "audio speech voice sound effects voice changer tts",
+        icon: iconChip(<SpeakerHigh weight="fill" className="size-4 text-accent-turquoise" />, "bg-accent-turquoise/15"),
+        run: () => {
+          studio.setActiveProject(null);
+          router.push("/audio");
+        },
+      },
+      {
         id: "tool-camera",
         section: "tools",
         label: tNav("cameraAngles"),
@@ -196,7 +209,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             ),
         run: () => {
           studio.setActiveProject(p.id);
-          router.push("/create");
+          router.push(composerRouteFor(p.cover?.kind));
         },
       };
     });
@@ -222,7 +235,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             : iconChip(<ImageSquare className="size-4 text-muted-foreground" />, "bg-surface-3"),
           run: () => {
             studio.setActiveProject(j.projectId);
-            router.push("/create");
+            router.push(composerRouteFor(j.templateKind));
           },
         };
       });

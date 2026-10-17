@@ -32,7 +32,27 @@ export interface AssetGeneration {
   quality: string | null;
   duration: number | null;
   sound: boolean | null;
-  references: Array<{ role: 'start_frame' | 'end_frame' | 'reference'; url: string }>;
+  /** Every attachment in the order the model saw it, each with its media kind. */
+  references: Array<{ role: 'start_frame' | 'end_frame' | 'reference'; kind: 'image' | 'video' | 'audio'; url: string }>;
+  /** What the job produced — tells the composer which mode to restore into. */
+  kind: 'image' | 'video' | 'audio';
+  /** Audio jobs only: the voice and settings the Audio composer needs to rebuild the run. */
+  audio: AudioGenerationSetup | null;
+}
+
+export interface AudioGenerationSetup {
+  task: 'tts' | 'sfx' | 'sts';
+  voiceId: string | null;
+  voiceName: string | null;
+  publicOwnerId: string | null;
+  engine: string | null;
+  expressive: boolean | null;
+  stability: number | null;
+  similarity: number | null;
+  speed: number | null;
+  languageCode: string | null;
+  durationSeconds: number | null;
+  promptInfluence: number | null;
 }
 
 /** The composer sends at most this many references; nothing past it is read. */
@@ -60,6 +80,7 @@ export async function generationSetupFor(
     sound?: boolean;
     mode?: string;
     tool?: { kind?: string };
+    audio?: StoredAudioOptions;
   };
   const inputs = (job.inputs ?? {}) as Record<string, JobInputValue>;
 
@@ -79,12 +100,14 @@ export async function generationSetupFor(
   const promptInput = inputs[CREATE_PROMPT_KEY];
   const caps = job.modelKey ? findCapabilities(job.modelKey) : undefined;
 
-  // Every image the user supplied, in the order the model saw it.
+  // Every attachment the user supplied, in the order the model saw it —
+  // images and clips for the video models, the source recording for the
+  // voice changer.
   const refs: AssetGeneration['references'] = [];
   const pushRef = (key: string, role: 'start_frame' | 'end_frame' | 'reference') => {
     const v = inputs[key];
-    if (v && (v.kind === 'image' || v.kind === 'video') && v.r2Key) {
-      refs.push({ role, url: assetUrl(origin, v.r2Key) });
+    if (v && v.kind !== 'text' && v.r2Key) {
+      refs.push({ role, kind: v.kind, url: assetUrl(origin, v.r2Key) });
     }
   };
   pushRef(CREATE_START_FRAME_KEY, 'start_frame');
@@ -109,5 +132,31 @@ export async function generationSetupFor(
     duration: opts.duration ?? null,
     sound: typeof opts.sound === 'boolean' ? opts.sound : null,
     references: refs,
+    kind: caps?.kind === 'video' ? 'video' : caps?.kind === 'audio' ? 'audio' : 'image',
+    audio: caps?.kind === 'audio' && caps.audio ? audioSetup(caps.audio.task, opts.audio ?? {}) : null,
+  };
+}
+
+/** `options.audio` as the create route stores it (see `createAudioOptionsSchema`). */
+interface StoredAudioOptions {
+  voiceId?: string; voiceName?: string; publicOwnerId?: string; engine?: string; expressive?: boolean;
+  stability?: number; similarity?: number; speed?: number; languageCode?: string;
+  durationSeconds?: number; promptInfluence?: number;
+}
+
+function audioSetup(task: 'tts' | 'sfx' | 'sts', a: StoredAudioOptions): AudioGenerationSetup {
+  return {
+    task,
+    voiceId: a.voiceId ?? null,
+    voiceName: a.voiceName ?? null,
+    publicOwnerId: a.publicOwnerId ?? null,
+    engine: a.engine ?? null,
+    expressive: typeof a.expressive === 'boolean' ? a.expressive : null,
+    stability: typeof a.stability === 'number' ? a.stability : null,
+    similarity: typeof a.similarity === 'number' ? a.similarity : null,
+    speed: typeof a.speed === 'number' ? a.speed : null,
+    languageCode: a.languageCode ?? null,
+    durationSeconds: typeof a.durationSeconds === 'number' ? a.durationSeconds : null,
+    promptInfluence: typeof a.promptInfluence === 'number' ? a.promptInfluence : null,
   };
 }

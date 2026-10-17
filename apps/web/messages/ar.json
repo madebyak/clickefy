@@ -413,7 +413,8 @@
     "modeReferencesAllHint": "صور ومقاطع فيديو وصوت توجّه النتيجة",
     "modeReferencesVideoHint": "صور ومقطع فيديو توجّه النتيجة",
     "maxImagesWithVideo": "مع فيديو مرفق، يقبل هذا النموذج حتى {max} صور",
-    "soundOffWithVideo": "الصوت متوقف أثناء إرفاق فيديو مرجعي"
+    "soundOffWithVideo": "الصوت متوقف أثناء إرفاق فيديو مرجعي",
+    "audio": "صوت"
   },
   "account": {
     "availableCredits": "النقاط المتاحة",
@@ -623,7 +624,15 @@
     "deleteAsset": "حذف",
     "turnToVideo": "حوّلها إلى فيديو",
     "changeCameraAngle": "تغيير زاوية الكاميرا",
-    "emptyPromptAudio": "حوّل النص إلى كلام، أو أنشئ مؤثرًا صوتيًا، أو غيّر صوت تسجيل من اللوحة أدناه."
+    "emptyPromptAudio": "حوّل النص إلى كلام، أو أنشئ مؤثرًا صوتيًا، أو غيّر صوت تسجيل من اللوحة أدناه.",
+    "addAsAudioReference": "إضافة كمرجع صوتي",
+    "useInVoiceChanger": "استخدام في مغيّر الصوت",
+    "voice": "الصوت",
+    "engine": "المحرك",
+    "audioTask_tts": "كلام",
+    "audioTask_sfx": "مؤثر صوتي",
+    "audioTask_sts": "مغيّر الصوت",
+    "sourceRecordingRole": "التسجيل الأصلي"
   },
   "projects": {
     "heading": "مشاريعي",
@@ -1105,6 +1114,8 @@
     "use_informative_educational": "تعليمي",
     "use_entertainment_tv": "تلفزيون وترفيه",
     "use_characters_animation": "شخصيات",
-    "dropAudioOnly": "أسقط ملفًا صوتيًا (MP3 أو WAV)."
+    "dropAudioOnly": "أسقط ملفًا صوتيًا (MP3 أو WAV).",
+    "sourceFromCanvas": "مقطع من هذا المشروع",
+    "sourceLoadFailed": "تعذّر تحميل المقطع — حاول مجددًا"
   }
 }

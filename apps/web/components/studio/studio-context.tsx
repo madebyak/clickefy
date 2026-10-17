@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import type {
   AssetDetail,
   AssetGeneration,
+  AudioGenerationSetup,
   CreateGenerationInput,
   FavoriteAsset,
   GenerationProgress,
@@ -174,14 +175,18 @@ export type AttachmentPolicy = {
 };
 
 /** A past generation's settings, handed to the composer to restore. */
+/** Which of the composer's three surfaces is showing. */
+export type ComposerMode = "image" | "video" | "audio";
+
 export type ReuseSetup = {
   /**
-   * Image or video. Carried because the composer filters its model list
-   * by the CURRENT mode: without switching mode first, a video modelKey
-   * is simply absent from the roster and the restore silently lands on
-   * whatever image model happened to be selected.
+   * Image, video or audio. Carried because the composer filters its model
+   * list by the CURRENT mode: without switching mode first, a video
+   * modelKey is simply absent from the roster and the restore silently
+   * lands on whatever image model happened to be selected. Audio switches
+   * to the Audio surface, which reads `audio` and `audioSourceUrl`.
    */
-  kind: "image" | "video";
+  kind: ComposerMode;
   prompt: string;
   modelKey: string | null;
   aspectRatio: string | null;
@@ -190,7 +195,12 @@ export type ReuseSetup = {
   duration: number | null;
   /** Native-audio toggle; null when the model has none. */
   sound: boolean | null;
+  /** Images and clips, in the order the model saw them. */
   referenceUrls: string[];
+  /** Audio runs: the voice and settings to put back. */
+  audio?: AudioGenerationSetup | null;
+  /** Voice changer runs: the recording that was transformed. */
+  audioSourceUrl?: string | null;
 };
 export type { StudioAsset, StudioFolder, StudioProject };
 
@@ -341,11 +351,22 @@ type StudioValue = {
    */
   reuseSetup: (detail: AssetDetail) => void;
   /** The same restore from a bare generation block — a failed run's "Edit & retry". */
-  reuseGeneration: (kind: "image" | "video", gen: AssetGeneration) => void;
+  reuseGeneration: (kind: ComposerMode, gen: AssetGeneration) => void;
   /** Flip the composer to video mode with this image as the start frame. */
   startImageToVideo: (imageUrl: string) => void;
   pendingSetup: ReuseSetup | null;
   clearPendingSetup: () => void;
+  /**
+   * The composer's surface: Image, Video or Audio. Owned here rather than
+   * by the prompt bar so the canvas can offer the right action on a tile
+   * ("Add as reference" versus "Use in voice changer").
+   */
+  composerMode: ComposerMode;
+  setComposerMode: (mode: ComposerMode) => void;
+  /** A canvas clip handed to the voice changer as its source; one-shot like `pendingSetup`. */
+  voiceSourceRequest: { url: string; name: string } | null;
+  requestVoiceSource: (url: string, name: string) => void;
+  clearVoiceSourceRequest: () => void;
   removeAttachment: (attachmentId: string) => void;
   /** Run a failed person verification again. */
   retryVerification: (attachmentId: string) => void;
@@ -902,6 +923,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [pendingSetup, setPendingSetup] = useState<ReuseSetup | null>(null);
   const clearPendingSetup = useCallback(() => setPendingSetup(null), []);
 
+  const [composerMode, setComposerMode] = useState<ComposerMode>("image");
+  const [voiceSourceRequest, setVoiceSourceRequest] = useState<{ url: string; name: string } | null>(null);
+  const requestVoiceSource = useCallback((url: string, name: string) => {
+    setComposerMode("audio");
+    setVoiceSourceRequest({ url, name });
+  }, []);
+  const clearVoiceSourceRequest = useCallback(() => setVoiceSourceRequest(null), []);
+
   /**
    * "Turn into video": flip the composer to video mode with this image
    * attached. Rides the same three-stage restore baton as re-use — in
@@ -927,7 +956,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   );
 
   const reuseGeneration = useCallback(
-    (kind: "image" | "video", gen: AssetGeneration) => {
+    (kind: ComposerMode, gen: AssetGeneration) => {
       // References first: the composer clears attachments when the model
       // changes, so they have to land after the model is applied. The
       // prompt bar owns that ordering; we only carry the payload.
@@ -940,8 +969,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         duration: gen.duration,
         sound: gen.sound,
         // Ordered start frame → end frame → references by the API, which
-        // is exactly the order a frames-mode model expects them in.
-        referenceUrls: gen.references.map((r) => r.url),
+        // is exactly the order a frames-mode model expects them in. The
+        // voice changer's recording travels separately.
+        referenceUrls: gen.references.filter((r) => r.kind !== "audio").map((r) => r.url),
+        audio: gen.audio ?? null,
+        audioSourceUrl: gen.references.find((r) => r.kind === "audio")?.url ?? null,
       });
       toast.success(t("reuseApplied"));
     },
@@ -951,10 +983,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const reuseSetup = useCallback(
     (detail: AssetDetail) => {
       if (!detail.generation) return;
-      // The asset's own kind IS the model's kind — a video asset can
-      // only have come from a video model. Audio has no composer yet,
-      // so its setup lands in the image composer's prompt box.
-      reuseGeneration(detail.kind === "video" ? "video" : "image", detail.generation);
+      // The server names the kind the job produced; the asset's own kind
+      // is the fallback for details recorded before it did.
+      reuseGeneration(detail.generation.kind ?? detail.kind, detail.generation);
     },
     [reuseGeneration],
   );
@@ -1338,7 +1369,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           // Mobile jobs have no studio project — nowhere to show a tile.
           if (!job.projectId) continue;
           if (unsubs.current.has(job.id)) continue;
-          trackJob(job.id, job.projectId, job.templateKind === "video" ? "video" : "image");
+          trackJob(job.id, job.projectId, job.templateKind === "video" ? "video" : job.templateKind === "audio" ? "audio" : "image");
         }
       })
       .catch(() => {
@@ -1388,6 +1419,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       startImageToVideo,
       pendingSetup,
       clearPendingSetup,
+      composerMode,
+      setComposerMode,
+      voiceSourceRequest,
+      requestVoiceSource,
+      clearVoiceSourceRequest,
       removeAttachment,
       retryVerification,
       moveAttachment,
@@ -1432,6 +1468,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       startImageToVideo,
       pendingSetup,
       clearPendingSetup,
+      composerMode,
+      setComposerMode,
+      voiceSourceRequest,
+      requestVoiceSource,
+      clearVoiceSourceRequest,
       removeAttachment,
       retryVerification,
       moveAttachment,

@@ -23,6 +23,7 @@ import {
   ArrowCounterClockwise,
   Heart,
   VideoCamera,
+  SpeakerHigh,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { AssetDetail } from "@clickfy/sdk";
@@ -135,14 +136,30 @@ export function AssetDetailSections({
               <div className="flex flex-wrap gap-2">
                 {gen.references.map((r, i) => (
                   <div key={`${r.url}-${i}`} className="w-16">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={r.url}
-                      alt=""
-                      className="size-16 rounded-lg object-cover ring-1 ring-border"
-                    />
+                    {r.kind === "audio" ? (
+                      // A recording has no frame to show — a labelled chip
+                      // that plays beats a broken <img>.
+                      <a
+                        href={r.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="grid size-16 place-items-center rounded-lg bg-surface-3 ring-1 ring-border"
+                        aria-label={t("sourceRecordingRole")}
+                      >
+                        <SpeakerHigh weight="fill" className="size-6 text-accent-turquoise" />
+                      </a>
+                    ) : r.kind === "video" ? (
+                      <video src={r.url} muted playsInline preload="metadata" className="size-16 rounded-lg object-cover ring-1 ring-border" />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={r.url}
+                        alt=""
+                        className="size-16 rounded-lg object-cover ring-1 ring-border"
+                      />
+                    )}
                     <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                      {roleLabel(r.role)}
+                      {r.kind === "audio" ? t("sourceRecordingRole") : roleLabel(r.role)}
                     </p>
                   </div>
                 ))}
@@ -159,6 +176,9 @@ export function AssetDetailSections({
           because they sat inside the generation block above. */}
       <section className="mt-4 divide-y divide-white/[0.06] rounded-lg bg-surface-2 px-3 py-1">
         {gen?.modelName && <Row label={t("model")} value={gen.modelName} />}
+        {gen?.audio && <Row label={t("model")} value={t(`audioTask_${gen.audio.task}`)} />}
+        {gen?.audio?.voiceName && <Row label={t("voice")} value={gen.audio.voiceName} />}
+        {gen?.audio?.engine && <Row label={t("engine")} value={gen.audio.engine} />}
         {gen?.aspectRatio && <Row label={t("aspectRatio")} value={gen.aspectRatio} />}
         {gen?.quality && <Row label={t("quality")} value={gen.quality} />}
         {detail.width && detail.height && (
@@ -237,20 +257,23 @@ export function AssetDetailActions({
       >
         <DownloadSimple className="size-4" /> {t("download")}
       </button>
-      {/* Copy and Re-use need a user prompt to act on, so both are
-          absent for template-sourced assets. */}
+      {/* Copy needs a user prompt; Re-use needs a prompt or, for a
+          voice-changer run, the recording and voice. Template-sourced
+          assets have neither. */}
       {gen?.prompt && (
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(gen.prompt!);
+            toast.success(t("promptCopied"));
+          }}
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-surface-3 px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-2"
+        >
+          <Copy className="size-4" /> {t("copyPrompt")}
+        </button>
+      )}
+      {(gen?.prompt || gen?.audio) && (
         <>
-          <button
-            type="button"
-            onClick={() => {
-              void navigator.clipboard.writeText(gen.prompt!);
-              toast.success(t("promptCopied"));
-            }}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-surface-3 px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-2"
-          >
-            <Copy className="size-4" /> {t("copyPrompt")}
-          </button>
           <button
             type="button"
             onClick={() => detail && onReuse(detail)}

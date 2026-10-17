@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
+import { composerRouteFor } from "@/lib/composer-route";
 import {
   FolderSimple,
   FolderPlus,
@@ -325,7 +326,7 @@ export default function ProjectsPage() {
 
   const openProject = (id: string) => {
     setActiveProject(id);
-    router.push("/create");
+    router.push(composerRouteFor(projects.find((p) => p.id === id)?.cover?.kind));
   };
 
   const newProject = async () => {

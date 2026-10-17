@@ -57,7 +57,9 @@ import {
   useStudioMaybe,
   type AttachableAsset,
   type PromptAttachment,
+  type ComposerMode,
 } from "@/components/studio/studio-context";
+import { AudioComposer } from "@/components/generate/audio-composer";
 import { Menu, MenuSeparator } from "@/components/ui/menu";
 import { Badge } from "@/components/ui/badge";
 import { MyAssetsModal } from "@/components/media/my-assets-modal";
@@ -69,6 +71,9 @@ import { modelLogo } from "@/lib/model-logos";
 /** Mirrors the file input's `accept`; also enforced on drop. */
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const EMPTY_ATTACHMENTS: PromptAttachment[] = [];
+/** The hero shows what the product does; the studio also offers Audio. */
+const HERO_MODES = ["image", "video"] as const;
+const STUDIO_MODES = ["image", "video", "audio"] as const;
 /** Drag payload for reordering an attachment within the tray. */
 const ATTACHMENT_REORDER_TYPE = "application/x-clickfy-attachment";
 const REF_KINDS: readonly ReferenceKind[] = ["image", "video", "audio"];
@@ -707,7 +712,7 @@ export function PromptBar({
   size = "default",
   animatedPlaceholder = false,
 }: {
-  kind?: "image" | "video";
+  kind?: ComposerMode;
   size?: "default" | "compact";
   /**
    * Cycle example prompts as a typewriter while the field is idle.
@@ -729,24 +734,31 @@ export function PromptBar({
   const locale = useLocale();
   const localeDir = locale === "ar" ? "rtl" : "ltr";
   const { isLoaded, isSignedIn } = useAuth();
-  const [mode, setMode] = useState<"image" | "video">(kind);
-  const isVideo = mode === "video";
-
-  // `useState(kind)` only seeds the FIRST render. /create and
-  // /create-video share this component at the same position in the tree,
-  // so a client-side nav between them re-renders rather than remounts —
-  // the composer would stay on whichever mode it was opened with, and
-  // "Create Video" in the navbar would land on the image composer.
-  // Syncing on the prop fixes that without fighting the user's own
-  // toggle, since `kind` only ever changes on a route change.
-  useEffect(() => {
-    setMode(kind);
-  }, [kind]);
-
-  const { models, isLoading: modelsLoading } = useModels(mode);
   // Null on the marketing page (no StudioProvider) — the bar then acts
   // as a CTA into the studio instead of generating in place.
   const studio = useStudioMaybe();
+  // Image | Video | Audio. Inside the studio the mode lives in the context
+  // so the canvas knows which surface is showing (a tile's attach action
+  // depends on it); the marketing hero keeps it local.
+  const [localMode, setLocalMode] = useState<ComposerMode>(kind);
+  const mode: ComposerMode = studio ? studio.composerMode : localMode;
+  const setMode = studio ? studio.setComposerMode : setLocalMode;
+  const isVideo = mode === "video";
+  const isAudio = mode === "audio";
+
+  // The routes are entry points that preset the mode. /create,
+  // /create-video and /audio share this component at the same position
+  // in the tree, so a client-side nav between them re-renders rather
+  // than remounts — without this sync the composer would stay on
+  // whichever mode it was opened with. `kind` only changes on a route
+  // change, so it never fights the user's own toggle.
+  useEffect(() => {
+    setMode(kind);
+  }, [kind, setMode]);
+
+  // The Audio surface has its own roster; this bar's model state idles
+  // on the image list while that surface is showing.
+  const { models, isLoading: modelsLoading } = useModels(isAudio ? "image" : mode);
   // Stable identity for the no-studio (marketing hero) case, so effects
   // depending on `attachments` don't re-run on every render there.
   const attachments = studio?.attachments ?? EMPTY_ATTACHMENTS;
@@ -898,15 +910,22 @@ export function PromptBar({
   const [setupStage, setSetupStage] = useState<"idle" | "mode" | "model" | "knobs">("idle");
 
   useEffect(() => {
-    if (pendingSetup && setupStage === "idle") setSetupStage("mode");
-  }, [pendingSetup, setupStage]);
+    if (!pendingSetup || setupStage !== "idle") return;
+    if (pendingSetup.kind === "audio") {
+      // The Audio surface reads the setup itself and clears the baton;
+      // this bar only has to show it.
+      setMode("audio");
+      return;
+    }
+    setSetupStage("mode");
+  }, [pendingSetup, setupStage, setMode]);
 
   useEffect(() => {
     if (!pendingSetup || setupStage !== "mode") return;
     setPrompt(pendingSetup.prompt);
     setMode(pendingSetup.kind);
     setSetupStage("model");
-  }, [pendingSetup, setupStage]);
+  }, [pendingSetup, setupStage, setMode]);
 
   useEffect(() => {
     if (!pendingSetup || setupStage !== "model") return;
@@ -1573,7 +1592,7 @@ export function PromptBar({
       // composer, which would drop a video prompt into the wrong box).
       // `redirect_url` needs the locale prefix — Clerk redirects by raw
       // path, it knows nothing about next-intl.
-      if (prompt.trim()) stashPendingPrompt({ prompt, kind: mode });
+      if (prompt.trim()) stashPendingPrompt({ prompt, kind: isVideo ? "video" : "image" });
       const prefix = locale === "en" ? "" : `/${locale}`;
       router.push(`/sign-in?redirect_url=${encodeURIComponent(`${prefix}${studioPath}`)}`);
       return;
@@ -1581,7 +1600,7 @@ export function PromptBar({
     if (!studio) {
       // Marketing hero: hand off to the studio surface for this mode,
       // prompt included.
-      if (prompt.trim()) stashPendingPrompt({ prompt, kind: mode });
+      if (prompt.trim()) stashPendingPrompt({ prompt, kind: isVideo ? "video" : "image" });
       router.push(studioPath);
       return;
     }
@@ -1650,8 +1669,8 @@ export function PromptBar({
 
   return (
     <div
-      {...dragHandlers}
-      onPaste={onPaste}
+      {...(isAudio ? {} : dragHandlers)}
+      onPaste={isAudio ? undefined : onPaste}
       className={cn(
         "relative rounded-2xl bg-surface-1 shadow-2xl shadow-black/40 transition-colors",
         compact ? "p-2.5" : "p-3",
@@ -1673,9 +1692,9 @@ export function PromptBar({
           facing it across the row */}
       <div className={cn("flex items-center justify-between gap-3", compact ? "mb-2" : "mb-3")}>
         <div className="inline-flex items-center gap-1 rounded-xl bg-surface-3 p-1">
-          {(["image", "video"] as const).map((m) => {
+          {(studio ? STUDIO_MODES : HERO_MODES).map((m) => {
             const active = mode === m;
-            const Icon = m === "video" ? VideoCamera : ImageSquare;
+            const Icon = m === "video" ? VideoCamera : m === "audio" ? SpeakerHigh : ImageSquare;
             return (
               <button
                 key={m}
@@ -1688,7 +1707,9 @@ export function PromptBar({
                   active
                     ? m === "video"
                       ? "bg-brand-purple text-white"
-                      : "bg-primary text-primary-foreground"
+                      : m === "audio"
+                        ? "bg-accent-turquoise text-black"
+                        : "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -1699,7 +1720,7 @@ export function PromptBar({
           })}
         </div>
         {/* A model that reads no prompt (cap 0) has nothing to count. */}
-        {promptCap > 0 && (
+        {!isAudio && promptCap > 0 && (
           <span
             aria-label={t("promptCount", { count: promptLength, max: promptCap })}
             className={cn(
@@ -1712,6 +1733,15 @@ export function PromptBar({
         )}
       </div>
 
+      {/* The Audio surface stays mounted while hidden, so a half-written
+          script survives a look at the Video tab and back. */}
+      {studio && (
+        <div className={cn(!isAudio && "hidden")}>
+          <AudioComposer embedded active={isAudio} />
+        </div>
+      )}
+      {!isAudio && (
+        <>
       {/* ── image inputs ────────────────────────────────────────────
           Frames mode renders two labelled slots because frame order is
           semantic; references mode renders a flat grid because order
@@ -2549,6 +2579,8 @@ export function PromptBar({
           sources={readyAttachments.map((a) => ({ id: a.id, url: a.previewUrl }))}
           onSave={(file) => addFiles([file])}
         />
+      )}
+        </>
       )}
     </div>
   );

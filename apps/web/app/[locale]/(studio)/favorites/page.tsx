@@ -63,12 +63,13 @@ export default function FavoritesPage() {
       setReusingAssetId(a.id);
       try {
         const detail = await getSDK().projects.getAsset(a.projectId, a.id);
-        if (!detail.generation?.prompt) {
+        // A voice-changer run has no prompt, only a recording and a voice.
+        if (!detail.generation?.prompt && !detail.generation?.audio) {
           toast.error(t("reuseNothingToRestore"));
           return;
         }
         reuseSetup(detail);
-        router.push(composerPath(a.type));
+        router.push(composerPath(detail.generation.kind ?? a.type));
       } catch {
         toast.error(t("detailsUnavailable"));
       } finally {

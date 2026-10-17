@@ -21,13 +21,33 @@ import {
   VideoCamera,
   X,
   SpeakerHigh,
+  Waveform,
 } from "@phosphor-icons/react";
 
 import { AudioPlayer, AudioTile, formatClip } from "./audio-tile";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import { downloadAsset } from "@/lib/download-asset";
-import { ASSET_DRAG_TYPE, type Asset } from "@/components/studio/studio-context";
+import { ASSET_DRAG_TYPE, type Asset, type ComposerMode } from "@/components/studio/studio-context";
+
+/**
+ * What clicking a tile's attach button means for the composer that is
+ * showing. An image feeds the image and video composers; a clip is a
+ * reference only for the video models that take one; an audio clip is
+ * either a voice-changer source or, on a video model, reference audio.
+ * Null hides the button rather than offering an action that would only
+ * produce a refusal.
+ */
+function attachActionFor(
+  type: Asset["type"],
+  mode: ComposerMode,
+): { label: "addAsReference" | "addAsAudioReference" | "useInVoiceChanger"; Icon: typeof ImageSquare } | null {
+  if (type === "image") return mode === "audio" ? null : { label: "addAsReference", Icon: ImageSquare };
+  if (type === "video") return mode === "video" ? { label: "addAsReference", Icon: VideoCamera } : null;
+  if (mode === "audio") return { label: "useInVoiceChanger", Icon: Waveform };
+  if (mode === "video") return { label: "addAsAudioReference", Icon: SpeakerHigh };
+  return null;
+}
 import { DEFAULT_GRID_SIZE, type GridSize } from "@/components/studio/canvas-toolbar";
 import {
   AssetDetailActions,
@@ -249,9 +269,12 @@ export function Masonry({
   gridSize = DEFAULT_GRID_SIZE,
   selectedIds,
   onToggleSelect,
+  composerMode = "image",
 }: {
   assets: Asset[];
   onAssetClick?: (asset: Asset) => void;
+  /** Which composer surface is showing — decides what "attach" offers per tile. */
+  composerMode?: ComposerMode;
   /** Opens the details slide-over for one asset. */
   onAssetInfo?: (asset: Asset) => void;
   /**
@@ -326,7 +349,9 @@ export function Masonry({
     return layoutRows(assets, containerWidth, target, gap);
   }, [assets, containerWidth, gridSize, gap]);
 
-  const renderTile = ({ asset: a, width, height }: LaidOutTile) => (
+  const renderTile = ({ asset: a, width, height }: LaidOutTile) => {
+    const attach = attachActionFor(a.type, composerMode);
+    return (
           <div
             key={a.id}
             style={{ width, height }}
@@ -489,15 +514,15 @@ export function Masonry({
                         <MenuSeparator />
                       </>
                     )}
-                    {onAssetClick && a.type === "image" && (
+                    {onAssetClick && attach && (
                       <MenuItem
                         onClick={() => {
                           onAssetClick(a);
                           close();
                         }}
                       >
-                        <ImageSquare className="size-4 text-muted-foreground" />
-                        {t("addAsReference")}
+                        <attach.Icon className="size-4 text-muted-foreground" />
+                        {t(attach.label)}
                       </MenuItem>
                     )}
                     {onAssetReuse && (
@@ -612,10 +637,10 @@ export function Masonry({
                 on narrow tiles. Mobile actions live in the ⋯ menu. */}
             {(onAssetClick || onAssetReuse || (onMakeFinal && a.draft)) && (
               <div className="asset-hover-actions absolute inset-x-2 bottom-2 flex items-center gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                {onAssetClick && (
+                {onAssetClick && attach && (
                   <button
                     type="button"
-                    aria-label={t("addAsReference")}
+                    aria-label={t(attach.label)}
                     onClick={(e) => {
                       e.stopPropagation();
                       onAssetClick(a);
@@ -625,9 +650,9 @@ export function Masonry({
                       compactTiles ? "size-8 justify-center" : "px-2.5",
                     )}
                   >
-                    <ImageSquare className="size-3.5 shrink-0" />
+                    <attach.Icon className="size-3.5 shrink-0" />
                     {!compactTiles && (
-                      <span className="hidden truncate sm:inline">{t("addAsReference")}</span>
+                      <span className="hidden truncate sm:inline">{t(attach.label)}</span>
                     )}
                   </button>
                 )}
@@ -691,7 +716,8 @@ export function Masonry({
             )}
 
           </div>
-  );
+    );
+  };
 
   return (
     <>

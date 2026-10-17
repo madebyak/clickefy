@@ -21,6 +21,7 @@ import {
   type Asset,
   type PendingGeneration,
   type StudioProject,
+  type ComposerMode,
 } from "@/components/studio/studio-context";
 import { Masonry } from "@/components/studio/masonry";
 import {
@@ -32,7 +33,6 @@ import {
 } from "@/components/studio/canvas-toolbar";
 import { AssetInfoPanel } from "@/components/studio/asset-info-panel";
 import { SelectionBar } from "@/components/studio/selection-bar";
-import { AudioComposer } from "@/components/generate/audio-composer";
 import { PromptBar } from "@/components/generate/prompt-bar";
 import { useTimeLabel } from "@/lib/time-label";
 import { describeJobError } from "@/lib/job-error-copy";
@@ -257,6 +257,7 @@ function ProjectView({
   onDismissPending,
   onEditRetry,
   onAttach,
+  composerMode,
   onAssetInfo,
   onAssetReuse,
   onToggleFavorite,
@@ -275,6 +276,7 @@ function ProjectView({
   onDismissPending: (jobId: string) => void;
   onEditRetry: (jobId: string) => void;
   onAttach: (a: Asset) => void;
+  composerMode: ComposerMode;
   onAssetInfo: (a: Asset) => void;
   onAssetReuse: (a: Asset) => void;
   onToggleFavorite: (a: Asset) => void;
@@ -313,6 +315,7 @@ function ProjectView({
       <Masonry
         assets={assets}
         onAssetClick={onAttach}
+        composerMode={composerMode}
         onAssetInfo={onAssetInfo}
         onAssetReuse={onAssetReuse}
         onToggleFavorite={onToggleFavorite}
@@ -347,9 +350,25 @@ export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
     deleteAssets,
     startImageToVideo,
     startGeneration,
+    composerMode,
+    requestVoiceSource,
   } = useStudio();
 
   const [filter, setFilter] = useState<CanvasFilter>("all");
+
+  // A tile's attach action depends on the composer showing: on the Audio
+  // surface an audio clip becomes the voice changer's source; everywhere
+  // else the asset joins the prompt's attachments.
+  const handleAttach = useCallback(
+    (a: Asset) => {
+      if (composerMode === "audio" && a.type === "audio") {
+        requestVoiceSource(a.src, `clip-${a.id.slice(0, 8)}.mp3`);
+        return;
+      }
+      addAttachment(a);
+    },
+    [composerMode, requestVoiceSource, addAttachment],
+  );
   const [gridSize, setGridSize] = useGridSize();
 
   const toggleFavorite = useCallback(
@@ -420,8 +439,10 @@ export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
       try {
         const detail = await getSDK().projects.getAsset(activeProject.id, a.id);
         // Template-made assets carry no user prompt, so there is nothing
-        // to restore — say so instead of silently doing nothing.
-        if (!detail.generation?.prompt) {
+        // to restore — say so instead of silently doing nothing. A
+        // voice-changer run has no prompt either, but its recording and
+        // voice are a setup.
+        if (!detail.generation?.prompt && !detail.generation?.audio) {
           toast.error(t("reuseNothingToRestore"));
           return;
         }
@@ -443,7 +464,7 @@ export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
       const failed = pending.find((p) => p.jobId === jobId);
       try {
         const gen = await getSDK().generation.getJobSetup(jobId);
-        reuseGeneration(failed?.kind === "video" ? "video" : "image", gen);
+        reuseGeneration(gen.kind ?? failed?.kind ?? "image", gen);
         dismissPending(jobId);
       } catch {
         toast.error(t("jobError.setupUnavailable"));
@@ -567,7 +588,7 @@ export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
         style={{ paddingBottom: dockHeight + 24 }}
       >
         {isEmpty ? (
-          <EmptyState kind={kind} />
+          <EmptyState kind={composerMode} />
         ) : activeProject && activeAssetsLoading && activeAssets.length === 0 ? (
           <div className="grid grid-cols-2 gap-3 pt-6 sm:grid-cols-3 lg:grid-cols-4">
             {Array.from({ length: 8 }, (_, i) => (
@@ -582,7 +603,8 @@ export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
               pending={projectPending}
               onDismissPending={dismissPending}
               onEditRetry={handleEditRetry}
-              onAttach={addAttachment}
+              onAttach={handleAttach}
+              composerMode={composerMode}
               onAssetInfo={(a) => setInfoAssetId(a.id)}
               onAssetReuse={handleReuse}
               onToggleFavorite={toggleFavorite}
@@ -608,7 +630,7 @@ export function Workspace({ kind }: { kind: "image" | "video" | "audio" }) {
       >
         <div className="pointer-events-auto mx-auto max-w-4xl">
           <SelectionBar />
-          {kind === "audio" ? <AudioComposer /> : <PromptBar kind={kind} />}
+          <PromptBar kind={kind} />
         </div>
       </div>
       {activeProject && infoAssetId && (

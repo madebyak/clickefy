@@ -413,7 +413,8 @@
     "modeReferencesAllHint": "Images, video clips and audio that guide the result",
     "modeReferencesVideoHint": "Images and a video clip that guide the result",
     "maxImagesWithVideo": "With a video attached, this model takes up to {max} images",
-    "soundOffWithVideo": "Sound is off while a video reference is attached"
+    "soundOffWithVideo": "Sound is off while a video reference is attached",
+    "audio": "Audio"
   },
   "account": {
     "availableCredits": "Available credits",
@@ -623,7 +624,15 @@
     "deleteAsset": "Delete",
     "turnToVideo": "Turn into video",
     "changeCameraAngle": "Change camera angle",
-    "emptyPromptAudio": "Turn text into speech, make a sound effect, or re-voice a recording with the panel below."
+    "emptyPromptAudio": "Turn text into speech, make a sound effect, or re-voice a recording with the panel below.",
+    "addAsAudioReference": "Add as audio reference",
+    "useInVoiceChanger": "Use in voice changer",
+    "voice": "Voice",
+    "engine": "Engine",
+    "audioTask_tts": "Speech",
+    "audioTask_sfx": "Sound effect",
+    "audioTask_sts": "Voice changer",
+    "sourceRecordingRole": "Source recording"
   },
   "projects": {
     "heading": "My Projects",
@@ -1105,6 +1114,8 @@
     "use_informative_educational": "Educational",
     "use_entertainment_tv": "TV & entertainment",
     "use_characters_animation": "Characters",
-    "dropAudioOnly": "Drop an audio file (MP3 or WAV)."
+    "dropAudioOnly": "Drop an audio file (MP3 or WAV).",
+    "sourceFromCanvas": "Clip from this project",
+    "sourceLoadFailed": "Couldn't load that clip — try again"
   }
 }

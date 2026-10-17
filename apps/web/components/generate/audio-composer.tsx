@@ -27,7 +27,7 @@ import { JobSubmissionError } from "@clickfy/sdk";
 
 import { Modal } from "@/components/ui/modal";
 import { Menu, MenuItem } from "@/components/ui/menu";
-import { useStudio } from "@/components/studio/studio-context";
+import { ASSET_DRAG_TYPE, useStudio } from "@/components/studio/studio-context";
 import { useModels } from "@/lib/use-models";
 import { getSDK } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -260,9 +260,14 @@ function Slider({ label, value, min, max, step, onChange, hint }: { label: strin
   );
 }
 
-export function AudioComposer() {
+/**
+ * `embedded`: rendered inside the prompt bar's card (no card of its own).
+ * `active`: this surface is the one showing — only then does it take a
+ * restored setup or a clip handed over from the canvas.
+ */
+export function AudioComposer({ embedded = false, active = true }: { embedded?: boolean; active?: boolean } = {}) {
   const t = useTranslations("audio");
-  const { startGeneration } = useStudio();
+  const { startGeneration, pendingSetup, clearPendingSetup, voiceSourceRequest, clearVoiceSourceRequest } = useStudio();
   const { models, isLoading: modelsLoading } = useModels("audio");
   const voicesQuery = useVoices();
   const voices = useMemo(() => voicesQuery.data ?? [], [voicesQuery.data]);
@@ -311,6 +316,71 @@ export function AudioComposer() {
     };
     el.onerror = () => { setSource({ file, seconds: null }); URL.revokeObjectURL(url); };
   };
+
+  // A clip from the canvas (a tile's "Use in voice changer", a dragged
+  // tile, or Re-use of a past run): fetch it and treat it as a dropped file.
+  const loadSourceFromUrl = async (url: string, name: string) => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      pickFile(new File([blob], name, { type: blob.type || "audio/mpeg" }));
+    } catch {
+      toast.error(t("sourceLoadFailed"));
+    }
+  };
+
+  // Re-use of a past audio run: the server returns the task, voice and
+  // settings; the prompt is the script or the effect description. The
+  // voice may not be in the loaded list (a library voice found by search),
+  // so it is rebuilt from what the run stored.
+  useEffect(() => {
+    if (!active || !pendingSetup || pendingSetup.kind !== "audio") return;
+    const a = pendingSetup.audio;
+    const task: Tab = a?.task ?? "tts";
+    setTab(task);
+    if (task === "tts") setText(pendingSetup.prompt);
+    if (task === "sfx") setSfxText(pendingSetup.prompt);
+    if (a) {
+      if (a.voiceId) {
+        setVoice(
+          voices.find((v) => v.voiceId === a.voiceId) ?? {
+            voiceId: a.voiceId,
+            name: a.voiceName ?? a.voiceId,
+            previewUrl: null,
+            source: "library",
+            ...(a.publicOwnerId ? { publicOwnerId: a.publicOwnerId } : {}),
+            language: a.languageCode,
+            gender: null,
+            accent: null,
+            age: null,
+            useCase: null,
+            description: null,
+          },
+        );
+      }
+      if (a.engine) setEngineId(a.engine);
+      if (a.stability != null) setStability(a.stability);
+      if (a.similarity != null) setSimilarity(a.similarity);
+      if (a.speed != null) setSpeed(a.speed);
+      if (a.durationSeconds != null) setDuration(a.durationSeconds);
+      if (a.promptInfluence != null) setInfluence(a.promptInfluence);
+    }
+    if (task === "sts" && pendingSetup.audioSourceUrl) {
+      void loadSourceFromUrl(pendingSetup.audioSourceUrl, t("sourceFromCanvas"));
+    }
+    clearPendingSetup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per restore
+  }, [active, pendingSetup]);
+
+  // A canvas clip handed to the voice changer.
+  useEffect(() => {
+    if (!active || !voiceSourceRequest) return;
+    setTab("sts");
+    void loadSourceFromUrl(voiceSourceRequest.url, voiceSourceRequest.name);
+    clearVoiceSourceRequest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per hand-over
+  }, [active, voiceSourceRequest]);
 
   const canSubmit =
     !!model && !busy && !uploading &&
@@ -371,7 +441,7 @@ export function AudioComposer() {
   const [showSettings, setShowSettings] = useState(false);
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-surface-1/95 p-3 shadow-2xl backdrop-blur">
+    <div className={cn(!embedded && "rounded-2xl border border-white/[0.08] bg-surface-1/95 p-3 shadow-2xl backdrop-blur")}>
       <div className="mb-2 flex gap-1 rounded-lg bg-surface-2 p-1">
         {TABS.map(({ key, icon: Icon }) => (
           <button key={key} type="button" onClick={() => setTab(key)} className={cn("flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors", tab === key ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground")}>
@@ -414,6 +484,19 @@ export function AudioComposer() {
               onDrop={(e) => {
                 e.preventDefault();
                 setDragging(false);
+                // A tile dragged from the canvas carries no file, only its address.
+                const dragged = e.dataTransfer.getData(ASSET_DRAG_TYPE);
+                if (dragged) {
+                  try {
+                    const asset = JSON.parse(dragged) as { id: string; type: string; src: string };
+                    if (asset.type === "audio") {
+                      void loadSourceFromUrl(asset.src, t("sourceFromCanvas"));
+                      return;
+                    }
+                  } catch {
+                    /* not ours; fall through to the file check */
+                  }
+                }
                 const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("audio/"));
                 if (f) pickFile(f);
                 else toast.error(t("dropAudioOnly"));

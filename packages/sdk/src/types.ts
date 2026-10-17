@@ -151,7 +151,7 @@ export interface UserProject {
    */
   templateName: string;
   templateCoverImage: string;
-  templateKind: 'image' | 'video' | 'set' | 'video_image';
+  templateKind: 'image' | 'video' | 'audio' | 'set' | 'video_image';
   /**
    * Human title shown in lists. For template jobs it mirrors
    * `templateName`; for create jobs it's the user's prompt.

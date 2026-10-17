@@ -810,8 +810,14 @@ jobsRoute.post(
       // (or an earlier prompt) chose is never overwritten. Only the
       // prompt-first flow has a prompt to name it from; template jobs
       // keep the default.
-      if (ownedProject.name === DEFAULT_PROJECT_NAME && body.prompt.trim()) {
-        autoTitle = titleFromPrompt(body.prompt);
+      if (ownedProject.name === DEFAULT_PROJECT_NAME) {
+        if (body.prompt.trim()) {
+          autoTitle = titleFromPrompt(body.prompt);
+        } else if (caps.kind === 'audio' && caps.audio?.task === 'sts') {
+          // The voice changer has no prompt; the voice is the one thing
+          // that describes the run.
+          autoTitle = body.audio?.voiceName ? `Voice changer · ${body.audio.voiceName}` : 'Voice changer';
+        }
       }
     }
 
@@ -1144,6 +1150,7 @@ jobsRoute.get(
     const items = page.map((j) => {
       const finalImages = j.result?.images ?? [];
       const finalVideos = j.result?.videos ?? [];
+      const finalAudios = j.result?.audios ?? [];
       // Each output is tagged with its media kind so mobile renders
       // images with <Image> and videos with the player without
       // having to sniff URLs or guess from extensions.
@@ -1174,6 +1181,14 @@ jobsRoute.get(
             filed.get(`${j.id}:${finalImages.length + idx}`),
           ),
         })),
+        ...finalAudios.map((a) => ({
+          url: `${origin}/v1/outputs/${a.r2Key}`,
+          kind: 'audio' as const,
+          durationSec: a.durationSec || undefined,
+          posterUrl: null,
+          previewUrl: null,
+          thumbhash: null,
+        })),
       ];
 
       // Map DB status to the SDK's slightly different enum
@@ -1186,7 +1201,7 @@ jobsRoute.get(
       // keep the existing template-embed behavior unchanged.
       const isUserJob = j.source === 'user';
       let templateName: string;
-      let templateKind: 'image' | 'video' | 'set';
+      let templateKind: 'image' | 'video' | 'audio' | 'set';
       let title: string;
       let coverUrl: string;
 
@@ -1198,7 +1213,7 @@ jobsRoute.get(
           (j.modelKey ? getCreateModelDef(j.modelKey)?.name : undefined) ??
           modelCaps?.displayName ??
           'Custom';
-        templateKind = modelCaps?.kind === 'video' ? 'video' : 'image';
+        templateKind = modelCaps?.kind === 'video' ? 'video' : modelCaps?.kind === 'audio' ? 'audio' : 'image';
         // The prompt is the natural title for a user creation; the client
         // renders `outputs[0]` as the thumbnail (no template cover).
         title = promptText.length > 0 ? promptText : 'Custom generation';
@@ -1644,6 +1659,7 @@ function assetRowsFromResult(
 ) {
   const images = result.images ?? [];
   const videos = result.videos ?? [];
+  const audios = result.audios ?? [];
   return [
     ...images.map((img, i) => ({
       ...ids,
@@ -1665,6 +1681,13 @@ function assetRowsFromResult(
       posterR2Key: vid.posterR2Key && vid.posterR2Key !== vid.streamId ? vid.posterR2Key : null,
       previewR2Key: vid.previewR2Key ?? null,
       thumbhash: vid.thumbhash ?? null,
+    })),
+    ...audios.map((aud, i) => ({
+      ...ids,
+      outputIndex: images.length + videos.length + i,
+      kind: 'audio' as const,
+      r2Key: aud.r2Key,
+      durationSec: aud.durationSec || null,
     })),
   ];
 }

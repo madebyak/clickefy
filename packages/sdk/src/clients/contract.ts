@@ -605,7 +605,28 @@ export interface AssetGeneration {
   quality: string | null;
   duration: number | null;
   sound: boolean | null;
-  references: Array<{ role: 'start_frame' | 'end_frame' | 'reference'; url: string }>;
+  /** Every attachment in the order the model saw it, each with its media kind. */
+  references: Array<{ role: 'start_frame' | 'end_frame' | 'reference'; kind: 'image' | 'video' | 'audio'; url: string }>;
+  /** What the job produced — which composer mode a restore belongs to. */
+  kind: 'image' | 'video' | 'audio';
+  /** Audio jobs only: the voice and settings needed to rebuild the run. */
+  audio: AudioGenerationSetup | null;
+}
+
+/** The Audio composer's state for one past run, as the server stored it. */
+export interface AudioGenerationSetup {
+  task: 'tts' | 'sfx' | 'sts';
+  voiceId: string | null;
+  voiceName: string | null;
+  publicOwnerId: string | null;
+  engine: string | null;
+  expressive: boolean | null;
+  stability: number | null;
+  similarity: number | null;
+  speed: number | null;
+  languageCode: string | null;
+  durationSeconds: number | null;
+  promptInfluence: number | null;
 }
 
 /** Everything the studio info panel shows about one asset. */

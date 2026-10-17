@@ -87,8 +87,8 @@ export const TOOL_MODELS: Record<
   // different model if one frames shot sizes better.
   camera_preset: { modelKey: 'gpt-image-2', quality: 'high' },
   storyboard: { modelKey: 'gemini-3-pro-image', quality: '4K' },
-  // 480p while the client tests; the plan is 1080p once the flow is approved.
-  ad: { modelKey: 'dreamina-seedance-2-5-260628', quality: '480p' },
+  // 1080p since 2026-10-17: the founder signed off the flow after the 480p test period.
+  ad: { modelKey: 'dreamina-seedance-2-5-260628', quality: '1080p' },
 };
 
 const STYLE_DESCRIPTIONS: Record<StoryboardStyle, string> = {

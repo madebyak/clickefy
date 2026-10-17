@@ -28,9 +28,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { downloadCsv, fetchAnalyticsJobs, jobsExportPath } from '@/lib/api/analytics';
 import { dubaiDateTimeLabel, int, signedUsd, usd } from '@/lib/analytics-format';
 
-const STATUS: Record<AnalyticsJobRow['status'], { label: string; icon: LucideIcon; className: string }> = {
+const STATUS: Record<AnalyticsJobRow['status'], { label: string; icon: LucideIcon; className: string; iconClassName?: string }> = {
   queued: { label: 'Queued', icon: Clock, className: 'text-muted-foreground' },
-  processing: { label: 'Processing', icon: Loader2, className: 'text-primary-purple animate-spin' },
+  // The spin belongs to the icon alone — on the wrapper it turned the whole badge, label included.
+  processing: { label: 'Processing', icon: Loader2, className: 'text-primary-purple', iconClassName: 'animate-spin' },
   completed: { label: 'Completed', icon: CheckCircle2, className: 'text-primary-green' },
   failed: { label: 'Failed', icon: XCircle, className: 'text-destructive' },
 };
@@ -176,7 +177,7 @@ function JobsTable() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center gap-1 text-sm ${s.className}`}><Icon className="h-3.5 w-3.5" />{s.label}</span>
+                      <span className={`inline-flex items-center gap-1 text-sm ${s.className}`}><Icon className={`h-3.5 w-3.5 ${s.iconClassName ?? ''}`} />{s.label}</span>
                       {j.errorCode && <div className="text-[10px] uppercase tracking-wide text-destructive">{j.errorCode}</div>}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">

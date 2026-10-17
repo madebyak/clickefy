@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * How an audio asset shows up where images and videos show up: a square
- * tile in the grid and a player in the lightbox. The waveform is the real
- * one — wavesurfer.js fetches the clip, decodes it and draws the bars —
- * so two clips never look alike and the progress runs along the actual
- * sound. One decode per mounted tile; the grid holds a handful at most.
+ * How an audio asset shows up where images and videos show up: a wide
+ * strip in the grid and a player in the lightbox, both laid out the way
+ * every audio product lays them out — play button, waveform, time, in one
+ * row. The waveform is the real one — wavesurfer.js fetches the clip,
+ * decodes it and draws the bars — so two clips never look alike and the
+ * progress runs along the actual sound. One decode per mounted tile; the
+ * grid holds a handful at most.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -24,8 +26,8 @@ export function formatClip(sec?: number | null): string {
 type Look = "tile" | "player";
 
 const LOOK: Record<Look, { height: number; barWidth: number; barGap: number; barRadius: number }> = {
-  tile: { height: 56, barWidth: 3, barGap: 2, barRadius: 3 },
-  player: { height: 96, barWidth: 4, barGap: 3, barRadius: 4 },
+  tile: { height: 44, barWidth: 2, barGap: 2, barRadius: 2 },
+  player: { height: 64, barWidth: 3, barGap: 2, barRadius: 3 },
 };
 
 /**
@@ -83,29 +85,29 @@ function useWave(src: string, look: Look, interact: boolean) {
 }
 
 export function AudioTile({ id, src, durationSec, className }: { id: string; src: string; durationSec?: number | null; className?: string }) {
-  const { containerRef, ready, playing, duration, toggle } = useWave(src, "tile", false);
+  const { containerRef, ready, playing, current, duration, toggle } = useWave(src, "tile", false);
   const length = duration || durationSec || 0;
   return (
     <div
       data-audio-tile={id}
-      className={cn("relative flex size-full flex-col items-center justify-center gap-3 bg-gradient-to-br from-primary/25 via-surface-2 to-surface-3 px-4", className)}
+      className={cn("relative flex size-full items-center gap-3 bg-gradient-to-r from-primary/20 via-surface-2 to-surface-3 px-3", className)}
     >
-      <div className="relative w-full">
+      <button
+        type="button"
+        aria-label={playing ? "Pause" : "Play"}
+        disabled={!ready}
+        onClick={(e) => { e.stopPropagation(); toggle(); }}
+        className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-black shadow transition-transform hover:scale-105 disabled:opacity-40"
+      >
+        {playing ? <Pause weight="fill" className="size-4" /> : <Play weight="fill" className="size-4 translate-x-px" />}
+      </button>
+      <div className="relative min-w-0 flex-1">
         <div ref={containerRef} className={cn("w-full transition-opacity", ready ? "opacity-100" : "opacity-0")} />
-        {!ready && <div className="absolute inset-0 grid place-items-center text-white/40"><SpeakerHigh className="size-6" /></div>}
+        {!ready && <div className="absolute inset-0 grid place-items-center text-white/40"><SpeakerHigh className="size-5" /></div>}
       </div>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          aria-label={playing ? "Pause" : "Play"}
-          disabled={!ready}
-          onClick={(e) => { e.stopPropagation(); toggle(); }}
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-white/90 text-black shadow transition-transform hover:scale-105 disabled:opacity-40"
-        >
-          {playing ? <Pause weight="fill" className="size-4" /> : <Play weight="fill" className="size-4 translate-x-px" />}
-        </button>
-        <span className="text-xs tabular-nums text-white/80">{formatClip(length)}</span>
-      </div>
+      <span className="shrink-0 text-xs tabular-nums text-white/80">
+        {playing ? `${formatClip(current) || "0:00"} / ` : ""}{formatClip(length)}
+      </span>
     </div>
   );
 }
@@ -114,25 +116,23 @@ export function AudioPlayer({ id, src, durationSec }: { id: string; src: string;
   const { containerRef, ready, playing, current, duration, toggle } = useWave(src, "player", true);
   const length = duration || durationSec || 0;
   return (
-    <div data-audio-player={id} className="w-full rounded-xl bg-surface-2 p-5">
-      <div className="relative">
+    <div data-audio-player={id} className="flex w-full items-center gap-4 rounded-xl bg-surface-2 px-4 py-3">
+      <button
+        type="button"
+        aria-label={playing ? "Pause" : "Play"}
+        disabled={!ready}
+        onClick={toggle}
+        className="grid size-12 shrink-0 place-items-center rounded-full bg-primary text-black transition-transform hover:scale-105 disabled:opacity-40"
+      >
+        {playing ? <Pause weight="fill" className="size-5" /> : <Play weight="fill" className="size-5 translate-x-px" />}
+      </button>
+      <div className="relative min-w-0 flex-1">
         <div ref={containerRef} className={cn("w-full transition-opacity", ready ? "opacity-100" : "opacity-0")} />
         {!ready && <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground">Loading…</div>}
       </div>
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          type="button"
-          aria-label={playing ? "Pause" : "Play"}
-          disabled={!ready}
-          onClick={toggle}
-          className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-black transition-transform hover:scale-105 disabled:opacity-40"
-        >
-          {playing ? <Pause weight="fill" className="size-5" /> : <Play weight="fill" className="size-5 translate-x-px" />}
-        </button>
-        <span className="text-sm tabular-nums text-muted-foreground">{formatClip(current)} / {formatClip(length)}</span>
-        {/* The browser's own element for download and keyboard control; hidden visually, not from assistive tech. */}
-        <audio src={src} controls preload="none" className="sr-only" />
-      </div>
+      <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{formatClip(current) || "0:00"} / {formatClip(length)}</span>
+      {/* The browser's own element for download and keyboard control; hidden visually, not from assistive tech. */}
+      <audio src={src} controls preload="none" className="sr-only" />
     </div>
   );
 }

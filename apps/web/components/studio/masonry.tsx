@@ -24,7 +24,7 @@ import {
   Waveform,
 } from "@phosphor-icons/react";
 
-import { AudioPlayer, AudioTile, formatClip } from "./audio-tile";
+import { AudioPlayer, AudioTile } from "./audio-tile";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import { downloadAsset } from "@/lib/download-asset";
@@ -110,7 +110,9 @@ function aspectOf(a: Asset): number {
       ? a.width / a.height
       : a.type === "video"
         ? 16 / 9
-        : 1; // images without a size and audio clips sit as squares
+        : a.type === "audio"
+          ? MAX_ASPECT // a clip is a strip: play button, waveform and time in one row
+          : 1; // images without a size sit as squares
   return Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, ratio));
 }
 
@@ -423,11 +425,9 @@ export function Masonry({
                 the badge yields on hover; both are orientation, not
                 controls, and the hover state makes the media type obvious
                 anyway. */}
-            {(a.type === "video" || a.type === "audio" || (showProjectName && a.projectName)) && (
+            {(a.type === "video" || (showProjectName && a.projectName)) && (
               <span className="pointer-events-none absolute start-2 bottom-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-md bg-black/55 px-1.5 py-1 text-[10px] font-medium text-white opacity-100 backdrop-blur transition-opacity group-hover:opacity-0">
                 {a.type === "video" && <Play weight="fill" className="size-3 shrink-0" />}
-                {a.type === "audio" && <SpeakerHigh weight="fill" className="size-3 shrink-0" />}
-                {a.type === "audio" && a.durationSec ? <span className="shrink-0 tabular-nums">{formatClip(a.durationSec)}</span> : null}
                 {a.draft && <span className="shrink-0">{t("draftBadge")}</span>}
                 {showProjectName && a.projectName && (
                   <span className="truncate">{a.projectName}</span>

@@ -38,6 +38,7 @@ import type {
   StudioAsset,
   StudioFolder,
   StudioProject,
+  TrustedAssetStatus,
 } from "@clickfy/sdk";
 import type { JobInputValue } from "@clickfy/types";
 import { getSDK } from "@/lib/api";
@@ -163,6 +164,13 @@ export type AttachmentPolicy = {
    * user the feature doesn't exist.
    */
   switchModeForVideo?: () => boolean;
+  /**
+   * Seedance refuses attachments that show a person unless they go
+   * through BytePlus's asset library first. When the selected model is
+   * Seedance the studio verifies every ready image and clip in the
+   * background and shows the outcome on the thumbnail.
+   */
+  verifyPeople?: boolean;
 };
 
 /** A past generation's settings, handed to the composer to restore. */
@@ -209,6 +217,12 @@ export type PromptAttachment = {
   /** 0–1 upload progress. */
   progress: number;
   media?: { r2Key: string; mimeType: string; sizeBytes: number };
+  /**
+   * Seedance's person rule, when the model needs it: `checking` and
+   * `verifying` are in progress, `verified` and `no_human` are fine,
+   * `failed` offers a retry. Absent on models that take any image.
+   */
+  verification?: { id: string; status: TrustedAssetStatus; error: string | null };
 };
 
 /** One in-flight generation job rendered as a placeholder tile. */
@@ -333,6 +347,8 @@ type StudioValue = {
   pendingSetup: ReuseSetup | null;
   clearPendingSetup: () => void;
   removeAttachment: (attachmentId: string) => void;
+  /** Run a failed person verification again. */
+  retryVerification: (attachmentId: string) => void;
   /**
    * Move an attachment to `toIndex` in the tray. Order is meaningful: it
    * is the order references are sent in, and so what `@Image2` means.
@@ -947,9 +963,114 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   // rendered, and the composer re-registers it on every model change —
   // state would re-render every studio consumer for nothing.
   const attachmentPolicy = useRef<AttachmentPolicy | null>(null);
+  // The one policy field that drives rendering: whether attachments need
+  // the person check. State, so the verification effect below re-runs
+  // when the composer switches to or from Seedance.
+  const [verifyPeople, setVerifyPeople] = useState(false);
   const setAttachmentPolicy = useCallback((policy: AttachmentPolicy | null) => {
     attachmentPolicy.current = policy;
+    setVerifyPeople(policy?.verifyPeople === true);
   }, []);
+
+  /* ------------------------------------------------ person verification */
+
+  // Start a check for every ready image or clip that has none yet. The
+  // request is keyed by R2 key, so re-running for an attachment already
+  // checked only reads the cached row.
+  useEffect(() => {
+    if (!verifyPeople) return;
+    const pending = attachments.filter(
+      (a) => a.status === "ready" && a.media && (a.kind === "image" || a.kind === "video") && !a.verification,
+    );
+    if (pending.length === 0) return;
+    // Mark first so a re-render mid-flight does not fire twice.
+    setAttachments((prev) =>
+      prev.map((a) =>
+        pending.some((p) => p.id === a.id)
+          ? { ...a, verification: { id: "", status: "checking", error: null } }
+          : a,
+      ),
+    );
+    for (const a of pending) {
+      const media = a.media!;
+      getSDK()
+        .trustedAssets.check({ r2Key: media.r2Key, kind: a.kind as "image" | "video", mimeType: media.mimeType })
+        .then((state) =>
+          setAttachments((prev) =>
+            prev.map((x) =>
+              x.id === a.id ? { ...x, verification: { id: state.id, status: state.status, error: state.error } } : x,
+            ),
+          ),
+        )
+        .catch(() =>
+          setAttachments((prev) =>
+            prev.map((x) =>
+              x.id === a.id
+                ? { ...x, verification: { id: "", status: "failed", error: null } }
+                : x,
+            ),
+          ),
+        );
+    }
+  }, [verifyPeople, attachments]);
+
+  // Poll while any verification is in progress. A few seconds is the
+  // whole life of an image check; clips take longer.
+  const inProgress = attachments.some(
+    (a) => a.verification && (a.verification.status === "checking" || a.verification.status === "verifying"),
+  );
+  useEffect(() => {
+    if (!inProgress) return;
+    let cancelled = false;
+    const tick = async () => {
+      const keys = attachments
+        .filter((a) => a.media && a.verification && (a.verification.status === "checking" || a.verification.status === "verifying"))
+        .map((a) => a.media!.r2Key);
+      if (keys.length === 0) return;
+      try {
+        const states = await getSDK().trustedAssets.status(keys);
+        if (cancelled) return;
+        setAttachments((prev) =>
+          prev.map((a) => {
+            const st = a.media && states.find((x) => x.r2Key === a.media!.r2Key);
+            return st ? { ...a, verification: { id: st.id, status: st.status, error: st.error } } : a;
+          }),
+        );
+      } catch {
+        /* transient; the next tick retries */
+      }
+    };
+    const timer = setInterval(() => void tick(), 2_500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [inProgress, attachments]);
+
+  const retryVerification = useCallback((attachmentId: string) => {
+    setAttachments((prev) => {
+      const target = prev.find((a) => a.id === attachmentId);
+      const id = target?.verification?.id;
+      if (!target?.media) return prev;
+      const media = target.media;
+      const kind = target.kind as "image" | "video";
+      const call = id
+        ? getSDK().trustedAssets.retry(id)
+        : getSDK().trustedAssets.check({ r2Key: media.r2Key, kind, mimeType: media.mimeType });
+      call
+        .then((state) =>
+          setAttachments((cur) =>
+            cur.map((x) =>
+              x.id === attachmentId ? { ...x, verification: { id: state.id, status: state.status, error: state.error } } : x,
+            ),
+          ),
+        )
+        .catch(() => toast.error(t("toastVerifyRetryFailed")));
+      return prev.map((a) =>
+        a.id === attachmentId ? { ...a, verification: { id: id ?? "", status: "checking", error: null } } : a,
+      );
+    });
+  }, [t]);
 
   const addAttachment = useCallback(
     (asset: AttachableAsset) => {
@@ -1268,6 +1389,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       pendingSetup,
       clearPendingSetup,
       removeAttachment,
+      retryVerification,
       moveAttachment,
       clearAttachments,
       pending,
@@ -1311,6 +1433,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       pendingSetup,
       clearPendingSetup,
       removeAttachment,
+      retryVerification,
       moveAttachment,
       clearAttachments,
       pending,

@@ -34,6 +34,7 @@ import type {
   NotificationList,
   TemplateKind as SdkTemplateKind,
   UserProject,
+  TrustedAssetState,
 } from '../types';
 import { JobSubmissionError, RateLimitedError } from '../types';
 import type {
@@ -1114,6 +1115,23 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
       async adQuote(): Promise<AdQuote> {
         const json = await get<ApiEnvelope<AdQuote>>('/v1/tools/ad', { auth: true });
         return json.data;
+      },
+    },
+
+    trustedAssets: {
+      async check(input) {
+        return mutateJson<TrustedAssetState>('POST', '/v1/trusted-assets', input);
+      },
+      async status(r2Keys) {
+        if (r2Keys.length === 0) return [];
+        const json = await get<ApiEnvelope<{ assets: TrustedAssetState[] }>>(
+          `/v1/trusted-assets?keys=${encodeURIComponent(r2Keys.join(','))}`,
+          { auth: true },
+        );
+        return json.data.assets;
+      },
+      async retry(id) {
+        return mutateJson<TrustedAssetState>('POST', `/v1/trusted-assets/${encodeURIComponent(id)}/retry`, {});
       },
     },
 

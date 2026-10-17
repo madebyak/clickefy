@@ -313,6 +313,10 @@
     "more": "More",
     "promptCount": "{count} of {max} characters",
     "removeAttachment": "Remove attachment",
+    "verifyingPeople": "Checking for people…",
+    "verifiedPeople": "Verified for Seedance",
+    "verifyFailed": "Verification failed",
+    "verifyAgain": "Verify again",
     "image": "Image",
     "video": "Video",
     "auto": "Auto",
@@ -671,7 +675,8 @@
     "attachAudioUnsupported": "{model} doesn't take audio references",
     "attachAudioUnsupportedGeneric": "This model doesn't take audio references",
     "attachAudioLimitReached": "This model takes up to {max} audio clip(s)",
-    "toastAttachFetchFailed": "Couldn't load that asset for the prompt — try again"
+    "toastAttachFetchFailed": "Couldn't load that asset for the prompt — try again",
+    "toastVerifyRetryFailed": "Couldn't restart the check — try again"
   },
   "auth": {
     "panelBadge": "Clickefy Studio",

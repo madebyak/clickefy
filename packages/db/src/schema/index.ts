@@ -37,6 +37,7 @@ export * from './saved-templates';
 export * from './stripe-events';
 export * from './payments';
 export * from './prompt-templates';
+export * from './trusted-assets';
 export * from './subscription-plans';
 export * from './template-categories';
 export * from './template-versions';

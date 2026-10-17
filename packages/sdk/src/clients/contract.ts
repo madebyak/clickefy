@@ -28,6 +28,7 @@ import type {
   OtpChallenge,
   Paginated,
   UserProject,
+  TrustedAssetState,
 } from '../types';
 
 export interface CatalogClient {
@@ -695,6 +696,20 @@ export interface ToolsClient {
   adQuote(): Promise<AdQuote>;
 }
 
+export interface TrustedAssetsClient {
+  /**
+   * Start verifying an upload for Seedance's person rule (a vision model
+   * looks for a person; one found is registered with BytePlus). Returns
+   * the current state at once; poll `status` for the outcome.
+   * Hits `POST /v1/trusted-assets`. Auth required.
+   */
+  check(input: { r2Key: string; kind: 'image' | 'video'; mimeType?: string }): Promise<TrustedAssetState>;
+  /** States of several uploads by R2 key. Hits `GET /v1/trusted-assets?keys=`. */
+  status(r2Keys: string[]): Promise<TrustedAssetState[]>;
+  /** Run a failed verification again. Hits `POST /v1/trusted-assets/:id/retry`. */
+  retry(id: string): Promise<TrustedAssetState>;
+}
+
 export interface AudioClient {
   /** Voices for speech and the voice changer. Hits `GET /v1/audio/voices`. Auth required. */
   listVoices(): Promise<AudioVoice[]>;
@@ -736,6 +751,7 @@ export interface SDKClient {
   models: ModelsClient;
   audio: AudioClient;
   tools: ToolsClient;
+  trustedAssets: TrustedAssetsClient;
   notifications: NotificationsClient;
   store: StoreClient;
   uploads: UploadsClient;

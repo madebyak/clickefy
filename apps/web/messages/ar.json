@@ -313,6 +313,10 @@
     "more": "أكثر",
     "promptCount": "{count} من {max} حرفًا",
     "removeAttachment": "إزالة المرفق",
+    "verifyingPeople": "جارٍ التحقق من وجود أشخاص…",
+    "verifiedPeople": "تم التحقق لـ Seedance",
+    "verifyFailed": "فشل التحقق",
+    "verifyAgain": "إعادة التحقق",
     "image": "صورة",
     "video": "فيديو",
     "auto": "تلقائي",
@@ -671,7 +675,8 @@
     "attachAudioUnsupported": "{model} لا يقبل مقاطع صوتية كمرجع",
     "attachAudioUnsupportedGeneric": "هذا النموذج لا يقبل مقاطع صوتية كمرجع",
     "attachAudioLimitReached": "هذا النموذج يقبل حتى {max} من المقاطع الصوتية",
-    "toastAttachFetchFailed": "تعذّر تحميل هذا الأصل إلى الوصف — حاول مرة أخرى"
+    "toastAttachFetchFailed": "تعذّر تحميل هذا الأصل إلى الوصف — حاول مرة أخرى",
+    "toastVerifyRetryFailed": "تعذّر إعادة التحقق — حاول مجددًا"
   },
   "auth": {
     "panelBadge": "استوديو كليكفاي",

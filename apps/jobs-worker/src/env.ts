@@ -47,6 +47,16 @@ const envSchema = z.object({
   FAL_KEY: z.string().min(1).optional(),
   /** ElevenLabs (Audio section: speech, sound effects, voice changer). */
   ELEVENLABS_API_KEY: z.string().min(1).optional(),
+  /**
+   * BytePlus IAM access-key pair (sub-user with ArkFullAccess) for the
+   * ModelArk Assets API — the private library that lets Seedance accept
+   * attachments showing AI-generated people. Optional: without it every
+   * attachment goes to Seedance as a plain URL, exactly as before.
+   */
+  BYTEPLUS_ACCESS_KEY: z.string().min(1).optional(),
+  BYTEPLUS_SECRET_KEY: z.string().min(1).optional(),
+  /** ModelArk resource project the assets live in; must match the Seedance key's project. */
+  BYTEPLUS_PROJECT_NAME: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

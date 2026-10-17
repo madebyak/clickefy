@@ -564,6 +564,22 @@ export type CreateToolInput =
   | { kind: 'ad'; orientation: 'reels' | 'hd'; notes?: string };
 
 /** What a One-Click Ad costs right now, from `GET /v1/tools/ad`. */
+/**
+ * Where an attachment stands with Seedance's person rule. `no_human` and
+ * `verified` are good to generate with; `checking` and `verifying` are in
+ * progress; `failed` offers a retry; `released` means the verification
+ * expired and will be redone automatically when a job needs it.
+ */
+export type TrustedAssetStatus = 'checking' | 'no_human' | 'verifying' | 'verified' | 'failed' | 'released';
+
+export interface TrustedAssetState {
+  id: string;
+  r2Key: string;
+  status: TrustedAssetStatus;
+  /** Why it failed, when it did. */
+  error: string | null;
+}
+
 export interface AdQuote {
   credits: number;
   /** Video tier the ad renders at (e.g. 480p, 1080p). */

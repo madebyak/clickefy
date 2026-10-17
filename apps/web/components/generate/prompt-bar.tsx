@@ -26,6 +26,9 @@ import {
   FastForward,
   FilmSlate,
   Scribble,
+  CircleNotch,
+  CheckCircle,
+  ArrowClockwise,
 } from "@phosphor-icons/react";
 import {
   danglingReferenceTokens,
@@ -528,6 +531,7 @@ function AttachmentThumb({
   removeLabel,
   compact,
   refBadge,
+  verifyBadge,
 }: {
   attachment: PromptAttachment;
   onRemove: () => void;
@@ -535,6 +539,8 @@ function AttachmentThumb({
   compact?: boolean;
   /** Number badge, when attachments are references the prompt can name. */
   refBadge?: React.ReactNode;
+  /** Seedance's person check, shown in the bottom corner. */
+  verifyBadge?: React.ReactNode;
 }) {
   // Audio has no frame to show — a labelled chip beats a broken <img>.
   if (attachment.kind === "audio") {
@@ -607,6 +613,7 @@ function AttachmentThumb({
           {Math.round(attachment.durationSec)}s
         </span>
       )}
+      {verifyBadge && <div className="absolute bottom-0.5 end-0.5">{verifyBadge}</div>}
       {attachment.status === "uploading" && (
         <div className="absolute inset-x-1 bottom-1 h-1 overflow-hidden rounded-full bg-black/50">
           <div
@@ -630,6 +637,58 @@ function AttachmentThumb({
       </button>
     </div>
   );
+}
+
+/**
+ * Seedance's person rule, in the thumbnail's corner: a spinner while the
+ * attachment is being checked or registered, a tick once BytePlus accepted
+ * it, and a retry button when it refused. Nothing for attachments without
+ * a person — they go to the model as they are.
+ */
+function VerifyBadge({
+  verification,
+  onRetry,
+  labels,
+}: {
+  verification: NonNullable<PromptAttachment["verification"]>;
+  onRetry: () => void;
+  labels: { verifying: string; verified: string; failed: string; retry: string };
+}) {
+  const { status, error } = verification;
+  if (status === "checking" || status === "verifying") {
+    return (
+      <span
+        title={labels.verifying}
+        className="grid size-4 place-items-center rounded-full bg-black/70 text-white"
+      >
+        <CircleNotch className="size-3 animate-spin" weight="bold" />
+      </span>
+    );
+  }
+  if (status === "verified") {
+    return (
+      <span title={labels.verified} className="grid size-4 place-items-center rounded-full bg-black/70">
+        <CheckCircle className="size-3.5 text-status-green" weight="fill" />
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRetry();
+        }}
+        title={error ? `${labels.failed}: ${error}` : labels.failed}
+        aria-label={labels.retry}
+        className="grid size-4 place-items-center rounded-full bg-status-red text-white transition-colors hover:bg-status-red/80"
+      >
+        <ArrowClockwise className="size-2.5" weight="bold" />
+      </button>
+    );
+  }
+  return null;
 }
 
 /* --------------------------------------------------------------- component */
@@ -909,6 +968,11 @@ export function PromptBar({
     "";
   const readyAttachments = attachments.filter((a) => a.status === "ready");
   const uploadsInFlight = attachments.some((a) => a.status === "uploading");
+  // Seedance's person check: hold Generate until every attachment has an
+  // answer, so a job never races its own verification.
+  const verificationsInFlight = attachments.some(
+    (a) => a.verification && (a.verification.status === "checking" || a.verification.status === "verifying"),
+  );
   const maxImages = model?.maxImages ?? 0;
   // Reference-clip budgets (Seedance). Zero when the model takes none.
   const maxVideoRefs = model?.referenceVideo?.max ?? 0;
@@ -1079,6 +1143,7 @@ export function PromptBar({
     shotsComplete &&
     !submitting &&
     !uploadsInFlight &&
+    !verificationsInFlight &&
     !needsStartFrame &&
     !needsTaskVideo &&
     !refBlocksGenerate;
@@ -1374,6 +1439,7 @@ export function PromptBar({
       ceiling: attachCeiling,
       maxVideos: isFrames ? 0 : effMaxVideos,
       maxAudio: isFrames || isTask ? 0 : maxAudioRefs,
+      verifyPeople: model?.provider === "seedance",
       // Seedance parked in its default Frames mode still ACCEPTS videos
       // — just not in this mode. Flip to References and let the attach
       // proceed instead of refusing on a technicality; refuse only when
@@ -1392,7 +1458,7 @@ export function PromptBar({
           : undefined,
     });
     return () => setAttachmentPolicy(null);
-  }, [setAttachmentPolicy, modelName, hasModel, attachCeiling, isFrames, isTask, effMaxVideos, maxVideoRefs, maxAudioRefs, modeIsChoosable, attachments, t]);
+  }, [setAttachmentPolicy, modelName, hasModel, attachCeiling, isFrames, isTask, effMaxVideos, maxVideoRefs, maxAudioRefs, modeIsChoosable, attachments, t, model?.provider]);
   const canAttach = !!model && !!studio && attachments.length < attachCeiling;
   // What the current model + mode will take, for the button label, the
   // drop hint and the refusal copy — "Upload image" on a model that also
@@ -1737,6 +1803,20 @@ export function PromptBar({
                           attachment={a}
                           onRemove={() => studio?.removeAttachment(a.id)}
                           removeLabel={t("removeAttachment")}
+                          verifyBadge={
+                            a.verification ? (
+                              <VerifyBadge
+                                verification={a.verification}
+                                onRetry={() => studio?.retryVerification(a.id)}
+                                labels={{
+                                  verifying: t("verifyingPeople"),
+                                  verified: t("verifiedPeople"),
+                                  failed: t("verifyFailed"),
+                                  retry: t("verifyAgain"),
+                                }}
+                              />
+                            ) : null
+                          }
                           refBadge={
                             <RefNumberBadge
                               n={refNumbers[index]!}

@@ -84,6 +84,7 @@ import { env } from '../env';
 import { getDb } from '../lib/db';
 import { loadDynamicModels } from '../lib/dynamic-models';
 import { resolveJobInputs } from '../lib/input-resolver';
+import { applyTrustedAssets, releaseTrustedAssetsAfterJob } from '../lib/trusted-assets';
 import { reportStage, updateJobProgress } from '../lib/progress';
 import { pushUser } from '../lib/push';
 import { writeOutputObject } from '../lib/r2';
@@ -345,482 +346,503 @@ export const generateJob = task({
       notifyTitle = template.title;
     }
 
-    // ── Walk the stages ──────────────────────────────────────────
-    const totalStages = stages.length;
-    const previousOutputs: StageOutputRef[] = [];
-    const allOutputKeys: Array<{
-      stageIndex: number;
-      r2Key: string;
-      mimeType: string;
-      kind: 'image' | 'video' | 'audio';
-      /** Probed from the bytes (images: header; videos: ffprobe). */
-      width?: number;
-      height?: number;
-      /** Probed clip length, else the provider-reported one (videos). */
-      durationSec?: number;
-      /** Probed (images) or requested `stage.config.aspectRatio` fallback. */
-      aspectRatio?: number;
-      /** Grid companions — see lib/renditions.ts. Null when a step failed. */
-      posterR2Key: string | null;
-      previewR2Key: string | null;
-      thumbhash: string | null;
-      sizeBytes?: number;
-    }> = [];
-
-    const providerEnv = buildProviderEnv();
-
-    // ── Cost accounting ──────────────────────────────────────────
-    // What each stage cost us, worked out from the rate card and the
-    // units it consumed the moment it finishes, and frozen on the row
-    // at completion or failure. See `@clickfy/types/provider-cost`.
-    const stageCosts: StageCost[] = [];
-    const requestIds: string[] = [];
-    const costOpts = (jobRow.options ?? {}) as {
-      mode?: string; duration?: number; sound?: boolean; inputVideoSeconds?: number; sourceSeconds?: number;
-      aspectRatio?: string; upscale?: { fps?: number; tier?: string };
-      /** Audio jobs: the text's length and the voice changer's source length, as billed at submit. */
-      textChars?: number; inputAudioSeconds?: number;
-      tool?: { kind?: string; writer?: string };
-    };
-    // One-Click Ad: the prompt-writing call on the API is part of what
-    // this job cost us, so it rides along as a stage-0 unit.
-    if (costOpts.tool?.kind === 'ad') {
-      stageCosts.push({
-        stage: 0, model: costOpts.tool.writer ?? 'gemini', provider: 'gemini', unit: 'call', quantity: 1,
-        unitPriceUsd: AD_SCRIPT_COST_USD, usd: AD_SCRIPT_COST_USD, mode: null, basis: 'estimated', note: 'ad brief written by a vision model',
-      });
-    }
-    const referenceCount = Object.values((jobRow.inputs ?? {}) as Record<string, { kind?: string } | undefined>)
-      .filter((v) => v && v.kind !== 'text').length;
-    const costFactsFor = (stage: GenerationStage) => {
-      const cfg = (stage.config ?? {}) as { mode?: string; duration?: number; sound?: boolean | string; aspectRatio?: string };
-      return {
-        modelKey: stage.model,
-        provider: stage.provider,
-        mode: cfg.mode ?? costOpts.mode ?? null,
-        durationSeconds: cfg.duration ?? costOpts.duration ?? null,
-        inputVideoSeconds: costOpts.inputVideoSeconds ?? costOpts.sourceSeconds ?? null,
-        textChars: costOpts.textChars ?? (stage.provider === 'elevenlabs' ? stage.prompt?.length ?? null : null),
-        sound: cfg.sound === true || cfg.sound === 'on' || costOpts.sound === true,
-        aspectRatio: cfg.aspectRatio ?? costOpts.aspectRatio ?? null,
-        upscale: costOpts.upscale ?? null,
-        references: referenceCount,
-      };
-    };
-    /** Fail the job, charging the failing stage by the provider's failure rule plus every stage already done. */
-    const failWithCost = (stageNumber: number, error: JobError, reachedProvider: boolean) => {
-      const stage = stages[stageNumber - 1];
-      const failing = stage
-        ? failedStageCost(stageNumber, costFactsFor(stage), findCapabilities(stage.model), {
-            reachedProvider,
-            reason: error.reason ?? null,
-            errorCode: error.code,
-          })
-        : null;
-      const all = failing ? [...stageCosts, failing] : stageCosts;
-      return failJob(jobId, error, {
-        provider: stages[0]?.provider ?? null,
-        requestIds,
-        ...summariseJobCost(all),
-      });
-    };
-    // The provider's id for the last async stage, kept on the result: a
-    // Seedance Draft's final is generated from it, and nothing else
-    // records which provider task produced an output.
-    let providerTaskId: string | undefined;
-
-    for (let i = 0; i < stages.length; i++) {
-      const stage = stages[i]!;
-      const stageNumber = i + 1;
-
-      await reportStage(jobId, {
-        stage: stageNumber,
-        totalStages,
-        message: stageMessage(stage.provider, stage.model, stageNumber, totalStages),
-      });
-
-      const capabilities = findCapabilities(stage.model);
-      if (!capabilities) {
-        return failJob(jobId, {
-          code: 'unknown_model',
-          message: `Model "${stage.model}" is not registered.`,
-          stage: stageNumber,
-          retryCount: 0,
-        });
-      }
-
-      // Compile prompt + references into the provider-native shape.
-      // `compile()` is total — anything ambiguous comes back as a
-      // `CompileWarning` (the admin form treats those as soft errors,
-      // but the runtime executor proceeds with the best-effort request
-      // because aborting here would charge the user for nothing).
-      const ctx: CompileContext = {
-        stage,
-        templateInputs: stageTemplateInputs,
-        inputValues: inputs,
-        previousOutputs,
-        capabilities,
-      };
-      const compileResult = compile(ctx);
-      if (compileResult.warnings.length > 0) {
-        logger.warn('generate-job:compile-warnings', {
-          jobId,
-          stage: stageNumber,
-          warnings: compileResult.warnings,
-        });
-      }
-
-      // Fire the adapter. Synchronous providers return outputs
-      // immediately; Kling returns `pending` + taskId so we poll.
-      let result: ExecuteResult;
+    // ── Attachments that show a person ───────────────────────────
+    // Seedance refuses them as plain URLs. Each one is swapped for its
+    // registration in BytePlus's asset library (verified in the composer
+    // already, or right now), and the slots are given back when the job
+    // ends, whichever way it ends — the free tier holds fifty in total.
+    let heldTrustedAssets: string[] = [];
+    if (stages[0]?.provider === 'seedance') {
       try {
-        result = await executeStage(compileResult.request, providerEnv);
+        heldTrustedAssets = await applyTrustedAssets({ userId: jobRow.userId, inputs });
+        if (heldTrustedAssets.length > 0) {
+          logger.info('generate-job:trusted-assets', { jobId, held: heldTrustedAssets.length });
+        }
       } catch (err) {
-        logger.error('generate-job:execute-failed', {
-          jobId,
-          stage: stageNumber,
-          err: String(err),
-        });
-        return failWithCost(stageNumber, providerJobError(err, stageNumber, contentLabel), true);
+        logger.warn('generate-job:trusted-assets-failed', { jobId, err: String(err) });
       }
+    }
 
-      if (result.status === 'pending') {
-        // Both Kling and Seedance are async; the variant only matters
-        // for Kling's two endpoint shapes. Seedance has a single
-        // poll endpoint, so we pass a sentinel value the dispatcher
-        // ignores.
-        const pendingProvider = result.provider;
-        providerTaskId = result.taskId;
-        requestIds.push(result.taskId);
-        const variant = pendingProvider === 'kling' ? result.variant : 'image2video';
-        const api2 = pendingProvider === 'kling' ? result.api2 === true : false;
+    try {
+      // ── Walk the stages ──────────────────────────────────────────
+      const totalStages = stages.length;
+      const previousOutputs: StageOutputRef[] = [];
+      const allOutputKeys: Array<{
+        stageIndex: number;
+        r2Key: string;
+        mimeType: string;
+        kind: 'image' | 'video' | 'audio';
+        /** Probed from the bytes (images: header; videos: ffprobe). */
+        width?: number;
+        height?: number;
+        /** Probed clip length, else the provider-reported one (videos). */
+        durationSec?: number;
+        /** Probed (images) or requested `stage.config.aspectRatio` fallback. */
+        aspectRatio?: number;
+        /** Grid companions — see lib/renditions.ts. Null when a step failed. */
+        posterR2Key: string | null;
+        previewR2Key: string | null;
+        thumbhash: string | null;
+        sizeBytes?: number;
+      }> = [];
+
+      const providerEnv = buildProviderEnv();
+
+      // ── Cost accounting ──────────────────────────────────────────
+      // What each stage cost us, worked out from the rate card and the
+      // units it consumed the moment it finishes, and frozen on the row
+      // at completion or failure. See `@clickfy/types/provider-cost`.
+      const stageCosts: StageCost[] = [];
+      const requestIds: string[] = [];
+      const costOpts = (jobRow.options ?? {}) as {
+        mode?: string; duration?: number; sound?: boolean; inputVideoSeconds?: number; sourceSeconds?: number;
+        aspectRatio?: string; upscale?: { fps?: number; tier?: string };
+        /** Audio jobs: the text's length and the voice changer's source length, as billed at submit. */
+        textChars?: number; inputAudioSeconds?: number;
+        tool?: { kind?: string; writer?: string };
+      };
+      // One-Click Ad: the prompt-writing call on the API is part of what
+      // this job cost us, so it rides along as a stage-0 unit.
+      if (costOpts.tool?.kind === 'ad') {
+        stageCosts.push({
+          stage: 0, model: costOpts.tool.writer ?? 'gemini', provider: 'gemini', unit: 'call', quantity: 1,
+          unitPriceUsd: AD_SCRIPT_COST_USD, usd: AD_SCRIPT_COST_USD, mode: null, basis: 'estimated', note: 'ad brief written by a vision model',
+        });
+      }
+      const referenceCount = Object.values((jobRow.inputs ?? {}) as Record<string, { kind?: string } | undefined>)
+        .filter((v) => v && v.kind !== 'text').length;
+      const costFactsFor = (stage: GenerationStage) => {
+        const cfg = (stage.config ?? {}) as { mode?: string; duration?: number; sound?: boolean | string; aspectRatio?: string };
+        return {
+          modelKey: stage.model,
+          provider: stage.provider,
+          mode: cfg.mode ?? costOpts.mode ?? null,
+          durationSeconds: cfg.duration ?? costOpts.duration ?? null,
+          inputVideoSeconds: costOpts.inputVideoSeconds ?? costOpts.sourceSeconds ?? null,
+          textChars: costOpts.textChars ?? (stage.provider === 'elevenlabs' ? stage.prompt?.length ?? null : null),
+          sound: cfg.sound === true || cfg.sound === 'on' || costOpts.sound === true,
+          aspectRatio: cfg.aspectRatio ?? costOpts.aspectRatio ?? null,
+          upscale: costOpts.upscale ?? null,
+          references: referenceCount,
+        };
+      };
+      /** Fail the job, charging the failing stage by the provider's failure rule plus every stage already done. */
+      const failWithCost = (stageNumber: number, error: JobError, reachedProvider: boolean) => {
+        const stage = stages[stageNumber - 1];
+        const failing = stage
+          ? failedStageCost(stageNumber, costFactsFor(stage), findCapabilities(stage.model), {
+              reachedProvider,
+              reason: error.reason ?? null,
+              errorCode: error.code,
+            })
+          : null;
+        const all = failing ? [...stageCosts, failing] : stageCosts;
+        return failJob(jobId, error, {
+          provider: stages[0]?.provider ?? null,
+          requestIds,
+          ...summariseJobCost(all),
+        });
+      };
+      // The provider's id for the last async stage, kept on the result: a
+      // Seedance Draft's final is generated from it, and nothing else
+      // records which provider task produced an output.
+      let providerTaskId: string | undefined;
+
+      for (let i = 0; i < stages.length; i++) {
+        const stage = stages[i]!;
+        const stageNumber = i + 1;
+
+        await reportStage(jobId, {
+          stage: stageNumber,
+          totalStages,
+          message: stageMessage(stage.provider, stage.model, stageNumber, totalStages),
+        });
+
+        const capabilities = findCapabilities(stage.model);
+        if (!capabilities) {
+          return failJob(jobId, {
+            code: 'unknown_model',
+            message: `Model "${stage.model}" is not registered.`,
+            stage: stageNumber,
+            retryCount: 0,
+          });
+        }
+
+        // Compile prompt + references into the provider-native shape.
+        // `compile()` is total — anything ambiguous comes back as a
+        // `CompileWarning` (the admin form treats those as soft errors,
+        // but the runtime executor proceeds with the best-effort request
+        // because aborting here would charge the user for nothing).
+        const ctx: CompileContext = {
+          stage,
+          templateInputs: stageTemplateInputs,
+          inputValues: inputs,
+          previousOutputs,
+          capabilities,
+        };
+        const compileResult = compile(ctx);
+        if (compileResult.warnings.length > 0) {
+          logger.warn('generate-job:compile-warnings', {
+            jobId,
+            stage: stageNumber,
+            warnings: compileResult.warnings,
+          });
+        }
+
+        // Fire the adapter. Synchronous providers return outputs
+        // immediately; Kling returns `pending` + taskId so we poll.
+        let result: ExecuteResult;
         try {
-          result = await waitForAsync(
-            result.taskId,
-            pendingProvider,
-            variant,
-            providerEnv,
-            api2,
-            { jobId, stageNumber, totalStages },
-            // fal addresses a queued task by endpoint + id, unlike Kling
-            // and Seedance where the id alone is enough.
-            pendingProvider === 'fal' ? result.endpoint : undefined,
-          );
+          result = await executeStage(compileResult.request, providerEnv);
         } catch (err) {
-          // The provider said the task failed (e.g. Seedance classifying a
-          // References prompt as an edit), or polling kept erroring. Fail
-          // the job HERE — letting the throw escape the run makes Trigger.dev
-          // re-run the whole job, which submits the generation again.
-          logger.error('generate-job:async-failed', {
+          logger.error('generate-job:execute-failed', {
             jobId,
             stage: stageNumber,
             err: String(err),
           });
           return failWithCost(stageNumber, providerJobError(err, stageNumber, contentLabel), true);
         }
-        if (result.status !== 'completed') {
-          return failWithCost(
-            stageNumber,
-            { code: 'provider_timeout', message: 'Provider took too long to return a result.', stage: stageNumber, retryCount: 0 },
-            true,
-          );
+
+        if (result.status === 'pending') {
+          // Both Kling and Seedance are async; the variant only matters
+          // for Kling's two endpoint shapes. Seedance has a single
+          // poll endpoint, so we pass a sentinel value the dispatcher
+          // ignores.
+          const pendingProvider = result.provider;
+          providerTaskId = result.taskId;
+          requestIds.push(result.taskId);
+          const variant = pendingProvider === 'kling' ? result.variant : 'image2video';
+          const api2 = pendingProvider === 'kling' ? result.api2 === true : false;
+          try {
+            result = await waitForAsync(
+              result.taskId,
+              pendingProvider,
+              variant,
+              providerEnv,
+              api2,
+              { jobId, stageNumber, totalStages },
+              // fal addresses a queued task by endpoint + id, unlike Kling
+              // and Seedance where the id alone is enough.
+              pendingProvider === 'fal' ? result.endpoint : undefined,
+            );
+          } catch (err) {
+            // The provider said the task failed (e.g. Seedance classifying a
+            // References prompt as an edit), or polling kept erroring. Fail
+            // the job HERE — letting the throw escape the run makes Trigger.dev
+            // re-run the whole job, which submits the generation again.
+            logger.error('generate-job:async-failed', {
+              jobId,
+              stage: stageNumber,
+              err: String(err),
+            });
+            return failWithCost(stageNumber, providerJobError(err, stageNumber, contentLabel), true);
+          }
+          if (result.status !== 'completed') {
+            return failWithCost(
+              stageNumber,
+              { code: 'provider_timeout', message: 'Provider took too long to return a result.', stage: stageNumber, retryCount: 0 },
+              true,
+            );
+          }
+        }
+
+        // Persist each output piece to R2. We need a `StageOutputRef`
+        // for the next stage's compile context — that's what carries
+        // the binary forward in multi-stage pipelines.
+        for (let j = 0; j < result.outputs.length; j++) {
+          const out = result.outputs[j]!;
+          const bytes = await outputBytes(out);
+          const mime = out.mimeType ?? defaultMimeFor(out.type);
+          const persisted = await writeOutputObject({
+            jobId,
+            stageIndex: stageNumber,
+            outputIndex: j,
+            bytes,
+            mimeType: mime,
+          });
+
+          previousOutputs.push({
+            stageIndex: stageNumber,
+            kind: out.type,
+            r2Key: persisted.r2Key,
+            bytes,
+            mimeType: mime,
+            url: out.url,
+          });
+          // Grid renditions while the bytes are in memory: a poster frame,
+          // a muted preview clip and a ThumbHash for videos, a ThumbHash
+          // for images. Best-effort by contract — a failure logs and the
+          // output keeps its original only, never delaying or failing the
+          // job over a thumbnail.
+          const renditions = await persistOutputRenditions({
+            r2Key: persisted.r2Key,
+            kind: out.type,
+            bytes,
+            onWarn: (message, detail) =>
+              logger.warn('generate-job:renditions', { jobId, stage: stageNumber, message, ...detail }),
+          });
+
+          // Real dimensions: images are header-probed (PNG/JPEG/WebP, no
+          // decode); videos come from ffprobe when the rendition step got
+          // that far, else fall back to the ratio the stage REQUESTED
+          // (`stage.config.aspectRatio`) — good enough for true-shape
+          // layout. Without this the result screen guessed 4:5/9:16.
+          const probed =
+            out.type === 'image'
+              ? probeImageDimensions(bytes)
+              : renditions.width && renditions.height
+                ? { width: renditions.width, height: renditions.height }
+                : null;
+          const requestedRatio = aspectRatioToNumber(stage.config?.aspectRatio);
+          allOutputKeys.push({
+            stageIndex: stageNumber,
+            r2Key: persisted.r2Key,
+            mimeType: mime,
+            kind: out.type,
+            width: probed?.width,
+            height: probed?.height,
+            durationSec: renditions.durationSec ?? out.durationSec,
+            aspectRatio: probed ? probed.width / probed.height : (requestedRatio ?? undefined),
+            posterR2Key: renditions.posterR2Key,
+            previewR2Key: renditions.previewR2Key,
+            thumbhash: renditions.thumbhash,
+            sizeBytes: bytes.byteLength,
+          });
+        }
+
+        // The stage is done: price it from what it consumed and returned.
+        const stageOutputs = allOutputKeys.filter((k) => k.stageIndex === stageNumber);
+        const usage = (result as { usage?: { videoTokens?: number | null; durationSec?: number | null } }).usage ?? null;
+        const cost = stageCost(
+          stageNumber,
+          {
+            ...costFactsFor(stage),
+            outputs: Math.max(1, result.outputs.length),
+            outputDurationSec: stageOutputs.find((k) => k.kind === 'video' || k.kind === 'audio')?.durationSec ?? null,
+            usage,
+          },
+          capabilities,
+        );
+        if (cost) stageCosts.push(cost);
+        else logger.warn('generate-job:cost-unpriced', { jobId, stage: stageNumber, model: stage.model });
+      }
+      const jobCost = summariseJobCost(stageCosts);
+
+      // ── Mark completed + assemble JobResult ──────────────────────
+      const completedAt = new Date();
+      const durationMs = completedAt.getTime() - startedAt.getTime();
+
+      // ── User-visible outputs ──────────────────────────────────────
+      //
+      // Default: every stage's output reaches the user. If the admin built
+      // N stages, each was intentional — 4 parallel image variants give 4
+      // images, an image→video chain gives both. This deliberately does
+      // NOT consult `template.kind`, `generation.mode` or `output.type`:
+      // those describe how a template is LABELLED, and earlier versions
+      // that keyed visibility off them produced zero-output and
+      // one-output bugs whenever a label drifted from the pipeline.
+      //
+      // The single exception is `stage.hidden`, set per stage by the
+      // admin. A hidden stage still runs, still persists to R2, still
+      // feeds later stages via `previousOutputs`, and is still billed —
+      // only its artifact is withheld. That covers the "generate a still,
+      // then animate it, deliver only the video" shape, where the still
+      // is scaffolding rather than a deliverable.
+      //
+      // Keyed on the same 1-based sorted position `allOutputKeys.stageIndex`
+      // was built from, NOT on `stage.order`, so the two cannot drift if a
+      // template ever carries a non-contiguous order.
+      const hiddenStageNumbers = new Set<number>();
+      stages.forEach((s, i) => {
+        if (s.hidden) hiddenStageNumbers.add(i + 1);
+      });
+
+      // Every stage hidden means an empty result screen. The API refuses
+      // to publish a template in that shape, but a snapshot frozen before
+      // that guard existed could still reach here — show everything
+      // rather than hand back nothing.
+      const allHidden =
+        hiddenStageNumbers.size > 0 && hiddenStageNumbers.size >= stages.length;
+      if (allHidden) {
+        logger.warn('generate-job:all-stages-hidden', {
+          jobId,
+          stages: stages.length,
+          note: 'showing every output instead of returning nothing',
+        });
+      }
+
+      const userVisibleKeys =
+        hiddenStageNumbers.size === 0 || allHidden
+          ? allOutputKeys
+          : allOutputKeys.filter((k) => !hiddenStageNumbers.has(k.stageIndex));
+
+      const images: MediaRef[] = userVisibleKeys
+        .filter((k) => k.kind === 'image')
+        .map((k) => ({
+          r2Key: k.r2Key,
+          // Header-probed at persist time (PNG/JPEG/WebP). 0 only when the
+          // probe couldn't recognise the format — mobile then letterboxes
+          // via its contain fallback instead of cropping.
+          width: k.width ?? 0,
+          height: k.height ?? 0,
+          blurhash: '',
+          thumbhash: k.thumbhash,
+        }));
+      const videos: StreamRef[] = userVisibleKeys
+        .filter((k) => k.kind === 'video')
+        .map((k) => ({
+          // For now Kling URLs aren't fronted by Cloudflare Stream, so
+          // we slot the R2 key into `streamId`. Once Stream is wired
+          // (post-launch), this populates from the Stream API response.
+          streamId: k.r2Key,
+          durationSec: k.durationSec ?? 0,
+          // A real frame, or null — never the video's own key (rows before
+          // migration 0038 hold that, and every reader treats it as none).
+          posterR2Key: k.posterR2Key,
+          previewR2Key: k.previewR2Key,
+          thumbhash: k.thumbhash,
+          width: k.width,
+          height: k.height,
+          // Requested-ratio fallback — lets mobile render the true shape.
+          aspectRatio: k.aspectRatio,
+        }));
+
+      const audios: AudioRef[] = userVisibleKeys
+        .filter((k) => k.kind === 'audio')
+        .map((k) => ({
+          r2Key: k.r2Key,
+          mimeType: k.mimeType,
+          durationSec: k.durationSec ?? 0,
+          sizeBytes: k.sizeBytes ?? 0,
+        }));
+
+      const jobResult: JobResult = {
+        images,
+        videos,
+        ...(audios.length ? { audios } : {}),
+        durationMs,
+        costCredits: jobCostCredits,
+        ...(providerTaskId ? { providerTaskId } : {}),
+      };
+
+      // Gated on `status = 'processing'`: if the stuck-job sweeper already
+      // declared this run dead (marked failed + refunded), completing now
+      // would hand the user both the refund AND the finished output. When
+      // the guard misses we keep the sweeper's verdict and skip the push.
+      const completedRows = await db
+        .update(jobs)
+        .set({
+          status: 'completed',
+          result: jobResult,
+          completedAt,
+          progress: { stage: totalStages, totalStages, message: 'Done' },
+          provider: stages[0]?.provider ?? null,
+          providerCostUsd: jobCost.usd.toFixed(5),
+          providerBilledUnits: jobCost.units,
+          providerRequestIds: requestIds.length ? requestIds : null,
+          costBasis: stageCosts.length ? jobCost.basis : null,
+        })
+        .where(and(eq(jobs.id, jobId), eq(jobs.status, 'processing')))
+        .returning();
+
+      if (completedRows.length === 0) {
+        logger.warn('generate-job:finalize-skipped', {
+          jobId,
+          reason: 'row no longer processing (sweeper likely refunded it)',
+        });
+        return { status: 'superseded' as const, durationMs };
+      }
+
+      // ── Materialize project assets (web studio) ────────────────────
+      // Only when the job is filed into a project (`project_id` set by
+      // POST /v1/jobs/create; NULL for all mobile jobs). Runs inside the
+      // finalize-winner branch so a sweeper-refunded run never files
+      // assets, and `onConflictDoNothing` on the unique
+      // (project_id, job_id, output_index) makes Trigger.dev retries
+      // idempotent. Ordering matches the client-visible outputs array
+      // (images first, then videos).
+      const completedProjectId = completedRows[0]!.projectId;
+      if (completedProjectId) {
+        try {
+          const assetRows = [
+            ...images.map((img, i) => ({
+              projectId: completedProjectId,
+              userId: jobRow.userId,
+              jobId,
+              outputIndex: i,
+              kind: 'image' as const,
+              r2Key: img.r2Key,
+              width: img.width || null,
+              height: img.height || null,
+              thumbhash: img.thumbhash ?? null,
+            })),
+            ...videos.map((vid, i) => ({
+              projectId: completedProjectId,
+              userId: jobRow.userId,
+              jobId,
+              outputIndex: images.length + i,
+              kind: 'video' as const,
+              r2Key: vid.streamId,
+              width: vid.width ?? null,
+              height: vid.height ?? null,
+              durationSec: vid.durationSec || null,
+              posterR2Key: vid.posterR2Key,
+              previewR2Key: vid.previewR2Key ?? null,
+              thumbhash: vid.thumbhash ?? null,
+            })),
+            ...audios.map((aud, i) => ({
+              projectId: completedProjectId,
+              userId: jobRow.userId,
+              jobId,
+              outputIndex: images.length + videos.length + i,
+              kind: 'audio' as const,
+              r2Key: aud.r2Key,
+              durationSec: aud.durationSec || null,
+            })),
+          ];
+          if (assetRows.length > 0) {
+            await db.insert(projectAssets).values(assetRows).onConflictDoNothing();
+            // Bump the project's recency so it surfaces at the top of the
+            // studio sidebar the moment its new assets land.
+            await db
+              .update(projects)
+              .set({ updatedAt: new Date() })
+              .where(eq(projects.id, completedProjectId));
+          }
+        } catch (err) {
+          // Filing must never flip a completed job's status — the outputs
+          // exist and the user paid; the web app also falls back to job
+          // history. Log loudly and move on.
+          logger.error('generate-job:project-assets-failed', {
+            jobId,
+            projectId: completedProjectId,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
 
-      // Persist each output piece to R2. We need a `StageOutputRef`
-      // for the next stage's compile context — that's what carries
-      // the binary forward in multi-stage pipelines.
-      for (let j = 0; j < result.outputs.length; j++) {
-        const out = result.outputs[j]!;
-        const bytes = await outputBytes(out);
-        const mime = out.mimeType ?? defaultMimeFor(out.type);
-        const persisted = await writeOutputObject({
-          jobId,
-          stageIndex: stageNumber,
-          outputIndex: j,
-          bytes,
-          mimeType: mime,
-        });
+      logger.info('generate-job:done', { jobId, durationMs, outputCount: userVisibleKeys.length });
 
-        previousOutputs.push({
-          stageIndex: stageNumber,
-          kind: out.type,
-          r2Key: persisted.r2Key,
-          bytes,
-          mimeType: mime,
-          url: out.url,
-        });
-        // Grid renditions while the bytes are in memory: a poster frame,
-        // a muted preview clip and a ThumbHash for videos, a ThumbHash
-        // for images. Best-effort by contract — a failure logs and the
-        // output keeps its original only, never delaying or failing the
-        // job over a thumbnail.
-        const renditions = await persistOutputRenditions({
-          r2Key: persisted.r2Key,
-          kind: out.type,
-          bytes,
-          onWarn: (message, detail) =>
-            logger.warn('generate-job:renditions', { jobId, stage: stageNumber, message, ...detail }),
-        });
-
-        // Real dimensions: images are header-probed (PNG/JPEG/WebP, no
-        // decode); videos come from ffprobe when the rendition step got
-        // that far, else fall back to the ratio the stage REQUESTED
-        // (`stage.config.aspectRatio`) — good enough for true-shape
-        // layout. Without this the result screen guessed 4:5/9:16.
-        const probed =
-          out.type === 'image'
-            ? probeImageDimensions(bytes)
-            : renditions.width && renditions.height
-              ? { width: renditions.width, height: renditions.height }
-              : null;
-        const requestedRatio = aspectRatioToNumber(stage.config?.aspectRatio);
-        allOutputKeys.push({
-          stageIndex: stageNumber,
-          r2Key: persisted.r2Key,
-          mimeType: mime,
-          kind: out.type,
-          width: probed?.width,
-          height: probed?.height,
-          durationSec: renditions.durationSec ?? out.durationSec,
-          aspectRatio: probed ? probed.width / probed.height : (requestedRatio ?? undefined),
-          posterR2Key: renditions.posterR2Key,
-          previewR2Key: renditions.previewR2Key,
-          thumbhash: renditions.thumbhash,
-          sizeBytes: bytes.byteLength,
-        });
-      }
-
-      // The stage is done: price it from what it consumed and returned.
-      const stageOutputs = allOutputKeys.filter((k) => k.stageIndex === stageNumber);
-      const usage = (result as { usage?: { videoTokens?: number | null; durationSec?: number | null } }).usage ?? null;
-      const cost = stageCost(
-        stageNumber,
-        {
-          ...costFactsFor(stage),
-          outputs: Math.max(1, result.outputs.length),
-          outputDurationSec: stageOutputs.find((k) => k.kind === 'video' || k.kind === 'audio')?.durationSec ?? null,
-          usage,
-        },
-        capabilities,
-      );
-      if (cost) stageCosts.push(cost);
-      else logger.warn('generate-job:cost-unpriced', { jobId, stage: stageNumber, model: stage.model });
-    }
-    const jobCost = summariseJobCost(stageCosts);
-
-    // ── Mark completed + assemble JobResult ──────────────────────
-    const completedAt = new Date();
-    const durationMs = completedAt.getTime() - startedAt.getTime();
-
-    // ── User-visible outputs ──────────────────────────────────────
-    //
-    // Default: every stage's output reaches the user. If the admin built
-    // N stages, each was intentional — 4 parallel image variants give 4
-    // images, an image→video chain gives both. This deliberately does
-    // NOT consult `template.kind`, `generation.mode` or `output.type`:
-    // those describe how a template is LABELLED, and earlier versions
-    // that keyed visibility off them produced zero-output and
-    // one-output bugs whenever a label drifted from the pipeline.
-    //
-    // The single exception is `stage.hidden`, set per stage by the
-    // admin. A hidden stage still runs, still persists to R2, still
-    // feeds later stages via `previousOutputs`, and is still billed —
-    // only its artifact is withheld. That covers the "generate a still,
-    // then animate it, deliver only the video" shape, where the still
-    // is scaffolding rather than a deliverable.
-    //
-    // Keyed on the same 1-based sorted position `allOutputKeys.stageIndex`
-    // was built from, NOT on `stage.order`, so the two cannot drift if a
-    // template ever carries a non-contiguous order.
-    const hiddenStageNumbers = new Set<number>();
-    stages.forEach((s, i) => {
-      if (s.hidden) hiddenStageNumbers.add(i + 1);
-    });
-
-    // Every stage hidden means an empty result screen. The API refuses
-    // to publish a template in that shape, but a snapshot frozen before
-    // that guard existed could still reach here — show everything
-    // rather than hand back nothing.
-    const allHidden =
-      hiddenStageNumbers.size > 0 && hiddenStageNumbers.size >= stages.length;
-    if (allHidden) {
-      logger.warn('generate-job:all-stages-hidden', {
-        jobId,
-        stages: stages.length,
-        note: 'showing every output instead of returning nothing',
+      // Ping the user that the generation is ready. Fire-and-forget —
+      // a push failure must not flip a completed job's status. Done
+      // here (rather than in a trailing cron) so the user sees the
+      // notification within seconds of the last R2 PUT landing.
+      void pushUser({
+        userId: jobRow.userId,
+        title: 'Your creation is ready',
+        body:
+          notifyTitle.length > 0
+            ? `${notifyTitle} is done. Tap to view.`
+            : 'Tap to view your latest generation.',
+        // Payload the mobile handler uses to deep-link straight into
+        // the result screen instead of the home tab.
+        data: { type: 'job_completed', jobId },
       });
+
+      return { status: 'completed' as const, durationMs, outputs: userVisibleKeys.length };
+    } finally {
+      await releaseTrustedAssetsAfterJob(heldTrustedAssets);
     }
-
-    const userVisibleKeys =
-      hiddenStageNumbers.size === 0 || allHidden
-        ? allOutputKeys
-        : allOutputKeys.filter((k) => !hiddenStageNumbers.has(k.stageIndex));
-
-    const images: MediaRef[] = userVisibleKeys
-      .filter((k) => k.kind === 'image')
-      .map((k) => ({
-        r2Key: k.r2Key,
-        // Header-probed at persist time (PNG/JPEG/WebP). 0 only when the
-        // probe couldn't recognise the format — mobile then letterboxes
-        // via its contain fallback instead of cropping.
-        width: k.width ?? 0,
-        height: k.height ?? 0,
-        blurhash: '',
-        thumbhash: k.thumbhash,
-      }));
-    const videos: StreamRef[] = userVisibleKeys
-      .filter((k) => k.kind === 'video')
-      .map((k) => ({
-        // For now Kling URLs aren't fronted by Cloudflare Stream, so
-        // we slot the R2 key into `streamId`. Once Stream is wired
-        // (post-launch), this populates from the Stream API response.
-        streamId: k.r2Key,
-        durationSec: k.durationSec ?? 0,
-        // A real frame, or null — never the video's own key (rows before
-        // migration 0038 hold that, and every reader treats it as none).
-        posterR2Key: k.posterR2Key,
-        previewR2Key: k.previewR2Key,
-        thumbhash: k.thumbhash,
-        width: k.width,
-        height: k.height,
-        // Requested-ratio fallback — lets mobile render the true shape.
-        aspectRatio: k.aspectRatio,
-      }));
-
-    const audios: AudioRef[] = userVisibleKeys
-      .filter((k) => k.kind === 'audio')
-      .map((k) => ({
-        r2Key: k.r2Key,
-        mimeType: k.mimeType,
-        durationSec: k.durationSec ?? 0,
-        sizeBytes: k.sizeBytes ?? 0,
-      }));
-
-    const jobResult: JobResult = {
-      images,
-      videos,
-      ...(audios.length ? { audios } : {}),
-      durationMs,
-      costCredits: jobCostCredits,
-      ...(providerTaskId ? { providerTaskId } : {}),
-    };
-
-    // Gated on `status = 'processing'`: if the stuck-job sweeper already
-    // declared this run dead (marked failed + refunded), completing now
-    // would hand the user both the refund AND the finished output. When
-    // the guard misses we keep the sweeper's verdict and skip the push.
-    const completedRows = await db
-      .update(jobs)
-      .set({
-        status: 'completed',
-        result: jobResult,
-        completedAt,
-        progress: { stage: totalStages, totalStages, message: 'Done' },
-        provider: stages[0]?.provider ?? null,
-        providerCostUsd: jobCost.usd.toFixed(5),
-        providerBilledUnits: jobCost.units,
-        providerRequestIds: requestIds.length ? requestIds : null,
-        costBasis: stageCosts.length ? jobCost.basis : null,
-      })
-      .where(and(eq(jobs.id, jobId), eq(jobs.status, 'processing')))
-      .returning();
-
-    if (completedRows.length === 0) {
-      logger.warn('generate-job:finalize-skipped', {
-        jobId,
-        reason: 'row no longer processing (sweeper likely refunded it)',
-      });
-      return { status: 'superseded' as const, durationMs };
-    }
-
-    // ── Materialize project assets (web studio) ────────────────────
-    // Only when the job is filed into a project (`project_id` set by
-    // POST /v1/jobs/create; NULL for all mobile jobs). Runs inside the
-    // finalize-winner branch so a sweeper-refunded run never files
-    // assets, and `onConflictDoNothing` on the unique
-    // (project_id, job_id, output_index) makes Trigger.dev retries
-    // idempotent. Ordering matches the client-visible outputs array
-    // (images first, then videos).
-    const completedProjectId = completedRows[0]!.projectId;
-    if (completedProjectId) {
-      try {
-        const assetRows = [
-          ...images.map((img, i) => ({
-            projectId: completedProjectId,
-            userId: jobRow.userId,
-            jobId,
-            outputIndex: i,
-            kind: 'image' as const,
-            r2Key: img.r2Key,
-            width: img.width || null,
-            height: img.height || null,
-            thumbhash: img.thumbhash ?? null,
-          })),
-          ...videos.map((vid, i) => ({
-            projectId: completedProjectId,
-            userId: jobRow.userId,
-            jobId,
-            outputIndex: images.length + i,
-            kind: 'video' as const,
-            r2Key: vid.streamId,
-            width: vid.width ?? null,
-            height: vid.height ?? null,
-            durationSec: vid.durationSec || null,
-            posterR2Key: vid.posterR2Key,
-            previewR2Key: vid.previewR2Key ?? null,
-            thumbhash: vid.thumbhash ?? null,
-          })),
-          ...audios.map((aud, i) => ({
-            projectId: completedProjectId,
-            userId: jobRow.userId,
-            jobId,
-            outputIndex: images.length + videos.length + i,
-            kind: 'audio' as const,
-            r2Key: aud.r2Key,
-            durationSec: aud.durationSec || null,
-          })),
-        ];
-        if (assetRows.length > 0) {
-          await db.insert(projectAssets).values(assetRows).onConflictDoNothing();
-          // Bump the project's recency so it surfaces at the top of the
-          // studio sidebar the moment its new assets land.
-          await db
-            .update(projects)
-            .set({ updatedAt: new Date() })
-            .where(eq(projects.id, completedProjectId));
-        }
-      } catch (err) {
-        // Filing must never flip a completed job's status — the outputs
-        // exist and the user paid; the web app also falls back to job
-        // history. Log loudly and move on.
-        logger.error('generate-job:project-assets-failed', {
-          jobId,
-          projectId: completedProjectId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
-    logger.info('generate-job:done', { jobId, durationMs, outputCount: userVisibleKeys.length });
-
-    // Ping the user that the generation is ready. Fire-and-forget —
-    // a push failure must not flip a completed job's status. Done
-    // here (rather than in a trailing cron) so the user sees the
-    // notification within seconds of the last R2 PUT landing.
-    void pushUser({
-      userId: jobRow.userId,
-      title: 'Your creation is ready',
-      body:
-        notifyTitle.length > 0
-          ? `${notifyTitle} is done. Tap to view.`
-          : 'Tap to view your latest generation.',
-      // Payload the mobile handler uses to deep-link straight into
-      // the result screen instead of the home tab.
-      data: { type: 'job_completed', jobId },
-    });
-
-    return { status: 'completed' as const, durationMs, outputs: userVisibleKeys.length };
   },
 });
 

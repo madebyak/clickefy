@@ -139,3 +139,27 @@ export {
   type SeedreamResult,
 } from './adapters/seedream';
 export { draftFinalCost, type DraftJobOptions } from './draft';
+export {
+  arkAssets,
+  arkCall,
+  arkAssetUri,
+  arkAssetTypeFor,
+  isArkAssetUri,
+  isArkRateLimited,
+  isArkSubscriptionError,
+  ArkApiError,
+  type ArkAsset,
+  type ArkAssetGroup,
+  type ArkAssetStatus,
+  type ArkAssetType,
+  type ArkAssetsEnv,
+  type ArkGroupType,
+} from './byteplus-assets';
+export {
+  detectHuman,
+  HumanCheckError,
+  HUMAN_CHECK_MODELS,
+  HUMAN_CHECK_MAX_INLINE_BYTES,
+  type HumanCheckInput,
+  type HumanCheckResult,
+} from './human-check';

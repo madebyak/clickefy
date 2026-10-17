@@ -43,8 +43,20 @@ export type DispatchJobResult =
   | { ok: false; status: number; message: string };
 
 export async function dispatchJob(args: DispatchJobInput): Promise<DispatchJobResult> {
+  return triggerTask(TRIGGER_TASK_ID, { jobId: args.jobId }, args);
+}
+
+/**
+ * Fire any task by identifier. `dispatchJob` is the generation case; the
+ * attachment verifier (`verify-trusted-asset`) goes through here too.
+ */
+export async function triggerTask(
+  taskId: string,
+  payload: Record<string, unknown>,
+  args: { triggerSecretKey: string; apiBase?: string },
+): Promise<DispatchJobResult> {
   const apiBase = args.apiBase ?? 'https://api.trigger.dev';
-  const url = `${apiBase}/api/v1/tasks/${TRIGGER_TASK_ID}/trigger`;
+  const url = `${apiBase}/api/v1/tasks/${taskId}/trigger`;
 
   let res: Response;
   try {
@@ -54,7 +66,7 @@ export async function dispatchJob(args: DispatchJobInput): Promise<DispatchJobRe
         Authorization: `Bearer ${args.triggerSecretKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ payload: { jobId: args.jobId } }),
+      body: JSON.stringify({ payload }),
     });
   } catch (err) {
     return {

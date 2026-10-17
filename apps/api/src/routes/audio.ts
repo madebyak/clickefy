@@ -117,6 +117,7 @@ interface SharedVoice {
   free_users_allowed?: boolean;
   live_moderation_enabled?: boolean;
   rate?: number | null;
+  fiat_rate?: number | null;
 }
 
 async function elevenGet<T>(path: string, apiKey: string): Promise<T> {
@@ -141,9 +142,15 @@ function fromAccount(v: AccountVoice): AudioVoice {
   };
 }
 
-/** The licence terms the plan set: free to use, not live-moderated, no custom per-use rate. */
+/**
+ * The licence terms the plan set: free to use, not live-moderated, and at
+ * the standard price. `rate` is the library's credit MULTIPLIER — 1 for
+ * every ordinary voice, 2 or 3 for premium ones — and `fiat_rate` a
+ * per-use dollar fee a few owners charge; either above standard would
+ * make a generation cost more than our price book says.
+ */
 function usable(v: SharedVoice): boolean {
-  return v.free_users_allowed !== false && !v.live_moderation_enabled && (v.rate ?? 0) <= 0;
+  return v.free_users_allowed !== false && !v.live_moderation_enabled && (v.rate ?? 1) <= 1 && !(v.fiat_rate && v.fiat_rate > 0);
 }
 
 function fromLibrary(v: SharedVoice): AudioVoice {

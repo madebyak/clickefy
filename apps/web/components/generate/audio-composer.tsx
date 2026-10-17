@@ -141,7 +141,8 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
       const ids = new Set(own.map((v) => v.voiceId));
       return [...own, ...lib.filter((v) => !ids.has(v.voiceId))];
     }
-    return voices.filter((v) => lang === "all" || (v.language ?? "").toLowerCase() === lang);
+    // Own voices carry no language tag; they stay listed under EN and AR alike.
+    return voices.filter((v) => v.source === "own" || lang === "all" || (v.language ?? "").toLowerCase() === lang);
   }, [searching, search.data, voices, q, lang]);
 
   const preview = (v: AudioVoice) => {

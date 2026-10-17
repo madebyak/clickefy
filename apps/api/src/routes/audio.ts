@@ -3,8 +3,8 @@
  *
  * Two sources, merged: the voices already on the ElevenLabs account
  * (`GET /v2/voices`) and a curated slice of the public library
- * (`GET /v1/shared-voices`: free to use, not live-moderated, English and
- * Arabic, by popularity). A library voice carries its `publicOwnerId`,
+ * (`GET /v1/shared-voices`: free to use, not live-moderated, the 300 most
+ * used English and the 300 most used Arabic voices). A library voice carries its `publicOwnerId`,
  * which the worker needs to add it to the account the first time it
  * speaks. Cached per isolate for an hour: the list changes when the
  * client adds a voice in their ElevenLabs dashboard, not per request.
@@ -49,7 +49,9 @@ export interface AudioVoice {
 const BASE = 'https://api.elevenlabs.io';
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const LIBRARY_LANGUAGES = ['en', 'ar'] as const;
+/** The library serves at most 100 a page; three pages per language = the 300 most used. */
 const LIBRARY_PAGE = 100;
+const LIBRARY_PAGES = 3;
 const SEARCH_PAGE = 40;
 const SEARCH_TTL_MS = 10 * 60 * 1000;
 const searchCache = new Map<string, { at: number; voices: AudioVoice[] }>();
@@ -165,14 +167,19 @@ async function loadVoices(apiKey: string): Promise<AudioVoice[]> {
   // account only sees what is already on it. Paid plans get the library.
   const sub = await elevenGet<{ tier?: string }>('/v1/user/subscription', apiKey).catch(() => ({ tier: 'free' }));
   const paid = (sub.tier ?? 'free') !== 'free';
+  const libraryRequests = paid
+    ? LIBRARY_LANGUAGES.flatMap((lang) =>
+        Array.from({ length: LIBRARY_PAGES }, (_, page) =>
+          elevenGet<{ voices?: SharedVoice[] }>(
+            `/v1/shared-voices?page_size=${LIBRARY_PAGE}&page=${page}&language=${lang}&sort=cloned_by_count&free_users_allowed=true`,
+            apiKey,
+          ).catch(() => ({ voices: [] as SharedVoice[] })),
+        ),
+      )
+    : [];
   const [account, ...library] = await Promise.all([
     elevenGet<{ voices?: AccountVoice[] }>('/v2/voices?page_size=100', apiKey).catch(() => ({ voices: [] as AccountVoice[] })),
-    ...(paid ? LIBRARY_LANGUAGES : []).map((lang) =>
-      elevenGet<{ voices?: SharedVoice[] }>(
-        `/v1/shared-voices?page_size=${LIBRARY_PAGE}&language=${lang}&sort=cloned_by_count&free_users_allowed=true`,
-        apiKey,
-      ).catch(() => ({ voices: [] as SharedVoice[] })),
-    ),
+    ...libraryRequests,
   ]);
   const out: AudioVoice[] = [];
   const seen = new Set<string>();

@@ -644,8 +644,11 @@ export function AudioComposer({ embedded = false, active = true }: { embedded?: 
               type="button"
               disabled={!canSubmit}
               onClick={submit}
-              className="flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-black transition-opacity disabled:opacity-40"
+              // Turquoise is the Audio surface's colour, as purple is Video's — the
+              // mode toggle, the tiles and this button say the same thing.
+              className="flex h-9 items-center justify-center gap-2 rounded-lg bg-accent-turquoise px-4 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-40"
             >
+              <SpeakerHigh weight="fill" className="size-4" />
               {busy ? t("working") : t("generate", { credits })}
             </button>
           </div>

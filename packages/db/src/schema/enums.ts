@@ -92,6 +92,9 @@ export const creditReasonEnum = pgEnum('credit_reason', [
   'weekly_refresh',
   'broadcast_grant',
   'subscription_reset',
+  // Added in migration 0048_user_voices: a voice clone or design, charged
+  // without a job behind it.
+  'voice_charge',
 ]);
 
 /**

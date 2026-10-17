@@ -110,7 +110,7 @@ export function isCreditRace(err: unknown): boolean {
  *
  * Produces CTEs: `user_snapshot`, `ranked`, `alloc`, `totals`.
  */
-function allocationCtes(userId: string, cost: number): SQL {
+export function allocationCtes(userId: string, cost: number): SQL {
   return sql`
       user_snapshot AS (
         SELECT id, (entitlement <> 'free') AS is_subscribed
@@ -163,7 +163,7 @@ function allocationCtes(userId: string, cost: number): SQL {
  * `>= t_*` predicates are re-evaluated by Postgres against the current row
  * if another spend committed while we waited, so a loser matches zero rows.
  */
-function userDebitCte(userId: string, cost: number, extraGuards: SQL = sql``): SQL {
+export function userDebitCte(userId: string, cost: number, extraGuards: SQL = sql``): SQL {
   return sql`
       user_debit AS (
         UPDATE users u

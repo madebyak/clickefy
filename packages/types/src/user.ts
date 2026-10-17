@@ -245,7 +245,11 @@ export type CreditReason =
   | 'refund'
   | 'admin_adjust'
   | 'signup_bonus'
-  | 'daily_free';
+  | 'daily_free'
+  | 'weekly_refresh'
+  | 'broadcast_grant'
+  | 'subscription_reset'
+  | 'voice_charge';
 
 /**
  * Single row in the admin users table. Augments the Neon `users` row

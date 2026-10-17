@@ -37,7 +37,8 @@ import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, inArray, lt, or } from 'drizzle-orm';
 
 import {
-  libraryAssets, jobs, projectAssets, projects, providerModels, templates, type Db } from '@clickfy/db';
+  libraryAssets, jobs, projectAssets, projects, providerModels, templates, userVoices, type Db,
+} from '@clickfy/db';
 import { resolveCreditCost, upscalePriceKey } from '@clickfy/types';
 import {
   AD_ASPECT_RATIO,
@@ -698,6 +699,16 @@ jobsRoute.post(
     }
     if (caps.audio?.voices && !body.audio?.voiceId) {
       return c.json({ error: { code: 'voice_required', message: 'Pick a voice.' } }, 422);
+    }
+    // A cloned or designed voice is private to its maker.
+    if (body.audio?.voiceId) {
+      const owned = await c.var.db.query.userVoices.findFirst({
+        where: eq(userVoices.elevenlabsVoiceId, body.audio.voiceId),
+        columns: { userId: true, status: true },
+      });
+      if (owned && (owned.userId !== user.id || owned.status === 'deleted')) {
+        return c.json({ error: { code: 'voice_forbidden', message: 'That voice is not available to you.' } }, 403);
+      }
     }
     let inputAudioSeconds: number | undefined;
     if (caps.audio?.inputAudio) {

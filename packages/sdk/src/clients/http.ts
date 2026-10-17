@@ -35,6 +35,8 @@ import type {
   TemplateKind as SdkTemplateKind,
   UserProject,
   TrustedAssetState,
+  VoiceQuota,
+  VoiceDesignResult,
 } from '../types';
 import { JobSubmissionError, RateLimitedError } from '../types';
 import type {
@@ -1139,6 +1141,39 @@ export function createHttpClient(options: HttpClientOptions): SDKClient {
       async listVoices(): Promise<AudioVoice[]> {
         const json = await get<ApiEnvelope<{ voices: AudioVoice[] }>>('/v1/audio/voices', { auth: true });
         return json.data.voices;
+      },
+      async voiceQuota() {
+        const json = await get<ApiEnvelope<VoiceQuota>>('/v1/audio/voices/quota', { auth: true });
+        return json.data;
+      },
+      async cloneVoice(input) {
+        const form = new FormData();
+        form.set('name', input.name);
+        if (input.description) form.set('description', input.description);
+        form.set('consent', 'true');
+        for (const f of input.files) form.append('files', f, f.name);
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        if (getToken) {
+          const token = await getToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+        const res = await fetch(`${baseUrl}/v1/audio/voices/clone`, { method: 'POST', headers, body: form });
+        await throwIfRateLimited(res, 'POST /v1/audio/voices/clone');
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`POST /v1/audio/voices/clone ${res.status}: ${text.slice(0, 200)}`);
+        }
+        const json = (await res.json()) as ApiEnvelope<{ voice: AudioVoice; creditsRemaining: number }>;
+        return json.data;
+      },
+      async designVoice(input) {
+        return mutateJson<VoiceDesignResult>('POST', '/v1/audio/voices/design', input);
+      },
+      async saveDesignedVoice(input) {
+        return mutateJson<{ voice: AudioVoice; creditsRemaining: number }>('POST', '/v1/audio/voices/design/save', input);
+      },
+      async deleteVoice(ownedId) {
+        await mutateJson<{ ok: true }>('DELETE', `/v1/audio/voices/${encodeURIComponent(ownedId)}`);
       },
       async searchVoices(params): Promise<AudioVoice[]> {
         const sp = new URLSearchParams();

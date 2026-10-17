@@ -17,15 +17,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { CaretDown, Check, Pause, Play, SlidersHorizontal, Sparkle, SpeakerHigh, UploadSimple, Waveform, Microphone, MusicNotes, X } from "@phosphor-icons/react";
+import { CaretDown, Check, Pause, Play, SlidersHorizontal, Sparkle, SpeakerHigh, Trash, UploadSimple, Waveform, Microphone, MusicNotes, X } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 import type { AudioVoice, GenModel, JobInputValue } from "@clickfy/sdk";
 import { JobSubmissionError } from "@clickfy/sdk";
 
 import { Modal } from "@/components/ui/modal";
+import { CreateVoiceModal } from "@/components/generate/create-voice-modal";
 import { Menu, MenuItem } from "@/components/ui/menu";
 import { ASSET_DRAG_TYPE, useStudio } from "@/components/studio/studio-context";
 import { useModels } from "@/lib/use-models";
@@ -99,6 +100,29 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
   const [useCase, setUseCase] = useState<(typeof USE_CASES)[number] | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  // Two-step delete on the row itself: first tap asks, second confirms.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const deleteOwn = async (v: AudioVoice) => {
+    if (!v.ownedId || deletingId) return;
+    setDeletingId(v.ownedId);
+    try {
+      await getSDK().audio.deleteVoice(v.ownedId);
+      await queryClient.invalidateQueries({ queryKey: ["audio", "voices"] });
+      toast.success(t("voiceDeleted"));
+      if (value?.voiceId === v.voiceId) {
+        const next = voices.find((x) => x.voiceId !== v.voiceId);
+        if (next) onChange(next);
+      }
+    } catch {
+      toast.error(t("voiceDeleteFailed"));
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  };
 
   const q = useDebounced(query.trim(), 350);
   const searching = q.length >= 2 || gender != null || age != null || useCase != null;
@@ -113,7 +137,7 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
     if (searching) {
       const lib = search.data ?? [];
       // The account's own voices stay on top when they match the words typed.
-      const own = voices.filter((v) => v.source === "account" && (!q || v.name.toLowerCase().includes(q.toLowerCase())) && (lang === "all" || (v.language ?? "").toLowerCase() === lang));
+      const own = voices.filter((v) => v.source === "own" && (!q || v.name.toLowerCase().includes(q.toLowerCase())));
       const ids = new Set(own.map((v) => v.voiceId));
       return [...own, ...lib.filter((v) => !ids.has(v.voiceId))];
     }
@@ -151,14 +175,14 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
           <X className="size-4" />
         </button>
       </div>
-      {/* Cloning needs a plan with voice slots; shown now so the door is visible, opened later. */}
+      {/* A voice of your own: cloned from a recording or designed from a description. */}
       <div className="mx-3 mt-3 flex items-center gap-3 rounded-xl bg-gradient-to-r from-primary/20 to-surface-3 p-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-black"><Sparkle weight="fill" className="size-4" /></span>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">{t("cloneTitle")}</div>
           <div className="truncate text-xs text-muted-foreground">{t("cloneSub")}</div>
         </div>
-        <button type="button" onClick={() => toast.info(t("cloneSoon"))} className="shrink-0 rounded-lg bg-surface-1 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-white/10">
+        <button type="button" onClick={() => setCreateOpen(true)} className="shrink-0 rounded-lg bg-surface-1 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-white/10">
           {t("cloneCta")}
         </button>
       </div>
@@ -187,19 +211,34 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
         ) : shown.length === 0 ? (
           <p className="p-3 text-xs text-muted-foreground">{t("noVoices")}</p>
         ) : (
-          shown.map((v) => {
+          shown.map((v, i) => {
             const selected = value?.voiceId === v.voiceId;
             const meta = [v.language?.toUpperCase(), v.gender, v.accent, v.age?.replace("_", " ")].filter(Boolean).join(" · ");
+            // The user's own voices lead the list under their own heading.
+            const heading = v.source === "own" && i === 0 ? t("yourVoices") : v.source !== "own" && i > 0 && shown[i - 1]!.source === "own" ? t("allVoices") : null;
             return (
-              <div key={v.voiceId} className={cn("flex items-center gap-3 rounded-lg px-2 py-1.5", selected ? "bg-primary/15" : "hover:bg-surface-3")}>
+              <div key={v.voiceId}>
+              {heading && <p className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{heading}</p>}
+              <div className={cn("flex items-center gap-3 rounded-lg px-2 py-1.5", selected ? "bg-primary/15" : "hover:bg-surface-3")}>
                 <button type="button" onClick={() => { onChange(v); onClose(); }} className="flex min-w-0 flex-1 items-center gap-3 py-0.5 text-start">
                   <VoiceAvatar name={v.name} className="size-9" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{v.name.split(" - ")[0]}{v.source === "account" && <span className="ms-1 text-[10px] text-primary">{t("yourVoice")}</span>}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{meta || v.useCase || v.name.split(" - ")[1] || ""}</span>
+                    <span className="block truncate text-sm font-medium">{v.name.split(" - ")[0]}{v.source === "own" && <span className="ms-1 text-[10px] text-primary">{t("yourVoice")}</span>}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{meta || v.useCase || v.description || v.name.split(" - ")[1] || ""}</span>
                   </span>
                   {selected && <Check weight="bold" className="size-4 shrink-0 text-primary" />}
                 </button>
+                {v.source === "own" && (
+                  confirmDeleteId === v.ownedId ? (
+                    <button type="button" disabled={deletingId === v.ownedId} onClick={() => void deleteOwn(v)} className="shrink-0 rounded-md bg-status-red px-2 py-1 text-[11px] font-medium text-white disabled:opacity-50">
+                      {t("voiceDelete")}
+                    </button>
+                  ) : (
+                    <button type="button" aria-label={t("voiceDelete")} title={t("voiceDeleteConfirm")} onClick={() => setConfirmDeleteId(v.ownedId ?? null)} className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-white/10 hover:text-status-red">
+                      <Trash className="size-3.5" />
+                    </button>
+                  )
+                )}
                 <button
                   type="button"
                   aria-label={playingId === v.voiceId ? t("stopPreview") : t("playPreview")}
@@ -210,11 +249,22 @@ function VoiceModal({ voices, value, onChange, onClose, loading, error }: { voic
                   {playingId === v.voiceId ? <Pause weight="fill" className="size-3.5" /> : <Play weight="fill" className="size-3.5 translate-x-px" />}
                 </button>
               </div>
+              </div>
             );
           })
         )}
         {searching && !search.isPending && shown.length > 0 && <p className="px-3 pt-2 text-[10px] text-muted-foreground">{t("libraryNote")}</p>}
       </div>
+      {createOpen && (
+        <CreateVoiceModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={(v) => {
+            setCreateOpen(false);
+            onChange(v);
+            onClose();
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -285,7 +335,7 @@ export function AudioComposer({ embedded = false, active = true }: { embedded?: 
   // A voice is preselected the moment the list arrives: the account's own first, else the first listed.
   useEffect(() => {
     if (voice || voices.length === 0) return;
-    setVoice(voices.find((v) => v.source === "account") ?? voices[0]!);
+    setVoice(voices.find((v) => v.source === "own") ?? voices.find((v) => v.source === "account") ?? voices[0]!);
   }, [voices, voice]);
   const [stability, setStability] = useState(0.5);
   const [similarity, setSimilarity] = useState(0.75);

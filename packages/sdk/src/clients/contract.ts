@@ -29,6 +29,8 @@ import type {
   Paginated,
   UserProject,
   TrustedAssetState,
+  VoiceQuota,
+  VoiceDesignResult,
 } from '../types';
 
 export interface CatalogClient {
@@ -736,6 +738,20 @@ export interface AudioClient {
   listVoices(): Promise<AudioVoice[]>;
   /** Live search of the public voice library. Hits `GET /v1/audio/voices/search`. */
   searchVoices(params: VoiceSearchParams): Promise<AudioVoice[]>;
+  /** How many voices this user may still make. Hits `GET /v1/audio/voices/quota`. */
+  voiceQuota(): Promise<VoiceQuota>;
+  /**
+   * Clone a voice from recordings (1 to 2 minutes of clean speech works
+   * best). `consent` is the user's confirmation that they hold the rights
+   * to the voice. Hits `POST /v1/audio/voices/clone` (multipart).
+   */
+  cloneVoice(input: { name: string; description?: string; files: File[]; consent: true }): Promise<{ voice: AudioVoice; creditsRemaining: number }>;
+  /** Three previews of a voice described in words. Hits `POST /v1/audio/voices/design`. */
+  designVoice(input: { description: string; text?: string }): Promise<VoiceDesignResult>;
+  /** Keep one preview as a voice. Hits `POST /v1/audio/voices/design/save`. */
+  saveDesignedVoice(input: { generatedVoiceId: string; name: string; description: string }): Promise<{ voice: AudioVoice; creditsRemaining: number }>;
+  /** Delete one of the user's own voices (`AudioVoice.ownedId`). Hits `DELETE /v1/audio/voices/:id`. */
+  deleteVoice(ownedId: string): Promise<void>;
 }
 
 export interface NotificationsClient {

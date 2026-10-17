@@ -627,14 +627,43 @@ export interface AudioVoice {
   voiceId: string;
   name: string;
   previewUrl: string | null;
-  source: 'account' | 'library';
+  /** `account`: shared premade voice. `library`: public, added on first use. `own`: made by this user. */
+  source: 'account' | 'library' | 'own';
   publicOwnerId?: string;
+  /** `own` voices: the row to delete, and how it was made. */
+  ownedId?: string;
+  origin?: 'cloned' | 'designed';
   language: string | null;
   gender: string | null;
   accent: string | null;
   age: string | null;
   useCase: string | null;
   description: string | null;
+}
+
+/** Whether, and why not, the user may make a voice right now. */
+export interface VoiceQuota {
+  used: number;
+  cap: number;
+  accountUsed: number;
+  accountLimit: number;
+  cloneCredits: number;
+  designCredits: number;
+  blocked: 'plan' | 'user_cap' | 'account_full' | 'cloning_unavailable' | null;
+}
+
+export interface VoiceDesignPreview {
+  generatedVoiceId: string;
+  /** MP3 bytes, base64. */
+  audioBase64: string;
+  mediaType: string;
+  durationSecs: number | null;
+}
+
+export interface VoiceDesignResult {
+  /** The line the previews speak. */
+  text: string;
+  previews: VoiceDesignPreview[];
 }
 
 export interface CreateGenerationInput {

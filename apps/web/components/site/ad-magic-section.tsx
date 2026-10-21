@@ -1,12 +1,13 @@
-import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 import { ArrowRight, Sparkle } from "@phosphor-icons/react/dist/ssr";
 import { Link } from "@/i18n/navigation";
+import { AdMagicFrame } from "./ad-magic-frame";
 
 /**
  * The homepage's pitch for Ad Magic: product photos in, a finished
- * 15-second commercial out. Copy on the left, a phone-framed still on the
- * right so the Reels shape is obvious before anyone clicks. The CTA
+ * 15-second commercial out. Copy on the left, a phone frame on the right
+ * cycling through ad-style shots so the Reels shape is obvious before
+ * anyone clicks. The CTA
  * deep-links straight into the tool (ToolDeepLink reads `?tool=ad`).
  */
 export async function AdMagicSection() {
@@ -57,13 +58,7 @@ export async function AdMagicSection() {
           {/* ---- phone frame ---- */}
           <div className="flex items-center justify-center lg:col-span-5">
             <div className="relative aspect-[9/16] w-full max-w-[260px] overflow-hidden rounded-[2rem] border-[6px] border-black/80 bg-black shadow-2xl shadow-black/50">
-              <Image
-                src="/assets/new/hero-4.jpg"
-                alt=""
-                fill
-                sizes="260px"
-                className="object-cover"
-              />
+              <AdMagicFrame />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30" />
               <span className="absolute start-3 top-3 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur">
                 {t("adMagicFrameTag")}

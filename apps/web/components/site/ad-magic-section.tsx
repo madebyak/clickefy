@@ -5,8 +5,9 @@ import { Link } from "@/i18n/navigation";
 /**
  * The homepage's pitch for Ad Magic: product photos in, a finished
  * 15-second commercial out. Copy on the left, a widescreen player on the
- * right running a clip made with the studio's own models, so the result
- * is on screen before anyone clicks. The CTA deep-links straight into the
+ * right running a 15-second multi-product spot rendered by Seedance 2.5
+ * from three Nano Banana frames, so the result is on screen before
+ * anyone clicks. The CTA deep-links straight into the
  * tool (ToolDeepLink reads `?tool=ad`).
  */
 export async function AdMagicSection() {
@@ -58,7 +59,7 @@ export async function AdMagicSection() {
           <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl shadow-black/50">
             <video
               className="absolute inset-0 size-full object-cover"
-              src="/assets/new/ad-magic.mp4"
+              src="/assets/new/ad-magic-commercial.mp4"
               poster="/assets/new/ad-magic-perfume-wide.jpg"
               autoPlay
               loop

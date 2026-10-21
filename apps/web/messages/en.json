@@ -18,7 +18,13 @@
     "toggleMenu": "Toggle menu",
     "openMenu": "Open menu",
     "audio": "Audio",
-    "aiAd": "AI Ad"
+    "tools": "Tools",
+    "new": "New",
+    "adMagicSub": "Product photos in, a 15-second commercial out",
+    "storyboardSub": "Plan every shot of a scene from a script",
+    "cameraAnglesSub": "Re-shoot a photo from any angle",
+    "upscaleVideoSub": "Sharpen footage up to 8K",
+    "adMagic": "Ad Magic"
   },
   "language": {
     "change": "Change language"
@@ -46,6 +52,17 @@
     "bannerHeadline": "From idea to campaign, in minutes",
     "bannerSub": "Generate images and video, tell the whole story, and ship — all in one place.",
     "startCreating": "Start creating",
+    "adMagicEyebrow": "Ad Magic",
+    "adMagicHeadline": "Product photos in. A finished commercial out.",
+    "adMagicSub": "Drop a few photos of your product. Ad Magic writes the concept, shoots a 15-second spot with sound, and hands you the file — vertical for Reels and TikTok, or HD for YouTube and the web.",
+    "adMagicStep1": "Add 1–4 photos of your product",
+    "adMagicStep2": "We write the concept and shoot it",
+    "adMagicStep3": "Download the ad with sound in minutes",
+    "adMagicCta": "Make my ad",
+    "adMagicSpec": "15 s · with sound · Reels or HD",
+    "adMagicFrameTag": "15 s · Reels",
+    "adMagicFrameTitle": "Your product, on screen",
+    "adMagicFrameSub": "Concept, shoot and sound — done for you",
     "modelsHeadline": "All models in one subscription"
   },
   "templates": {
@@ -900,7 +917,7 @@
     "preset_old_film_desc": "Restores vintage and archival film",
     "fidelity_high_desc": "A milder pass that stays close to the source",
     "fidelity_medium_desc": "Pushes the image further",
-    "adTitle": "AI Ad",
+    "adTitle": "Ad Magic",
     "adIntro": "Add photos of your product and get a 15-second commercial. We write the concept, shoot it and add the sound.",
     "adImages": "Product images",
     "adImagesHint": "Up to {max}, same product",

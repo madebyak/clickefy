@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Navbar } from "@/components/site/navbar";
 import { HomeHero } from "@/components/site/home-hero";
+import { AdMagicSection } from "@/components/site/ad-magic-section";
 import { ModelRow } from "@/components/site/model-row";
 import { VideoBanner } from "@/components/site/video-banner";
 import { TemplatesSection } from "@/components/site/templates-section";
@@ -60,6 +61,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
       <Navbar />
       <main className="py-4 sm:py-6">
         <HomeHero />
+        <AdMagicSection />
         <ModelRow />
         <VideoBanner />
         <div id="templates" className="scroll-mt-20">

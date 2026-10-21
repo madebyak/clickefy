@@ -9,22 +9,24 @@ import { buttonVariants } from "@/components/ui/button";
 import { CreditMenu } from "./credit-menu";
 import { ProfileMenu } from "./profile-menu";
 import { LanguageSwitcher } from "./language-switcher";
+import { ToolsList, ToolsMenu } from "./tools-menu";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "./brand-logo";
 
-// Tool entries deep-link into the studio: ToolDeepLink (tools-context)
-// reads `?tool=` on /create and opens the matching modal.
-const NAV_LINKS = [
+// The four studio tools live under one "Tools" entry (see tools-menu);
+// the rest stay flat. Order is left to right on the bar.
+const PRIMARY_LINKS = [
   { key: "createImage", href: "/create" },
   { key: "createVideo", href: "/create-video" },
   { key: "audio", href: "/audio" },
-  { key: "aiAd", href: "/create?tool=ad" },
-  { key: "storyboard", href: "/create?tool=storyboard" },
-  { key: "cameraAngles", href: "/create?tool=camera" },
-  { key: "upscaleVideo", href: "/create?tool=upscale" },
+] as const;
+const SECONDARY_LINKS = [
   { key: "templates", href: "/templates" },
   { key: "pricing", href: "/pricing" },
 ] as const;
+
+const linkClass = "rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground";
+const mobileLinkClass = "rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-surface-2";
 
 export function Navbar() {
   const t = useTranslations("nav");
@@ -41,13 +43,15 @@ export function Navbar() {
           <BrandLogo eager />
         </Link>
 
-        <nav className="ms-2 hidden items-center xl:flex">
-          {NAV_LINKS.map((l) => (
-            <Link
-              key={l.key}
-              href={l.href}
-              className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
+        <nav className="ms-2 hidden items-center lg:flex">
+          {PRIMARY_LINKS.map((l) => (
+            <Link key={l.key} href={l.href} className={linkClass}>
+              {t(l.key)}
+            </Link>
+          ))}
+          <ToolsMenu />
+          {SECONDARY_LINKS.map((l) => (
+            <Link key={l.key} href={l.href} className={linkClass}>
               {t(l.key)}
             </Link>
           ))}
@@ -76,7 +80,7 @@ export function Navbar() {
             onClick={() => setMobileOpen((o) => !o)}
             aria-label={t("toggleMenu")}
             aria-expanded={mobileOpen}
-            className="grid size-9 place-items-center rounded-lg text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary xl:hidden"
+            className="grid size-9 place-items-center rounded-lg text-foreground outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
           >
             {mobileOpen ? <X className="size-5" /> : <List className="size-5" />}
           </button>
@@ -84,18 +88,22 @@ export function Navbar() {
       </div>
 
       {mobileOpen && (
-        <div className="border-t border-border bg-background xl:hidden">
+        <div className="border-t border-border bg-background lg:hidden">
           <nav className="mx-auto flex w-full max-w-site flex-col gap-0.5 py-3 site-px">
-            {NAV_LINKS.map((l) => (
-              <Link
-                key={l.key}
-                href={l.href}
-                onClick={() => setMobileOpen(false)}
-                className="rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-surface-2"
-              >
-                {t(l.key)}
-              </Link>
-            ))}
+            <ToolsList onNavigate={() => setMobileOpen(false)}>
+              {PRIMARY_LINKS.map((l) => (
+                <Link key={l.key} href={l.href} onClick={() => setMobileOpen(false)} className={mobileLinkClass}>
+                  {t(l.key)}
+                </Link>
+              ))}
+            </ToolsList>
+            <div className="mt-2 flex flex-col gap-0.5 border-t border-border pt-2">
+              {SECONDARY_LINKS.map((l) => (
+                <Link key={l.key} href={l.href} onClick={() => setMobileOpen(false)} className={mobileLinkClass}>
+                  {t(l.key)}
+                </Link>
+              ))}
+            </div>
             {!authed && (
               <div className="mt-3 flex flex-col gap-2 sm:hidden">
                 <Link href="/sign-in" className={cn(buttonVariants({ variant: "outline" }), "w-full")}>

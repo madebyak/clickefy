@@ -84,7 +84,7 @@ export function StudioSidebar({ open, onClose }: { open: boolean; onClose: () =>
         <button type="button" onClick={onClose} aria-label={t("close")} className="grid size-10 place-items-center rounded-lg hover:bg-surface-2"><X className="size-5" /></button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <StudioNavigation className="mb-3 flex flex-col gap-1 xl:hidden" onNavigate={onClose} />
+        <StudioNavigation layout="list" className="mb-3 flex flex-col gap-1 xl:hidden" onNavigate={onClose} />
         <button
           type="button"
           onClick={newProject}

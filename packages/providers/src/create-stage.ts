@@ -423,7 +423,7 @@ export function buildCreateStage(input: BuildCreateStageInput): BuiltCreateStage
     order: 0,
     provider,
     model: input.modelKey,
-    prompt: input.tool ? composeToolPrompt(input.tool, input.prompt) : addressRefs(input.prompt),
+    prompt: input.tool ? composeToolPrompt(input.tool, input.prompt, refCount) : addressRefs(input.prompt),
     // Admin reference images are template-only. User attachments travel
     // as subjects/slots via `inputs`, never here.
     references: [],

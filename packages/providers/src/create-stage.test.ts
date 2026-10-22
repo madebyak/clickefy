@@ -625,6 +625,33 @@ describe('buildCreateStage — studio tools (hidden prompts)', () => {
     expect(built.stage.prompt).toContain('clean frames only');
   });
 
+  it('storyboard: attached references and the notes about them join the prompt', () => {
+    const built = buildCreateStage({
+      modelKey: 'gemini-3-pro-image',
+      prompt: 'Maya opens the shop at dawn.',
+      referenceCount: 2,
+      tool: {
+        kind: 'storyboard',
+        style: 'comic',
+        cols: 2,
+        rows: 2,
+        notes: 'Image 1 is Maya, keep her red jacket. Image 2 is the coffee tin.',
+      },
+    });
+    expect(built.stage.prompt).toContain('2 reference images are attached, labelled Reference 1 to Reference 2');
+    expect(built.stage.prompt).toContain('match their appearance faithfully');
+    expect(built.stage.prompt).toContain("About the references, in the author's words: Image 1 is Maya");
+    // Both images become the model's subjects, in order.
+    expect(built.templateInputs.map((f) => f.fieldKey)).toEqual(['ref_0', 'ref_1']);
+
+    const textOnly = buildCreateStage({
+      modelKey: 'gemini-3-pro-image',
+      prompt: 'A chef races through rain.',
+      tool: { kind: 'storyboard', style: 'sketch', cols: 2, rows: 2 },
+    });
+    expect(textOnly.stage.prompt).not.toContain('reference image');
+  });
+
   it('no tool: the user prompt passes through untouched', () => {
     const built = buildCreateStage({
       modelKey: 'gpt-image-2',

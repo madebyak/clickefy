@@ -127,6 +127,8 @@ export const createToolSchema = z.discriminatedUnion('kind', [
     // panel stays sharp on one sheet.
     cols: z.number().int().min(2).max(4),
     rows: z.number().int().min(2).max(3),
+    /** What the attached character / product images are, in the user's words. */
+    notes: z.string().trim().max(1000).optional(),
   }),
   z.object({
     // One-Click AI Ad: product images ride in `references`; the prompt is

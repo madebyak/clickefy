@@ -37,6 +37,13 @@ export type CreateToolRequest =
       /** Panels per row / rows on the sheet (validated 2-4 x 2-3). */
       cols: number;
       rows: number;
+      /**
+       * What the attached reference images are — "Image 1 is Maya, the
+       * lead; keep her red jacket" — in the user's words. The images
+       * themselves ride in `references`, so the sheet keeps the people,
+       * products and places they show consistent across panels.
+       */
+      notes?: string;
     }
   | {
       /**
@@ -183,25 +190,43 @@ export function composeStoryboardPrompt(
   cols: number,
   rows: number,
   script: string,
+  /** The user's description of the attached images, when any were attached. */
+  notes?: string,
+  /** How many reference images ride with the request (0 = text only). */
+  referenceCount = 0,
 ): string {
   const shots = cols * rows;
-  return [
+  const lines = [
     'You are an expert film storyboard artist.',
     `Read the script below and break it into exactly ${shots} key shots that tell the story clearly from beginning to end.`,
     `Render ONE storyboard sheet: a ${cols}x${rows} grid of equal rectangular panels (${cols} per row, ${rows} rows), read left to right then top to bottom, with thin even margins between panels on a clean neutral background.`,
     `Draw every panel in a consistent style: ${STYLE_DESCRIPTIONS[style]}.`,
     'Vary the shot types cinematically (establishing, medium, close-up) and keep characters and settings consistent across panels.',
-    'No captions, no text, no numbers, no labels anywhere — clean frames only.',
-    '',
-    'Script:',
-    script,
-  ].join('\n');
+  ];
+  if (referenceCount > 0) {
+    // The images arrive labelled "Reference 1 … N" by the compiler; the
+    // user's notes name what each one is. Likeness matters more than the
+    // reference's own rendering: a photo of a character still gets drawn
+    // in the chosen style.
+    lines.push(
+      `${referenceCount === 1 ? 'One reference image is' : `${referenceCount} reference images are`} attached, labelled Reference 1${referenceCount > 1 ? ` to Reference ${referenceCount}` : ''}. They show the specific characters, products or places this story is about: match their appearance faithfully (faces, build, hair, clothing, colours, shapes, logos) in every panel where they appear, redrawn in the sheet's style rather than pasted in.`,
+    );
+    const trimmed = notes?.trim();
+    if (trimmed) lines.push(`About the references, in the author's words: ${trimmed}`);
+  }
+  lines.push('No captions, no text, no numbers, no labels anywhere — clean frames only.', '', 'Script:', script);
+  return lines.join('\n');
 }
 
 /** Compose the final prompt for a tool job from its stored parameters. */
-export function composeToolPrompt(tool: CreateToolRequest, userText: string): string {
+export function composeToolPrompt(
+  tool: CreateToolRequest,
+  userText: string,
+  /** Reference images attached to the job (storyboard reads them). */
+  referenceCount = 0,
+): string {
   if (tool.kind === 'camera_angle') return composeCameraAnglePrompt(tool.h, tool.v);
   if (tool.kind === 'camera_preset') return composeCameraPresetPrompt(tool.preset);
   if (tool.kind === 'ad') return userText;
-  return composeStoryboardPrompt(tool.style, tool.cols, tool.rows, userText);
+  return composeStoryboardPrompt(tool.style, tool.cols, tool.rows, userText, tool.notes, referenceCount);
 }

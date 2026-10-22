@@ -3,8 +3,10 @@
 /**
  * Storyboard — one clean-frames sheet from a script.
  *
- * The user pastes a script or an idea, picks a visual style and a grid;
- * the expert-storyboard prompt is engineered server-side around their
+ * The user pastes a script or an idea, picks a visual style and a grid,
+ * and may attach photos of the characters, products or places the sheet
+ * must keep consistent (with a note saying which is which); the
+ * expert-storyboard prompt is engineered server-side around their
  * script and never shown. Generating goes through the studio's normal
  * create path (`tool: {kind: 'storyboard'}`); the sheet arrives as a
  * pending tile in the project grid.
@@ -14,18 +16,31 @@
  * frames go soft.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Sparkle, SquaresFour } from "@phosphor-icons/react";
+import { Plus, Sparkle, SquaresFour, X } from "@phosphor-icons/react";
 import { JobSubmissionError, RateLimitedError } from "@clickfy/sdk";
 import type { CreateToolInput } from "@clickfy/sdk";
 import { cn } from "@/lib/utils";
+import { getSDK } from "@/lib/api";
 import { useModels } from "@/lib/use-models";
 import { useStudioMaybe } from "@/components/studio/studio-context";
 import { ToolModal } from "@/components/tools/tool-modal";
 
 const MAX_SCRIPT_CHARS = 4000;
+const MAX_NOTES_CHARS = 1000;
+/** Mirrors STORYBOARD_MAX_IMAGES in the API's job validation. */
+const MAX_IMAGES = 6;
+const MAX_MB = 25;
+const ACCEPTED = ["image/jpeg", "image/png", "image/webp"];
+
+type Picked = {
+  id: string;
+  previewUrl: string;
+  status: "uploading" | "ready" | "error";
+  media?: { r2Key: string; mimeType: string; sizeBytes: number };
+};
 
 type Style = Extract<CreateToolInput, { kind: "storyboard" }>["style"];
 
@@ -75,9 +90,49 @@ export function StoryboardModal({ onClose }: { onClose: () => void }) {
   const [script, setScript] = useState("");
   const [style, setStyle] = useState<Style>("hand_drawn");
   const [grid, setGrid] = useState(GRIDS[2]!);
+  const [images, setImages] = useState<Picked[]>([]);
+  const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
 
-  const canGenerate = script.trim().length > 0 && !submitting && !!studio;
+  // Object URLs are released when the modal goes.
+  const urlsRef = useRef<string[]>([]);
+  useEffect(() => () => { urlsRef.current.forEach((u) => URL.revokeObjectURL(u)); }, []);
+
+  // Same upload path as the Ad tool: straight to My Assets, then the
+  // stored key rides the request as a reference image.
+  const addFiles = (files: FileList | null) => {
+    if (!files) return;
+    const room = MAX_IMAGES - images.length;
+    const accepted = Array.from(files).filter((f) => {
+      if (!ACCEPTED.includes(f.type)) { toast.error(t("unsupportedPhoto")); return false; }
+      if (f.size > MAX_MB * 1024 * 1024) { toast.error(t("photoTooLarge", { max: MAX_MB })); return false; }
+      return true;
+    }).slice(0, Math.max(0, room));
+    if (accepted.length === 0) return;
+    const picked: Picked[] = accepted.map((f) => {
+      const previewUrl = URL.createObjectURL(f);
+      urlsRef.current.push(previewUrl);
+      return { id: `${f.name}-${f.size}-${f.lastModified}-${Math.random().toString(36).slice(2, 8)}`, previewUrl, status: "uploading" as const };
+    });
+    setImages((prev) => [...prev, ...picked]);
+    picked.forEach((p, i) => {
+      const file = accepted[i]!;
+      getSDK().uploads
+        .uploadUserAsset({ file, name: file.name, type: file.type, sizeBytes: file.size })
+        .then((ref) => setImages((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "ready", media: { r2Key: ref.key, mimeType: ref.contentType, sizeBytes: ref.sizeBytes } } : x))))
+        .catch(() => {
+          setImages((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "error" } : x)));
+          toast.error(t("uploadFailed"));
+        });
+    });
+  };
+
+  const ready = images.filter((i) => i.status === "ready" && i.media);
+  // Every attached image must have landed — a half-uploaded cast would
+  // silently drop a character from the sheet.
+  const canGenerate =
+    script.trim().length > 0 && !submitting && !!studio && ready.length === images.length;
 
   const onGenerate = async () => {
     if (!canGenerate) return;
@@ -88,7 +143,14 @@ export function StoryboardModal({ onClose }: { onClose: () => void }) {
         count: 1,
         input: {
           prompt: script.trim(),
-          tool: { kind: "storyboard", style, cols: grid.cols, rows: grid.rows },
+          tool: {
+            kind: "storyboard",
+            style,
+            cols: grid.cols,
+            rows: grid.rows,
+            notes: ready.length > 0 && notes.trim() ? notes.trim() : undefined,
+          },
+          references: ready.length > 0 ? ready.map((i) => ({ kind: "image" as const, ...i.media! })) : undefined,
         },
       });
       toast.success(t("storyboardStarted"));
@@ -135,6 +197,69 @@ export function StoryboardModal({ onClose }: { onClose: () => void }) {
             placeholder={t("scriptPlaceholder")}
             className="nice-scroll max-h-48 min-h-28 w-full resize-y rounded-lg border border-border bg-surface-2 p-3 text-base leading-relaxed sm:text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
           />
+        </div>
+
+        {/* characters & products — optional reference images + a note saying which is which */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs text-muted-foreground">{t("storyboardImages")}</span>
+            <span className="text-xs text-muted-foreground">{t("storyboardImagesHint", { max: MAX_IMAGES })}</span>
+          </div>
+          <input
+            ref={fileInput}
+            type="file"
+            accept={ACCEPTED.join(",")}
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              addFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <div className="grid grid-cols-6 gap-2">
+            {images.map((img, i) => (
+              <div key={img.id} className="group relative aspect-square overflow-hidden rounded-lg bg-surface-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img.previewUrl} alt="" className={cn("size-full object-cover", img.status !== "ready" && "opacity-50")} />
+                {/* The number is what the note refers to ("Image 2 is the product"). */}
+                <span className="absolute start-1 bottom-1 rounded bg-black/70 px-1 text-[10px] font-semibold tabular-nums text-white">
+                  {i + 1}
+                </span>
+                {img.status === "uploading" && <span className="absolute inset-0 grid place-items-center text-[10px] text-white">{t("uploading")}</span>}
+                {img.status === "error" && <span className="absolute inset-0 grid place-items-center bg-destructive/40 text-[10px] text-white">{t("uploadFailed")}</span>}
+                <button
+                  type="button"
+                  aria-label={t("storyboardRemoveImage")}
+                  onClick={() => setImages((prev) => prev.filter((x) => x.id !== img.id))}
+                  className="absolute end-1 top-1 grid size-5 place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ))}
+            {images.length < MAX_IMAGES && (
+              <button
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                aria-label={t("storyboardAddImage")}
+                className="grid aspect-square place-items-center rounded-lg border border-dashed border-border text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
+              >
+                <Plus className="size-5" />
+              </button>
+            )}
+          </div>
+          {images.length > 0 && (
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              maxLength={MAX_NOTES_CHARS}
+              rows={2}
+              dir="auto"
+              placeholder={t("storyboardNotesPlaceholder")}
+              aria-label={t("storyboardNotes")}
+              className="nice-scroll max-h-32 min-h-16 w-full resize-y rounded-lg border border-border bg-surface-2 p-3 text-base leading-relaxed sm:text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
+            />
+          )}
         </div>
 
         {/* style */}

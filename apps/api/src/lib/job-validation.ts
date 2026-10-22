@@ -386,6 +386,8 @@ export interface CreateValidationOk {
 
 /** Conservative fallback when a model declares no `maxPromptChars`. */
 const DEFAULT_MAX_PROMPT_CHARS = 2500;
+/** Storyboard references: enough for a cast and a product, few enough to stay consistent. */
+const STORYBOARD_MAX_IMAGES = 6;
 
 /**
  * Semantic validation for `POST /v1/jobs/create`. Runs after Zod. Mirrors
@@ -664,11 +666,20 @@ export async function validateCreateSubmission(
         });
       }
     } else {
-      // Storyboard is text-to-sheet — the script is the only input.
-      if (attachments.length > 0) {
+      // Storyboard: the script, plus up to six images of the characters,
+      // products or places the sheet must keep consistent. Clips are not
+      // something a sheet can draw from.
+      if (imageAttachments.length !== attachments.length) {
         return fail({
           code: 'model_no_images',
-          message: 'Storyboard works from your script alone — no attachments.',
+          message: 'Storyboard takes images only — a photo of each character or product.',
+        });
+      }
+      if (imageAttachments.length > STORYBOARD_MAX_IMAGES) {
+        return fail({
+          code: 'too_many_images',
+          message: `Storyboard takes up to ${STORYBOARD_MAX_IMAGES} reference images.`,
+          details: { max: STORYBOARD_MAX_IMAGES, actual: imageAttachments.length },
         });
       }
     }

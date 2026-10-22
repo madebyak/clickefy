@@ -556,6 +556,8 @@ export type CreateToolInput =
   | { kind: 'camera_preset'; preset: 'wide' | 'medium' | 'close_up' | 'low_angle' }
   | {
       kind: 'storyboard';
+      /** What the attached character / product images are, in the user's words. */
+      notes?: string;
       style: 'hand_drawn' | 'sketch' | 'realistic' | 'comic' | '3d';
       cols: number;
       rows: number;

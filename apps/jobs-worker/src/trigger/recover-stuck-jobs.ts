@@ -52,13 +52,27 @@ const QUEUED_STUCK_AFTER_SECONDS = 30;
  *  predated Seedance and refunded jobs that later completed — i.e.
  *  free generations on the most expensive model.) */
 const PROCESSING_STUCK_AFTER_SECONDS = 1500;
+/** A sweep executing this long after its scheduled minute is backlog from a pause; it must not act. */
+const STALE_SCHEDULE_AFTER_MS = 90_000;
 
 export const recoverStuckJobs = schedules.task({
   id: 'recover-stuck-jobs',
   cron: '* * * * *', // every minute
   maxDuration: 60,
 
-  run: async () => {
+  run: async (payload) => {
+    // A sweep that fires long after its scheduled minute is a backlog
+    // run, not a fresh one: when Trigger pauses the environment (usage
+    // limit reached, 2026-10-27) every minute's sweep is queued, and on
+    // resume fourteen hours of them execute within seconds. Each one
+    // counted as a recovery attempt, so jobs the resume was about to
+    // run were abandoned and refunded five attempts later — in ten
+    // seconds. Only the sweep for the current minute may act.
+    const lateBy = Date.now() - payload.timestamp.getTime();
+    if (lateBy > STALE_SCHEDULE_AFTER_MS) {
+      logger.warn('recover-stuck-jobs:stale-schedule-skipped', { scheduledFor: payload.timestamp.toISOString(), lateBySeconds: Math.round(lateBy / 1000) });
+      return { recovered: 0, abandoned: 0, skipped: 'stale_schedule' as const };
+    }
     const db = getDb();
 
     // ── Pass A: jobs stuck in `queued` ──────────────────────────────

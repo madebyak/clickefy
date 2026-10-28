@@ -29,7 +29,7 @@
  */
 
 import { logger, task, wait } from '@trigger.dev/sdk';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 
 import {
   jobs,
@@ -127,7 +127,7 @@ export const generateJob = task({
   //   -  1 min — slack
   maxDuration: 1200,
 
-  run: async (payload: GenerateJobPayload) => {
+  run: async (payload: GenerateJobPayload, { ctx }) => {
     const { jobId } = payload;
     const db = getDb();
 
@@ -162,12 +162,30 @@ export const generateJob = task({
     // the user reads "Image 2 is too small" rather than an array index.
     const contentLabel = contentItemLabeller(jobRow.inputs as Record<string, { kind?: string }>);
 
-    // ── Mark as processing ──────────────────────────────────────
+    // ── Claim the job ───────────────────────────────────────────
+    // One run owns a job. The claim is an atomic UPDATE gated on the
+    // row still being `queued`, or already `processing` under THIS run
+    // (a retry of the same run after an out-of-memory crash). A second
+    // run for the same job — the stuck-job sweeper re-triggers a job it
+    // believes undispatched, and after a Trigger pause both the original
+    // run and the re-trigger execute — finds the row claimed by another
+    // run and leaves. Without this, two runs generated the same job
+    // twice: double provider spend, duplicate outputs, one job id.
     const startedAt = new Date();
-    await db
+    const claimed = await db
       .update(jobs)
-      .set({ status: 'processing', startedAt, progress: emptyProgress() })
-      .where(eq(jobs.id, jobId));
+      .set({ status: 'processing', startedAt, progress: emptyProgress(), triggerRunId: ctx.run.id })
+      .where(
+        and(
+          eq(jobs.id, jobId),
+          or(eq(jobs.status, 'queued'), and(eq(jobs.status, 'processing'), eq(jobs.triggerRunId, ctx.run.id))),
+        ),
+      )
+      .returning();
+    if (claimed.length === 0) {
+      logger.warn('generate-job:claimed-by-another-run', { jobId, runId: ctx.run.id, ownerRunId: jobRow.triggerRunId });
+      return { status: 'skipped' as const, reason: 'claimed_by_another_run' };
+    }
 
     // ── Resolve inputs (R2 reads in parallel) ────────────────────
     // Shared by both paths — hydrates every image/text value in

@@ -53,6 +53,13 @@ const IN_FLIGHT_GRACE_MINUTES = 10;
 /** 3 uploads a minute on the free tier: wait this long when BytePlus says no. */
 const RATE_LIMIT_WAIT_MS = 21_000;
 const RATE_LIMIT_ATTEMPTS = 6;
+/**
+ * A row still `checking` after this long has lost its run — the worker was
+ * paused, or every retry failed before the failure hook could write. The
+ * sweeper fails it so the badge offers "verify again" instead of spinning
+ * for ever. Far longer than any check (Gemini answers in seconds).
+ */
+export const STALE_CHECK_MINUTES = 60;
 /** How long to wait for BytePlus's review; images answer in seconds, clips in minutes. */
 const REVIEW_BUDGET_MS: Record<'image' | 'video' | 'audio', number> = {
   image: 2 * 60_000,
@@ -108,6 +115,21 @@ async function setRow(id: string, patch: Partial<typeof trustedAssets.$inferInse
     .returning();
   if (!row) throw new Error(`trusted asset ${id} vanished`);
   return row;
+}
+
+/**
+ * A person check that may well succeed a moment later: Gemini rate-limited
+ * or down, a network timeout. The task retries these with backoff instead
+ * of telling the user to try again by hand.
+ */
+export class TransientCheckError extends Error {
+  override name = 'TransientCheckError';
+}
+
+function isTransient(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err.name === 'TimeoutError' || err.name === 'AbortError') return true;
+  return /→ (429|5\d\d)\b/.test(err.message) || /fetch failed|ECONNRESET|ETIMEDOUT|socket hang up/i.test(err.message);
 }
 
 function sha256(bytes: Uint8Array): string {
@@ -187,22 +209,27 @@ export async function releaseTrustedAsset(ark: ArkAssetsEnv, row: TrustedAsset, 
 }
 
 /**
- * The whole pipeline for one row: person check (cached), registration,
- * review. Returns the row in its final state; never throws for a verdict
- * (`failed` is a state), only for our own misconfiguration.
+ * Step 1 on its own: read the file, hash it, reuse a cached verdict, or
+ * ask Gemini. A file without a person ends here as `no_human`; one with
+ * a person stays `checking` with `human = true` for the registration
+ * step. Many of these run at once — the check has no rate cap of its
+ * own, and most attachments never need the slow, serialised step 2.
+ *
+ * Throws `TransientCheckError` when the answer should be retried; every
+ * other outcome is written to the row.
  */
-export async function verifyTrustedAsset(id: string): Promise<TrustedAsset> {
+export async function checkPerson(id: string): Promise<TrustedAsset> {
   const db = getDb();
   let row = await db.query.trustedAssets.findFirst({ where: eq(trustedAssets.id, id) });
   if (!row) throw new Error(`trusted asset ${id} not found`);
-  const ark = arkEnv();
-  if (!ark || !env.GEMINI_API_KEY) {
+  if (!env.GEMINI_API_KEY) {
     return setRow(id, { status: 'failed', error: 'Verification is not configured on this worker.' });
   }
-  if (row.status === 'verified' && row.byteplusAssetId) return row;
   if (row.status === 'no_human') return row;
+  if (row.status === 'verified' && row.byteplusAssetId) return row;
+  // The verdict is cached on the row (a released or failed row coming back).
+  if (row.human !== null) return row;
 
-  // ── 1. Bytes and the person verdict ──────────────────────────────
   let bytes: Uint8Array;
   let mimeType: string;
   try {
@@ -210,28 +237,50 @@ export async function verifyTrustedAsset(id: string): Promise<TrustedAsset> {
     bytes = obj.bytes;
     mimeType = obj.mimeType || row.mimeType || 'application/octet-stream';
   } catch (err) {
-    return setRow(id, { status: 'failed', error: 'The upload could not be read.' , checkReason: String(err).slice(0, 200) });
+    if (isTransient(err)) throw new TransientCheckError(`upload read: ${String(err)}`);
+    return setRow(id, { status: 'failed', error: 'The upload could not be read.', checkReason: String(err).slice(0, 200) });
   }
   const sha = sha256(bytes);
-  if (row.human === null) {
-    const twin = await db.query.trustedAssets.findFirst({
-      where: and(eq(trustedAssets.contentSha256, sha), isNotNull(trustedAssets.human), ne(trustedAssets.id, id)),
-    });
-    if (twin) {
-      row = await setRow(id, { contentSha256: sha, mimeType, human: twin.human, checkModel: twin.checkModel, checkReason: twin.checkReason });
-    } else {
-      try {
-        const verdict = await detectHuman({ apiKey: env.GEMINI_API_KEY, bytes, mimeType });
-        row = await setRow(id, { contentSha256: sha, mimeType, human: verdict.human, checkModel: verdict.model, checkReason: verdict.reason });
-      } catch (err) {
-        logger.warn('trusted-assets:check-failed', { id, err: String(err) });
-        return setRow(id, { contentSha256: sha, mimeType, status: 'failed', error: 'Could not inspect the file. Try again.' });
+  const twin = await db.query.trustedAssets.findFirst({
+    where: and(eq(trustedAssets.contentSha256, sha), isNotNull(trustedAssets.human), ne(trustedAssets.id, id)),
+  });
+  if (twin) {
+    row = await setRow(id, { contentSha256: sha, mimeType, human: twin.human, checkModel: twin.checkModel, checkReason: twin.checkReason });
+  } else {
+    try {
+      const verdict = await detectHuman({ apiKey: env.GEMINI_API_KEY, bytes, mimeType });
+      row = await setRow(id, { contentSha256: sha, mimeType, human: verdict.human, checkModel: verdict.model, checkReason: verdict.reason });
+    } catch (err) {
+      if (isTransient(err)) {
+        logger.warn('trusted-assets:check-retry', { id, err: String(err) });
+        throw new TransientCheckError(String(err));
       }
+      logger.warn('trusted-assets:check-failed', { id, err: String(err) });
+      return setRow(id, { contentSha256: sha, mimeType, status: 'failed', error: 'Could not inspect the file. Try again.' });
     }
   }
   if (row.human === false) {
     return setRow(id, { status: 'no_human', error: null });
   }
+  return row;
+}
+
+/**
+ * Steps 2 and 3: register the file on BytePlus and wait for its review.
+ * Serialised by the caller's queue — the Entry tier takes three uploads a
+ * minute and holds fifty assets. Expects a row whose check found a
+ * person; anything else is returned untouched.
+ */
+export async function registerTrustedAsset(id: string): Promise<TrustedAsset> {
+  const db = getDb();
+  let row = await db.query.trustedAssets.findFirst({ where: eq(trustedAssets.id, id) });
+  if (!row) throw new Error(`trusted asset ${id} not found`);
+  const ark = arkEnv();
+  if (!ark) {
+    return setRow(id, { status: 'failed', error: 'Verification is not configured on this worker.' });
+  }
+  if (row.status === 'verified' && row.byteplusAssetId) return row;
+  if (row.human !== true) return row;
 
   // ── 2. Registration ──────────────────────────────────────────────
   if (!row.byteplusAssetId) {
@@ -286,6 +335,34 @@ export async function verifyTrustedAsset(id: string): Promise<TrustedAsset> {
     /* reconciled by the sweeper */
   }
   return setRow(id, { status: 'failed', byteplusAssetId: null, error: 'BytePlus took too long to review the file. Try again.' });
+}
+
+/**
+ * The whole pipeline for one row, in one call: check, then register when
+ * a person was found. This is the inline path — a Seedance job verifying
+ * an attachment the badge never settled (mobile uploads, released slots,
+ * a model switched after attaching). The badge path runs the same two
+ * halves as two tasks on two queues. Never throws for a verdict
+ * (`failed` is a state); a transient check error does propagate.
+ */
+export async function verifyTrustedAsset(id: string): Promise<TrustedAsset> {
+  const row = await checkPerson(id);
+  if (row.human !== true || (row.status === 'verified' && row.byteplusAssetId)) return row;
+  return registerTrustedAsset(id);
+}
+
+/**
+ * A task gave up (every retry failed): close the row so the badge offers
+ * "verify again". Only an unsettled row is touched — a run that wrote its
+ * verdict and then crashed on the way out keeps the verdict.
+ */
+export async function markVerificationFailed(id: string, message: string, cause: unknown): Promise<void> {
+  const [row] = await getDb()
+    .update(trustedAssets)
+    .set({ status: 'failed', error: message, checkReason: String(cause).slice(0, 200), updatedAt: new Date() })
+    .where(and(eq(trustedAssets.id, id), inArray(trustedAssets.status, ['checking', 'verifying'])))
+    .returning();
+  logger.error('trusted-assets:task-failed', { id, closed: !!row, cause: String(cause).slice(0, 300) });
 }
 
 /**
@@ -358,10 +435,22 @@ export async function releaseTrustedAssetsAfterJob(ids: string[]): Promise<void>
  * BytePlus actually holds (a crashed run can leave an asset without a
  * live row, or a row pointing at a deleted asset).
  */
-export async function sweepTrustedAssets(): Promise<{ released: number; orphansDeleted: number; staleRows: number }> {
+export async function sweepTrustedAssets(): Promise<{ released: number; orphansDeleted: number; staleRows: number; timedOut: number }> {
   const ark = arkEnv();
-  if (!ark) return { released: 0, orphansDeleted: 0, staleRows: 0 };
+  if (!ark) return { released: 0, orphansDeleted: 0, staleRows: 0, timedOut: 0 };
   const db = getDb();
+
+  // Checks that lost their run (the worker was paused on 2026-10-27 for
+  // fourteen hours; a crash past every retry) would spin for ever in the
+  // composer. Close them so the user gets "verify again".
+  const staleBefore = new Date(Date.now() - STALE_CHECK_MINUTES * 60_000);
+  const stuck = await db
+    .update(trustedAssets)
+    .set({ status: 'failed', error: 'Verification timed out. Try again.', updatedAt: new Date() })
+    .where(and(eq(trustedAssets.status, 'checking'), lt(trustedAssets.updatedAt, staleBefore)))
+    .returning();
+  const timedOut = stuck.length;
+  if (timedOut > 0) logger.warn('trusted-assets:stale-checks-closed', { timedOut });
   const idleBefore = new Date(Date.now() - IDLE_RELEASE_MINUTES * 60_000);
   const idle = await db.query.trustedAssets.findMany({
     where: and(
@@ -414,5 +503,5 @@ export async function sweepTrustedAssets(): Promise<{ released: number; orphansD
   } catch (err) {
     logger.warn('trusted-assets:reconcile-failed', { err: String(err) });
   }
-  return { released, orphansDeleted, staleRows };
+  return { released, orphansDeleted, staleRows, timedOut };
 }

@@ -232,7 +232,8 @@ export type PromptAttachment = {
    * `verifying` are in progress, `verified` and `no_human` are fine,
    * `failed` offers a retry. Absent on models that take any image.
    */
-  verification?: { id: string; status: TrustedAssetStatus; error: string | null };
+  /** `since`: when this attachment's check began here, so the Generate gate can give up on a lost one. */
+  verification?: { id: string; status: TrustedAssetStatus; error: string | null; since: number };
 };
 
 /** One in-flight generation job rendered as a placeholder tile. */
@@ -1018,7 +1019,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setAttachments((prev) =>
       prev.map((a) =>
         pending.some((p) => p.id === a.id)
-          ? { ...a, verification: { id: "", status: "checking", error: null } }
+          ? { ...a, verification: { id: "", status: "checking", error: null, since: Date.now() } }
           : a,
       ),
     );
@@ -1029,7 +1030,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         .then((state) =>
           setAttachments((prev) =>
             prev.map((x) =>
-              x.id === a.id ? { ...x, verification: { id: state.id, status: state.status, error: state.error } } : x,
+              x.id === a.id ? { ...x, verification: { id: state.id, status: state.status, error: state.error, since: x.verification?.since ?? Date.now() } } : x,
             ),
           ),
         )
@@ -1037,7 +1038,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           setAttachments((prev) =>
             prev.map((x) =>
               x.id === a.id
-                ? { ...x, verification: { id: "", status: "failed", error: null } }
+                ? { ...x, verification: { id: "", status: "failed", error: null, since: x.verification?.since ?? Date.now() } }
                 : x,
             ),
           ),
@@ -1064,7 +1065,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setAttachments((prev) =>
           prev.map((a) => {
             const st = a.media && states.find((x) => x.r2Key === a.media!.r2Key);
-            return st ? { ...a, verification: { id: st.id, status: st.status, error: st.error } } : a;
+            return st ? { ...a, verification: { id: st.id, status: st.status, error: st.error, since: a.verification?.since ?? Date.now() } } : a;
           }),
         );
       } catch {
@@ -1092,13 +1093,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         .then((state) =>
           setAttachments((cur) =>
             cur.map((x) =>
-              x.id === attachmentId ? { ...x, verification: { id: state.id, status: state.status, error: state.error } } : x,
+              x.id === attachmentId ? { ...x, verification: { id: state.id, status: state.status, error: state.error, since: x.verification?.since ?? Date.now() } } : x,
             ),
           ),
         )
         .catch(() => toast.error(t("toastVerifyRetryFailed")));
       return prev.map((a) =>
-        a.id === attachmentId ? { ...a, verification: { id: id ?? "", status: "checking", error: null } } : a,
+        a.id === attachmentId ? { ...a, verification: { id: id ?? "", status: "checking", error: null, since: Date.now() } } : a,
       );
     });
   }, [t]);

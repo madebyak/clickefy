@@ -72,6 +72,9 @@ import { modelLogo } from "@/lib/model-logos";
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const EMPTY_ATTACHMENTS: PromptAttachment[] = [];
 /** The hero shows what the product does; the studio also offers Audio. */
+/** Generate waits this long for a person check; after that the job verifies inline. */
+const VERIFY_GATE_MS = 90_000;
+
 const HERO_MODES = ["image", "video"] as const;
 const STUDIO_MODES = ["image", "video", "audio"] as const;
 /** Drag payload for reordering an attachment within the tray. */
@@ -988,9 +991,15 @@ export function PromptBar({
   const readyAttachments = attachments.filter((a) => a.status === "ready");
   const uploadsInFlight = attachments.some((a) => a.status === "uploading");
   // Seedance's person check: hold Generate until every attachment has an
-  // answer, so a job never races its own verification.
+  // answer, so a job never races its own verification — but not for ever.
+  // The job verifies on the spot whatever the badge did not settle, so a
+  // check that lost its run (a paused worker) stops blocking after a
+  // bounded wait; the badge keeps spinning until the row closes.
   const verificationsInFlight = attachments.some(
-    (a) => a.verification && (a.verification.status === "checking" || a.verification.status === "verifying"),
+    (a) =>
+      a.verification &&
+      (a.verification.status === "checking" || a.verification.status === "verifying") &&
+      Date.now() - a.verification.since < VERIFY_GATE_MS,
   );
   const maxImages = model?.maxImages ?? 0;
   // Reference-clip budgets (Seedance). Zero when the model takes none.

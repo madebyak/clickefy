@@ -318,6 +318,16 @@ export interface ModelCapabilities {
   imageConstraints?: { minEdge: number; maxEdge?: number; minAspect: number; maxAspect: number };
 
   /**
+   * Per-file input size ceilings the provider documents, in bytes. Absent
+   * kinds fall back to the provider's own line (`maxInputBytesFor`), and a
+   * provider that documents none leaves the upload route's global ceiling
+   * as the only limit. Seedance and Seedream: 30 MB images; Kling and
+   * OpenAI: 50 MB; Gemini documents no per-file limit (a 32 MB request
+   * was accepted in a probe on 2026-10-29).
+   */
+  maxInputBytes?: { image?: number; video?: number; audio?: number };
+
+  /**
    * Kling O1: "When using both the first and last frames, no additional
    * reference images can be added." The compiler drops the references
    * (with a warning) rather than the end frame, mirroring
@@ -1894,6 +1904,24 @@ export function getCapabilities(modelKey: string): ModelCapabilities {
 }
 
 /** Optional accessor — returns `undefined` instead of throwing. */
+const INPUT_MB = 1024 * 1024;
+/** What each provider documents per input file; a model's own `maxInputBytes` overrides per kind. */
+const PROVIDER_INPUT_BYTES: Record<ModelCapabilities['provider'], { image?: number; video?: number; audio?: number }> = {
+  seedance: { image: 30 * INPUT_MB, video: 200 * INPUT_MB, audio: 15 * INPUT_MB },
+  kling: { image: 50 * INPUT_MB, video: 200 * INPUT_MB },
+  openai: { image: 50 * INPUT_MB },
+  gemini: {},
+  fal: {},
+  elevenlabs: {},
+};
+
+/** The per-file size ceilings that apply to a model, by input kind; a kind absent here has only the global upload ceiling. */
+export function maxInputBytesFor(
+  caps: Pick<ModelCapabilities, 'provider' | 'maxInputBytes'>,
+): { image?: number; video?: number; audio?: number } {
+  return { ...PROVIDER_INPUT_BYTES[caps.provider], ...caps.maxInputBytes };
+}
+
 export function findCapabilities(modelKey: string): ModelCapabilities | undefined {
   return MODEL_CAPABILITIES[modelKey] ?? DYNAMIC_CAPABILITIES[modelKey];
 }

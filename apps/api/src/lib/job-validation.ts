@@ -69,6 +69,7 @@ export type JobValidationErrorCode =
   | 'image_format_not_supported'
   | 'image_too_small'
   | 'image_too_large'
+  | 'file_too_large'
   | 'image_bad_shape'
   | 'shots_not_supported'
   | 'shots_invalid'
@@ -369,6 +370,8 @@ export interface CreateValidationContext {
      * here, with the real number, instead of after the debit.
      */
     imageConstraints?: { minEdge: number; maxEdge?: number; minAspect: number; maxAspect: number };
+    /** Provider per-file size ceilings by kind (bytes). */
+    maxInputBytes?: { image?: number; video?: number; audio?: number };
     /** Kling 3.0 family multi-shot limits; absent = not supported. */
     multiShot?: { maxShots: number; maxCharsPerShot: number; minShotSeconds: number };
   };
@@ -498,6 +501,22 @@ export async function validateCreateSubmission(
       message: `This model accepts at most ${model.maxImagesTotal} image(s).`,
       details: { max: model.maxImagesTotal, actual: imageAttachments.length },
     });
+  }
+  // Provider file-size ceilings (Seedance 30 MB images, Kling 50 MB…).
+  // The upload route takes the largest any provider allows, so the
+  // model's own line is drawn here, before the debit, naming the file.
+  if (model.maxInputBytes) {
+    for (const a of attachments) {
+      const cap = model.maxInputBytes[a.val.kind];
+      if (cap && a.val.sizeBytes > cap) {
+        return fail({
+          code: 'file_too_large',
+          message: `This model accepts ${a.val.kind} files up to ${Math.floor(cap / 1048576)} MB; one of yours is ${Math.ceil(a.val.sizeBytes / 1048576)} MB.`,
+          fieldKey: a.fieldKey,
+          details: { kind: a.val.kind, max: cap, actual: a.val.sizeBytes },
+        });
+      }
+    }
   }
   // Reference images on a frames-only model (Kling 3, 2.6, 2.5 Turbo,
   // 3 Turbo). Refuse here: the compiler would otherwise have nothing to

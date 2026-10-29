@@ -520,6 +520,8 @@ export interface GenModel {
   acceptedImageMimes?: string[];
   /** Provider pixel constraints on input images. */
   imageConstraints?: { minEdge: number; maxEdge?: number; minAspect: number; maxAspect: number };
+  /** Per-file input size ceilings the provider documents, by kind (bytes). Absent kind: only the global upload ceiling applies. */
+  maxInputBytes?: { image?: number; video?: number; audio?: number };
 }
 
 // ─── Notifications (in-app inbox) ────────────────────────────────────

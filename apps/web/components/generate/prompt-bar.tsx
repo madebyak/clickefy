@@ -87,7 +87,7 @@ const REF_KINDS: readonly ReferenceKind[] = ["image", "video", "audio"];
  * file is a toast in 0ms, not a failed request after a progress bar.
  */
 const MAX_UPLOAD_MB: Record<"image" | "video" | "audio", number> = {
-  image: 25,
+  image: 50,
   video: 200,
   audio: 15,
 };
@@ -1262,8 +1262,15 @@ export function PromptBar({
     // but a refusal before the upload starts beats one after it.
     const usable = typeOk.filter((f) => {
       const kind = uploadKindOf(f);
-      if (f.size > MAX_UPLOAD_MB[kind] * 1024 * 1024) {
-        toast.error(t(`fileTooLarge_${kind}`, { max: MAX_UPLOAD_MB[kind] }));
+      // The model's own documented ceiling first (Seedance 30 MB images,
+      // Kling 50 MB); the global upload ceiling when it documents none.
+      const modelCap = model?.maxInputBytes?.[kind];
+      const cap = modelCap ?? MAX_UPLOAD_MB[kind] * 1024 * 1024;
+      if (f.size > cap) {
+        const max = Math.floor(cap / (1024 * 1024));
+        toast.error(
+          modelCap && model ? t(`fileTooLargeForModel_${kind}`, { model: model.name, max }) : t(`fileTooLarge_${kind}`, { max }),
+        );
         return false;
       }
       return true;

@@ -53,6 +53,64 @@ export class InputDownloadError extends Error {
   }
 }
 
+/**
+ * The inputs as the adapters can already use them: text inline, media as
+ * key + MIME + public URL, no bytes. Four of our six providers (Seedance,
+ * Seedream, Kling, fal) fetch the file from that URL themselves, so for
+ * them this is the whole resolution; `hydrateJobInputs` downloads bytes
+ * only when a stage's provider embeds them (Gemini, OpenAI, ElevenLabs)
+ * or when the URL is not reachable from outside (local dev).
+ */
+export function describeJobInputs(inputs: Record<string, JobInputValue>): Record<string, RuntimeInputValue> {
+  return Object.fromEntries(
+    Object.entries(inputs).map(([fieldKey, val]): [string, RuntimeInputValue] =>
+      val.kind === 'text'
+        ? [fieldKey, { kind: 'text', value: val.value }]
+        : [fieldKey, { kind: val.kind, r2Key: val.r2Key, mimeType: val.mimeType, url: publicUrlForR2(val.r2Key) }],
+    ),
+  );
+}
+
+/** Download the bytes of every media input that has none yet (`sizes` scales each file's time budget). */
+export async function hydrateJobInputs(
+  resolved: Record<string, RuntimeInputValue>,
+  sizes: Record<string, number | null | undefined> = {},
+): Promise<void> {
+  const started = Date.now();
+  const entries = Object.entries(resolved).filter(([, v]) => v.kind !== 'text' && !v.bytes);
+  const timings: Array<{ key: string; ms: number; bytes: number }> = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < entries.length) {
+      const [fieldKey, val] = entries[next++]!;
+      if (val.kind === 'text') continue;
+      const t0 = Date.now();
+      let obj: Awaited<ReturnType<typeof readUploadObject>>;
+      try {
+        obj = await readUploadObject(val.r2Key, { sizeBytes: sizes[fieldKey] ?? null });
+      } catch (err) {
+        if (err instanceof UploadMissingError) throw err;
+        throw new InputDownloadError(`${val.r2Key}: ${String(err)}`, val.r2Key);
+      }
+      timings.push({ key: val.r2Key, ms: Date.now() - t0, bytes: obj.bytes.byteLength });
+      val.bytes = obj.bytes;
+      if (obj.mimeType) val.mimeType = obj.mimeType;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(READ_CONCURRENCY, entries.length) }, worker));
+  if (timings.length > 0) {
+    const slowest = timings.reduce((a, b) => (b.ms > a.ms ? b : a));
+    logger.info('inputs:hydrated', {
+      files: timings.length,
+      totalMb: Math.round(timings.reduce((n, t) => n + t.bytes, 0) / 104_857.6) / 10,
+      totalMs: Date.now() - started,
+      slowestMs: slowest.ms,
+      slowestKey: slowest.key,
+    });
+  }
+}
+
+/** Describe and hydrate in one call: every media input with its bytes. */
 export async function resolveJobInputs(
   inputs: Record<string, JobInputValue>,
 ): Promise<Record<string, RuntimeInputValue>> {

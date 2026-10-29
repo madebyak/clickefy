@@ -93,7 +93,9 @@ function adminUploadRulesFor(folder: string): {
 //     presign path never moves the bytes through the Worker, so the
 //     bigger ceiling costs nothing there.
 //   audio 15MB — BytePlus's own per-clip cap for reference audio.
-const USER_MAX_BYTES = 25 * 1024 * 1024;
+// Images: the largest ceiling any provider documents (Kling and OpenAI take 50 MB;
+// Seedance and Seedream 30 MB). The model's own line is drawn at job creation.
+const USER_MAX_BYTES = 50 * 1024 * 1024;
 const USER_MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const USER_ALLOWED_IMAGE_MIME = new Set([
   'image/jpeg',

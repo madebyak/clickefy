@@ -83,7 +83,7 @@ import {
 import { env } from '../env';
 import { getDb } from '../lib/db';
 import { loadDynamicModels } from '../lib/dynamic-models';
-import { resolveJobInputs } from '../lib/input-resolver';
+import { describeJobInputs, hydrateJobInputs } from '../lib/input-resolver';
 import { applyTrustedAssets, releaseTrustedAssetsAfterJob } from '../lib/trusted-assets';
 import { reportStage, updateJobProgress } from '../lib/progress';
 import { pushUser } from '../lib/push';
@@ -187,12 +187,20 @@ export const generateJob = task({
       return { status: 'skipped' as const, reason: 'claimed_by_another_run' };
     }
 
-    // ── Resolve inputs (R2 reads in parallel) ────────────────────
-    // Shared by both paths — hydrates every image/text value in
-    // `jobs.inputs` (bytes + url) for the compiler and adapters.
-    let inputs: Record<string, RuntimeInputValue>;
+    // ── Describe inputs ───────────────────────────────────────────
+    // Text inline, media as key + public URL. Bytes are downloaded only
+    // once the stages are known and one of them embeds files; Seedance,
+    // Seedream, Kling and fal fetch the URL themselves, and the download
+    // was the step that failed under a slow storage window (2026-10-29).
+    const inputs: Record<string, RuntimeInputValue> = describeJobInputs(jobRow.inputs as Record<string, JobInputValue>);
+    const inputSizes = Object.fromEntries(
+      Object.entries(jobRow.inputs as Record<string, { sizeBytes?: number }>).map(([k, v]) => [k, v.sizeBytes ?? null]),
+    );
+    const hydrateInputs = async () => {
+      await hydrateJobInputs(inputs, inputSizes);
+    };
     try {
-      inputs = await resolveJobInputs(jobRow.inputs as Record<string, JobInputValue>);
+      if (!hasPublicWorkerUrl()) await hydrateInputs();
     } catch (err) {
       logger.error('generate-job:input-resolve-failed', { jobId, err: String(err) });
       // Only a real 404 is "not found". A timeout or a storage error after
@@ -368,6 +376,24 @@ export const generateJob = task({
       stageTemplateInputs = template.userInputs;
       jobCostCredits = template.costCredits;
       notifyTitle = template.title;
+    }
+
+    // ── Bytes, for the providers that embed files ──────────────────
+    if (stages.some((st) => BYTES_PROVIDERS.has(st.provider))) {
+      try {
+        await hydrateInputs();
+      } catch (err) {
+        logger.error('generate-job:input-resolve-failed', { jobId, err: String(err) });
+        const missing = err instanceof UploadMissingError;
+        return failJob(jobId, {
+          code: missing ? 'r2_input_missing' : 'input_download_failed',
+          message: missing
+            ? 'A referenced upload was not found in storage.'
+            : 'An attachment could not be downloaded from storage after several attempts. Please try again.',
+          stage: 0,
+          retryCount: 0,
+        });
+      }
     }
 
     // ── Attachments that show a person ───────────────────────────
@@ -871,6 +897,14 @@ export const generateJob = task({
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────
+
+/** Providers whose adapters embed the file bytes in the request; the others fetch our public URL themselves. */
+const BYTES_PROVIDERS = new Set<string>(['gemini', 'openai', 'elevenlabs']);
+
+/** A URL a provider can fetch: not the local dev host (the adapters inline base64 for those). */
+function hasPublicWorkerUrl(): boolean {
+  return !/^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0)(?::|\/|$)/i.test(env.WORKER_API_URL);
+}
 
 function emptyProgress() {
   return { stage: 0, totalStages: 0, message: 'Starting…' };

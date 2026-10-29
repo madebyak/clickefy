@@ -52,6 +52,7 @@ import {
   createReferenceKey,
   draftFinalCost,
   findCapabilities,
+  maxInputBytesFor,
   TOOL_MODELS,
 } from '@clickfy/providers';
 
@@ -668,6 +669,7 @@ jobsRoute.post(
             maxReferencesWithVideo: caps.maxReferencesWithVideo,
             acceptedImageMimes: caps.acceptedImageMimes,
             imageConstraints: caps.imageConstraints,
+            maxInputBytes: maxInputBytesFor(caps),
             multiShot: caps.multiShot,
           },
         });

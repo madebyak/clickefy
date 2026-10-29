@@ -13,7 +13,7 @@
  * Adding a model = one entry here (plus a priced `provider_models` row).
  */
 
-import { aspectRatiosFor, findCapabilities, listDynamicModels, type ModelCapabilities } from '@clickfy/providers';
+import { aspectRatiosFor, findCapabilities, listDynamicModels, maxInputBytesFor, type ModelCapabilities } from '@clickfy/providers';
 
 /**
  * How the mobile create screen renders image attachments for a model:
@@ -449,6 +449,8 @@ export interface CreateModelDTO {
   acceptedImageMimes?: string[];
   /** Provider pixel constraints on input images (Kling: ≥300px, aspect 1:2.5–2.5:1). */
   imageConstraints?: { minEdge: number; maxEdge?: number; minAspect: number; maxAspect: number };
+  /** Per-file input size ceilings the provider documents, by kind (bytes); absent kind = global upload ceiling only. */
+  maxInputBytes?: { image?: number; video?: number; audio?: number };
   /** Audio models only: what the Audio page needs to build the form and quote the price. */
   audio?: {
     task: 'tts' | 'sfx' | 'sts';
@@ -583,5 +585,6 @@ export function buildCreateModelDTO(
     multiShot: caps.multiShot ? { ...caps.multiShot } : undefined,
     acceptedImageMimes: caps.acceptedImageMimes ? [...caps.acceptedImageMimes] : undefined,
     imageConstraints: caps.imageConstraints ? { ...caps.imageConstraints } : undefined,
+    maxInputBytes: maxInputBytesFor(caps),
   };
 }

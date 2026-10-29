@@ -22,7 +22,7 @@ import {
 
 // Hard ceilings, sized to match the upload route's `USER_MAX_BYTES`
 // (25MB) for images, with extra headroom for short video references.
-const IMAGE_MAX_BYTES = 25 * 1024 * 1024;
+const IMAGE_MAX_BYTES = 50 * 1024 * 1024; // the largest any provider documents (Kling, OpenAI); models draw their own line in job-validation
 const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
 // BytePlus caps reference-audio clips at 15MB; enforcing the same here
 // turns an over-size clip into a 400 instead of a failed-after-debit job.

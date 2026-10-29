@@ -25,6 +25,7 @@ export {
   type ModelStatus,
   type RefAddressingStyle,
   type SizingMode,
+  maxInputBytesFor,
 } from './capabilities';
 
 export { compile, pixelSizeForAspect } from './compile';

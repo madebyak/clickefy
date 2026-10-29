@@ -87,7 +87,7 @@ import { resolveJobInputs } from '../lib/input-resolver';
 import { applyTrustedAssets, releaseTrustedAssetsAfterJob } from '../lib/trusted-assets';
 import { reportStage, updateJobProgress } from '../lib/progress';
 import { pushUser } from '../lib/push';
-import { writeOutputObject } from '../lib/r2';
+import { UploadMissingError, writeOutputObject } from '../lib/r2';
 import { isRefundable, refundForJob } from '../lib/refund';
 import { persistOutputRenditions } from '../lib/renditions';
 
@@ -195,9 +195,15 @@ export const generateJob = task({
       inputs = await resolveJobInputs(jobRow.inputs as Record<string, JobInputValue>);
     } catch (err) {
       logger.error('generate-job:input-resolve-failed', { jobId, err: String(err) });
+      // Only a real 404 is "not found". A timeout or a storage error after
+      // every retry is a different failure, and labelling it "missing"
+      // sent the 2026-10-29 incident's nine jobs down the wrong path.
+      const missing = err instanceof UploadMissingError;
       return failJob(jobId, {
-        code: 'r2_input_missing',
-        message: 'A referenced upload was not found in storage.',
+        code: missing ? 'r2_input_missing' : 'input_download_failed',
+        message: missing
+          ? 'A referenced upload was not found in storage.'
+          : 'An attachment could not be downloaded from storage after several attempts. Please try again.',
         stage: 0,
         retryCount: 0,
       });

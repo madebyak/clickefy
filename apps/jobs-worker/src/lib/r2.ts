@@ -21,26 +21,39 @@
 
 import { env } from '../env';
 
+/** The upload is gone (a real 404): final, never retried. */
+export class UploadMissingError extends Error {
+  override name = 'UploadMissingError';
+}
+
 /**
  * Fetch a user-uploaded object as raw bytes via
  * `GET /v1/uploads/<key>`. Public-read route — no auth header
  * needed (same posture as admin assets).
+ *
+ * Bounded and retried. Node's default is a 5-minute headers timeout
+ * with no retry, which on 2026-10-04 turned a transient proxy stall
+ * into 30 refunded jobs that reported "upload not found". The budget
+ * scales with the file: on 2026-10-29, during a Cloudflare degradation,
+ * twelve 4–7 MB attachments read in parallel under a flat 60 s each
+ * failed nine jobs in a row. A 404 is final; everything else (timeout,
+ * reset, 5xx) retries with backoff.
  */
-export async function readUploadObject(r2Key: string): Promise<{
+export async function readUploadObject(
+  r2Key: string,
+  opts: { sizeBytes?: number | null } = {},
+): Promise<{
   bytes: Uint8Array;
   mimeType: string;
 }> {
   const url = `${baseUrl()}/v1/uploads/${r2Key}`;
-  // Bounded and retried. Node's default is a 5-minute headers timeout
-  // with no retry, which on 2026-10-04 turned a transient proxy stall
-  // into 30 refunded jobs that reported "upload not found". A read that
-  // does not answer in a minute is retried twice before the job fails.
+  const timeoutMs = readTimeoutFor(opts.sizeBytes ?? null);
   let lastErr: unknown;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= READ_ATTEMPTS; attempt++) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
       if (res.status === 404) {
-        throw new Error(`Worker read failed: GET ${url} -> 404 Not Found`);
+        throw new UploadMissingError(`Worker read failed: GET ${url} -> 404 Not Found`);
       }
       if (!res.ok) {
         throw new RetryableReadError(`Worker read failed: GET ${url} -> ${res.status} ${res.statusText}`);
@@ -50,16 +63,24 @@ export async function readUploadObject(r2Key: string): Promise<{
       return { bytes, mimeType };
     } catch (err) {
       lastErr = err;
-      // A real 404 is final; everything else (timeout, reset, 5xx) retries.
-      if (err instanceof Error && /-> 404 /.test(err.message)) throw err;
-      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 2_000));
+      if (err instanceof UploadMissingError) throw err;
+      if (attempt < READ_ATTEMPTS) await new Promise((r) => setTimeout(r, attempt * 2_000));
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-const READ_TIMEOUT_MS = 60_000;
+const READ_ATTEMPTS = 4;
+const READ_TIMEOUT_BASE_MS = 60_000;
+/** Extra budget per megabyte: a shared egress during a burst can drop under 100 KB/s. */
+const READ_TIMEOUT_PER_MB_MS = 15_000;
+const READ_TIMEOUT_MAX_MS = 5 * 60_000;
 class RetryableReadError extends Error {}
+
+function readTimeoutFor(sizeBytes: number | null): number {
+  if (!sizeBytes || sizeBytes <= 0) return READ_TIMEOUT_BASE_MS;
+  return Math.min(READ_TIMEOUT_MAX_MS, READ_TIMEOUT_BASE_MS + Math.ceil(sizeBytes / 1_048_576) * READ_TIMEOUT_PER_MB_MS);
+}
 
 /**
  * Persist a generated artifact via the Worker's internal route
@@ -93,27 +114,47 @@ export async function writeOutputBytes(args: {
 }): Promise<void> {
   const url = `${baseUrl()}/v1/outputs/internal/${args.r2Key}`;
 
-  // Node's fetch accepts a Uint8Array / Buffer as body directly,
-  // streaming under the hood. We pass it raw rather than wrapping
-  // in a Blob to keep memory pressure low for large images.
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'content-type': args.mimeType,
-      'x-internal-secret': env.INTERNAL_API_SECRET,
-    },
-    // Node's fetch BodyInit accepts Uint8Array natively, but TS's
-    // built-in DOM-style typings disagree. Cast through unknown to
-    // match the runtime contract without a `dom.iterable` import.
-    body: args.bytes as unknown as ArrayBuffer,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(
-      `Worker write failed: PUT ${url} -> ${res.status} ${res.statusText} ${text.slice(0, 200)}`,
-    );
+  // Retried: this write comes AFTER the provider has finished, so a
+  // single failed PUT throws away minutes of paid generation and the
+  // run's retry generates it all over again (2026-10-29, during a
+  // Cloudflare degradation: "put: Unspecified error (0)" and "fetch
+  // failed" cost two Seedance renders). Network errors, 5xx and 429
+  // retry with backoff; any other 4xx is a bug and surfaces at once.
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= WRITE_ATTEMPTS; attempt++) {
+    try {
+      // Node's fetch accepts a Uint8Array / Buffer as body directly,
+      // streaming under the hood. We pass it raw rather than wrapping
+      // in a Blob to keep memory pressure low for large images.
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'content-type': args.mimeType,
+          'x-internal-secret': env.INTERNAL_API_SECRET,
+        },
+        // Node's fetch BodyInit accepts Uint8Array natively, but TS's
+        // built-in DOM-style typings disagree. Cast through unknown to
+        // match the runtime contract without a `dom.iterable` import.
+        body: args.bytes as unknown as ArrayBuffer,
+        signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
+      });
+      if (res.ok) return;
+      const text = await res.text().catch(() => '');
+      const message = `Worker write failed: PUT ${url} -> ${res.status} ${res.statusText} ${text.slice(0, 200)}`;
+      if (res.status < 500 && res.status !== 429) throw new Error(message);
+      lastErr = new Error(message);
+    } catch (err) {
+      if (err instanceof Error && /-> 4(?!29)\d\d /.test(err.message)) throw err;
+      lastErr = err;
+    }
+    if (attempt < WRITE_ATTEMPTS) await new Promise((r) => setTimeout(r, Math.min(30_000, 2_000 * 2 ** (attempt - 1))));
   }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
+
+const WRITE_ATTEMPTS = 5;
+/** A 100 MB clip at a slow shared uplink; well under the task's budget. */
+const WRITE_TIMEOUT_MS = 3 * 60_000;
 
 function baseUrl(): string {
   return env.WORKER_API_URL.replace(/\/$/, '');

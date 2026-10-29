@@ -19,7 +19,9 @@ import type { JobInputValue } from '@clickfy/types';
 import type { RuntimeInputValue } from '@clickfy/providers';
 
 import { env } from '../env';
-import { readUploadObject } from './r2';
+import { logger } from '@trigger.dev/sdk';
+
+import { readUploadObject, UploadMissingError } from './r2';
 
 /**
  * Build the public URL the provider adapters can hand to URL-fetching
@@ -40,25 +42,43 @@ function publicUrlForR2(r2Key: string): string {
   return `${env.WORKER_API_URL.replace(/\/$/, '')}/v1/uploads/${r2Key}`;
 }
 
+/** Downloads at a time. Twelve in parallel on one shared uplink starved each other past their timeouts (2026-10-29). */
+const READ_CONCURRENCY = 4;
+
+/** An attachment could not be downloaded after every retry; the upload itself exists. Distinct from a missing one. */
+export class InputDownloadError extends Error {
+  override name = 'InputDownloadError';
+  constructor(message: string, readonly r2Key: string) {
+    super(message);
+  }
+}
+
 export async function resolveJobInputs(
   inputs: Record<string, JobInputValue>,
 ): Promise<Record<string, RuntimeInputValue>> {
-  const entries = await Promise.all(
-    Object.entries(inputs).map(async ([fieldKey, val]): Promise<[string, RuntimeInputValue]> => {
+  const started = Date.now();
+  const entries = Object.entries(inputs);
+  const out: Array<[string, RuntimeInputValue]> = new Array(entries.length);
+  const timings: Array<{ key: string; ms: number; bytes: number }> = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < entries.length) {
+      const i = next++;
+      const [fieldKey, val] = entries[i]!;
       if (val.kind === 'text') {
-        return [fieldKey, { kind: 'text', value: val.value }];
+        out[i] = [fieldKey, { kind: 'text', value: val.value }];
+        continue;
       }
-
-      // Pull the user upload from R2. We re-read the mime type from
-      // the object itself rather than trusting the submitted value
-      // because R2 is the source of truth (the upload route also
-      // wrote ContentType at PUT time).
-      //
-      // We populate BOTH `bytes` (Gemini inlines base64) and `url`
-      // (Kling/Seedance prefer fetching from URL). Adapters pick the
-      // form they need; no harm carrying both.
-      const obj = await readUploadObject(val.r2Key);
-      return [
+      const t0 = Date.now();
+      let obj: Awaited<ReturnType<typeof readUploadObject>>;
+      try {
+        obj = await readUploadObject(val.r2Key, { sizeBytes: (val as { sizeBytes?: number }).sizeBytes ?? null });
+      } catch (err) {
+        if (err instanceof UploadMissingError) throw err;
+        throw new InputDownloadError(`${val.r2Key}: ${String(err)}`, val.r2Key);
+      }
+      timings.push({ key: val.r2Key, ms: Date.now() - t0, bytes: obj.bytes.byteLength });
+      out[i] = [
         fieldKey,
         {
           kind: val.kind,
@@ -68,7 +88,18 @@ export async function resolveJobInputs(
           url: publicUrlForR2(val.r2Key),
         },
       ];
-    }),
-  );
-  return Object.fromEntries(entries);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(READ_CONCURRENCY, entries.length) }, worker));
+  if (timings.length > 0) {
+    const slowest = timings.reduce((a, b) => (b.ms > a.ms ? b : a));
+    logger.info('inputs:resolved', {
+      files: timings.length,
+      totalMb: Math.round(timings.reduce((n, t) => n + t.bytes, 0) / 104_857.6) / 10,
+      totalMs: Date.now() - started,
+      slowestMs: slowest.ms,
+      slowestKey: slowest.key,
+    });
+  }
+  return Object.fromEntries(out);
 }

@@ -21,7 +21,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { fetchAnalyticsJob } from '@/lib/api/analytics';
-import { dubaiDateTimeLabel, int, signedUsd, usd } from '@/lib/analytics-format';
+import { dubaiDateTimeLabel, int, signedUsd, tookLabel, usd } from '@/lib/analytics-format';
 import type { TokenGetter } from '@/lib/api';
 
 const STATUS_LABEL: Record<AnalyticsJobRow['status'], string> = { queued: 'Queued', processing: 'Processing', completed: 'Completed', failed: 'Failed' };
@@ -127,6 +127,11 @@ function Detail({ d }: { d: AnalyticsJobDetail }) {
           <Field label="Created" value={dubaiDateTimeLabel(d.createdAt)} />
           <Field label="Started" value={d.startedAt ? dubaiDateTimeLabel(d.startedAt) : '—'} sub={d.queueMs != null ? `${ms(d.queueMs)} in queue` : undefined} />
           <Field label="Finished" value={d.completedAt ? dubaiDateTimeLabel(d.completedAt) : '—'} sub={d.runMs != null ? `${ms(d.runMs)} running` : undefined} />
+          <Field
+            label="Took"
+            value={d.completedAt ? tookLabel(new Date(d.completedAt).getTime() - new Date(d.createdAt).getTime()) : '—'}
+            sub="created → finished"
+          />
           <Field label="User" value={d.user.email} sub={[d.user.name, d.userEntitlement].filter(Boolean).join(' · ')} />
           <Field label="Origin" value={`${d.origin}${d.templateTitle ? ` · ${d.templateTitle}` : ''}`} />
           <Field label="Provider" value={d.provider ?? '—'} sub={d.modelKey ?? undefined} />

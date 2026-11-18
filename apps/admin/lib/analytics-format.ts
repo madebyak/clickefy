@@ -106,6 +106,27 @@ export function presetOf(from: string, to: string, now = new Date()): RangePrese
   return 'custom';
 }
 
+/** How long a generation took, for a table cell: "48s", "2m 14s", "1h 05m". */
+export function tookLabel(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+}
+
+/** A generation is slow from five minutes and very slow from ten. */
+export const TOOK_SLOW_MS = 5 * 60_000;
+export const TOOK_VERY_SLOW_MS = 10 * 60_000;
+
+/** Tailwind classes for a "took" cell. */
+export function tookTone(ms: number | null | undefined): string {
+  if (ms == null) return 'text-muted-foreground';
+  if (ms >= TOOK_VERY_SLOW_MS) return 'text-destructive';
+  if (ms >= TOOK_SLOW_MS) return 'text-warning';
+  return '';
+}
+
 /** Tailwind classes for a margin cell: the house floor is 33%. */
 export function marginTone(margin: number | null): string {
   if (margin == null) return 'text-muted-foreground';

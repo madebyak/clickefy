@@ -6,6 +6,10 @@
  * Backed by `/v1/admin/analytics/jobs` (cursor paginated) and the CSV
  * export. Filters live in the URL, so the Analytics breakdown can link
  * straight into "the Seedance jobs of this user last month".
+ *
+ * "Took" is the wait the user felt: from pressing Generate (`createdAt`)
+ * to the result or the failure (`completedAt`). A job still in flight
+ * shows the time so far, and the list refreshes itself while any is.
  */
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -26,7 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { downloadCsv, fetchAnalyticsJobs, jobsExportPath } from '@/lib/api/analytics';
-import { dubaiDateTimeLabel, int, signedUsd, usd } from '@/lib/analytics-format';
+import { dubaiDateTimeLabel, int, signedUsd, tookLabel, tookTone, usd } from '@/lib/analytics-format';
 
 const STATUS: Record<AnalyticsJobRow['status'], { label: string; icon: LucideIcon; className: string; iconClassName?: string }> = {
   queued: { label: 'Queued', icon: Clock, className: 'text-muted-foreground' },
@@ -40,6 +44,14 @@ const PROVIDERS: Record<string, string> = { all: 'All providers', gemini: 'Googl
 const ORIGINS: Record<string, string> = { all: 'All origins', create: 'Create', template: 'Template', tool: 'Tool' };
 const STATUSES: Record<string, string> = { all: 'All statuses', completed: 'Completed', failed: 'Failed' };
 const BASES: Record<string, string> = { all: 'Any cost basis', exact: 'Exact', computed: 'Computed', estimated: 'Estimated' };
+
+const IN_FLIGHT = new Set<AnalyticsJobRow['status']>(['queued', 'processing']);
+
+/** Created → finished, in ms. Null while the job is still in flight. */
+function tookMs(j: AnalyticsJobRow): number | null {
+  if (!j.completedAt) return null;
+  return Math.max(0, new Date(j.completedAt).getTime() - new Date(j.createdAt).getTime());
+}
 
 function FilterSelect({ value, options, onChange, width = 'md:w-40' }: { value: string | undefined; options: Record<string, string>; onChange: (v: string) => void; width?: string }) {
   return (
@@ -79,8 +91,27 @@ function JobsTable() {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     staleTime: 15_000,
+    // While a job on screen is still generating, keep its status fresh.
+    refetchInterval: (state) => (state.state.data?.pages.some((p) => p.data.some((j) => IN_FLIGHT.has(j.status))) ? 15_000 : false),
   });
-  const rows = query.data?.pages.flatMap((p) => p.data) ?? [];
+  const rows = useMemo(() => query.data?.pages.flatMap((p) => p.data) ?? [], [query.data]);
+  const anyInFlight = rows.some((j) => IN_FLIGHT.has(j.status));
+
+  // A clock for the "so far" cells; it only ticks while something is in flight.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!anyInFlight) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(t);
+  }, [anyInFlight]);
+
+  // Typical and slowest wait among the finished jobs loaded so far.
+  const timing = useMemo(() => {
+    const done = rows.map(tookMs).filter((v): v is number => v != null).sort((a, b) => a - b);
+    if (done.length === 0) return null;
+    return { typical: done[Math.floor((done.length - 1) / 2)]!, slowest: done[done.length - 1]! };
+  }, [rows]);
   const total = query.data?.pages[0]?.total ?? null;
   const [selected, setSelected] = useState<AnalyticsJobRow | null>(null);
 
@@ -134,6 +165,11 @@ function JobsTable() {
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border px-4 py-2 text-xs text-muted-foreground">
           <span>{total != null ? `${int(total)} job${total === 1 ? '' : 's'} match` : 'Loading…'}</span>
+          {timing && (
+            <span title="Among the finished jobs loaded below">
+              Typical wait {tookLabel(timing.typical)} · slowest <span className={tookTone(timing.slowest)}>{tookLabel(timing.slowest)}</span>
+            </span>
+          )}
           <span>Click a row for the cost breakdown</span>
         </div>
         {query.isLoading ? (
@@ -153,6 +189,7 @@ function JobsTable() {
                 <TableHead>User</TableHead>
                 <TableHead>Model</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right" title="From the user pressing Generate to the result being ready">Took</TableHead>
                 <TableHead>Settings</TableHead>
                 <TableHead className="text-right">Credits</TableHead>
                 <TableHead className="text-right">Cost</TableHead>
@@ -163,6 +200,8 @@ function JobsTable() {
               {rows.map((j) => {
                 const s = STATUS[j.status];
                 const Icon = s.icon;
+                const took = tookMs(j);
+                const inFlight = took == null && IN_FLIGHT.has(j.status);
                 return (
                   <TableRow key={j.id} className="cursor-pointer" onClick={() => setSelected(j)}>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{dubaiDateTimeLabel(j.createdAt)}</TableCell>
@@ -179,6 +218,18 @@ function JobsTable() {
                     <TableCell>
                       <span className={`inline-flex items-center gap-1 text-sm ${s.className}`}><Icon className={`h-3.5 w-3.5 ${s.iconClassName ?? ''}`} />{s.label}</span>
                       {j.errorCode && <div className="text-[10px] uppercase tracking-wide text-destructive">{j.errorCode}</div>}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {took != null ? (
+                        <span className={`text-sm ${tookTone(took)}`}>{tookLabel(took)}</span>
+                      ) : inFlight ? (
+                        <>
+                          <div className="text-sm text-primary-purple">{tookLabel(now - new Date(j.createdAt).getTime())}</div>
+                          <div className="text-[10px] text-muted-foreground">so far</div>
+                        </>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {[j.mode, j.durationSeconds != null ? `${j.durationSeconds}s` : null].filter(Boolean).join(' · ') || '—'}

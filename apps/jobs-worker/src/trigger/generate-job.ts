@@ -50,10 +50,12 @@ import {
   CREATE_END_FRAME_KEY,
   CREATE_PROMPT_KEY,
   CREATE_START_FRAME_KEY,
+  cancelFal,
   executeStage,
   failedStageCost,
   findCapabilities,
   isProviderTaskFailedError,
+  ProviderTaskFailedError,
   stageCost,
   summariseJobCost,
   type StageCost,
@@ -171,6 +173,10 @@ export const generateJob = task({
     // run and the re-trigger execute — finds the row claimed by another
     // run and leaves. Without this, two runs generated the same job
     // twice: double provider spend, duplicate outputs, one job id.
+    // What an earlier attempt of THIS run already submitted to a provider.
+    // Read before the claim rewrites the row; see `resumableTask`.
+    const priorRequestIds = Array.isArray(jobRow.providerRequestIds) ? jobRow.providerRequestIds : [];
+    const attemptNumber = (ctx as { attempt?: { number?: number } }).attempt?.number ?? 1;
     const startedAt = new Date();
     const claimed = await db
       .update(jobs)
@@ -542,15 +548,24 @@ export const generateJob = task({
         // Fire the adapter. Synchronous providers return outputs
         // immediately; Kling returns `pending` + taskId so we poll.
         let result: ExecuteResult;
-        try {
-          result = await executeStage(compileResult.request, providerEnv);
-        } catch (err) {
-          logger.error('generate-job:execute-failed', {
-            jobId,
-            stage: stageNumber,
-            err: String(err),
-          });
-          return failWithCost(stageNumber, providerJobError(err, stageNumber, contentLabel), true);
+        // A retry of this run picks up the task the first attempt already
+        // paid for instead of buying it again (2026-11-15: one upscale was
+        // submitted to fal three times because saving its result threw).
+        const resumed = resumableTask(compileResult.request, priorRequestIds, attemptNumber, totalStages);
+        if (resumed) {
+          logger.warn('generate-job:resuming-provider-task', { jobId, stage: stageNumber, taskId: resumed.taskId, attempt: attemptNumber });
+          result = resumed;
+        } else {
+          try {
+            result = await executeStage(compileResult.request, providerEnv);
+          } catch (err) {
+            logger.error('generate-job:execute-failed', {
+              jobId,
+              stage: stageNumber,
+              err: String(err),
+            });
+            return failWithCost(stageNumber, providerJobError(err, stageNumber, contentLabel), true);
+          }
         }
 
         if (result.status === 'pending') {
@@ -561,20 +576,47 @@ export const generateJob = task({
           const pendingProvider = result.provider;
           providerTaskId = result.taskId;
           requestIds.push(result.taskId);
+          // On the row NOW, not when the job ends: a crashed or retried run
+          // can then find the task (and never submit it twice), and a job
+          // still in flight can be looked up at the provider.
+          try {
+            await db.update(jobs).set({ providerRequestIds: [...requestIds] }).where(eq(jobs.id, jobId));
+          } catch (err) {
+            logger.warn('generate-job:request-id-not-saved', { jobId, err: String(err) });
+          }
           const variant = pendingProvider === 'kling' ? result.variant : 'image2video';
           const api2 = pendingProvider === 'kling' ? result.api2 === true : false;
           try {
-            result = await waitForAsync(
-              result.taskId,
-              pendingProvider,
-              variant,
-              providerEnv,
-              api2,
-              { jobId, stageNumber, totalStages },
-              // fal addresses a queued task by endpoint + id, unlike Kling
-              // and Seedance where the id alone is enough.
-              pendingProvider === 'fal' ? result.endpoint : undefined,
-            );
+            try {
+              result = await waitForAsync(
+                result.taskId,
+                pendingProvider,
+                variant,
+                providerEnv,
+                api2,
+                { jobId, stageNumber, totalStages },
+                // fal addresses a queued task by endpoint + id, unlike Kling
+                // and Seedance where the id alone is enough.
+                pendingProvider === 'fal' ? result.endpoint : undefined,
+              );
+            } catch (err) {
+              // fal's own guidance for `downstream_service_error` (the partner
+              // behind the endpoint failed after fal's five internal tries):
+              // treat it as retryable. fal bills nothing for a failed request,
+              // so one fresh submit costs only the wait. Once, never a loop.
+              if (pendingProvider !== 'fal' || !isFalDownstreamError(err)) throw err;
+              logger.warn('generate-job:fal-downstream-retry', { jobId, stage: stageNumber, firstTaskId: providerTaskId, err: String(err).slice(0, 200) });
+              const again = await executeStage(compileResult.request, providerEnv);
+              if (again.status !== 'pending' || again.provider !== 'fal') throw err;
+              providerTaskId = again.taskId;
+              requestIds.push(again.taskId);
+              try {
+                await db.update(jobs).set({ providerRequestIds: [...requestIds] }).where(eq(jobs.id, jobId));
+              } catch (saveErr) {
+                logger.warn('generate-job:request-id-not-saved', { jobId, err: String(saveErr) });
+              }
+              result = await waitForAsync(again.taskId, 'fal', variant, providerEnv, false, { jobId, stageNumber, totalStages }, again.endpoint);
+            }
           } catch (err) {
             // The provider said the task failed (e.g. Seedance classifying a
             // References prompt as an edit), or polling kept erroring. Fail
@@ -601,15 +643,41 @@ export const generateJob = task({
         // the binary forward in multi-stage pipelines.
         for (let j = 0; j < result.outputs.length; j++) {
           const out = result.outputs[j]!;
-          const bytes = await outputBytes(out);
           const mime = out.mimeType ?? defaultMimeFor(out.type);
-          const persisted = await writeOutputObject({
-            jobId,
-            stageIndex: stageNumber,
-            outputIndex: j,
-            bytes,
-            mimeType: mime,
-          });
+          let bytes: Uint8Array;
+          let persisted: { r2Key: string };
+          try {
+            bytes = await outputBytes(out);
+            persisted = await writeOutputObject({
+              jobId,
+              stageIndex: stageNumber,
+              outputIndex: j,
+              bytes,
+              mimeType: mime,
+            });
+          } catch (err) {
+            // The provider has rendered and billed this. Letting the throw
+            // escape makes Trigger.dev re-run the job, which generated it
+            // again — three paid renders for one failed save. Fail once,
+            // refund the user, and keep the true cost on the row.
+            logger.error('generate-job:persist-failed', { jobId, stage: stageNumber, output: j, err: String(err) });
+            const rendered = stageCost(
+              stageNumber,
+              { ...costFactsFor(stage), outputs: Math.max(1, result.outputs.length), outputDurationSec: null, usage: null },
+              capabilities,
+            );
+            return failJob(
+              jobId,
+              {
+                code: 'internal_error',
+                message: 'The result was generated but could not be saved.',
+                stage: stageNumber,
+                retryCount: 0,
+                detail: String(err instanceof Error ? err.message : err).slice(0, 1000),
+              },
+              { provider: stages[0]?.provider ?? null, requestIds, ...summariseJobCost(rendered ? [...stageCosts, rendered] : stageCosts) },
+            );
+          }
 
           previousOutputs.push({
             stageIndex: stageNumber,
@@ -978,6 +1046,14 @@ const ASYNC_POLL_BUDGET_MS: Record<'kling' | 'seedance' | 'fal', number> = {
   fal: 120 * 60 * 1000,
 };
 
+/**
+ * How long a fal request may sit in fal's queue before we take it back.
+ * Shorter than the limit we ask fal itself to apply
+ * (`FAL_START_TIMEOUT_SECONDS`), so the worker — which can cancel and
+ * explain — acts first.
+ */
+const FAL_MAX_QUEUE_MS = 5 * 60 * 1000;
+
 /** Polling errors in a row (≈30s at the 6s cadence) before the job is failed. */
 const MAX_CONSECUTIVE_POLL_ERRORS = 5;
 
@@ -1005,6 +1081,11 @@ async function waitForAsync(
   const maxMs = ASYNC_POLL_BUDGET_MS[provider];
   let attempt = 0;
   let consecutivePollErrors = 0;
+  // fal only: has a runner picked the request up yet? Once true it stays true.
+  let falRunning = false;
+  let falQueued = false;
+  let falPosition: number | undefined;
+  let falWorstPosition = 0;
 
   while (Date.now() - start < maxMs) {
     attempt += 1;
@@ -1012,7 +1093,10 @@ async function waitForAsync(
     await updateJobProgress(ctx.jobId, {
       stage: ctx.stageNumber,
       totalStages: ctx.totalStages,
-      message: `Animating (${elapsed}s elapsed)`,
+      message:
+        falQueued && !falRunning
+          ? `Waiting for the provider to start (${falPosition ? `${falPosition} ahead, ` : ''}${elapsed}s)`
+          : `Animating (${elapsed}s elapsed)`,
     });
 
     // Short polls in the first half-minute keep fast jobs snappy. Past
@@ -1051,9 +1135,41 @@ async function waitForAsync(
       logger.info('generate-job:async-completed', { taskId, provider, attempts: attempt });
       return result;
     }
+    if (result.provider === 'fal') {
+      if (result.phase === 'running' && !falRunning) {
+        falRunning = true;
+        logger.info('generate-job:provider-started', { taskId, provider, queuedSeconds: Math.round((Date.now() - start) / 1000) });
+      }
+      falQueued = result.phase === 'queued';
+      falPosition = falQueued ? result.queuePosition : undefined;
+      // fal's advice (2026-11-18): the position is the early sign of a
+      // backlog. Logged once per new high so a busy day is visible in the
+      // run, not only after the fact in fal's request log.
+      if (falPosition !== undefined && falPosition > falWorstPosition && falPosition >= 10) {
+        falWorstPosition = falPosition;
+        logger.warn('generate-job:provider-backlog', { taskId, provider, queuePosition: falPosition, waited: Math.round((Date.now() - start) / 1000) });
+      }
+      // fal has no runner for us. Its queue is normally zero seconds; when
+      // it is not, it has been minutes to hours. Stop here, take the
+      // request back, and tell the user now rather than in twenty minutes.
+      if (!falRunning && Date.now() - start >= FAL_MAX_QUEUE_MS) {
+        const waited = Math.round((Date.now() - start) / 1000);
+        const cancelled = endpoint && providerEnv.fal ? await cancelFal(taskId, endpoint, providerEnv.fal) : false;
+        logger.error('generate-job:provider-queue-timeout', { taskId, provider, waited, cancelled, queuePosition: falPosition ?? null });
+        throw new ProviderTaskFailedError(
+          `fal held the request in its queue for ${waited}s without starting it: no runner available (503 UNAVAILABLE). ${cancelled ? 'Cancelled at fal.' : 'Cancel was not confirmed.'}`,
+        );
+      }
+    }
   }
 
   logger.error('generate-job:async-timeout', { taskId, provider });
+  // We are giving up; ask fal to stop too, so it does not render (and bill)
+  // a result nobody will collect. Best-effort.
+  if (provider === 'fal' && endpoint && providerEnv.fal) {
+    const cancelled = await cancelFal(taskId, endpoint, providerEnv.fal);
+    logger.warn('generate-job:async-timeout-cancel', { taskId, cancelled });
+  }
   // Return a synthetic pending result so the caller's `if (result.status !==
   // 'completed')` branch trips and converts this to a `provider_timeout`
   // failure. The variant only matters for Kling; for Seedance it's ignored.
@@ -1061,6 +1177,40 @@ async function waitForAsync(
     return { status: 'pending', taskId, provider: 'seedance' };
   }
   return { status: 'pending', taskId, provider: 'kling', variant };
+}
+
+/** fal's 500 for "the partner service behind this endpoint failed" — retryable by fal's own account. */
+function isFalDownstreamError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /^fal 500 /.test(message) && /downstream_service_(error|unavailable)/.test(message);
+}
+
+/**
+ * The provider task an earlier attempt of this run already submitted, in
+ * the shape the poll loop expects — or null when the stage must be
+ * submitted.
+ *
+ * Deliberately narrow: only a retry (attempt > 1), only a single-stage
+ * job with exactly one recorded task, and only fal and Seedance, whose
+ * tasks can be polled from the id alone (plus fal's endpoint, which the
+ * compiled request carries). Kling needs the variant its submit
+ * returned, so a Kling retry still submits.
+ */
+function resumableTask(
+  request: { provider: string; endpoint?: string },
+  priorRequestIds: string[],
+  attemptNumber: number,
+  totalStages: number,
+): Extract<ExecuteResult, { status: 'pending' }> | null {
+  if (attemptNumber <= 1 || totalStages !== 1 || priorRequestIds.length !== 1) return null;
+  const taskId = priorRequestIds[0]!;
+  if (request.provider === 'fal' && request.endpoint) {
+    return { status: 'pending', taskId, provider: 'fal', endpoint: request.endpoint };
+  }
+  if (request.provider === 'seedance') {
+    return { status: 'pending', taskId, provider: 'seedance' };
+  }
+  return null;
 }
 
 /**

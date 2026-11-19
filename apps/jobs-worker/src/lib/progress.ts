@@ -18,7 +18,10 @@ export async function updateJobProgress(
   jobId: string,
   progress: JobProgress,
 ): Promise<void> {
-  await getDb().update(jobs).set({ progress }).where(eq(jobs.id, jobId));
+  // Stamped on every write: this is the run's heartbeat (see
+  // `recover-stuck-jobs`). The poll loop writes every few seconds, so a
+  // stale stamp means the worker is gone, not that the provider is slow.
+  await getDb().update(jobs).set({ progress: { ...progress, at: new Date().toISOString() } }).where(eq(jobs.id, jobId));
 }
 
 /**

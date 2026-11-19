@@ -88,6 +88,13 @@ export type ExecuteResult =
        * id alone cannot be polled, unlike Kling's and Seedance's.
        */
       endpoint: string;
+      /**
+       * Set on a poll: `queued` while fal has no runner for the request,
+       * `running` once one has picked it up. Absent on the submit result.
+       */
+      phase?: 'queued' | 'running';
+      /** Requests ahead of ours in fal's queue, when fal reports it. */
+      queuePosition?: number;
     };
 
 /**
@@ -190,7 +197,7 @@ export async function pollAsyncTask(
     if (!endpoint) throw new Error('pollAsyncTask(): fal needs the endpoint the task was submitted to.');
     const result = await pollFal(taskId, endpoint, env.fal);
     if (result.status === 'pending') {
-      return { status: 'pending', taskId, provider: 'fal', endpoint };
+      return { status: 'pending', taskId, provider: 'fal', endpoint, phase: result.phase, queuePosition: result.queuePosition };
     }
     if (result.status === 'failed') {
       // Terminal on fal's side: surfaced as a throw so the worker's

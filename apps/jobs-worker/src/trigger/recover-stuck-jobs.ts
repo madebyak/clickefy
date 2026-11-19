@@ -52,6 +52,15 @@ const QUEUED_STUCK_AFTER_SECONDS = 30;
  *  predated Seedance and refunded jobs that later completed — i.e.
  *  free generations on the most expensive model.) */
 const PROCESSING_STUCK_AFTER_SECONDS = 1500;
+/** A run that wrote progress this recently is alive, however long it has been
+ *  going. The poll loop stamps `progress.at` every few seconds; the longest
+ *  silent stretch is a large download and upload, a few minutes. Without this
+ *  the sweep failed and refunded upscales fal was still working on (its poll
+ *  budget is two hours), and fal billed the result nobody received. */
+const HEARTBEAT_STALE_AFTER_SECONDS = 600;
+/** No run is believed past this, heartbeat or not. Above the longest poll
+ *  budget (fal, two hours) with room for the download and upload after it. */
+const PROCESSING_HARD_CAP_SECONDS = 3 * 60 * 60;
 /** A sweep executing this long after its scheduled minute is backlog from a pause; it must not act. */
 const STALE_SCHEDULE_AFTER_MS = 90_000;
 
@@ -110,6 +119,11 @@ export const recoverStuckJobs = schedules.task({
       WHERE status = 'processing'
         AND started_at IS NOT NULL
         AND started_at < now() - (${PROCESSING_STUCK_AFTER_SECONDS} || ' seconds')::interval
+        AND (
+          progress->>'at' IS NULL
+          OR (progress->>'at')::timestamptz < now() - (${HEARTBEAT_STALE_AFTER_SECONDS} || ' seconds')::interval
+          OR started_at < now() - (${PROCESSING_HARD_CAP_SECONDS} || ' seconds')::interval
+        )
       ORDER BY started_at ASC
       LIMIT 50
     `);

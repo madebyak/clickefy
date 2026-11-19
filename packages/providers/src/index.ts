@@ -124,6 +124,7 @@ export {
   type KlingPollVariant,
 } from './adapters/kling';
 export { ProviderTaskFailedError, isProviderTaskFailedError } from './provider-errors';
+export { cancelFal, FAL_START_TIMEOUT_SECONDS } from './adapters/fal';
 export {
   executeSeedance,
   pollSeedance,

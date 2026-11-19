@@ -32,7 +32,23 @@ export interface FalEnv {
   apiKey: string;
   /** Overridable for tests. */
   baseUrl?: string;
+  /**
+   * Seconds fal may hold a request before a runner picks it up
+   * (`X-Fal-Request-Start-Timeout`). Queue time on fal is normally zero;
+   * on 2026-10-21 and 2026-11-18 it was up to two hours and eighteen
+   * minutes. Past this, fal gives the request up instead of running it
+   * late. Zero or less sends no limit. Defaults to
+   * `FAL_START_TIMEOUT_SECONDS`.
+   */
+  startTimeoutSeconds?: number;
 }
+
+/**
+ * The backstop on fal's side. The worker enforces its own, shorter
+ * limit while it polls (it can cancel and tell the user at once); this
+ * one only matters if the worker is gone and nobody is polling.
+ */
+export const FAL_START_TIMEOUT_SECONDS = 360;
 
 const DEFAULT_BASE_URL = 'https://queue.fal.run';
 
@@ -113,9 +129,11 @@ export async function executeFal(
   request: FalCompiledRequest,
   env: FalEnv,
 ): Promise<FalSubmitResult> {
+  const startTimeout = env.startTimeoutSeconds ?? FAL_START_TIMEOUT_SECONDS;
   const body = await falFetch(queueUrl(env, request.endpoint), env, {
     method: 'POST',
     body: JSON.stringify(request.input),
+    ...(startTimeout > 0 ? { headers: { 'X-Fal-Request-Start-Timeout': String(startTimeout) } } : {}),
   });
   const { request_id: requestId, status_url: statusUrl } = body as {
     request_id?: string;
@@ -148,7 +166,8 @@ export function ownerPathFromStatusUrl(statusUrl: string): string | undefined {
 }
 
 export type FalPollResult =
-  | { status: 'pending' }
+  /** `queued`: waiting for a runner. `running`: a runner has it. */
+  | { status: 'pending'; phase: 'queued' | 'running'; /** Requests ahead of ours in fal's queue, when fal says. */ queuePosition?: number }
   | { status: 'completed'; outputs: FalOutput[] }
   | { status: 'failed'; error: string };
 
@@ -169,10 +188,14 @@ export async function pollFal(
   const status = (await falFetch(
     queueUrl(env, base, `/requests/${taskId}/status`),
     env,
-  )) as { status?: string };
+  )) as { status?: string; queue_position?: number };
 
   if (status.status === 'IN_QUEUE' || status.status === 'IN_PROGRESS') {
-    return { status: 'pending' };
+    return {
+      status: 'pending',
+      phase: status.status === 'IN_QUEUE' ? 'queued' : 'running',
+      ...(typeof status.queue_position === 'number' ? { queuePosition: status.queue_position } : {}),
+    };
   }
   if (status.status !== 'COMPLETED') {
     return { status: 'failed', error: `fal returned an unexpected status: ${status.status ?? 'none'}` };

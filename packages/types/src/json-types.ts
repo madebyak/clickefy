@@ -485,6 +485,12 @@ export interface JobProgress {
   stage: number;
   totalStages: number;
   message: string;
+  /**
+   * When the worker last wrote this (ISO). A heartbeat: the stuck-job
+   * sweeper reads it to tell a slow-but-alive run from a dead one.
+   * Absent on rows written before 2026-11-19.
+   */
+  at?: string;
 }
 
 export interface JobResult {

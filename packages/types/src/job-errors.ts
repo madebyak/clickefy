@@ -186,7 +186,7 @@ export function explainProviderError(
   // Our provider accounts (BytePlus overdue 2026-09-22, fal "User is
   // locked. Reason: Exhausted balance" 2026-10-12): never the user's doing.
   if (
-    /AccountOverdue|overdue balance|insufficient balance|Exhausted balance|User is locked|Reason: TOP_UP|Invalid video_url|is not supported with last frame|not registered|\b1002\b|Failed to download the file|no URL/i.test(
+    /AccountOverdue|overdue balance|insufficient balance|Exhausted balance|User is locked|Reason: TOP_UP|ModelNotOpen|has not activated the model|Invalid video_url|is not supported with last frame|not registered|\b1002\b|Failed to download the file|no URL/i.test(
       raw,
     )
   ) {

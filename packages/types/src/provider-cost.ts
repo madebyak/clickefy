@@ -123,6 +123,8 @@ export const PROVIDER_COST_BOOK: Record<string, Rule> = {
   'dreamina-seedance-2-0-fast-260128': { kind: 'seedance_tokens', dims: SEEDANCE_20_DIMS, ratePerMillion: { '480p': { noVideo: 5.6, withVideo: 3.3 }, '720p': { noVideo: 5.6, withVideo: 3.3 } }, default: '720p' },
   'dreamina-seedance-2-0-260128': { kind: 'seedance_tokens', dims: SEEDANCE_20_DIMS, ratePerMillion: { '480p': { noVideo: 7.0, withVideo: 4.3 }, '720p': { noVideo: 7.0, withVideo: 4.3 }, '1080p': { noVideo: 7.7, withVideo: 4.7 }, '4k': { noVideo: 4.0, withVideo: 2.4 } }, default: '720p' },
   'dreamina-seedance-2-5-260628': { kind: 'seedance_tokens', dims: SEEDANCE_25_DIMS, ratePerMillion: { '480p': { noVideo: 10.7, withVideo: 6.4 }, '720p': { noVideo: 10.7, withVideo: 6.4 }, '1080p': { noVideo: 11.7, withVideo: 7.0 } }, default: '720p' },
+  // Flash: the 2.5 frame sizes at about two thirds of the 2.5 rate (ModelArk pricing page, read 2026-11-19).
+  'dreamina-seedance-2-5-flash-261115': { kind: 'seedance_tokens', dims: SEEDANCE_25_DIMS, ratePerMillion: { '480p': { noVideo: 7.0, withVideo: 4.3 }, '720p': { noVideo: 7.0, withVideo: 4.3 } }, default: '720p' },
   // ── fal: ByteDance upscaler (per source second) ──────────────────────
   'bytedance-upscaler': { kind: 'upscale', usdPerSecond: { '1080p': 0.0072, '2k': 0.0144, '4k': 0.0288, '6k': 0.0576, '8k': 0.1152 }, fps60Multiplier: 2, proMultiplier: 10, default: '1080p' },
   // ── Phase 2 (regular prices, read 2026-10-04/05) ─────────────────────

@@ -744,10 +744,11 @@ describe('compile() — Seedance priced resolution tiers', () => {
     expect(getCapabilities('dreamina-seedance-2-5-260628').modes?.values).toEqual([
       '480p', '720p', '1080p',
     ]);
-    // Fast and Mini genuinely cap at 720p.
+    // Fast, Mini and 2.5 Flash genuinely cap at 720p.
     for (const key of [
       'dreamina-seedance-2-0-fast-260128',
       'dreamina-seedance-2-0-mini-260615',
+      'dreamina-seedance-2-5-flash-261115',
     ]) {
       expect(getCapabilities(key).modes?.values).toEqual(['480p', '720p']);
     }
@@ -755,9 +756,45 @@ describe('compile() — Seedance priced resolution tiers', () => {
       'dreamina-seedance-2-0-fast-260128',
       'dreamina-seedance-2-0-mini-260615',
       'dreamina-seedance-2-5-260628',
+      'dreamina-seedance-2-5-flash-261115',
     ]) {
       expect(getCapabilities(key).modes?.default).toBe('720p');
     }
+  });
+
+  // Flash is 2.5's request surface with a smaller budget, no 1080p and no Draft.
+  it('gives 2.5 Flash the 2.5 surface, minus 1080p, Draft and two thirds of the references', () => {
+    const flash = getCapabilities('dreamina-seedance-2-5-flash-261115');
+    const full = getCapabilities('dreamina-seedance-2-5-260628');
+    expect(flash.provider).toBe('seedance');
+    expect(flash.kind).toBe('video');
+    expect(flash.sizing).toMatchObject({ resolutions: ['480p', '720p'] });
+    expect(flash.duration?.values).toEqual(full.duration?.values);
+    expect(flash.duration?.values).toContain(30);
+    expect(flash.draft).toBeUndefined();
+    expect(flash.maxReferences).toBe(10);
+    expect(flash.maxImagesTotal).toBe(10);
+    expect(flash.referenceVideo).toMatchObject({ max: 5, maxTotalSeconds: 30 });
+    expect(flash.referenceAudio).toMatchObject({ max: 5, maxTotalSeconds: 30 });
+    expect(flash.supportsOmniTaskType).toBe(true);
+    expect(flash.framesRatioAdaptiveOnly).toBe(true);
+    expect(flash.supportsSound).toBe(true);
+  });
+
+  it('clamps 1080p on 2.5 Flash instead of sending it, and never sends draft', () => {
+    const stage = makeStage({
+      provider: 'seedance',
+      model: 'dreamina-seedance-2-5-flash-261115',
+      prompt: 'A quick pan across a market.',
+      config: { aspectRatio: '16:9', resolution: '1080p', duration: 12, draft: true },
+    });
+    const { request, warnings } = compile(makeCtx({ stage }));
+    const sd = request as SeedanceCompiledRequest;
+    expect(sd.model).toBe('dreamina-seedance-2-5-flash-261115');
+    expect(sd.resolution).toBeUndefined();
+    expect(sd.draft).toBeUndefined();
+    expect(sd.duration).toBe(12);
+    expect(warnings.some((w) => w.code === 'config_clamped')).toBe(true);
   });
 });
 

@@ -78,6 +78,8 @@ const MODEL_HINTS: Record<string, string> = {
   'gpt-image-2': 'best text',
   'seedream-4-0-250828': 'image, cheapest',
   'seedream-5-0-260128': 'image, best',
+  'dreamina-seedance-2-5-260628': 'video, best',
+  'dreamina-seedance-2-5-flash-261115': 'video, fast and cheaper',
   'dreamina-seedance-2-0-260128': 'video',
   'dreamina-seedance-2-0-fast-260128': 'video, fast',
 };
@@ -100,6 +102,8 @@ const MODEL_ORDER: string[] = [
   'gpt-image-2',
   'seedream-4-0-250828',
   'seedream-5-0-260128',
+  'dreamina-seedance-2-5-260628',
+  'dreamina-seedance-2-5-flash-261115',
   'dreamina-seedance-2-0-260128',
   'dreamina-seedance-2-0-fast-260128',
 ];

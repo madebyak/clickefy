@@ -151,6 +151,8 @@ const COST_PER_CALL_USD: Record<string, string> = {
   'seedance/dreamina-seedance-2-0-fast-260128': '0.6000',
   'seedance/dreamina-seedance-2-0-mini-260615': '0.3800',
   'seedance/dreamina-seedance-2-5-260628': '1.1560',
+  // 5s at 720p: 108,000 tokens × $7.0/M.
+  'seedance/dreamina-seedance-2-5-flash-261115': '0.7560',
 };
 
 interface ModelRow {

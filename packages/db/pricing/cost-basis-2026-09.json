@@ -434,6 +434,22 @@
           "1080p": 366
         },
         "currentCostCredits": 207
+      },
+      {
+        "modelKey": "dreamina-seedance-2-5-flash-261115",
+        "name": "Seedance 2.5 Flash",
+        "family": "seedance-2.5",
+        "defaultDuration": 5,
+        "ratePerMillion": {
+          "480p": {
+            "noVideo": 7.0,
+            "withVideo": 4.3
+          },
+          "720p": {
+            "noVideo": 7.0,
+            "withVideo": 4.3
+          }
+        }
       }
     ]
   },
@@ -479,7 +495,8 @@
     "dreamina-seedance-2-0-mini-260615": "720p",
     "dreamina-seedance-2-0-fast-260128": "720p",
     "dreamina-seedance-2-0-260128": "720p",
-    "dreamina-seedance-2-5-260628": "720p"
+    "dreamina-seedance-2-5-260628": "720p",
+    "dreamina-seedance-2-5-flash-261115": "720p"
   },
   "promotions": {
     "policy": "The CATALOGUE is always priced at the provider's standard rate. A supplier promotion is passed to customers as a separate, dated discount that expires on its own \u2014 never by lowering the catalogue price. A catalogue price built on a promotion has an expiry date nobody gets alerted about, which is exactly how Seedance 2.5 1080p ended up selling at 0.85x.",

@@ -146,6 +146,15 @@
         "1080p_videoin": 26
       },
       "costCredits": 18
+    },
+    "dreamina-seedance-2-5-flash-261115": {
+      "tierPricing": {
+        "480p": 6,
+        "480p_videoin": 4,
+        "720p": 12,
+        "720p_videoin": 7
+      },
+      "costCredits": 12
     }
   },
   "requiresCodeChange": [

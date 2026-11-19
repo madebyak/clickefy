@@ -1407,6 +1407,58 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     notes:
       'BytePlus Seedance 2.5. Up to 30s and 30 reference images, plus reference video (<=10, <=30s total) and reference audio (<=10 clips, <=30s total). 480p/720p/1080p (1080p is 10-bit H.265). Also supports edit and extend task types via omni_reference_task_type. Billed per second of output.',
   },
+  // ── Seedance 2.5 Flash ──────────────────────────────────────────────
+  // The fast, cheaper tier of 2.5 (BytePlus, API live 2026-11-15). Same
+  // request surface and task types as 2.5 — text, first/last frame,
+  // omni reference, edit, extend, native audio, 4–30s — with four
+  // documented differences (ModelArk tutorial 2607688, pricing page,
+  // read 2026-11-19):
+  //   - 480p and 720p only. No 1080p, no 4K.
+  //   - No Draft mode ("Seedance 2.5 flash does not support Draft mode").
+  //   - Smaller reference budget: 10 images, 5 videos, 5 audio clips
+  //     (2.5: 30 / 10 / 10).
+  //   - $7.0 per million tokens, $4.3 with a video input (2.5: $10.7 /
+  //     $6.4) — about two thirds of the price.
+  // BytePlus publishes no speed figure; third-party runs put a 10s clip
+  // at roughly 80–150s against 170–280s for 2.5.
+  //
+  // The account has to ACTIVATE the model in the Ark console first;
+  // until then every request is a 404 `ModelNotOpen`.
+  'dreamina-seedance-2-5-flash-261115': {
+    provider: 'seedance',
+    modelKey: 'dreamina-seedance-2-5-flash-261115',
+    displayName: 'Seedance 2.5 Flash',
+    status: 'preview',
+    kind: 'video',
+    sizing: {
+      mode: 'aspect',
+      values: SEEDANCE_ASPECT_RATIOS,
+      // 1080p here would be a provider rejection AFTER the debit.
+      resolutions: SEEDANCE_RESOLUTIONS_SD,
+    },
+    outputs: { min: 1, max: 1, default: 1 },
+    duration: { values: SEEDANCE_25_DURATIONS, default: 5 },
+    refAddressing: 'ordinal',
+    maxReferences: 10,
+    maxSubjects: 2, // first_frame + optional last_frame
+    maxImagesTotal: 10,
+    acceptsStartEndImage: true,
+    supportsSound: true,
+    inputVideoDurationFactor: 1.0,
+    imageConstraints: SEEDANCE_IMAGE_CONSTRAINTS,
+    referenceVideo: { max: 5, maxTotalSeconds: 30, minClipSeconds: 2, maxClipSeconds: 30 },
+    referenceAudio: { max: 5, maxTotalSeconds: 30, minClipSeconds: 2, maxClipSeconds: 30 },
+    framesRatioAdaptiveOnly: true,
+    supportsOmniTaskType: true,
+    // No `draft`: the API refuses `draft: true` on this model.
+    modes: {
+      values: SEEDANCE_RESOLUTIONS_SD,
+      default: '720p',
+    },
+    maxPromptChars: 8000,
+    notes:
+      'BytePlus Seedance 2.5 Flash. The fast, cheaper tier of 2.5: up to 30s, 480p/720p, up to 10 reference images plus reference video (<=5, <=30s total) and reference audio (<=5 clips, <=30s total). No 1080p, no Draft mode. Billed per second of output.',
+  },
   // Cheapest tier of the 2.0 line. Same parameter surface as Fast.
   'dreamina-seedance-2-0-mini-260615': {
     provider: 'seedance',

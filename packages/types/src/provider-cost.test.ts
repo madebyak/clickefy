@@ -17,6 +17,22 @@ describe('providerCostUsd', () => {
     expect(omni?.usd).toBeCloseTo(0.84, 5);
   });
 
+  it('prices Seedance 2.5 Flash at its own token rate on the 2.5 frame sizes', () => {
+    // 5 s at 720p: 108,000 tokens × $7.0/M = $0.756 (BytePlus's own example: $0.76)
+    const t2v = providerCostUsd({ modelKey: 'dreamina-seedance-2-5-flash-261115', mode: '720p', durationSeconds: 5 });
+    expect(t2v?.quantity).toBe(108000);
+    expect(t2v?.usd).toBeCloseTo(0.756, 4);
+    // 5 s at 480p: 854×480×24/1024 tokens/s → $0.336 (BytePlus: $0.34)
+    const sd = providerCostUsd({ modelKey: 'dreamina-seedance-2-5-flash-261115', mode: '480p', durationSeconds: 5 });
+    expect(sd?.usd).toBeCloseTo((5 * 854 * 480 * 24 / 1024 / 1e6) * 7.0, 4);
+    // with a video input the cheaper rate applies
+    const edit = providerCostUsd({ modelKey: 'dreamina-seedance-2-5-flash-261115', mode: '720p', durationSeconds: 5, inputVideoSeconds: 2 });
+    expect(edit?.usd).toBeCloseTo((9 * 21600 / 1e6) * 4.3, 4);
+    // about two thirds of 2.5 at the same settings
+    const full = providerCostUsd({ modelKey: 'dreamina-seedance-2-5-260628', mode: '720p', durationSeconds: 5 });
+    expect(t2v!.usd / full!.usd).toBeCloseTo(7.0 / 10.7, 4);
+  });
+
   it('prices Seedance 2.5 by completion tokens, with the video-input floor', () => {
     // 5 s at 720p: 1280×720×24/1024 = 21,600 tokens/s → 108,000 tokens × $10.7/M
     const t2v = providerCostUsd({ modelKey: 'dreamina-seedance-2-5-260628', mode: '720p', durationSeconds: 5 });
@@ -80,7 +96,7 @@ describe('providerCostUsd', () => {
     const credits: Record<string, number> = {
       'gemini-3-pro-image': 3, 'gemini-3.1-flash-image': 2, 'gemini-3.1-flash-lite-image': 1, 'gpt-image-2': 1,
       'kling-v2-5-turbo': 4, 'kling-v2-6': 4, 'kling-v3': 9, 'kling-v3-turbo': 9, 'kling-v3-omni': 9, 'kling-o1': 7,
-      'dreamina-seedance-2-5-260628': 18, 'dreamina-seedance-2-0-260128': 12, 'dreamina-seedance-2-0-fast-260128': 10, 'dreamina-seedance-2-0-mini-260615': 6,
+      'dreamina-seedance-2-5-260628': 18, 'dreamina-seedance-2-5-flash-261115': 12, 'dreamina-seedance-2-0-260128': 12, 'dreamina-seedance-2-0-fast-260128': 10, 'dreamina-seedance-2-0-mini-260615': 6,
       'seedream-4-0-250828': 1, 'seedream-5-0-260128': 1, 'dola-seedream-5-0-pro-260628': 2, 'bytedance-upscaler': 1,
       'wan-3-0': 8, 'flux-3-image': 1, 'flux-3-video': 13, 'h3-max': 6, 'gemini-omni-1-1-flash': 16,
       'gpt-image-2.5-sunburst': 1, 'gpt-image-2.5-flare': 1,
